@@ -44,3 +44,20 @@ rustdoc JSON needs nightly. **Choice:** `binder/rust` runs `cargo +nightly rustd
 ## Q11 — Errors that are semantic, listed under step 2
 Step 2 asks for error files covering unknown tool, effect violation, unit mismatch, … which need the semantic pass.
 **Choice:** step 2 creates all `tests/errors/*.agent.md` files and the diagnostic renderer; syntax errors pass in step 2, semantic ones are switched on in step 3.
+
+## Q12 — `ModelClient::complete` return type (step 5)
+DESIGN 5 says `Result<String>`, but the trace's `prompt_prefix` is "the fixture key that matched", which only the mock knows.
+**Choice:** `complete(&ModelRequest) -> Result<ModelResponse { text, matched_prefix }>`; `Ctx::ask_model` returns only the text and traces `matched_prefix`, falling back to the first 60 chars of the prompt for real providers.
+**Why:** keeps the trait provider-neutral while letting the mock report the matched key.
+
+## Q13 — `no_amounts_changed` input type (step 5)
+Brief says `input_json`. **Choice:** it takes `&serde_json::Value`; money values are every `"<n> <CUR>"` found in any string anywhere in the value. Amounts compare by minor units, so `1200 EUR` equals `1200.00 EUR`.
+**Why:** the guard's input is the in-scope record serialized to JSON; a generator can `serde_json::to_value` it.
+
+## Q14 — Money text grammar and currencies (step 5)
+SPEC lists no currencies. **Choice:** EUR, USD, GBP, CHF (2 digits), JPY (0 digits); parse accepts an optional `-`, digits, optional `.` plus 1..=exponent digits, one space, upper-case code; more decimals than the minor unit is an error, not a silent rounding. Text extraction skips `12 EURO`, and a number glued to a letter or digit.
+**Why:** silent rounding on parse would change amounts a guard is meant to protect.
+
+## Q15 — Scheduler time base and defaults (step 5)
+**Choice:** schedules use naive local time (no DST handling); `Every` fires `interval` after the previous tick; `run_schedule` takes a closure, one spawn per entry is the generator's job. `AnthropicModel` defaults to `max_tokens` 1024 and takes the model id from the caller (the generator maps `claude` / `claude:<model>`).
+**Why:** DST-exact local scheduling is not in the v0.1 contract; keeps the runtime small.
