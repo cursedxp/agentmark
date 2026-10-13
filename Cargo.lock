@@ -6,10 +6,14 @@ version = 4
 name = "agentmark"
 version = "0.1.0"
 dependencies = [
+ "agentmark-rt",
+ "chrono",
  "chumsky",
  "insta",
  "serde",
+ "serde_json",
  "strsim",
+ "tokio",
 ]
 
 [[package]]

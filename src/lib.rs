@@ -2,3 +2,5 @@
 
 pub mod diag;
 pub mod syntax;
+
+pub mod binder;
