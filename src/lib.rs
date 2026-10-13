@@ -4,3 +4,5 @@ pub mod diag;
 pub mod fmt;
 pub mod lint;
 pub mod syntax;
+
+pub mod binder;

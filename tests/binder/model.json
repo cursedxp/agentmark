@@ -1,0 +1,33 @@
+{
+  "today": "2026-10-14",
+  "responses": [
+    {
+      "prompt_prefix": "bind chrono::NaiveDate::parse_from_str\n",
+      "response": "Ok(chrono::NaiveDate::parse_from_str(&s, &fmt)?)"
+    },
+    {
+      "prompt_prefix": "bind chrono::DateTime::timestamp\n",
+      "response": "Ok(date_time.timestamp())"
+    },
+    {
+      "prompt_prefix": "bind chrono::DateTime::date_naive\n",
+      "response": "Ok(date_time.date_naive())"
+    },
+    {
+      "prompt_prefix": "bind chrono::DateTime::year\n",
+      "response": "```rust\nOk(i64::from(chrono::Datelike::year(&date_time)))\n```"
+    },
+    {
+      "prompt_prefix": "bind chrono::DateTime::checked_add_signed\n",
+      "response": "Ok(date_time.checked_add_signed(rhs))"
+    },
+    {
+      "prompt_prefix": "bind chrono::DateTime::to_utc\n",
+      "response": "Ok(date_time.timestamp())"
+    },
+    {
+      "prompt_prefix": "bind <sha2::Sha256 as sha2::Digest>::digest\n",
+      "response": "Ok(<sha2::Sha256 as sha2::Digest>::digest(&data).to_vec())"
+    }
+  ]
+}
