@@ -2,3 +2,6 @@
 
 pub mod diag;
 pub mod syntax;
+pub mod manifest;
+pub mod project;
+pub mod sema;

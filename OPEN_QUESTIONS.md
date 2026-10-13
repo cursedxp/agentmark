@@ -113,3 +113,52 @@ The parser knows no tool or record names, so it only suggests from closed keywor
 **Choice:** declaration names, rule names (`for each very-overdue invoice`, `count of very-overdue invoices`), record names and type names accept `-`; variables, fields and paths inside expressions do not (Q19).
 
 Note: my entries Q16-Q25 (and Q26-Q29) were numbered from Q16 because the runtime branch used Q12-Q15.
+
+## Q30 — What does a `## Do` block work on? (step 3)
+Example 01: `## Every day at 09:00` runs `for each overdue invoice in crm.invoices: - do remind`, and `## Do remind` writes `ask model with invoice: …`, `{customer}`, `{amount}` although it has no parameter. DESIGN 4.1 lowers it to `Call(invoice_chaser__remind, invoice)`.
+**Choice:** a `## Do` block receives the record variable that is "in front of" its caller — the innermost `for each` record, the event record of `## When tool receives event`, or none. The first caller decides; any other caller with a different variable or record is an error ("works on `i` (Invoice), but here it is called with `l` (Lead)"). A `## Do` block nobody calls is only a warning (unused action) and its unresolvable names are not reported. `Checked.blocks[..].param` records the choice for `agent_lower`.
+**Why:** it is the only reading under which example 01 resolves; deciding by call sites keeps the source free of parameter lists.
+
+## Q31 — Declared names are unique per project (step 3)
+Types carry a record by name (`Type::Record("Invoice")`), generated Rust has one namespace per kind, and scopes only decide visibility.
+**Choice:** two declarations of the same kind and name anywhere in the project are an error at the second ("already declared in file:line"), even if no file imports both.
+**Why:** keeps `Type` and the side tables simple and avoids two `Invoice` types silently comparing equal.
+
+## Q32 — Field-type inference reads whole words (step 3)
+SPEC 2.1 says "names ending in `date`, `at`, `on`"; letter-wise `reason`, `format`, `description` would become dates.
+**Choice:** the rule applies to the last word of the name, words separated by `_` or `-` (`due_date`, `created_at`, `paid_on`, `date`, `total_amount`). Only the fallback to `text` (no rule matched) is a warning (W001), as SPEC 2.1 says "inference failure"; successful inference is silent but `FieldInfo.inferred` is true.
+
+## Q33 — "Statements per block" counts nested statements (step 3)
+**Choice:** every statement inside the block counts, nested ones included (a `for each` with 25 statements inside is 26). The suggested fix names the lines from the top-level statement that contains the 25th statement to the end of the block.
+**Why:** the limit exists so a block fits on a screen; counting only the top level would let any block hide behind one `for each`.
+
+## Q34 — "Declarations per file" (step 3)
+SPEC 18.3: "1 of `# Agent` / `# Service` / `# Command`; records and rules may share a file only in `records/` and `rules/`". Example 05 holds a Service **and** a Command in one file, and examples 02–05 put records, rules and an agent into one file; all must check.
+**Choice:** at most one agent, at most one service and at most one command per file (05 passes). The record/rule placement limits apply to **folder projects** only (several records in one file only under `records/`, several rules only under `rules/`, records and rules never in the same file); a single-file project is a whole program in one file and is exempt.
+
+## Q35 — Line length ignores the text of string literals (step 3)
+Examples 02 and 03 contain lines of 133 and 129 characters (long model prompts); all examples must check with zero errors.
+**Choice:** for the 120-character limit the text between the quotes of a string literal does not count (the quotes do); everything else, `>` comments and fenced Rust included, counts in full. The error's caret starts at column 121.
+**Why:** a prompt is prose that cannot be broken over lines; the limit stays meaningful for code.
+
+## Q36 — Crate import without a binding file (step 3)
+Example 05 has `# Import: crate sha2` and no binding file (the binder comes in step 8).
+**Choice:** the import is known but unbound: warning W004 ("has no binding yet… run `agentmark bind sha2`"), never an error; `## Rust` blocks may use the crate. A crate import is "unused" (W002) when neither a binding nor any `## Rust` block / binding body of the file mentions `crate::`. Binding files are looked up at `bindings/<crate>.agent.md`, then `.agentmark/bindings/<crate>.agent.md` (hyphens also tried as underscores). Bindings are not tools: an agent need not list them in `tools:`.
+
+## Q37 — Module-qualified names (step 3)
+`# Import: ./billing as billing` makes names `billing.overdue`. The parser accepts qualified names in expressions (calls, constants) but only simple names in type positions, `for:`, `as`, and rule filters.
+**Choice:** sema resolves every qualified name it is given by looking up the full dotted name in the file's scope (so `billing.overdue(i)` works); a file that needs a record from an aliased folder imports the record file plainly as well. Fixing the parser to accept `billing.Invoice` in types is a step-2 follow-up, not done here.
+
+## Q38 — Tools in services, commands and functions (step 3)
+SPEC 2.3 restricts tool calls to the agent's `tools:` line, but `# Service`, `# Command` and `# Function` have no such line.
+**Choice:** the restriction applies to agent blocks (tool calls and tool-source reads). Services, commands and functions may use any tool of the manifest; a function's effect declaration is what bounds it.
+
+## Q39 — Built-in effect sources (step 3)
+**Choice:** `ask model` is class `model`; `print`, `read file` and `append … to state.…` are class `local` with the sources `print`, `file`, `state`; `append` to a local list is pure; `respond` / `read body` are pure. A tool read such as `crm.invoices` has the tool's manifest effect.
+
+## Q40 — Other choices made by the semantic pass (step 3)
+- `maybe T` is stored by a plain `T` (wrapping), never the other way; `x = y` accepts `maybe T` against `T`.
+- `+` on text is an error (use interpolation); `money / money` and `money * money` are errors; `date - date` and `datetime - datetime` are durations; currency mismatch is reported only when both sides are written literals (everything else is checked at run time, DESIGN 3).
+- `stop` inside a function and `return` outside one are errors; a function with `out:` and no `return` is an error.
+- A tool's manifest `effect` may be `local`, `network` or `model`, never `pure`.
+- `agentmark.toml` unknown keys are errors with did-you-mean (keys: `name`, `version`, `targets`, `lint`).

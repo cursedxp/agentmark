@@ -2,14 +2,17 @@
 //! hold the exact message the compiler must print (SPEC 10 format); the test runs the file through
 //! the front end and compares the rendered text exactly.
 //!
-//! Mistakes the parser can see (tabs, indentation, a missing `effect`, an unknown property) are
-//! checked now. The ones that need the tool manifest, scopes or types are `#[ignore]`d until
-//! step 3 adds the semantic pass (OPEN_QUESTIONS Q11); their files and expected messages are
-//! already fixed, and `semantic_cases_parse_cleanly` proves the parser accepts them.
+//! Mistakes the parser can see (tabs, indentation, a missing `effect`, an unknown property) and
+//! the semantic ones (unknown tool/verb/target, unlisted tool, effect violation, unit mismatch,
+//! missing `maybe`, unknown field) go through the same front end: load the project, run
+//! `sema::check`, render the errors. `semantic_cases_parse_cleanly` proves the parser accepts the
+//! semantic cases, so their message really comes from the semantic pass (OPEN_QUESTIONS Q11).
 
 use std::path::Path;
 
-use agentmark::diag::render_all;
+use agentmark::diag::{render_all, Severity};
+use agentmark::project::Project;
+use agentmark::sema;
 use agentmark::syntax::parser::parse_file;
 
 /// Every case: file stem, and whether it needs the semantic pass.
@@ -42,12 +45,20 @@ fn expected(src: &str) -> String {
         .join("\n")
 }
 
-/// Run the front end. In step 3 this becomes the full check (parse + semantic pass).
-fn front_end(path: &str, src: &str) -> String {
-    match parse_file(path, src) {
-        Ok(_) => String::new(),
-        Err(diags) => render_all(&diags, src),
-    }
+/// Run the front end: load the file (parse + `tools.toml` next to it), then the semantic check.
+/// Only errors are rendered; warnings (unused declarations in these tiny files) are not part of
+/// the documented message.
+fn front_end(path: &str, _src: &str) -> String {
+    let project = Project::load(path);
+    let diags = match sema::check(&project) {
+        Ok(_) => return String::new(),
+        Err(d) => d,
+    };
+    let errors: Vec<_> = diags
+        .into_iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    project.render(&errors)
 }
 
 fn check(stem: &str) {
@@ -74,7 +85,6 @@ macro_rules! case {
     };
     (semantic $name:ident, $stem:literal) => {
         #[test]
-        #[ignore = "enabled in step 3"]
         fn $name() {
             check($stem);
         }
