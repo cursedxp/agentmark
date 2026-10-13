@@ -524,3 +524,89 @@ fn skipped_assisted_items_name_the_library_path() {
     let (_, r) = b.not_bound.iter().find(|(n, _)| n == "date_time_to_utc").unwrap();
     assert!(r.contains("failed type-check") && r.ends_with("(chrono::DateTime::to_utc)"), "{r}");
 }
+
+// ------------------------------------------------------------ foreign traits, follow-up
+
+/// A crate `demo` with `pub use ext::Size` and `pub type W = ext::Wrapper`, and the JSON of
+/// `ext`, whose trait `Size` has a receiver-less `fn size() -> i64` (1:1 types).
+fn demo_and_ext() -> (String, String) {
+    let item = |id: u64, name: &str, inner: serde_json::Value| {
+        serde_json::json!({"id": id, "name": name, "visibility": "public", "docs": "Size of the thing.", "inner": inner})
+    };
+    let demo = serde_json::json!({
+        "format_version": 61, "crate_version": "1.0.0", "root": 0,
+        "index": {
+            "0": item(0, "demo", serde_json::json!({"module": {"items": [1, 2]}})),
+            "1": item(1, "Size", serde_json::json!({"use": {"source": "ext::Size", "name": "Size", "id": null, "is_glob": false}})),
+            "2": item(2, "W", serde_json::json!({"type_alias": {"type": {"resolved_path": {"path": "ext::Wrapper", "id": 20, "args": null}}}})),
+        },
+        "paths": {"20": {"path": ["ext", "Wrapper"]}}
+    });
+    let ext = serde_json::json!({
+        "format_version": 61, "crate_version": "2.0.0", "root": 0,
+        "index": {
+            "0": item(0, "ext", serde_json::json!({"module": {"items": []}})),
+            "4": item(4, "Size", serde_json::json!({"trait": {"items": [5]}})),
+            "5": item(5, "size", serde_json::json!({"function": {
+                "sig": {"inputs": [], "output": {"primitive": "i64"}},
+                "generics": {"params": [], "where_predicates": []},
+                "header": {"is_unsafe": false, "is_async": false}}})),
+        },
+        "paths": {}
+    });
+    (demo.to_string(), ext.to_string())
+}
+
+#[test]
+fn a_one_to_one_foreign_trait_method_is_assisted_never_direct() {
+    use agentmark::binder::core::Shape;
+    let (demo, ext) = demo_and_ext();
+    let ci = agentmark::binder::rust::read_crate_with(&demo, &[ext]).unwrap();
+    let it = ci.items.iter().find(|i| i.name == "w_size").expect("w_size");
+    assert_eq!(it.path, "<demo::W as demo::Size>::size");
+    assert!(matches!(&it.shape, Shape::Assisted { why, .. } if why.contains("another crate")), "{:?}", it.shape);
+}
+
+fn demo_opts(tag: &str) -> (PathBuf, BindOptions) {
+    let (demo, _) = demo_and_ext();
+    let dir = scratch(tag);
+    let json = dir.join("demo-in.json");
+    std::fs::write(&json, demo).unwrap();
+    let mut o = opts(&dir.join("out"), "sha2", vec![]);
+    o.rustdoc_json = Some(json);
+    o.foreign_rustdoc = vec![];
+    (dir, o)
+}
+
+#[test]
+fn a_failing_dependency_rustdoc_build_is_reported_in_the_reexport_line() {
+    let (_dir, mut o) = demo_opts("foreign-fail");
+    o.foreign_fetch = Some(Arc::new(|c| Err(format!("cargo exploded for {c}"))));
+    let out = bind("demo", &o).unwrap();
+    let f = parse(&out.path);
+    let n = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").expect("re-export listed");
+    let r = n.reason.as_deref().unwrap();
+    assert!(r.contains("not bound") && r.contains("cargo exploded for ext"), "{r}");
+    assert!(binding(&f).not_bound.iter().all(|n| n.item != "w_size"));
+}
+
+#[test]
+fn a_dependency_json_directory_replaces_the_nightly_build() {
+    let (dir, o) = demo_opts("foreign-dir");
+    let (_, ext) = demo_and_ext();
+    let jd = dir.join("json");
+    std::fs::create_dir_all(&jd).unwrap();
+    std::fs::write(jd.join("ext.json"), ext).unwrap();
+    std::env::set_var("AGENTMARK_RUSTDOC_JSON_DIR", &jd);
+    let out = bind("demo", &o);
+    std::env::remove_var("AGENTMARK_RUSTDOC_JSON_DIR");
+    let f = parse(&out.unwrap().path);
+    // No canned model body for it, but the item exists and was tiered (skipped by the model).
+    let n = binding(&f).not_bound.iter().find(|n| n.item == "w_size").expect("w_size tiered");
+    assert!(n.reason.as_deref().unwrap().contains("model gave no body"));
+    // Without the directory the missing JSON is named in the re-export line.
+    let (_d2, o2) = demo_opts("foreign-none");
+    let f = parse(&bind("demo", &o2).unwrap().path);
+    let r = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").unwrap().reason.clone().unwrap();
+    assert!(r.contains("AGENTMARK_RUSTDOC_JSON_DIR"), "{r}");
+}

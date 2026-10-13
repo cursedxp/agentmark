@@ -701,6 +701,10 @@ impl<'a> Walk<'a> {
             if Lifter::is_result(&ret_rt) {
                 why.push("returns Result");
             }
+            // Never trust rules for another crate's trait: the body is always type-checked.
+            if owner.as_ref().is_some_and(|o| o.foreign_trait) {
+                why.push("method of a trait from another crate");
+            }
             let direct = if why.is_empty() {
                 direct_body(path, &fname, &owner, recv, recv_name.as_deref(), &params, &pnames, &ret_rt)
             } else {

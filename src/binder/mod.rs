@@ -32,6 +32,8 @@ impl fmt::Display for BindError {
 
 impl std::error::Error for BindError {}
 
+pub type ForeignFetch = Arc<dyn Fn(&str) -> Result<PathBuf, String> + Send + Sync>;
+
 pub struct BindOptions {
     /// Folder holding `<crate>.agent.md` files (`.agentmark/bindings`).
     pub bindings_dir: PathBuf,
@@ -50,6 +52,8 @@ pub struct BindOptions {
     /// Pre-generated rustdoc JSON of other crates (tests): used when the bound crate re-exports
     /// a trait from one of them. Otherwise they are built next to the main one.
     pub foreign_rustdoc: Vec<PathBuf>,
+    /// Replaces the dependency rustdoc build (tests; e.g. one that fails).
+    pub foreign_fetch: Option<ForeignFetch>,
     /// Date written in the header.
     pub today: NaiveDate,
     /// Pass `--offline` to every cargo call.
@@ -68,6 +72,7 @@ impl BindOptions {
             default_features: true,
             features: vec![],
             foreign_rustdoc: vec![],
+            foreign_fetch: None,
             today,
             offline: false,
         }
@@ -110,6 +115,32 @@ fn model_version(path: &Path) -> Result<String, BindError> {
         .as_str()
         .map(String::from)
         .ok_or_else(|| BindError::Metadata(format!("{} has no crate_version", path.display())))
+}
+
+/// Rustdoc JSON text of dependency crate `c`: supplied files, the test hook,
+/// `AGENTMARK_RUSTDOC_JSON_DIR/<c>.json`, then a build next to the main JSON (only when the
+/// binder built that itself).
+fn foreign_json(c: &str, main: &Path, built_here: bool, opts: &BindOptions) -> Result<String, String> {
+    let read = |p: &Path| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
+    if let Some(p) = opts.foreign_rustdoc.iter().find(|p| root_name(p).as_deref() == Some(c)) {
+        return read(p);
+    }
+    if let Some(f) = &opts.foreign_fetch {
+        return read(&f(c).map_err(|e| format!("rustdoc JSON for `{c}` unavailable: {e}"))?);
+    }
+    if let Some(dir) = rust::fetch::env_nonempty(rust::fetch::ENV_JSON_DIR) {
+        let p = Path::new(&dir).join(format!("{}.json", c.replace('-', "_")));
+        if p.exists() {
+            return read(&p);
+        }
+    }
+    if built_here && rust::fetch::env_nonempty(rust::fetch::ENV_JSON).is_none() {
+        return read(&rust::fetch_dep_rustdoc_json(main, c, opts.offline)?);
+    }
+    Err(format!(
+        "no rustdoc JSON for `{c}` supplied (put {c}.json in a directory named by {})",
+        rust::fetch::ENV_JSON_DIR
+    ))
 }
 
 fn root_name(path: &Path) -> Option<String> {
@@ -156,7 +187,7 @@ fn read_counts(path: &Path) -> Result<(Counts, usize, String), BindError> {
 /// version, otherwise run the three tiers and write a fresh `unverified` file.
 pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindError> {
     let path = binding_path(&opts.bindings_dir, crate_name);
-    let env_json = std::env::var(rust::fetch::ENV_JSON).ok().filter(|s| !s.is_empty()).map(PathBuf::from);
+    let env_json = rust::fetch::env_nonempty(rust::fetch::ENV_JSON).map(PathBuf::from);
     let json_given = opts.rustdoc_json.clone().or(env_json);
     let version = match (&opts.version, &json_given) {
         (Some(v), _) => v.clone(),
@@ -176,6 +207,7 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
         return Ok(BindOutcome { path, generated: false, counts, bound, version, effect, reason: None });
     };
 
+    let built_here = json_given.is_none();
     let json_path = match json_given {
         Some(p) => p,
         None => rust::fetch_rustdoc_json_with(&spec(crate_name, Some(&version), opts)).map_err(BindError::Metadata)?,
@@ -183,21 +215,21 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
     let json = std::fs::read_to_string(&json_path)
         .map_err(|e| BindError::Metadata(format!("{}: {e}", json_path.display())))?;
     let mut foreign = Vec::new();
+    let mut foreign_errors: Vec<(String, String)> = Vec::new();
     for c in rust::foreign_crates(&json).map_err(BindError::Metadata)? {
-        let given = opts.foreign_rustdoc.iter().find(|p| root_name(p).as_deref() == Some(c.as_str())).cloned();
-        let path = match given {
-            Some(p) => Some(p),
-            // Only for JSON the binder built itself; a failure leaves the re-export listed.
-            None if opts.rustdoc_json.is_none() && std::env::var(rust::fetch::ENV_JSON).is_err() => {
-                rust::fetch_dep_rustdoc_json(&json_path, &c, opts.offline).ok()
-            }
-            None => None,
-        };
-        if let Some(text) = path.and_then(|p| std::fs::read_to_string(p).ok()) {
-            foreign.push(text);
+        match foreign_json(&c, &json_path, built_here, opts) {
+            Ok(text) => foreign.push(text),
+            Err(e) => foreign_errors.push((c, e)),
         }
     }
-    let ci = rust::read_crate_with(&json, &foreign).map_err(BindError::Metadata)?;
+    let mut ci = rust::read_crate_with(&json, &foreign).map_err(BindError::Metadata)?;
+    // A dependency whose rustdoc could not be had is said so in the re-export's line.
+    for (c, e) in &foreign_errors {
+        let prefix = format!("re-export of `{c}");
+        for n in ci.extra_not_bound.iter_mut().filter(|n| n.reason.starts_with(&prefix)) {
+            n.reason.push_str(&format!("; its methods on this crate's types are not bound: {e}"));
+        }
+    }
     if ci.version != version {
         return Err(BindError::Metadata(format!(
             "rustdoc JSON is for {} {} but {version} was asked for",

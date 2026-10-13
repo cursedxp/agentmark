@@ -7,6 +7,13 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const ENV_JSON: &str = "AGENTMARK_RUSTDOC_JSON";
+/// Directory holding `<crate>.json` for dependencies (foreign traits) when nightly is not there.
+pub const ENV_JSON_DIR: &str = "AGENTMARK_RUSTDOC_JSON_DIR";
+
+/// An environment variable's value; an empty one counts as unset.
+pub fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty())
+}
 
 #[derive(Debug, Clone)]
 pub struct FetchSpec {
@@ -103,9 +110,9 @@ pub fn resolve_version(spec: &FetchSpec) -> Result<String, String> {
 /// left in place (the file lives in it); the OS temp cleaner removes it.
 pub fn fetch_rustdoc_json_with(spec: &FetchSpec) -> Result<PathBuf, String> {
     if !nightly_available() {
-        return match std::env::var(ENV_JSON) {
-            Ok(p) if !p.is_empty() => Ok(PathBuf::from(p)),
-            _ => Err(format!(
+        return match env_nonempty(ENV_JSON) {
+            Some(p) => Ok(PathBuf::from(p)),
+            None => Err(format!(
                 "building rustdoc JSON needs `cargo +nightly`, which is not installed; \
                  set {ENV_JSON} to a pre-generated rustdoc JSON file"
             )),
