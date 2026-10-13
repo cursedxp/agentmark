@@ -42,7 +42,14 @@ pub struct BindOptions {
     /// Pre-generated rustdoc JSON (tests, `AGENTMARK_RUSTDOC_JSON`); else it is built.
     pub rustdoc_json: Option<PathBuf>,
     pub model: Arc<dyn ModelClient>,
-    pub checker: Box<dyn TypeChecker>,
+    /// `None` = a real `cargo check` with the same features as the rustdoc build.
+    pub checker: Option<Box<dyn TypeChecker>>,
+    /// Dependency features the library is bound (and its bodies checked) with.
+    pub default_features: bool,
+    pub features: Vec<String>,
+    /// Pre-generated rustdoc JSON of other crates (tests): used when the bound crate re-exports
+    /// a trait from one of them. Otherwise they are built next to the main one.
+    pub foreign_rustdoc: Vec<PathBuf>,
     /// Date written in the header.
     pub today: NaiveDate,
     /// Pass `--offline` to every cargo call.
@@ -57,7 +64,10 @@ impl BindOptions {
             force: false,
             rustdoc_json: None,
             model,
-            checker: Box::new(rust::CargoChecker::new(false)),
+            checker: None,
+            default_features: true,
+            features: vec![],
+            foreign_rustdoc: vec![],
             today,
             offline: false,
         }
@@ -102,9 +112,17 @@ fn model_version(path: &Path) -> Result<String, BindError> {
         .ok_or_else(|| BindError::Metadata(format!("{} has no crate_version", path.display())))
 }
 
+fn root_name(path: &Path) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    let root = v["root"].as_u64()?;
+    v["index"][root.to_string()]["name"].as_str().map(String::from)
+}
+
 fn spec(crate_name: &str, version: Option<&str>, opts: &BindOptions) -> rust::FetchSpec {
     let mut s = rust::FetchSpec::new(crate_name, version);
     s.offline = opts.offline;
+    s.default_features = opts.default_features;
+    s.features = opts.features.clone();
     s
 }
 
@@ -146,7 +164,7 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
         (None, None) => rust::resolve_version(&spec(crate_name, None, opts)).map_err(BindError::Metadata)?,
     };
 
-    let state = freshness(&path, &version).map_err(|e| BindError::Io(format!("{}: {e}", path.display())))?;
+    let state = freshness(&path, crate_name, &version).map_err(|e| BindError::Io(format!("{}: {e}", path.display())))?;
     let reason = match (&state, opts.force) {
         (Freshness::Missing, _) => Some(Regenerated::Missing),
         (Freshness::Stale { bound_version }, _) => Some(Regenerated::Stale { from: bound_version.clone() }),
@@ -164,7 +182,22 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
     };
     let json = std::fs::read_to_string(&json_path)
         .map_err(|e| BindError::Metadata(format!("{}: {e}", json_path.display())))?;
-    let ci = rust::read_crate(&json).map_err(BindError::Metadata)?;
+    let mut foreign = Vec::new();
+    for c in rust::foreign_crates(&json).map_err(BindError::Metadata)? {
+        let given = opts.foreign_rustdoc.iter().find(|p| root_name(p).as_deref() == Some(c.as_str())).cloned();
+        let path = match given {
+            Some(p) => Some(p),
+            // Only for JSON the binder built itself; a failure leaves the re-export listed.
+            None if opts.rustdoc_json.is_none() && std::env::var(rust::fetch::ENV_JSON).is_err() => {
+                rust::fetch_dep_rustdoc_json(&json_path, &c, opts.offline).ok()
+            }
+            None => None,
+        };
+        if let Some(text) = path.and_then(|p| std::fs::read_to_string(p).ok()) {
+            foreign.push(text);
+        }
+    }
+    let ci = rust::read_crate_with(&json, &foreign).map_err(BindError::Metadata)?;
     if ci.version != version {
         return Err(BindError::Metadata(format!(
             "rustdoc JSON is for {} {} but {version} was asked for",
@@ -172,7 +205,15 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
         )));
     }
 
-    let bound = run_blocking(run_tiers(&ci, &*opts.model, &*opts.checker));
+    let default_checker;
+    let checker: &dyn TypeChecker = match &opts.checker {
+        Some(c) => &**c,
+        None => {
+            default_checker = rust::CargoChecker::for_spec(&spec(crate_name, Some(&version), opts));
+            &default_checker
+        }
+    };
+    let bound = run_blocking(run_tiers(&ci, &*opts.model, checker));
     let texts: Vec<&str> = std::iter::once(ci.name.as_str())
         .chain(ci.items.iter().map(|i| i.source_sig.as_str()))
         .chain(bound.items.iter().map(|i| i.body.as_str()))

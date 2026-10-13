@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Trim a rustdoc JSON file to what binder/rust reads (see src/binder/rust/rustdoc.rs).
 
-usage: trim.py <full.json> <trimmed.json>
+usage: trim.py <full.json> <trimmed.json> [FullTrait ...]
+
+Traits named after the output path are kept with their method items (the binder reads those from
+the crate a re-exported trait comes from, e.g. digest::Digest for sha2).
 
 Keeps only the items the binder's walk can reach (public modules, `pub use` targets, impls of
 public types minus blanket/synthetic/negative impls and std-plumbing traits), strips spans,
@@ -35,7 +38,7 @@ def short_docs(d):
     return "\n\n".join(paras[:2])[:600]
 
 
-def main(src, dst):
+def main(src, dst, full_traits=()):
     doc = json.load(open(src))
     index = doc["index"]
     get = lambda i: index.get(str(i))
@@ -104,6 +107,12 @@ def main(src, dst):
                     if f is not None and kind(f) == "function":
                         keep_item(fid, f)
 
+    for i, it in index.items():
+        if kind(it) == "trait" and it.get("name") in full_traits and it.get("visibility") == "public":
+            keep_item(int(i), it)
+            for m in it["inner"]["trait"]["items"]:
+                keep_item(m, get(m))
+
     root = doc["root"]
     seen_modules.add(root)
     walk_module(root)
@@ -130,6 +139,8 @@ def main(src, dst):
             o["inner"]["function"] = {key: body.get(key) for key in ("sig", "generics", "header")}
         elif k == "type_alias":
             o["inner"]["type_alias"] = {"type": body["type"]}
+        elif k == "trait" and o["name"] in full_traits:
+            o["inner"]["trait"] = {"items": body["items"]}
         else:
             o["inner"][k] = {}  # stub (trait, constant, ...): only existence and kind matter
         out_index[str(i)] = o
@@ -157,4 +168,4 @@ def main(src, dst):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], tuple(sys.argv[3:]))

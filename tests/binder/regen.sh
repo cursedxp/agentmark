@@ -28,3 +28,7 @@ for c in sha2 chrono reqwest; do
   cargo +nightly rustdoc --offline --quiet -p "$c" --target-dir "$scratch/target" -- -Z unstable-options --output-format json
   python3 "$here/trim.py" "$scratch/target/doc/$c.json" "$here/$c.json"
 done
+# digest is sha2's dependency (the home of the `Digest` trait sha2 re-exports): built in the same
+# scratch crate so it has the version sha2 was built against.
+cargo +nightly rustdoc --offline --quiet -p digest --target-dir "$scratch/target" -- -Z unstable-options --output-format json
+python3 "$here/trim.py" "$scratch/target/doc/digest.json" "$here/digest.json" Digest

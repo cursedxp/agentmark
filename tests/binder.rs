@@ -48,7 +48,8 @@ fn scratch(tag: &str) -> PathBuf {
 fn opts(dir: &Path, c: &str, reject: Vec<&'static str>) -> BindOptions {
     let mut o = BindOptions::new(dir, model(), NaiveDate::from_ymd_opt(2026, 10, 14).unwrap());
     o.rustdoc_json = Some(fixture(c));
-    o.checker = Box::new(FakeChecker { reject });
+    o.checker = Some(Box::new(FakeChecker { reject }));
+    o.foreign_rustdoc = vec![fixture("digest")];
     o.offline = true;
     o
 }
@@ -70,7 +71,12 @@ fn binding(f: &File) -> &agentmark::syntax::ast::Binding {
 
 fn tiered(c: &str, reject: Vec<&'static str>) -> (agentmark::binder::core::CrateItems, BoundCrate) {
     let json = std::fs::read_to_string(fixture(c)).unwrap();
-    let ci = read_crate(&json).unwrap();
+    let foreign: Vec<String> = if c == "sha2" {
+        vec![std::fs::read_to_string(fixture("digest")).unwrap()]
+    } else {
+        vec![]
+    };
+    let ci = agentmark::binder::rust::read_crate_with(&json, &foreign).unwrap();
     let bound = futures_block(run_tiers(&ci, &*model(), &FakeChecker { reject }));
     (ci, bound)
 }
@@ -239,11 +245,11 @@ fn a_binding_for_another_version_is_stale_and_rebinding_re_marks_unverified() {
         .replace("- effect: unverified", "- effect: pure");
     std::fs::write(&first.path, &old).unwrap();
     assert_eq!(
-        freshness(&first.path, "0.10.9").unwrap(),
+        freshness(&first.path, "sha2", "0.10.9").unwrap(),
         Freshness::Stale { bound_version: "0.9.0".into() }
     );
-    assert_eq!(freshness(&first.path, "0.9.0").unwrap(), Freshness::Fresh);
-    assert_eq!(freshness(&dir.join("nope.agent.md"), "1").unwrap(), Freshness::Missing);
+    assert_eq!(freshness(&first.path, "sha2", "0.9.0").unwrap(), Freshness::Fresh);
+    assert_eq!(freshness(&dir.join("nope.agent.md"), "x", "1").unwrap(), Freshness::Missing);
 
     let again = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
     assert!(again.generated);
@@ -341,7 +347,7 @@ fn every_direct_chrono_body_compiles() {
         .map(|i| CheckRequest { crate_name: "chrono", version: &ci.version, name: &i.name, sig: &i.sig, body: &i.body })
         .collect();
     assert!(reqs.len() > 50);
-    CargoChecker::new(true).check_all(&reqs).unwrap();
+    CargoChecker::new(true).with_features(false, &[]).check_all(&reqs).unwrap();
 }
 
 #[test]
@@ -355,4 +361,166 @@ fn fetch_builds_rustdoc_json_when_nightly_is_installed() {
     let p = agentmark::binder::rust::fetch_rustdoc_json_with(&spec).unwrap();
     let ci = read_crate(&std::fs::read_to_string(p).unwrap()).unwrap();
     assert_eq!((ci.name.as_str(), ci.version.as_str()), ("sha2", "0.10.9"));
+}
+
+// ------------------------------------------------------------ review fixes
+
+#[test]
+fn sha2_hashing_comes_from_the_reexported_digest_trait() {
+    let (ci, b) = tiered("sha2", vec![]);
+    let it = ci.items.iter().find(|i| i.name == "sha256_digest").expect("sha256_digest");
+    assert_eq!(it.path, "<sha2::Sha256 as sha2::Digest>::digest");
+    assert_eq!(it.summary, "Compute hash of `data`.");
+    let bound = b.items.iter().find(|i| i.name == "sha256_digest").expect("bound");
+    assert_eq!(bound.tier, Tier::Assisted);
+    assert_eq!(bound.sig.heading(&bound.name), "sha256_digest(data: bytes) -> bytes");
+    // Receiver-less methods only; `self` methods are one aggregated line.
+    assert!(b.not_bound.iter().any(|(n, r)| n == "sha256_new" && r.contains("no AgentMark type")));
+    assert!(!b.items.iter().any(|i| i.name.contains("finalize") || i.name.ends_with("_update")));
+    let (_, r) = b.not_bound.iter().find(|(n, _)| n == "digest_methods_with_self").unwrap();
+    assert!(r.contains("finalize") && r.contains("take `self`"), "{r}");
+    // Without digest's rustdoc the re-export stays a listed non-callable.
+    let j = std::fs::read_to_string(fixture("sha2")).unwrap();
+    assert_eq!(agentmark::binder::rust::foreign_crates(&j).unwrap(), vec!["digest".to_string()]);
+    assert!(read_crate(&j).unwrap().items.iter().all(|i| i.name != "sha256_digest"));
+}
+
+#[test]
+fn the_canned_sha256_digest_body_really_compiles() {
+    let (ci, b) = tiered("sha2", vec![]);
+    let it = b.items.iter().find(|i| i.name == "sha256_digest").unwrap();
+    CargoChecker::new(true)
+        .check(&CheckRequest { crate_name: "sha2", version: &ci.version, name: &it.name, sig: &it.sig, body: &it.body })
+        .unwrap();
+    let dir = scratch("sha-file");
+    let out = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    assert_eq!(out.counts.assisted, 1);
+    let f = parse(&out.path);
+    let item = binding(&f).items.iter().find(|i| i.name.name == "sha256_digest").unwrap();
+    assert_eq!(item.doc.as_deref(), Some("Compute hash of `data`."));
+}
+
+#[test]
+fn reexport_names_carry_the_source_path() {
+    let (ci, _) = tiered("sha2", vec![]);
+    let names: Vec<&str> = ci.extra_not_bound.iter().map(|e| e.name.as_str()).collect();
+    assert!(names.contains(&"reexport_digest") && names.contains(&"reexport_digest_digest"), "{names:?}");
+    let r = &ci.extra_not_bound.iter().find(|e| e.name == "reexport_digest_digest").unwrap().reason;
+    assert!(!r.contains("bind that crate to use it"), "{r}");
+}
+
+fn tiny_rustdoc() -> String {
+    let f = |id: u64, name: &str, ty: serde_json::Value| {
+        serde_json::json!({"id": id, "name": name, "visibility": "public", "docs": "", "inner": {"function": {
+            "sig": {"inputs": [["p", ty]], "output": null},
+            "generics": {"params": [], "where_predicates": []},
+            "header": {"is_unsafe": false, "is_async": false}}}})
+    };
+    let path = |id: u64, p: &str| serde_json::json!({"resolved_path": {"path": p, "id": id, "args": null}});
+    serde_json::json!({
+        "format_version": 61, "crate_version": "1.0.0", "root": 0,
+        "index": {
+            "0": {"id": 0, "name": "demo", "visibility": "public", "docs": "", "inner": {"module": {"items": [1, 2, 3]}}},
+            "1": f(1, "read", serde_json::json!({"borrowed_ref": {"lifetime": null, "is_mutable": false, "type": path(10, "Path")}})),
+            "2": f(2, "connect", path(11, "TcpStream")),
+            "3": f(3, "lookup", path(12, "SocketAddr")),
+        },
+        "paths": {
+            "10": {"path": ["std", "path", "Path"]},
+            "11": {"path": ["std", "net", "tcp", "TcpStream"]},
+            "12": {"path": ["core", "net", "socket_addr", "SocketAddr"]},
+        }
+    })
+    .to_string()
+}
+
+#[test]
+fn effect_heuristic_sees_std_paths_in_signatures() {
+    use agentmark::binder::core::{propose_effect, ProposedEffect};
+    let ci = read_crate(&tiny_rustdoc()).unwrap();
+    let sig = |n: &str| ci.items.iter().find(|i| i.name == n).unwrap().source_sig.clone();
+    assert!(sig("read").contains("&std::path::Path"), "{}", sig("read"));
+    let eff = |names: &[&str]| {
+        let sigs: Vec<String> = names.iter().map(|n| sig(n)).collect();
+        propose_effect(&ci.hints, sigs.iter().map(String::as_str))
+    };
+    assert_eq!(eff(&["read"]), ProposedEffect::Local);
+    assert_eq!(eff(&["connect"]), ProposedEffect::Network);
+    assert_eq!(eff(&["lookup"]), ProposedEffect::Network);
+}
+
+#[test]
+fn reader_items_equal_public_functions_in_the_fixture_index() {
+    // Independent count from the raw JSON: every function in the index is either a module-level
+    // public function or a method of an impl. Documented exclusions (Q72): non-public inherent
+    // methods; blanket/synthetic/negative impls and std-plumbing trait impls (already absent
+    // from the trimmed fixtures, asserted below).
+    for (c, _) in CRATES {
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(fixture(c)).unwrap()).unwrap();
+        let index = v["index"].as_object().unwrap();
+        let kind = |i: &serde_json::Value| i["inner"].as_object().and_then(|o| o.keys().next().cloned()).unwrap_or_default();
+        let mut method_of: HashSet<u64> = HashSet::new();
+        let mut counted = 0;
+        for i in index.values().filter(|i| kind(i) == "impl") {
+            let imp = &i["inner"]["impl"];
+            assert!(imp["is_synthetic"] != true && imp["blanket_impl"].is_null() && imp["is_negative"] != true, "{c}");
+            let inherent = imp["trait"].is_null();
+            for m in imp["items"].as_array().unwrap() {
+                let m = m.as_u64().unwrap();
+                let Some(f) = index.get(&m.to_string()) else { continue };
+                if kind(f) != "function" {
+                    continue;
+                }
+                method_of.insert(m);
+                if !inherent || f["visibility"] == "public" {
+                    counted += 1;
+                }
+            }
+        }
+        for (id, f) in index {
+            if kind(f) == "function" && !method_of.contains(&id.parse().unwrap()) {
+                assert_eq!(f["visibility"], "public", "{c}");
+                counted += 1;
+            }
+        }
+        let ci = read_crate(&std::fs::read_to_string(fixture(c)).unwrap()).unwrap();
+        assert_eq!(ci.items.len(), counted, "{c}");
+    }
+}
+
+#[test]
+fn a_body_that_escapes_its_function_is_refused_before_cargo_runs() {
+    use agentmark::binder::core::{Sig, Ty};
+    assert!(agentmark::binder::rust::checker::balanced("Ok(\"}\".to_string()) // }").is_ok());
+    assert!(agentmark::binder::rust::checker::balanced("let c = '}'; let r = r#\"}\"#; Ok(1)").is_ok());
+    assert!(agentmark::binder::rust::checker::balanced("Ok(1) }").is_err());
+    let sig = Sig { params: vec![], ret: Some(Ty::Int) };
+    let e = CargoChecker::new(true)
+        .check(&CheckRequest {
+            crate_name: "sha2",
+            version: "0.10.9",
+            name: "x",
+            sig: &sig,
+            body: "Ok(1) } pub fn y() { ",
+        })
+        .unwrap_err();
+    assert!(e.contains("balanced"), "{e}");
+}
+
+#[test]
+fn a_binding_generated_for_another_crate_is_stale() {
+    let dir = scratch("wrong-crate");
+    let p = dir.join("sha2.agent.md");
+    std::fs::write(&p, "> generated by agentmark bind \u{2014} chrono 0.10.9 \u{2014} 2026-10-14\n# Binding: sha2\n- crate: sha2\n- effect: pure\n").unwrap();
+    assert_eq!(
+        freshness(&p, "sha2", "0.10.9").unwrap(),
+        Freshness::Stale { bound_version: "chrono 0.10.9".into() }
+    );
+}
+
+#[test]
+fn skipped_assisted_items_name_the_library_path() {
+    let (_, b) = tiered("chrono", vec!["date_time_to_utc"]);
+    let (_, r) = b.not_bound.iter().find(|(n, _)| n == "date_time_to_utc").unwrap();
+    assert!(r.contains("failed type-check") && r.ends_with("(chrono::DateTime::to_utc)"), "{r}");
 }

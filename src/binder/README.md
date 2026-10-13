@@ -35,6 +35,11 @@ let sheet: String = doc_cheatsheet(&out.path)?;   // `agentmark doc <crate>`
 `check` support: `core::read_effect(text)` / the parser's `Binding.effect` tell which bindings are
 still `unverified`.
 
+Foreign traits (sha2): when a crate re-exports a trait from another crate and aliases that crate's
+types, `bind` also builds that crate's rustdoc JSON (`rust::fetch_dep_rustdoc_json`, or
+`BindOptions::foreign_rustdoc` in tests) and binds the trait's receiver-less methods on the aliases
+(`sha256_digest(data: bytes) -> bytes`; Q73).
+
 Other entry points: `rust::fetch_rustdoc_json(crate, version)` (builds rustdoc JSON with
 `cargo +nightly rustdoc`, else reads `AGENTMARK_RUSTDOC_JSON`), `rust::read_crate(json)`,
 `core::run_tiers`, `core::freshness(path, version)`, `rust::CargoChecker`.

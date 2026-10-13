@@ -130,6 +130,24 @@ pub fn fetch_rustdoc_json_with(spec: &FetchSpec) -> Result<PathBuf, String> {
     }
 }
 
+/// Rustdoc JSON of a dependency of the crate `main_json` was built for, built in the very same
+/// scratch crate (so the dependency has the version the crate was built against).
+pub fn fetch_dep_rustdoc_json(main_json: &Path, dep: &str, offline: bool) -> Result<PathBuf, String> {
+    let dir = main_json
+        .ancestors()
+        .nth(3)
+        .filter(|d| d.join("Cargo.toml").exists())
+        .ok_or("rustdoc JSON was not built by the binder: no scratch crate to build a dependency in")?;
+    cargo(
+        dir,
+        &["+nightly", "rustdoc", "-p", dep, "--target-dir", "target", "--", "-Z", "unstable-options", "--output-format", "json"],
+        offline,
+    )
+    .map_err(|e| format!("rustdoc for dependency `{dep}` failed: {e}"))?;
+    let file = dir.join("target/doc").join(format!("{}.json", dep.replace('-', "_")));
+    if file.exists() { Ok(file) } else { Err(format!("rustdoc produced no JSON at {}", file.display())) }
+}
+
 /// `fetch_rustdoc_json(crate, version)`: see the module docs.
 pub fn fetch_rustdoc_json(crate_name: &str, version: Option<&str>) -> Result<PathBuf, String> {
     fetch_rustdoc_json_with(&FetchSpec::new(crate_name, version))

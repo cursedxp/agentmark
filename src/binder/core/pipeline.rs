@@ -43,7 +43,7 @@ pub struct BoundCrate {
     pub items: Vec<BoundItem>,
     /// `(item name, reason)` in the order they will be listed.
     pub not_bound: Vec<(String, String)>,
-    /// One entry per input item, in input order: `(item path, tier)`. The audit trail for
+    /// One entry per input item, in input order: `(item name, tier)`. The audit trail for
     /// "exactly one tier each".
     pub placements: Vec<(String, Tier)>,
     pub counts: Counts,
@@ -77,7 +77,7 @@ pub async fn run_tiers(
                         Tier::Assisted
                     }
                     Err(reason) => {
-                        out.not_bound.push((item.name.clone(), reason));
+                        out.not_bound.push((item.name.clone(), with_path(item, &reason)));
                         Tier::Skipped
                     }
                 }
@@ -92,7 +92,7 @@ pub async fn run_tiers(
             Tier::Assisted => out.counts.assisted += 1,
             Tier::Skipped => out.counts.skipped += 1,
         }
-        out.placements.push((item.path.clone(), tier));
+        out.placements.push((item.name.clone(), tier));
     }
     for e in &ci.extra_not_bound {
         out.not_bound.push((e.name.clone(), e.reason.clone()));

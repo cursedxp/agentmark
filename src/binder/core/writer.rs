@@ -42,7 +42,8 @@ pub enum Freshness {
     Unmanaged,
 }
 
-pub fn freshness(path: &Path, want_version: &str) -> std::io::Result<Freshness> {
+/// `crate_name` is checked against the header too: a file generated for another crate is stale.
+pub fn freshness(path: &Path, crate_name: &str, want_version: &str) -> std::io::Result<Freshness> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Freshness::Missing),
@@ -50,6 +51,9 @@ pub fn freshness(path: &Path, want_version: &str) -> std::io::Result<Freshness> 
     };
     Ok(match parse_header(&text) {
         None => Freshness::Unmanaged,
+        Some(h) if h.crate_name != crate_name => Freshness::Stale {
+            bound_version: format!("{} {}", h.crate_name, h.version),
+        },
         Some(h) if h.version == want_version => Freshness::Fresh,
         Some(h) => Freshness::Stale {
             bound_version: h.version,

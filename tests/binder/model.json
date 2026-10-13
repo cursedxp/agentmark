@@ -24,6 +24,10 @@
     {
       "prompt_prefix": "bind chrono::DateTime::to_utc\n",
       "response": "Ok(date_time.timestamp())"
+    },
+    {
+      "prompt_prefix": "bind <sha2::Sha256 as sha2::Digest>::digest\n",
+      "response": "use sha2::Digest;\nOk(<sha2::Sha256 as sha2::Digest>::digest(&data).to_vec())"
     }
   ]
 }

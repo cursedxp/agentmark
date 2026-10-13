@@ -38,7 +38,7 @@ const NOISE_TRAITS: &[&str] = &[
 pub fn effect_hints() -> EffectHints {
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect();
     EffectHints {
-        network: s(&["reqwest", "tokio::net", "std::net", "hyper", "ureq", "isahc", "surf", "TcpStream", "UdpSocket"]),
+        network: s(&["reqwest", "tokio::net", "std::net", "core::net", "hyper", "ureq", "isahc", "surf", "TcpStream", "UdpSocket"]),
         local: s(&["std::fs", "tokio::fs", "std::process", "std::env", "std::io::stdin", "std::path::Path"]),
     }
 }
@@ -155,12 +155,36 @@ struct Walk<'a> {
     pub_paths: HashMap<u64, Vec<String>>,
     order: Vec<u64>,
     seen_modules: HashSet<u64>,
+    /// An impl can be listed by more than one type (`impl Trait for &Client`): emit it once.
+    seen_impls: HashSet<u64>,
     extra: Vec<NotBoundEntry>,
+    /// `pub use other_crate::Trait` seen in this crate: (source path, local public path).
+    foreign_uses: Vec<(String, Vec<String>)>,
     names: HashSet<String>,
     items: Vec<Item>,
 }
 
 pub fn read_crate(json: &str) -> Result<CrateItems, String> {
+    read_crate_with(json, &[])
+}
+
+/// Names of other crates whose rustdoc JSON would add items: crates this crate re-exports a
+/// trait from and aliases a type of (sha2's `Sha256` is a `digest::CoreWrapper<..>`, and
+/// `digest::Digest` is where hashing lives).
+pub fn foreign_crates(json: &str) -> Result<Vec<String>, String> {
+    let doc = parse_doc(json)?;
+    let w = walked(&doc)?;
+    let mut out: Vec<String> = Vec::new();
+    for (source, _) in &w.foreign_uses {
+        let c = source.split("::").next().unwrap_or("").to_string();
+        if !c.is_empty() && !out.contains(&c) && !w.aliases_of(&c).is_empty() {
+            out.push(c);
+        }
+    }
+    Ok(out)
+}
+
+fn parse_doc(json: &str) -> Result<Value, String> {
     let doc: Value = serde_json::from_str(json).map_err(|e| format!("rustdoc JSON is not valid JSON: {e}"))?;
     let fv = doc["format_version"].as_u64().unwrap_or(0);
     if fv != SUPPORTED_FORMAT {
@@ -169,27 +193,48 @@ pub fn read_crate(json: &str) -> Result<CrateItems, String> {
              regenerate it with the nightly this binder was built for"
         ));
     }
+    Ok(doc)
+}
+
+fn walked(doc: &Value) -> Result<Walk<'_>, String> {
     let root_id = doc["root"].as_u64().ok_or("rustdoc JSON has no root")?;
     let root = &doc["index"][root_id.to_string()];
     let name = root["name"].as_str().ok_or("rustdoc root has no name")?.to_string();
-    let version = doc["crate_version"]
-        .as_str()
-        .ok_or("rustdoc JSON has no crate_version (was it built from a published crate?)")?
-        .to_string();
     let mut w = Walk {
-        doc: &doc,
+        doc,
         crate_ident: name.replace('-', "_"),
         pub_paths: HashMap::new(),
         order: Vec::new(),
         seen_modules: HashSet::new(),
+        seen_impls: HashSet::new(),
         extra: Vec::new(),
+        foreign_uses: Vec::new(),
         names: HashSet::new(),
         items: Vec::new(),
     };
     w.seen_modules.insert(root_id);
     let prefix = vec![w.crate_ident.clone()];
     w.walk_module(root_id, &prefix);
+    Ok(w)
+}
+
+/// `foreign` are rustdoc JSON texts of other crates (see [`foreign_crates`]): a trait this crate
+/// re-exports gets its receiver-less methods bound on this crate's type aliases of that crate's
+/// types (OPEN_QUESTIONS Q73).
+pub fn read_crate_with(json: &str, foreign: &[String]) -> Result<CrateItems, String> {
+    let doc = parse_doc(json)?;
+    let mut w = walked(&doc)?;
+    let root_id = doc["root"].as_u64().unwrap();
+    let name = doc["index"][root_id.to_string()]["name"].as_str().unwrap().to_string();
+    let version = doc["crate_version"]
+        .as_str()
+        .ok_or("rustdoc JSON has no crate_version (was it built from a published crate?)")?
+        .to_string();
     w.emit_all();
+    for f in foreign {
+        let fdoc = parse_doc(f)?;
+        w.emit_foreign(&fdoc);
+    }
     Ok(CrateItems {
         name,
         version,
@@ -284,12 +329,24 @@ impl<'a> Walk<'a> {
                 }
             }
             None => {
-                let base = if glob { format!("reexport_glob_{source}") } else { format!("reexport_{uname}") };
-                let name = self.unique(snake(&base));
+                let mut base = format!("reexport_{}{}", if glob { "glob_" } else { "" }, snake(source));
+                if !glob && source.rsplit("::").next() != Some(uname) {
+                    base.push_str(&format!("_as_{}", snake(uname)));
+                }
+                let name = self.unique(base);
+                let krate = source.split("::").next().unwrap_or(source);
                 self.extra.push(NotBoundEntry {
                     name,
-                    reason: format!("re-export of `{source}` from another crate; bind that crate to use it"),
+                    reason: format!(
+                        "re-export of `{source}` from another crate, not a callable of this one \
+                         (run `agentmark bind {krate}` for that crate's own API)"
+                    ),
                 });
+                if !glob {
+                    let mut p = prefix.to_vec();
+                    p.push(uname.to_string());
+                    self.foreign_uses.push((source.to_string(), p));
+                }
             }
         }
     }
@@ -312,7 +369,8 @@ impl<'a> Walk<'a> {
             let path = self.pub_paths[&id].clone();
             match kind(it) {
                 "function" => {
-                    let item = self.build_fn(id, &path, None);
+                    let doc = self.doc;
+                    let item = self.build_fn(doc, it, &path, None);
                     self.items.push(item);
                 }
                 "struct" | "enum" | "union" => self.emit_type(id, &path),
@@ -358,6 +416,9 @@ impl<'a> Walk<'a> {
             .unwrap_or_default();
         for iid in impls {
             let Some(imp) = self.get(iid) else { continue };
+            if !self.seen_impls.insert(iid) {
+                continue;
+            }
             let inner = &imp["inner"]["impl"];
             if inner["is_synthetic"] == true || !inner["blanket_impl"].is_null() || inner["is_negative"] == true {
                 continue;
@@ -391,23 +452,101 @@ impl<'a> Walk<'a> {
                     continue;
                 }
                 let owner = Owner {
-                    impl_item: imp,
+                    self_ty: TypeParser::new(self.doc, None).parse(&inner["for"]),
+                    impl_generics: inner["generics"].clone(),
                     type_path: tpath.to_vec(),
                     trait_: trait_.clone(),
+                    foreign_trait: false,
                 };
                 let path = tpath.to_vec();
-                let item = self.build_fn(fid, &path, Some(owner));
+                let doc = self.doc;
+                let item = self.build_fn(doc, f, &path, Some(owner));
                 self.items.push(item);
             }
         }
     }
 
-    fn build_fn(&mut self, fid: u64, path: &[String], owner: Option<Owner>) -> Item {
-        let doc = self.doc;
-        let f = self.get(fid).unwrap();
+    /// Public type aliases whose target type belongs to crate `krate`: (alias public path, alias type).
+    fn aliases_of(&self, krate: &str) -> Vec<(Vec<String>, RT)> {
+        let mut out = Vec::new();
+        for id in &self.order {
+            let it = self.get(*id).unwrap();
+            if kind(it) != "type_alias" {
+                continue;
+            }
+            let target = TypeParser::new(self.doc, None).parse(&it["inner"]["type_alias"]["type"]);
+            if matches!(&target, RT::Path { full, .. } if full.first().map(String::as_str) == Some(krate)) {
+                let path = self.pub_paths[id].clone();
+                out.push((path.clone(), RT::Path { full: path, args: vec![] }));
+            }
+        }
+        out
+    }
+
+    /// For each `pub use krate::Trait` of this crate whose definition is in `fdoc`: bind the
+    /// trait's receiver-less methods on this crate's aliases of `krate`'s types, with `Self` the
+    /// alias. Methods with a `self` receiver are one aggregated not-bound line.
+    fn emit_foreign(&mut self, fdoc: &Value) {
+        let Some(froot) = fdoc["root"].as_u64() else { return };
+        let Some(krate) = fdoc["index"][froot.to_string()]["name"].as_str().map(String::from) else { return };
+        let aliases = self.aliases_of(&krate);
+        let uses: Vec<(String, Vec<String>)> = self
+            .foreign_uses
+            .iter()
+            .filter(|(s, _)| s.split("::").next() == Some(krate.as_str()))
+            .cloned()
+            .collect();
+        for (source, local_path) in uses {
+            let tname = source.rsplit("::").next().unwrap_or("");
+            let Some(tr) = fdoc["index"].as_object().into_iter().flat_map(|m| m.values()).find(|i| {
+                kind(i) == "trait" && i["name"] == tname && i["visibility"] == "public"
+            }) else {
+                continue;
+            };
+            let methods: Vec<&Value> = tr["inner"]["trait"]["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|m| m.as_u64().and_then(|m| fdoc["index"].get(m.to_string())))
+                .filter(|m| kind(m) == "function")
+                .collect();
+            let receiverless = |m: &Value| m["inner"]["function"]["sig"]["inputs"][0][0] != "self";
+            for (apath, aty) in &aliases {
+                for m in methods.iter().filter(|m| receiverless(m)) {
+                    let owner = Owner {
+                        self_ty: aty.clone(),
+                        impl_generics: Value::Null,
+                        type_path: apath.clone(),
+                        trait_: Some((tname.to_string(), local_path.clone())),
+                        foreign_trait: true,
+                    };
+                    let item = self.build_fn(fdoc, m, apath, Some(owner));
+                    self.items.push(item);
+                }
+            }
+            let with_self: Vec<&str> = methods.iter().filter(|m| !receiverless(m)).filter_map(|m| m["name"].as_str()).collect();
+            if !with_self.is_empty() && !aliases.is_empty() {
+                let name = self.unique(format!("{}_methods_with_self", snake(tname)));
+                self.extra.push(NotBoundEntry {
+                    name,
+                    reason: format!(
+                        "{} methods that take `self` ({}) need a value AgentMark cannot hold, so they are not bound on {} alias(es)",
+                        local_path.join("::"),
+                        with_self.join(", "),
+                        aliases.len()
+                    ),
+                });
+            }
+        }
+    }
+
+    fn build_fn(&mut self, doc: &Value, f: &Value, path: &[String], owner: Option<Owner>) -> Item {
         let fname = f["name"].as_str().unwrap_or("f").to_string();
         let inner = &f["inner"]["function"];
         let display_path = match &owner {
+            Some(Owner { foreign_trait: true, trait_: Some((_, tp)), .. }) => {
+                format!("<{} as {}>::{}", path.join("::"), tp.join("::"), fname)
+            }
             Some(_) => format!("{}::{}", path.join("::"), fname),
             None => path.join("::"),
         };
@@ -421,10 +560,7 @@ impl<'a> Walk<'a> {
         let summary = first_sentence(docs_raw);
         let docs = trimmed_docs(docs_raw);
 
-        let self_ty = owner.as_ref().map(|o| {
-            let mut p = TypeParser::new(doc, None);
-            p.parse(&o.impl_item["inner"]["impl"]["for"])
-        });
+        let self_ty = owner.as_ref().map(|o| o.self_ty.clone());
         let mut tp = TypeParser::new(doc, self_ty.clone());
 
         // Generics (fn and impl) -> bounds map and hazards.
@@ -432,7 +568,7 @@ impl<'a> Walk<'a> {
         let mut has_generics = false;
         let mut gens = vec![&inner["generics"]];
         if let Some(o) = &owner {
-            gens.push(&o.impl_item["inner"]["impl"]["generics"]);
+            gens.push(&o.impl_generics);
         }
         for g in gens {
             for p in g["params"].as_array().into_iter().flatten() {
@@ -597,10 +733,13 @@ impl<'a> Walk<'a> {
     }
 }
 
-struct Owner<'a> {
-    impl_item: &'a Value,
+struct Owner {
+    self_ty: RT,
+    impl_generics: Value,
     type_path: Vec<String>,
     trait_: Option<(String, Vec<String>)>,
+    /// The trait comes from another crate's rustdoc JSON (so `path` shows `<T as Trait>::m`).
+    foreign_trait: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]

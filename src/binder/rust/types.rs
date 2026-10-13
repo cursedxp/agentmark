@@ -224,8 +224,9 @@ fn std_path(name: &str, args: Vec<RT>) -> RT {
     }
 }
 
-/// Rust-looking text for a type; foreign paths are kept fully qualified so effect heuristics
-/// can see `std::net::...`.
+/// Rust-looking text for a type. Only the prelude types (`String`, `Vec`, `Option`, `Result`,
+/// `Box`) are shortened; every other path keeps its full module path, so the effect heuristics
+/// can see `std::fs::File`, `std::path::Path` or `core::net::SocketAddr`.
 pub fn render(t: &RT) -> String {
     match t {
         RT::Prim(p) => p.clone(),
@@ -235,7 +236,8 @@ pub fn render(t: &RT) -> String {
         RT::Ref { inner, mutable } => format!("&{}{}", if *mutable { "mut " } else { "" }, render(inner)),
         RT::Ptr => "*const _".into(),
         RT::Path { full, args } => {
-            let name = if is_std(full) { last(full).to_string() } else { full.join("::") };
+            let prelude = matches!(last(full), "String" | "Vec" | "Option" | "Result" | "Box" | "Cow");
+            let name = if is_std(full) && prelude { last(full).to_string() } else { full.join("::") };
             if args.is_empty() {
                 name
             } else {
