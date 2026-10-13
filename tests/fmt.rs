@@ -276,3 +276,63 @@ fn fenced_rust_is_verbatim() {
     let out = check_properties(src);
     assert!(out.contains("  fn x() {\n      let   y = 1;   // spaces   kept\n\n  }\n"));
 }
+
+#[test]
+fn blank_lines_inside_fenced_rust_are_not_collapsed() {
+    let src = "\
+# Function: f
+- effect: pure
+
+## Rust: g -> text
+- effect: pure
+  ```rust
+  let a = 1;
+
+
+  let s = \"line one
+
+
+  line four\";
+  format!(\"{a}{s}\")
+  ```
+";
+    let out = check_properties(src);
+    assert_eq!(out, src);
+}
+
+#[test]
+fn a_comment_between_not_bound_and_its_first_item_stays_below_the_heading() {
+    let src = "\
+# Binding: pdf
+- crate: printpdf
+- effect: unverified
+
+## Not bound
+> these need a Rust block
+- save_to_stream: needs a lifetime
+";
+    let out = check_properties(src);
+    assert_eq!(out, src);
+}
+
+#[test]
+fn a_comment_above_otherwise_or_else_lines_up_with_it() {
+    let src = "\
+> Doc.
+# Agent: a
+- model: claude
+
+## Do go
+- try http get \"https://x.example\" -> r
+  > what happens when it fails
+  otherwise:
+    - log: \"no\"
+- if a:
+  - log: \"1\"
+> above else
+- else:
+  - log: \"2\"
+";
+    let out = check_properties(src);
+    assert_eq!(out, src);
+}

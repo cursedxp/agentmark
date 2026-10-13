@@ -42,12 +42,14 @@ pub fn is_canonical(src: &str, path: &str) -> Result<bool, Vec<Diagnostic>> {
 /// Print a parsed file. `lines` is the lexed source of the same file (used to keep comments the
 /// AST does not hold).
 fn format_file(file: &File, lines: &[Line]) -> String {
-    let mut p = Printer::default();
-    p.line_text = lines
-        .iter()
-        .filter(|l| l.kind == LineKind::Heading1)
-        .map(|l| (l.line_no, l.text.clone()))
-        .collect();
+    let mut p = Printer {
+        src_lines: lines
+            .iter()
+            .filter(|l| l.kind != LineKind::Blank)
+            .map(|l| (l.line_no, l.kind.clone(), l.text.clone()))
+            .collect(),
+        ..Printer::default()
+    };
     p.file(file);
     let orphans = find_orphans(lines, &p);
     p.render(orphans)
@@ -58,6 +60,8 @@ fn format_file(file: &File, lines: &[Line]) -> String {
 /// One output line. `src` is the line of the source this one came from (0 = none), so a comment
 /// the AST dropped can be put back next to its neighbour.
 struct Out {
+    /// Verbatim (a line of fenced code): never collapsed or re-indented when empty.
+    raw: bool,
     src: u32,
     indent: usize,
     text: String,
@@ -73,8 +77,9 @@ struct Printer {
     file_doc: bool,
     /// Index in `out` right after the file documentation.
     after_file_doc: usize,
-    /// Text of `# ...` heading lines by line number (for the inline comment of an import).
-    line_text: HashMap<u32, String>,
+    /// Every non-blank source line: (line number, kind, text). Used to find the real line of
+    /// headings and control lines the AST does not record, and the inline comment of an import.
+    src_lines: Vec<(u32, LineKind, String)>,
 }
 
 fn comment_text(t: &str) -> String {
@@ -88,6 +93,7 @@ fn comment_text(t: &str) -> String {
 impl Printer {
     fn push(&mut self, src: u32, indent: usize, text: impl Into<String>) {
         self.out.push(Out {
+            raw: false,
             src,
             indent,
             text: text.into(),
@@ -156,9 +162,10 @@ impl Printer {
             },
         };
         if let Some(c) = self
-            .line_text
-            .get(&imp.span.line)
-            .and_then(|t| inline_comment(t))
+            .src_lines
+            .iter()
+            .find(|(n, k, _)| *n == imp.span.line && *k == LineKind::Heading1)
+            .and_then(|(_, _, t)| inline_comment(t))
         {
             text.push_str("  ");
             text.push_str(&comment_text(&c));
@@ -205,6 +212,16 @@ impl Printer {
                 l.src = max;
             }
         }
+    }
+
+    /// The source line of the last line before `before` that satisfies `pred`, or 0.
+    fn find_line(&self, before: u32, pred: impl Fn(&LineKind, &str) -> bool) -> u32 {
+        self.src_lines
+            .iter()
+            .filter(|(n, k, t)| *n < before && pred(k, t))
+            .map(|(n, _, _)| *n)
+            .next_back()
+            .unwrap_or(0)
     }
 
     fn heading(&mut self, doc: &Option<String>, line: u32, text: String) {
@@ -312,7 +329,11 @@ impl Printer {
             self.prop(&c.prop_comments, "args", &params_text(&c.args), first.name.span.line);
         }
         self.blank();
-        self.push(0, 0, "## Run");
+        let before = c.body.first().map_or(u32::MAX, |s| s.span.line);
+        let run = self.find_line(before, |k, t| {
+            *k == LineKind::Heading2 && t.trim().eq_ignore_ascii_case("run")
+        });
+        self.push(run, 0, "## Run");
         self.stmts(&c.body, 0);
     }
 
@@ -338,7 +359,12 @@ impl Printer {
         }
         if !b.not_bound.is_empty() {
             self.blank();
-            self.push(0, 0, "## Not bound");
+            let before = b.not_bound.first().map_or(u32::MAX, |n| n.span.line);
+            let nb = self.find_line(before, |k, t| {
+                *k == LineKind::Heading2
+                    && t.split_whitespace().map(str::to_lowercase).eq(["not", "bound"])
+            });
+            self.push(nb, 0, "## Not bound");
             for n in &b.not_bound {
                 let text = match &n.reason {
                     Some(r) => format!("- {}: {}", n.item, r),
@@ -374,6 +400,9 @@ impl Printer {
         if !rust.code.is_empty() {
             for (k, l) in rust.code.split('\n').enumerate() {
                 self.push(rust.line + k as u32, indent, l);
+                if let Some(last) = self.out.last_mut() {
+                    last.raw = true;
+                }
                 n += 1;
             }
         }
@@ -436,7 +465,9 @@ impl Printer {
             StmtKind::Try { stmt, otherwise } => {
                 self.push(line, indent, format!("- try {}", simple_text(stmt)));
                 if let Some(o) = otherwise {
-                    self.push(0, indent + 1, "otherwise:");
+                    let before = o.first().map_or(u32::MAX, |s| s.span.line);
+                    let at = self.find_line(before, |_, t| t.trim() == "otherwise:");
+                    self.push(at, indent + 1, "otherwise:");
                     self.stmts(o, indent + 2);
                 }
             }
@@ -446,7 +477,10 @@ impl Printer {
 
     fn else_branch(&mut self, else_: &[Stmt], indent: usize) {
         if !else_.is_empty() {
-            self.push(0, indent, "- else:");
+            let at = self.find_line(else_[0].span.line, |_, t| {
+                matches!(t.trim(), "else:" | "- else:")
+            });
+            self.push(at, indent, "- else:");
             self.stmts(else_, indent + 1);
         }
     }
@@ -466,14 +500,20 @@ impl Printer {
             }
             match best {
                 Some((_, i)) => {
-                    let indent = o.indent.min(self.out[i].indent);
+                    // Above `else:` / `otherwise:` the comment lines up with that line.
+                    let indent = match self.out.get(i + 1) {
+                        Some(n) if n.text == "otherwise:" || n.text == "- else:" => n.indent,
+                        _ => o.indent.min(self.out[i].indent),
+                    };
                     after.entry(i).or_default().push(Out {
+                        raw: false,
                         src: 0,
                         indent,
                         text: comment_text(&o.text),
                     });
                 }
                 None => top.push(Out {
+                    raw: false,
                     src: 0,
                     indent: 0,
                     text: comment_text(&o.text),
@@ -499,6 +539,15 @@ impl Printer {
         let mut text = String::new();
         let mut prev_blank = true;
         for l in &all {
+            if l.raw {
+                if !l.text.is_empty() {
+                    text.push_str(&"  ".repeat(l.indent));
+                }
+                text.push_str(&l.text);
+                text.push('\n');
+                prev_blank = l.text.is_empty();
+                continue;
+            }
             if l.text.is_empty() {
                 if !prev_blank {
                     text.push('\n');
@@ -528,6 +577,7 @@ fn put_top(all: &mut Vec<Out>, top: Vec<Out>, has_file_doc: bool) {
     }
     if has_file_doc {
         all.push(Out {
+            raw: false,
             src: 0,
             indent: 0,
             text: String::new(),
@@ -535,6 +585,7 @@ fn put_top(all: &mut Vec<Out>, top: Vec<Out>, has_file_doc: bool) {
     }
     all.extend(top);
     all.push(Out {
+        raw: false,
         src: 0,
         indent: 0,
         text: String::new(),

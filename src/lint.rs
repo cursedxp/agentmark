@@ -55,49 +55,40 @@ impl LintConfig {
     /// Read the `[lint] deny = [...]` table out of the text of an `agentmark.toml`. Everything
     /// else in the file is ignored (the project loader reads it). `path` names the file in the
     /// diagnostic when the table is wrong.
-    pub fn from_toml_str(src: &str, path: &str) -> Result<LintConfig, Diagnostic> {
+    pub fn from_toml_str(src: &str, path: &str) -> Result<LintConfig, Box<Diagnostic>> {
         let at = |offset: usize, len: usize| {
             let before = &src[..offset.min(src.len())];
             let line = before.matches('\n').count() as u32 + 1;
             let col = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) as u32 + 1;
             Span::new(line, col, len.max(1) as u32)
         };
-        let table: toml::Table = src.parse().map_err(|e: toml::de::Error| {
+        let err = |e: toml::de::Error, message: Option<&str>| {
             let span = e.span().map_or(Span::new(1, 1, 1), |r| at(r.start, r.len()));
-            Diagnostic::error("lint-config", path, span, e.message().to_string())
+            let message = message.map_or_else(|| e.message().to_string(), str::to_string);
+            Box::new(Diagnostic::error("lint-config", path, span, message))
+        };
+        // Syntax first, so a broken file gets TOML's own message.
+        src.parse::<toml::Table>().map_err(|e| err(e, None))?;
+        let doc: RawDoc = toml::from_str(src).map_err(|e| {
+            err(e, Some("[lint] deny must be a list of rule names, like [\"missing-doc\"]."))
         })?;
-        let Some(lint) = table.get("lint") else {
-            return Ok(LintConfig::default());
-        };
-        let bad = |what: &str| {
-            let off = src.find("deny").or_else(|| src.find("[lint]")).unwrap_or(0);
-            Diagnostic::error("lint-config", path, at(off, 4), what.to_string())
-        };
-        let Some(lint) = lint.as_table() else {
-            return Err(bad("\"lint\" must be a table: [lint]."));
-        };
-        let Some(deny) = lint.get("deny") else {
-            return Ok(LintConfig::default());
-        };
-        let Some(items) = deny.as_array() else {
-            return Err(bad("[lint] deny must be a list of rule names, like [\"missing-doc\"]."));
-        };
         let mut cfg = LintConfig::default();
-        for item in items {
-            let Some(name) = item.as_str() else {
-                return Err(bad("[lint] deny must be a list of rule names, like [\"missing-doc\"]."));
-            };
+        for item in doc.lint.and_then(|l| l.deny).unwrap_or_default() {
+            let name = item.get_ref().as_str();
             if !RULES.contains(&name) {
-                let quoted = format!("\"{name}\"");
-                let off = src.find(&quoted).map_or(0, |o| o + 1);
-                return Err(Diagnostic::error(
-                    "lint-config",
-                    path,
-                    at(off, name.chars().count()),
-                    format!("Unknown lint rule \"{name}\" in [lint] deny."),
-                )
-                .with_did_you_mean(did_you_mean(name, RULES))
-                .with_help(format!("The rules are: {}.", RULES.join(", "))));
+                let r = item.span();
+                // the span covers the quotes
+                let (off, len) = (r.start + 1, r.len().saturating_sub(2));
+                return Err(Box::new(
+                    Diagnostic::error(
+                        "lint-config",
+                        path,
+                        at(off, len),
+                        format!("Unknown lint rule \"{name}\" in [lint] deny."),
+                    )
+                    .with_did_you_mean(did_you_mean(name, RULES))
+                    .with_help(format!("The rules are: {}.", RULES.join(", "))),
+                ));
             }
             cfg.deny.insert(name.to_string());
         }
@@ -105,11 +96,29 @@ impl LintConfig {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct RawDoc {
+    lint: Option<RawLint>,
+}
+
+#[derive(serde::Deserialize)]
+struct RawLint {
+    deny: Option<Vec<toml::Spanned<String>>>,
+}
+
 /// Lint several parsed files together (`duplicate-rule` looks across all of them). Findings come
 /// back in file order, then line order. The length of a file is taken from the last line its AST
 /// points at; use [`lint_source`] to count the real lines.
 pub fn lint(files: &[File], cfg: &LintConfig) -> Vec<Diagnostic> {
     let units: Vec<(&File, Option<usize>)> = files.iter().map(|f| (f, None)).collect();
+    run(&units, cfg)
+}
+
+/// Lint several parsed files together, each with its source text, so `long-file` counts the real
+/// lines. This is the entry point for project linting.
+pub fn lint_with_sources(files: &[(&File, &str)], cfg: &LintConfig) -> Vec<Diagnostic> {
+    let units: Vec<(&File, Option<usize>)> =
+        files.iter().map(|(f, src)| (*f, Some(src.lines().count()))).collect();
     run(&units, cfg)
 }
 
@@ -595,52 +604,87 @@ fn missing_doc(ctx: &mut Ctx, file: &File) {
 
 fn vague_name(ctx: &mut Ctx, file: &File) {
     for d in &file.decls {
-        let mut names: Vec<&Ident> = Vec::new();
+        let mut names: Vec<(String, Span)> = Vec::new();
         match d {
             Decl::Record(r) => {
-                names.push(&r.name);
-                names.extend(r.fields.iter().map(|f| &f.name));
+                add(&mut names, &r.name);
+                for f in &r.fields {
+                    add(&mut names, &f.name);
+                }
             }
-            Decl::Rule(r) => names.push(&r.name),
-            Decl::Agent(a) => names.push(&a.name),
-            Decl::Function(f) => names.push(&f.name),
-            Decl::Service(s) => names.push(&s.name),
-            Decl::Command(c) => names.push(&c.name),
+            Decl::Rule(r) => add(&mut names, &r.name),
+            Decl::Agent(a) => add(&mut names, &a.name),
+            Decl::Function(f) => add(&mut names, &f.name),
+            Decl::Service(s) => add(&mut names, &s.name),
+            Decl::Command(c) => add(&mut names, &c.name),
             Decl::Binding(b) => {
-                names.push(&b.name);
-                names.extend(b.items.iter().map(|i| &i.name));
+                add(&mut names, &b.name);
+                for i in &b.items {
+                    add(&mut names, &i.name);
+                }
             }
-            Decl::Constant(c) => names.push(&c.name),
-            Decl::RustBlock(r) => names.push(&r.name),
+            Decl::Constant(c) => add(&mut names, &c.name),
+            Decl::RustBlock(r) => add(&mut names, &r.name),
             Decl::Run(_) => {}
         }
-        names.extend(decl_params(d).into_iter().map(|p| &p.name));
+        for p in decl_params(d) {
+            add(&mut names, &p.name);
+        }
+        if let Decl::Rule(r) = d {
+            each_expr(&r.when, &mut |e| first_var(e, &mut names));
+        }
+        if let Decl::Service(s) = d {
+            // `{id}` in `GET /invoices/{id}`: the heading is "METHOD path" starting at span.col.
+            for r in &s.routes {
+                for p in &r.path_params {
+                    let pat = format!("{{{p}}}");
+                    let off = r.path.find(&pat).map_or(0, |o| o + 1);
+                    let col = r.span.col + r.method.chars().count() as u32 + 1 + off as u32;
+                    names.push((p.clone(), Span::new(r.span.line, col, p.chars().count() as u32)));
+                }
+            }
+        }
         for body in decl_bodies(d) {
-            each_stmt(body, &mut |s| match &s.kind {
-                StmtKind::Set { var, .. } => names.push(var),
-                StmtKind::ForEach { var, .. } => names.push(var),
-                StmtKind::IfSome { bind, .. } => names.push(bind),
-                StmtKind::AskModel { into, .. } | StmtKind::ReadBody { into, .. } | StmtKind::ReadFile { into, .. } => {
-                    names.push(into)
+            each_stmt(body, &mut |s| {
+                match &s.kind {
+                    StmtKind::Set { var, .. } | StmtKind::ForEach { var, .. } => add(&mut names, var),
+                    StmtKind::IfSome { bind, .. } => add(&mut names, bind),
+                    StmtKind::AskModel { into, .. }
+                    | StmtKind::ReadBody { into, .. }
+                    | StmtKind::ReadFile { into, .. } => add(&mut names, into),
+                    StmtKind::Do { into: Some(i), .. } | StmtKind::ToolCall { into: Some(i), .. } => {
+                        add(&mut names, i)
+                    }
+                    _ => {}
                 }
-                StmtKind::Do { into: Some(i), .. } | StmtKind::ToolCall { into: Some(i), .. } => {
-                    names.push(i)
+                for e in stmt_exprs(s) {
+                    each_expr(e, &mut |x| first_var(x, &mut names));
                 }
-                _ => {}
             });
         }
         // One finding per name per declaration: the first place it is introduced.
-        let mut done: Vec<&str> = Vec::new();
-        for n in names {
-            if VAGUE_NAMES.contains(&n.name.as_str()) && !done.contains(&n.name.as_str()) {
-                done.push(&n.name);
+        let mut done: Vec<String> = Vec::new();
+        for (name, span) in names {
+            if VAGUE_NAMES.contains(&name.as_str()) && !done.contains(&name) {
+                done.push(name.clone());
                 ctx.report(
                     "vague-name",
-                    n.span,
-                    format!("\"{}\" does not say what it holds.", n.name),
+                    span,
+                    format!("\"{name}\" does not say what it holds."),
                     "Name it after its content, like \"invoice_rows\" or \"reminder_text\".".to_string(),
                 );
             }
         }
     }
+}
+
+/// `first <var> in ...` introduces `<var>`.
+fn first_var(e: &Expr, names: &mut Vec<(String, Span)>) {
+    if let ExprKind::FirstIn { var, .. } = &e.kind {
+        add(names, var);
+    }
+}
+
+fn add(names: &mut Vec<(String, Span)>, i: &Ident) {
+    names.push((i.name.clone(), i.span));
 }

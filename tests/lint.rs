@@ -269,6 +269,11 @@ fn config_errors_are_plain_and_suggest_the_rule() {
 
     let d = LintConfig::from_toml_str("[lint]\ndeny = \"missing-doc\"\n", "agentmark.toml").unwrap_err();
     assert!(d.message.contains("list of rule names"));
+    assert_eq!((d.span.line, d.span.col), (2, 8));
+    // the unknown name is underlined, not the first "deny" in the file
+    let toml = "# deny nothing\n[lint]\ndeny = [\"missing-doc\", \"magic-valu\"]\n";
+    let d = LintConfig::from_toml_str(toml, "agentmark.toml").unwrap_err();
+    assert_eq!((d.span.line, d.span.col, d.span.len), (3, 25, 10));
     let d = LintConfig::from_toml_str("[lint\n", "agentmark.toml").unwrap_err();
     assert_eq!(d.span.line, 1);
 }
@@ -322,4 +327,35 @@ fn the_support_triage_example_guards_its_model_answer_inside_the_loop() {
     let d = lint_file(&file, &LintConfig::new(["prompt-in-loop"]));
     assert!(d.iter().all(|d| d.code != "prompt-in-loop"));
     assert!(d.iter().any(|d| d.code == "missing-doc"));
+}
+
+#[test]
+fn vague_name_checks_first_in_variables_and_route_parameters() {
+    let src = "\
+> Svc.
+# Service: s
+- listen: 0.0.0.0:80
+
+## GET /things/{x}
+- set found = first thing in state.things where thing.id = x
+- respond 200 found
+";
+    let d = findings(src, "vague-name");
+    let at: Vec<(String, u32, u32)> =
+        d.iter().map(|d| (d.message.split('\"').nth(1).unwrap().to_string(), d.span.line, d.span.col)).collect();
+    assert_eq!(at, vec![("x".to_string(), 5, 17), ("thing".to_string(), 6, 21)], "{d:?}");
+}
+
+#[test]
+fn long_file_counts_real_lines_when_sources_are_given() {
+    use agentmark::lint::lint_with_sources;
+    let mut src = String::from("# Record: R\n- a: text\n");
+    for _ in 0..160 {
+        src.push_str("> trailing comment\n");
+    }
+    let file = parse("r.agent.md", &src);
+    // the AST ends at line 2, so the AST-only count misses it
+    assert!(lint_file(&file, &LintConfig::default()).is_empty());
+    let d = lint_with_sources(&[(&file, &src)], &LintConfig::default());
+    assert_eq!(d.iter().filter(|d| d.code == "long-file").count(), 1);
 }
