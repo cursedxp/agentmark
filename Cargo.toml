@@ -1,0 +1,25 @@
+[package]
+name = "agentmark"
+version = "0.1.0"
+edition = "2021"
+description = "AgentMark: a Markdown-based language that compiles to Rust"
+license = "MIT"
+
+[workspace]
+members = ["crates/*"]
+
+[lib]
+name = "agentmark"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agentmark"
+path = "src/main.rs"
+
+[dependencies]
+chumsky = "0.10"
+serde = { version = "1", features = ["derive"] }
+strsim = "0.11"
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }
