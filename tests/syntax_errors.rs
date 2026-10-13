@@ -179,3 +179,87 @@ fn no_message_contains_internal_grammar_words() {
         );
     }
 }
+
+// ---- errors later in the line are not blamed on the first word
+
+#[test]
+fn guard_errors_point_at_the_real_problem() {
+    assert_eq!(
+        stmt("- guard: x is not emptyy"),
+        "t.agent.md:5\n  - guard: x is not emptyy\n                    ^^^^^^\n  Expected \"empty\" here, but found \"emptyy\". Did you mean \"empty\"?"
+    );
+    assert_eq!(
+        stmt("- guard: x ="),
+        "t.agent.md:5\n  - guard: x =\n              ^\n  The line ends too early: expected a value after \"=\"."
+    );
+    assert_eq!(
+        stmt("- guard: x lenght < 3"),
+        "t.agent.md:5\n  - guard: x lenght < 3\n             ^^^^^^\n  Expected \"length\" here, but found \"lenght\". Did you mean \"length\"?"
+    );
+}
+
+#[test]
+fn print_and_tool_calls_are_not_unknown_statements() {
+    assert_eq!(
+        stmt("- print: \"x\" y"),
+        "t.agent.md:5\n  - print: \"x\" y\n               ^\n  I did not expect \"y\" here."
+    );
+    assert_eq!(
+        stmt("- crm update invoice: status ="),
+        "t.agent.md:5\n  - crm update invoice: status =\n                                ^\n  The line ends too early: expected a value after \"=\"."
+    );
+}
+
+#[test]
+fn misspelled_words_inside_statements() {
+    assert_eq!(
+        stmt("- if x is somee s:"),
+        "t.agent.md:5\n  - if x is somee s:\n            ^^^^^\n  Expected \"some\" here, but found \"somee\". Did you mean \"some\"?"
+    );
+    assert_eq!(
+        stmt("- append x too y"),
+        "t.agent.md:5\n  - append x too y\n             ^^^\n  Expected \"to\" here, but found \"too\". Did you mean \"to\"?"
+    );
+    assert_eq!(
+        stmt("- if a and:"),
+        "t.agent.md:5\n  - if a and:\n            ^\n  Expected a value after \"and\", but found \":\"."
+    );
+}
+
+#[test]
+fn closed_word_properties_suggest() {
+    assert_eq!(
+        render("# Function: f\n- effect: pur\n"),
+        "t.agent.md:2\n  - effect: pur\n            ^^^\n  Unknown effect \"pur\". Did you mean \"pure\"?"
+    );
+    assert_eq!(
+        render("# Agent: a\n- model: claude\n- memory: fiel\n"),
+        "t.agent.md:3\n  - memory: fiel\n            ^^^^\n  Unknown memory setting \"fiel\". Did you mean \"file\"?"
+    );
+}
+
+#[test]
+fn dates_must_exist_on_the_calendar() {
+    assert!(stmt("- set d = 2026-02-30").contains("\"2026-02-30\" is not a real date"));
+    assert!(stmt("- set d = 2026-04-31").contains("is not a real date"));
+    assert!(stmt("- set d = 2025-02-29").contains("is not a real date"));
+    let ok = |d: &str| {
+        parse_file(
+            "t.agent.md",
+            &format!("# Agent: a\n- model: claude\n\n## On start\n- set d = {d}\n"),
+        )
+        .is_ok()
+    };
+    assert!(ok("2024-02-29") && ok("2000-02-29") && ok("2026-12-31"));
+}
+
+#[test]
+fn diagnostics_are_sorted_by_position() {
+    let src = "# Agent: a\n- modle: claude\n\n## On start\n- sett x = 1\n- set _y = 2\n# Record: R\n- x: lst of int\n";
+    let diags = parse_file("t.agent.md", src).unwrap_err();
+    let pos: Vec<(u32, u32)> = diags.iter().map(|d| (d.span.line, d.span.col)).collect();
+    let mut sorted = pos.clone();
+    sorted.sort();
+    assert_eq!(pos, sorted);
+    assert!(pos.len() >= 3);
+}

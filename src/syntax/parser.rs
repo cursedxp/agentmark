@@ -25,6 +25,9 @@ use stmt::Head;
 /// First words of the blocks an agent may have.
 const BLOCK_WORDS: &[&str] = &["Every", "When", "On", "Do", "Rust"];
 
+/// The effect classes a declaration may state.
+const EFFECT_WORDS: [&str; 5] = ["pure", "local", "network", "model", "unverified"];
+
 /// Words that start a statement (a near miss gets a suggestion).
 const STATEMENT_WORDS: &[&str] = &[
     "for",
@@ -68,6 +71,7 @@ pub fn parse_file(path: &str, src: &str) -> Result<File, Vec<Diagnostic>> {
     if b.diags.is_empty() {
         Ok(file)
     } else {
+        b.diags.sort_by_key(|d| (d.span.line, d.span.col));
         Err(b.diags)
     }
 }
@@ -237,7 +241,12 @@ impl<'l> Builder<'l> {
         }
         let words = words_of(ctx);
         let first = words.first().cloned();
+        // Where the generic error sits, and whether it is before the first ":" of the line
+        // (after it, the statement's shape was fine and the first word is not to blame).
+        let off = errs.first().map_or(0, |e| e.span().start);
+        let before_colon = ctx.text.find(':').is_none_or(|c| off <= c);
         if let Some((w, span)) = first {
+            let w = w.trim_end_matches(':').to_string();
             let ends_in_colon = ctx.text.trim_end().ends_with(':');
             let needs_colon =
                 matches!(w.as_str(), "for" | "if" | "else" | "otherwise" | "parallel");
@@ -245,7 +254,7 @@ impl<'l> Builder<'l> {
                 self.diags.push(missing_colon(self.file, ctx));
                 return;
             }
-            if w == "ask" {
+            if w == "ask" && before_colon {
                 if let Some((m, mspan)) = words.get(1) {
                     let m = m.trim_end_matches(':');
                     if m != "model" {
@@ -263,8 +272,10 @@ impl<'l> Builder<'l> {
                     }
                 }
             }
-            if !STATEMENT_WORDS.contains(&w.as_str()) {
+            if before_colon && !STATEMENT_WORDS.contains(&w.as_str()) {
                 if let Some(dym) = did_you_mean(&w, STATEMENT_WORDS.iter().copied()) {
+                    let mut span = span;
+                    span.len = w.chars().count() as u32;
                     let d = Diagnostic::error(
                         E_SYNTAX,
                         self.file,
@@ -644,6 +655,40 @@ impl<'l> Builder<'l> {
         self.parse(pick, p.value, p.line, p.col)
     }
 
+    /// A property whose value is one of a closed set of words (`effect`, `memory`): a near miss
+    /// gets a suggestion.
+    fn word_value<T>(
+        &mut self,
+        pick: Pick<'l, T>,
+        p: &Prop<'_, 'l>,
+        words: &[&str],
+        what: &str,
+    ) -> Option<T> {
+        match run(pick(&self.g), p.value, p.line, p.col) {
+            Ok(v) => Some(v),
+            Err((ctx, errs)) => {
+                let w = p.value.trim();
+                let dym = did_you_mean(w, words.iter().copied());
+                if dym.is_some() {
+                    let span = Span::new(p.line, p.col, w.chars().count() as u32);
+                    let d = Diagnostic::error(
+                        E_SYNTAX,
+                        self.file,
+                        span,
+                        format!("Unknown {what} \"{w}\"."),
+                    )
+                    .with_did_you_mean(dym);
+                    self.diags.push(d);
+                } else if !self.report_problems(&ctx) {
+                    if let Some(e) = errs.first() {
+                        self.diags.push(rich_diag(self.file, &ctx, e));
+                    }
+                }
+                None
+            }
+        }
+    }
+
     fn no_kids(&mut self, p: &Prop<'_, 'l>) {
         if let Some(k) = p.node.kids.first() {
             self.kid_error(
@@ -795,10 +840,11 @@ impl<'l> Builder<'l> {
             None => Vec::new(),
         };
         let memory = props.iter().find(|p| p.key.name == "memory").and_then(|p| {
-            self.value(|g| &g.memory, p).map(|value| Spanned {
-                value,
-                span: Span::new(p.line, p.col, p.value.chars().count() as u32),
-            })
+            self.word_value(|g| &g.memory, p, &["none", "file"], "memory setting")
+                .map(|value| Spanned {
+                    value,
+                    span: Span::new(p.line, p.col, p.value.chars().count() as u32),
+                })
         });
         let timeout = props
             .iter()
@@ -884,10 +930,11 @@ impl<'l> Builder<'l> {
             .and_then(|p| self.value(|g| &g.ty, p));
         let effect_p = props.iter().find(|p| p.key.name == "effect");
         let effect = effect_p.and_then(|p| {
-            self.value(|g| &g.effect, p).map(|value| Spanned {
-                value,
-                span: Span::new(p.line, p.col, p.value.chars().count() as u32),
-            })
+            self.word_value(|g| &g.effect, p, &EFFECT_WORDS, "effect")
+                .map(|value| Spanned {
+                    value,
+                    span: Span::new(p.line, p.col, p.value.chars().count() as u32),
+                })
         });
         let mut body = Vec::new();
         for p in &props {
@@ -1223,10 +1270,12 @@ impl<'l> Builder<'l> {
             None => Vec::new(),
         };
         let effect = match props.iter().find(|p| p.key.name == "effect") {
-            Some(p) => self.value(|g| &g.effect, p).map(|value| Spanned {
-                value,
-                span: Span::new(p.line, p.col, p.value.chars().count() as u32),
-            }),
+            Some(p) => self
+                .word_value(|g| &g.effect, p, &EFFECT_WORDS, "effect")
+                .map(|value| Spanned {
+                    value,
+                    span: Span::new(p.line, p.col, p.value.chars().count() as u32),
+                }),
             None => {
                 let d = Diagnostic::error(
                     E_MISSING_PROP,
@@ -1520,12 +1569,13 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
         RichReason::Custom(m) => (sentence(m), *e.span()),
         RichReason::ExpectedFound { .. } => {
             let mut expected: Vec<String> = Vec::new();
+            let mut words: Vec<String> = Vec::new();
             let mut at_end = false;
             for p in e.expected() {
                 let s = match p {
                     RichPattern::Token(t) => {
                         let c: char = **t;
-                        if c.is_alphanumeric() || matches!(c, '"' | ':' | ',') {
+                        if matches!(c, '"' | ':' | ',') {
                             quote(&c.to_string())
                         } else {
                             continue; // operators and spacing
@@ -1533,11 +1583,14 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
                     }
                     RichPattern::Label(l) => {
                         let l: &str = l;
+                        if l.chars().all(|c| c.is_ascii_lowercase()) {
+                            words.push(l.to_string());
+                        }
                         if l.contains("whitespace") || NOISE_WORDS.contains(&l) {
                             continue;
                         }
                         if l == "identifier" {
-                            "a name".to_string()
+                            continue; // the keyword matchers' own probe; real names say "a name"
                         } else if l.chars().all(|c| c.is_ascii_lowercase()) {
                             quote(l)
                         } else {
@@ -1554,6 +1607,9 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
                     expected.push(s);
                 }
             }
+            if expected.iter().any(|x| x == "a value") {
+                expected.retain(|x| x != "a name");
+            }
             // The offending word: skip spaces so we never point at nothing.
             let mut ws = start;
             while ws < text.len() && text[ws..].starts_with(char::is_whitespace) {
@@ -1563,8 +1619,55 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
                 let (_, we) = word_around(text, ws);
                 (ws, we)
             });
+            // An operator with nothing after it, or a `:` right after `and`/`or`/`not`/an operator:
+            // a value is what is missing.
+            if let Some((ws, we)) = found_word {
+                let w = &text[ws..we];
+                let opish = |t: &str| {
+                    !t.is_empty() && t.chars().all(|c| "=<>!+-*/".contains(c))
+                        || matches!(t, "and" | "or" | "not")
+                };
+                if opish(w) && text[we..].trim().is_empty() {
+                    let m = format!(
+                        "The line ends too early: expected a value after {}.",
+                        quote(w)
+                    );
+                    return Diagnostic::error(
+                        E_SYNTAX,
+                        file,
+                        ctx.span(SimpleSpan::from(text.len()..text.len())),
+                        m,
+                    );
+                }
+                let before = text[..ws].split_whitespace().last().unwrap_or("");
+                if opish(before)
+                    && !w
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_alphanumeric() || c == '"')
+                {
+                    let m = format!(
+                        "Expected a value after {}, but found {}.",
+                        quote(before),
+                        quote(w)
+                    );
+                    return Diagnostic::error(
+                        E_SYNTAX,
+                        file,
+                        ctx.span(SimpleSpan::from(ws..we)),
+                        m,
+                    );
+                }
+            }
             if let Some((ws, we)) = found_word {
                 let q = quote(&text[ws..we]);
+                let near = did_you_mean(&text[ws..we], words.iter().map(String::as_str));
+                if let Some(w) = near {
+                    let m = format!("Expected {} here, but found {q}.", quote(&w));
+                    let mut span = ctx.span(SimpleSpan::from(ws..we));
+                    span.len = span.len.max(1);
+                    return Diagnostic::error(E_SYNTAX, file, span, m).with_did_you_mean(Some(w));
+                }
                 let m = if expected.is_empty() {
                     let tail = if at_end {
                         " The line should end before it."

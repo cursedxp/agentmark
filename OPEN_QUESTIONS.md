@@ -51,7 +51,7 @@ SPEC 1 says "indented lines under a block are statements", but every example wri
 **Why:** it is the only reading under which all five examples parse.
 
 ## Q17 — Which `>` comments are documentation?
-**Choice:** a run of `>` lines directly above a `#`/`##` heading (no blank line between) is that heading's `doc`. A run at the top of the file followed by a blank line is the file's `doc`. Any other `>` line is a plain comment and is dropped.
+**Choice:** a run of `>` lines directly above a `#`/`##` heading (no blank line between) is that heading's `doc`. A run at the top of the file followed by a blank line is the file's `doc`. Any other `>` line is a plain comment; it is kept on the next statement, field or property (Q28).
 **Why:** SPEC 18.7 says "immediately before"; example 05 opens with a two-line file description followed by a blank line and then an import.
 
 ## Q18 — `else:` and `otherwise:` placement
@@ -94,3 +94,5 @@ The parser knows no tool or record names, so it only suggests from closed keywor
 
 ## Q29 — Names with hyphens
 **Choice:** declaration names, rule names (`for each very-overdue invoice`, `count of very-overdue invoices`), record names and type names accept `-`; variables, fields and paths inside expressions do not (Q19).
+
+Note: my entries Q16-Q25 (and Q26-Q29) were numbered from Q16 because the runtime branch used Q12-Q15.

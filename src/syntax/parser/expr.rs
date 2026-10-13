@@ -4,9 +4,11 @@
 //! knows which line and column the text came from, so a node's `Span` is a real position in the
 //! file, not an offset into the fragment.
 
+use chumsky::error::{LabelError, RichPattern};
 use chumsky::extra;
 use chumsky::input::MapExtra;
 use chumsky::prelude::*;
+use chumsky::util::MaybeRef;
 
 use crate::diag::{did_you_mean, Span};
 use crate::syntax::ast::*;
@@ -130,20 +132,35 @@ pub fn sp1<'a>() -> impl Parser<'a, &'a str, (), Ex<'a>> + Copy {
     text::inline_whitespace().at_least(1)
 }
 
-/// A case-sensitive keyword (must not be followed by more identifier characters).
+fn wrong_word<'a>(word: &'static str, found: &str, span: SimpleSpan) -> Rich<'a, char> {
+    <Rich<'a, char> as LabelError<'a, &'a str, RichPattern<'a, char>>>::expected_found(
+        [RichPattern::Label(std::borrow::Cow::Borrowed(word))],
+        found.chars().next().map(MaybeRef::Val),
+        span,
+    )
+}
+
+/// A case-sensitive keyword. When the word is something else, the error points at the start of
+/// that word (not after it) and says which keyword was expected.
 pub fn kw<'a>(word: &'static str) -> impl Parser<'a, &'a str, (), Ex<'a>> + Clone {
-    text::ascii::ident()
-        .filter(move |s: &&str| *s == word)
-        .ignored()
-        .labelled(word)
+    text::ascii::ident().try_map(move |s: &str, span| {
+        if s == word {
+            Ok(())
+        } else {
+            Err(wrong_word(word, s, span))
+        }
+    })
 }
 
 /// A case-insensitive keyword, for headings (SPEC 1: "Headings are case-insensitive").
 pub fn ikw<'a>(word: &'static str) -> impl Parser<'a, &'a str, (), Ex<'a>> + Clone {
-    text::ascii::ident()
-        .filter(|s: &&str| s.eq_ignore_ascii_case(word))
-        .ignored()
-        .labelled(word)
+    text::ascii::ident().try_map(move |s: &str, span| {
+        if s.eq_ignore_ascii_case(word) {
+            Ok(())
+        } else {
+            Err(wrong_word(word, s, span))
+        }
+    })
 }
 
 fn digit<'a>() -> impl Parser<'a, &'a str, char, Ex<'a>> + Clone {
@@ -362,7 +379,15 @@ fn date_lit<'a>() -> impl Parser<'a, &'a str, String, Ex<'a>> + Clone {
         .map_with(|s: &str, e| {
             let month: u32 = s[5..7].parse().unwrap_or(0);
             let day: u32 = s[8..10].parse().unwrap_or(0);
-            if !((1..=12).contains(&month) && (1..=31).contains(&day)) {
+            let year: u32 = s[0..4].parse().unwrap_or(0);
+            let leap = (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
+            let days = match month {
+                2 if leap => 29,
+                2 => 28,
+                4 | 6 | 9 | 11 => 30,
+                _ => 31,
+            };
+            if !((1..=12).contains(&month) && (1..=days).contains(&day)) {
                 flag(
                     e,
                     format!("\"{s}\" is not a real date. Dates are written year-month-day, like 2026-10-13."),
@@ -476,6 +501,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
 
             // ---- paths and calls
             let path_idents = word()
+                .labelled("a value")
                 .separated_by(just('.'))
                 .at_least(1)
                 .collect::<Vec<Ident>>();
@@ -607,7 +633,12 @@ pub fn expr<'a>() -> P<'a, Expr> {
 
             // `reminder length` (postfix)
             let post = atom
-                .then(sp1().ignore_then(kw("length")).or_not())
+                .then(
+                    sp1()
+                        .ignore_then(just('l').rewind())
+                        .ignore_then(kw("length"))
+                        .or_not(),
+                )
                 .map_with(|(a, len), e| match len {
                     Some(()) => mk(ExprKind::Length(Box::new(a)), e),
                     None => a,
