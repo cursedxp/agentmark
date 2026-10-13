@@ -622,3 +622,83 @@ fn several_errors_are_all_reported() {
     let out = errors("# Agent: a\n- modle: claude\n- toolz: log\n");
     assert!(out.contains("modle") && out.contains("toolz"), "{out}");
 }
+
+#[test]
+fn hyphenated_rule_and_record_names_can_be_referenced() {
+    let f = parse(
+        "# Rule: very-overdue\n- for: Big-Invoice\n- when: status = \"x\"\n\n# Agent: a\n- model: claude\n\n## On start\nfor each very-overdue invoice in crm.invoices:\n  - stop\n- set n = count of very-overdue invoices in crm.invoices\n- read body as list of Big-Invoice -> rows\n",
+    );
+    let Decl::Rule(r) = &f.decls[0] else { panic!() };
+    assert_eq!(r.for_record.name, "Big-Invoice");
+    let a = agent(&f);
+    let StmtKind::ForEach { filter_rule, .. } = &a.blocks[0].body[0].kind else {
+        panic!()
+    };
+    assert_eq!(filter_rule.as_ref().unwrap().name, "very-overdue");
+    let StmtKind::Set { expr, .. } = &a.blocks[0].body[1].kind else {
+        panic!()
+    };
+    assert!(
+        matches!(&expr.kind, ExprKind::CountOf { rule: Some(r), .. } if r.name == "very-overdue")
+    );
+    assert!(matches!(
+        &a.blocks[0].body[2].kind,
+        StmtKind::ReadBody { .. }
+    ));
+}
+
+#[test]
+fn plain_comments_stay_attached_to_the_next_statement_field_and_property() {
+    let src = "\
+# Record: R
+> the id
+- id: text
+- note: text
+
+# Rule: r
+- for: R
+> only open ones
+- when: note = \"x\"
+
+# Agent: a
+- model: claude
+
+## On start
+> a long condition, explained
+> over two lines
+- guard: note = \"x\"
+- stop
+for each x in y:
+  > inside the loop
+  - stop
+";
+    let f = parse(src);
+    let Decl::Record(r) = &f.decls[0] else {
+        panic!()
+    };
+    assert_eq!(r.fields[0].comments, ["the id"]);
+    assert!(r.fields[1].comments.is_empty());
+    let Decl::Rule(rule) = &f.decls[1] else {
+        panic!()
+    };
+    assert_eq!(rule.prop_comments.len(), 1);
+    assert_eq!(rule.prop_comments[0].key, "when");
+    assert_eq!(rule.prop_comments[0].comments, ["only open ones"]);
+    let body = &agent(&f).blocks[0].body;
+    assert_eq!(
+        body[0].comments,
+        ["a long condition, explained", "over two lines"]
+    );
+    assert!(body[1].comments.is_empty());
+    let StmtKind::ForEach { body: inner, .. } = &body[2].kind else {
+        panic!()
+    };
+    assert_eq!(inner[0].comments, ["inside the loop"]);
+    // doc comments are not repeated as plain comments
+    let f = parse("> doc\n# Record: R\n- id\n");
+    let Decl::Record(r) = &f.decls[0] else {
+        panic!()
+    };
+    assert_eq!(r.doc.as_deref(), Some("doc"));
+    assert!(r.fields[0].comments.is_empty());
+}

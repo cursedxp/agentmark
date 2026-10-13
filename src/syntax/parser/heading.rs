@@ -3,7 +3,7 @@
 use chumsky::prelude::*;
 
 use super::expr::*;
-use crate::diag::Span;
+use crate::diag::{did_you_mean, Span};
 use crate::syntax::ast::*;
 
 // ------------------------------------------------------------------ level-1 headings
@@ -138,16 +138,16 @@ fn time<'a>() -> P<'a, (u8, u8)> {
         .to_slice();
     two.then_ignore(just(':'))
         .then(two)
-        .try_map(|(h, m): (&str, &str), span| {
+        .map_with(|(h, m): (&str, &str), e| {
             let (h, m): (u8, u8) = (h.parse().unwrap_or(99), m.parse().unwrap_or(99));
-            if h < 24 && m < 60 {
-                Ok((h, m))
-            } else {
-                Err(Rich::custom(
-                    span,
-                    "a time looks like 09:00 (hours 00-23, minutes 00-59)",
-                ))
+            if h >= 24 || m >= 60 {
+                flag(
+                    e,
+                    "A time looks like 09:00 (hours 00-23, minutes 00-59).",
+                    None,
+                );
             }
+            (h, m)
         })
         .labelled("a time such as 09:00")
         .boxed()
@@ -164,7 +164,7 @@ fn weekday<'a>() -> P<'a, Weekday> {
                 "friday" => Weekday::Friday,
                 "saturday" => Weekday::Saturday,
                 "sunday" => Weekday::Sunday,
-                _ => return Err(Rich::custom(span, format!("\"{s}\" is not a weekday"))),
+                _ => return Err(Rich::custom(span, format!("\"{s}\" is not a weekday."))),
             })
         })
         .labelled("a weekday")
@@ -216,13 +216,13 @@ pub fn trigger<'a>() -> P<'a, Trigger> {
 /// `GET /invoices/{id}` -> (method, path, path params).
 pub fn route<'a>() -> P<'a, (String, String, Vec<String>)> {
     let method = text::ascii::ident()
-        .try_map(|s: &str, span| {
+        .map_with(|s: &str, e| {
             let up = s.to_ascii_uppercase();
-            if ["GET", "POST", "PUT", "PATCH", "DELETE"].contains(&up.as_str()) {
-                Ok(up)
-            } else {
-                Err(Rich::custom(span, format!("\"{s}\" is not an HTTP method")))
+            if !["GET", "POST", "PUT", "PATCH", "DELETE"].contains(&up.as_str()) {
+                let dym = did_you_mean(&up, ["GET", "POST", "PUT", "PATCH", "DELETE"]);
+                flag(e, format!("\"{s}\" is not an HTTP method."), dym);
             }
+            up
         })
         .labelled("an HTTP method such as GET or POST");
     let segment = choice((
@@ -401,7 +401,7 @@ pub fn effect<'a>() -> P<'a, Effect> {
 
 /// A single name (record name after `for:` / `state:`).
 pub fn single_name<'a>() -> P<'a, Ident> {
-    ident().then_ignore(sp()).boxed()
+    name().then_ignore(sp()).boxed()
 }
 
 /// The whole rest of the line as text (`listen:` address, a `Not bound` reason).

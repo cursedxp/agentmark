@@ -51,7 +51,11 @@ const STATEMENT_WORDS: &[&str] = &[
 ];
 
 fn stmt_at<'a>(kind: StmtKind, e: &mut chumsky::input::MapExtra<'a, '_, &'a str, Ex<'a>>) -> Stmt {
-    Stmt { span: at(e), kind }
+    Stmt {
+        span: at(e),
+        comments: Vec::new(),
+        kind,
+    }
 }
 
 fn arrow<'a>() -> impl Parser<'a, &'a str, (), Ex<'a>> + Clone {
@@ -183,13 +187,14 @@ pub fn head<'a>() -> P<'a, Head> {
                 .map_with(|x, e| stmt_at(StmtKind::Return(x), e));
             let respond = kw("respond")
                 .ignore_then(sp1())
-                .ignore_then(text::int(10).try_map(|s: &str, span| {
-                    s.parse::<u16>()
-                        .ok()
-                        .filter(|n| (100..=599).contains(n))
-                        .ok_or_else(|| {
-                            Rich::custom(span, "an HTTP status such as 200 or 404 is expected")
-                        })
+                .ignore_then(text::int(10).map_with(|s: &str, e| {
+                    match s.parse::<u16>().ok().filter(|n| (100..=599).contains(n)) {
+                        Some(n) => n,
+                        None => {
+                            flag(e, "Expected an HTTP status such as 200 or 404.", None);
+                            500
+                        }
+                    }
                 }))
                 .then(sp1().ignore_then(expr.clone()).or_not())
                 .map_with(|(status, body), e| stmt_at(StmtKind::Respond { status, body }, e));
@@ -262,7 +267,7 @@ pub fn head<'a>() -> P<'a, Head> {
         .ignore_then(kw("each"))
         .ignore_then(sp1())
         .ignore_then(choice((
-            ident_word()
+            name()
                 .then_ignore(sp1())
                 .then(ident_word())
                 .then_ignore(sp1())

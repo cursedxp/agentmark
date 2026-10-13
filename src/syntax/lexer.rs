@@ -177,6 +177,22 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
             lines.push(mk(LineKind::Item, spaces, body, spaces + off));
         } else if rest_t.ends_with(':') || rest_t == "stop" {
             lines.push(mk(LineKind::Control, spaces, rest_t, spaces));
+        } else if rest_t.starts_with("for each ")
+            || rest_t.starts_with("if ")
+            || matches!(rest_t, "else" | "otherwise" | "parallel")
+        {
+            let col = spaces + rest_t.chars().count() + 1;
+            diags.push(
+                Diagnostic::error(
+                    E_LINE,
+                    file,
+                    Span::new(line_no, col as u32, 1),
+                    "This line is missing the \":\" at its end.",
+                )
+                .with_help(
+                    "A line that has statements under it ends with a colon, like \"for each row in rows:\".",
+                ),
+            );
         } else {
             diags.push(
                 Diagnostic::error(

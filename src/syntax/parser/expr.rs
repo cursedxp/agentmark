@@ -8,7 +8,7 @@ use chumsky::extra;
 use chumsky::input::MapExtra;
 use chumsky::prelude::*;
 
-use crate::diag::Span;
+use crate::diag::{did_you_mean, Span};
 use crate::syntax::ast::*;
 
 /// Parse state: where in the file the text being parsed came from.
@@ -19,6 +19,17 @@ pub struct LineCtx {
     /// 1-based character column of the first character of `text`.
     pub col: u32,
     pub text: String,
+    /// Mistakes found inside a construct that still parsed (a bad date, an unknown unit, ...).
+    /// They carry the plain-language message, which a failed alternative could not keep.
+    pub problems: Vec<Problem>,
+}
+
+/// A mistake with its own plain-language message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Problem {
+    pub span: Span,
+    pub message: String,
+    pub did_you_mean: Option<String>,
 }
 
 impl LineCtx {
@@ -27,6 +38,22 @@ impl LineCtx {
             line,
             col,
             text: text.to_string(),
+            problems: Vec::new(),
+        }
+    }
+
+    pub fn flag(&mut self, r: SimpleSpan, message: String, did_you_mean: Option<String>) {
+        let span = self.span(r);
+        if !self
+            .problems
+            .iter()
+            .any(|p| p.span == span && p.message == message)
+        {
+            self.problems.push(Problem {
+                span,
+                message,
+                did_you_mean,
+            });
         }
     }
 
@@ -59,6 +86,16 @@ const RESERVED: &[&str] = &[
     "now",
     "otherwise",
 ];
+
+/// Record a mistake in what the parser just matched, and let parsing carry on.
+pub fn flag<'a>(
+    e: &mut MapExtra<'a, '_, &'a str, Ex<'a>>,
+    message: impl Into<String>,
+    dym: Option<String>,
+) {
+    let r = e.span();
+    e.state().flag(r, message.into(), dym);
+}
 
 /// The file position of whatever the parser just matched.
 pub fn at<'a>(e: &mut MapExtra<'a, '_, &'a str, Ex<'a>>) -> Span {
@@ -123,23 +160,40 @@ pub fn name<'a>() -> P<'a, Ident> {
         just('-').then_ignore(any().filter(|c: &char| c.is_ascii_alphanumeric()).rewind()),
     ));
     any()
-        .filter(|c: &char| c.is_ascii_alphabetic())
+        .filter(|c: &char| c.is_ascii_alphabetic() || *c == '_')
         .then(tail.repeated())
         .to_slice()
-        .map_with(|s: &str, e| Ident {
-            name: s.to_string(),
-            span: at(e),
+        .map_with(|s: &str, e| {
+            check_leading(s, e);
+            Ident {
+                name: s.to_string(),
+                span: at(e),
+            }
         })
         .labelled("a name")
         .boxed()
 }
 
+/// SPEC 1: names start with a letter.
+fn check_leading<'a>(s: &str, e: &mut MapExtra<'a, '_, &'a str, Ex<'a>>) {
+    if s.starts_with('_') {
+        flag(
+            e,
+            format!("Names must start with a letter, but \"{s}\" starts with an underscore."),
+            None,
+        );
+    }
+}
+
 /// A variable, field or record name: letters, digits, `_` (no `-`, which is subtraction).
 pub fn ident<'a>() -> P<'a, Ident> {
     text::ascii::ident()
-        .map_with(|s: &str, e| Ident {
-            name: s.to_string(),
-            span: at(e),
+        .map_with(|s: &str, e| {
+            check_leading(s, e);
+            Ident {
+                name: s.to_string(),
+                span: at(e),
+            }
         })
         .labelled("a name")
         .boxed()
@@ -186,19 +240,42 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
             });
         let list = wrap("list", TypeKind::List);
         let result = wrap("result", TypeKind::Result);
-        let named = ident().map(|id| TypeExpr {
+        // `lst of int`, `mayb int`: a word that is nearly a type constructor, followed by more type
+        let typo = name()
+            .filter(|id: &Ident| did_you_mean(&id.name, ["maybe", "list", "result"]).is_some())
+            .then_ignore(sp1().then(ident().rewind()))
+            .map_with(|id, e| {
+                let dym = did_you_mean(&id.name, ["maybe", "list", "result"]);
+                let r = e.span();
+                let word = SimpleSpan::from(r.start..r.start + id.name.len());
+                e.state()
+                    .flag(word, format!("Unknown type \"{}\".", id.name), dym);
+                TypeExpr {
+                    span: id.span,
+                    kind: TypeKind::Named(id.name),
+                }
+            });
+        let named = name().map(|id| TypeExpr {
             span: id.span,
             kind: TypeKind::Named(id.name),
         });
-        choice((maybe, list, result, named)).labelled("a type")
+        choice((maybe, list, result, typo, named)).labelled("a type")
     })
     .boxed()
 }
 
 // ------------------------------------------------------------------ literals
 
+// Plurals first: with equal distance the plural is the more natural correction.
+const UNIT_WORDS: [&str; 14] = [
+    "seconds", "minutes", "hours", "days", "weeks", "months", "years", "second", "minute", "hour",
+    "day", "week", "month", "year",
+];
+
+/// A duration unit. A word that is nearly a unit (`minuts`) is flagged with a suggestion; any
+/// other word is not a unit at all.
 fn duration_unit<'a>() -> impl Parser<'a, &'a str, DurationUnit, Ex<'a>> + Clone {
-    text::ascii::ident().try_map(|s: &str, span| {
+    text::ascii::ident().try_map_with(|s: &str, e| {
         Ok(match s {
             "second" | "seconds" => DurationUnit::Second,
             "minute" | "minutes" => DurationUnit::Minute,
@@ -207,7 +284,13 @@ fn duration_unit<'a>() -> impl Parser<'a, &'a str, DurationUnit, Ex<'a>> + Clone
             "week" | "weeks" => DurationUnit::Week,
             "month" | "months" => DurationUnit::Month,
             "year" | "years" => DurationUnit::Year,
-            _ => return Err(Rich::custom(span, "not a duration unit")),
+            _ => match did_you_mean(s, UNIT_WORDS) {
+                Some(dym) => {
+                    flag(e, format!("Unknown time unit \"{s}\"."), Some(dym));
+                    DurationUnit::Day
+                }
+                None => return Err(Rich::custom(e.span(), "not a duration unit")),
+            },
         })
     })
 }
@@ -215,9 +298,11 @@ fn duration_unit<'a>() -> impl Parser<'a, &'a str, DurationUnit, Ex<'a>> + Clone
 /// `14 days`, `1 month`, `15 minutes` as a standalone parser (also used by headings/properties).
 pub fn duration<'a>() -> P<'a, DurationLit> {
     text::int(10)
-        .try_map(|s: &str, span| {
-            s.parse::<i64>()
-                .map_err(|_| Rich::custom(span, "this number is too large"))
+        .map_with(|s: &str, e| {
+            s.parse::<i64>().unwrap_or_else(|_| {
+                flag(e, "This number is too large.", None);
+                0
+            })
         })
         .then_ignore(sp1())
         .then(duration_unit())
@@ -251,7 +336,7 @@ fn money_minor(whole: &str, frac: Option<&str>, cur: &str) -> Result<i64, String
     let frac = frac.unwrap_or("");
     if frac.len() > exp {
         return Err(format!(
-            "{cur} has {exp} decimal places, so \"{whole}.{frac}\" cannot be written exactly. AgentMark never rounds money silently."
+            "{cur} has {exp} decimal places, so \"{whole}.{frac} {cur}\" cannot be written exactly. AgentMark never rounds money silently."
         ));
     }
     let mut digits = String::from(whole);
@@ -261,7 +346,7 @@ fn money_minor(whole: &str, frac: Option<&str>, cur: &str) -> Result<i64, String
     }
     digits
         .parse::<i64>()
-        .map_err(|_| "this amount is too large".to_string())
+        .map_err(|_| "This amount is too large.".to_string())
 }
 
 fn date_lit<'a>() -> impl Parser<'a, &'a str, String, Ex<'a>> + Clone {
@@ -274,14 +359,17 @@ fn date_lit<'a>() -> impl Parser<'a, &'a str, String, Ex<'a>> + Clone {
         .then(digit().repeated().exactly(2))
         .then_ignore(any().filter(|c: &char| c.is_ascii_alphanumeric()).not())
         .to_slice()
-        .try_map(|s: &str, span| {
+        .map_with(|s: &str, e| {
             let month: u32 = s[5..7].parse().unwrap_or(0);
             let day: u32 = s[8..10].parse().unwrap_or(0);
-            if (1..=12).contains(&month) && (1..=31).contains(&day) {
-                Ok(s.to_string())
-            } else {
-                Err(Rich::custom(span, format!("\"{s}\" is not a real date")))
+            if !((1..=12).contains(&month) && (1..=31).contains(&day)) {
+                flag(
+                    e,
+                    format!("\"{s}\" is not a real date. Dates are written year-month-day, like 2026-10-13."),
+                    None,
+                );
             }
+            s.to_string()
         })
 }
 
@@ -298,33 +386,40 @@ fn number_lit<'a>() -> P<'a, ExprKind> {
     whole
         .then(frac)
         .then(suffix.or_not())
-        .try_map(|((whole, frac), suffix): ((&str, Option<&str>), _), span| match suffix {
-            Some((Some(cur), _)) => money_minor(whole, frac, cur)
-                .map(|minor| ExprKind::Money {
-                    minor,
-                    currency: cur.to_string(),
-                })
-                .map_err(|m| Rich::custom(span, m)),
-            Some((None, Some(unit))) => {
-                if frac.is_some() {
-                    return Err(Rich::custom(span, "durations are whole numbers, like \"14 days\""));
+        .map_with(|((whole, frac), suffix): ((&str, Option<&str>), _), e| {
+            let bad = |e: &mut MapExtra<'a, '_, &'a str, Ex<'a>>, msg: &str| {
+                flag(e, msg, None);
+                ExprKind::Int(0)
+            };
+            match suffix {
+                Some((Some(cur), _)) => match money_minor(whole, frac, cur) {
+                    Ok(minor) => ExprKind::Money {
+                        minor,
+                        currency: cur.to_string(),
+                    },
+                    Err(m) => bad(e, &m),
+                },
+                Some((None, Some(unit))) => {
+                    if frac.is_some() {
+                        return bad(e, "Durations are whole numbers, like \"14 days\".");
+                    }
+                    match whole.parse::<i64>() {
+                        Ok(amount) => ExprKind::Duration(DurationLit { amount, unit }),
+                        Err(_) => bad(e, "This number is too large."),
+                    }
                 }
-                whole
-                    .parse::<i64>()
-                    .map(|amount| ExprKind::Duration(DurationLit { amount, unit }))
-                    .map_err(|_| Rich::custom(span, "this number is too large"))
-            }
-            _ => {
-                if frac.is_some() {
-                    return Err(Rich::custom(
-                        span,
-                        "decimal numbers need a currency, like \"12.50 EUR\" (AgentMark has no floating point numbers)",
-                    ));
+                _ => {
+                    if frac.is_some() {
+                        return bad(
+                            e,
+                            "Decimal numbers need a currency, like \"12.50 EUR\". AgentMark has no floating point numbers.",
+                        );
+                    }
+                    match whole.parse::<i64>() {
+                        Ok(n) => ExprKind::Int(n),
+                        Err(_) => bad(e, "This number is too large."),
+                    }
                 }
-                whole
-                    .parse::<i64>()
-                    .map(ExprKind::Int)
-                    .map_err(|_| Rich::custom(span, "this number is too large"))
             }
         })
         .boxed()
@@ -430,7 +525,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .ignore_then(kw("of"))
                 .ignore_then(sp1())
                 .ignore_then(choice((
-                    word()
+                    name()
                         .then_ignore(sp1())
                         .then(word())
                         .then_ignore(sp1())
@@ -648,7 +743,8 @@ pub fn run<'a, T>(
     let mut ctx = extra::SimpleState(LineCtx::new(line, col, text));
     let res = p.parse_with_state(text, &mut ctx);
     match res.into_result() {
-        Ok(v) => Ok(v),
+        Ok(v) if ctx.0.problems.is_empty() => Ok(v),
+        Ok(_) => Err((ctx.0, Vec::new())),
         Err(errs) => Err((ctx.0, errs)),
     }
 }
@@ -971,6 +1067,24 @@ mod tests {
             panic!()
         };
         assert_eq!(rhs.span, Span::new(7, 26, 7));
+    }
+
+    #[test]
+    fn a_number_followed_by_a_keyword_is_not_a_unit_typo() {
+        let p = expr();
+        for src in [
+            "a > 3 and b",
+            "x = 1 or y",
+            "n < 5 else",
+            "7 in rows",
+            "2 as x",
+        ] {
+            let q = p.clone().then_ignore(any().repeated()).boxed();
+            match run(&q, src, 1, 1) {
+                Ok(_) => {}
+                Err((ctx, e)) => panic!("{src}: problems {:?} errors {e:?}", ctx.problems),
+            }
+        }
     }
 
     #[test]

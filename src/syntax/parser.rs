@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 use chumsky::error::{Rich, RichPattern, RichReason};
 
-use crate::diag::{Diagnostic, Span};
+use crate::diag::{did_you_mean, Diagnostic, Span};
 use crate::syntax::ast::*;
 use crate::syntax::lexer::{lex, Line, LineKind};
 
@@ -21,6 +21,29 @@ pub mod stmt;
 use expr::{run, LineCtx, P};
 use heading::*;
 use stmt::Head;
+
+/// First words of the blocks an agent may have.
+const BLOCK_WORDS: &[&str] = &["Every", "When", "On", "Do", "Rust"];
+
+/// Words that start a statement (a near miss gets a suggestion).
+const STATEMENT_WORDS: &[&str] = &[
+    "for",
+    "if",
+    "else",
+    "stop",
+    "do",
+    "ask",
+    "guard",
+    "set",
+    "return",
+    "respond",
+    "read",
+    "try",
+    "parallel",
+    "append",
+    "print",
+    "otherwise",
+];
 
 // Diagnostic codes owned by the parser (the lexer owns E001-E004).
 const E_UNKNOWN_PROP: &str = "E010";
@@ -121,12 +144,14 @@ struct Fence {
 
 struct Node<'l> {
     line: &'l Line,
+    comments: Vec<String>,
     kids: Vec<Node<'l>>,
     fence: Option<Fence>,
 }
 
 struct Prop<'n, 'l> {
     key: Ident,
+    comments: Vec<String>,
     value: &'l str,
     line: u32,
     col: u32,
@@ -144,6 +169,8 @@ struct Builder<'l> {
     bad_lines: HashSet<u32>,
     /// A property of the declaration being built was rejected, so a "missing" report would be noise.
     rejected_prop: bool,
+    /// Plain comments waiting for the next node.
+    pending: Vec<String>,
 }
 
 fn line_span(l: &Line) -> Span {
@@ -160,6 +187,7 @@ impl<'l> Builder<'l> {
             hoisted: Vec::new(),
             bad_lines: HashSet::new(),
             rejected_prop: false,
+            pending: Vec::new(),
         }
     }
 
@@ -181,18 +209,83 @@ impl<'l> Builder<'l> {
         match run(pick(&self.g), text, line, col) {
             Ok(v) => Some(v),
             Err((ctx, errs)) => {
-                if let Some(e) = errs.first() {
-                    self.diags.push(rich_diag(self.file, &ctx, e));
+                if !self.report_problems(&ctx) {
+                    if let Some(e) = errs.first() {
+                        self.diags.push(rich_diag(self.file, &ctx, e));
+                    }
                 }
                 None
             }
         }
     }
 
+    /// Report the mistakes the grammar flagged itself (they carry the best wording).
+    fn report_problems(&mut self, ctx: &LineCtx) -> bool {
+        for p in &ctx.problems {
+            let d = Diagnostic::error(E_SYNTAX, self.file, p.span, p.message.clone())
+                .with_did_you_mean(p.did_you_mean.clone());
+            self.diags.push(d);
+        }
+        !ctx.problems.is_empty()
+    }
+
+    /// A statement line that did not parse: look for the likely cause before falling back to the
+    /// generic message.
+    fn statement_error(&mut self, ctx: &LineCtx, errs: &[Rich<'_, char>]) {
+        if self.report_problems(ctx) {
+            return;
+        }
+        let words = words_of(ctx);
+        let first = words.first().cloned();
+        if let Some((w, span)) = first {
+            let ends_in_colon = ctx.text.trim_end().ends_with(':');
+            let needs_colon =
+                matches!(w.as_str(), "for" | "if" | "else" | "otherwise" | "parallel");
+            if needs_colon && !ends_in_colon {
+                self.diags.push(missing_colon(self.file, ctx));
+                return;
+            }
+            if w == "ask" {
+                if let Some((m, mspan)) = words.get(1) {
+                    let m = m.trim_end_matches(':');
+                    if m != "model" {
+                        let mut mspan = *mspan;
+                        mspan.len = m.chars().count() as u32;
+                        let d = Diagnostic::error(
+                            E_SYNTAX,
+                            self.file,
+                            mspan,
+                            format!("Unknown word \"{m}\" after \"ask\". The statement is \"ask model: ...\"."),
+                        )
+                        .suggesting(m, ["model"]);
+                        self.diags.push(d);
+                        return;
+                    }
+                }
+            }
+            if !STATEMENT_WORDS.contains(&w.as_str()) {
+                if let Some(dym) = did_you_mean(&w, STATEMENT_WORDS.iter().copied()) {
+                    let d = Diagnostic::error(
+                        E_SYNTAX,
+                        self.file,
+                        span,
+                        format!("Unknown statement \"{w}\"."),
+                    )
+                    .with_did_you_mean(Some(dym));
+                    self.diags.push(d);
+                    return;
+                }
+            }
+        }
+        if let Some(e) = errs.first() {
+            self.diags.push(rich_diag(self.file, ctx, e));
+        }
+    }
+
     // ------------------------------------------------------------------ file level
 
     fn file(&mut self, lines: &'l [Line]) -> File {
-        let (docs, file_doc) = collect_docs(lines);
+        let (docs, file_doc, doc_lines) = collect_docs(lines);
         self.docs = docs;
         let mut file = File {
             path: self.file.to_string(),
@@ -203,7 +296,11 @@ impl<'l> Builder<'l> {
 
         let live: Vec<&'l Line> = lines
             .iter()
-            .filter(|l| !matches!(l.kind, LineKind::Blank | LineKind::Comment))
+            .filter(|l| match l.kind {
+                LineKind::Blank => false,
+                LineKind::Comment => !doc_lines.contains(&l.line_no),
+                _ => true,
+            })
             .collect();
 
         // Group into chunks that start at each level-1 heading.
@@ -214,6 +311,8 @@ impl<'l> Builder<'l> {
                 chunks.push((l, Vec::new()));
             } else if let Some((_, body)) = chunks.last_mut() {
                 body.push(l);
+            } else if l.kind == LineKind::Comment {
+                // a comment before the first heading that documents nothing
             } else if !stray_reported {
                 stray_reported = true;
                 self.error(
@@ -341,8 +440,16 @@ impl<'l> Builder<'l> {
     /// Build the statement/property tree for `lines` starting at `pos` with the given indent.
     fn build(&mut self, lines: &[&'l Line], pos: &mut usize, level: u32) -> Vec<Node<'l>> {
         let mut out = Vec::new();
+        if level == 0 {
+            self.pending.clear();
+        }
         while *pos < lines.len() {
             let l = lines[*pos];
+            if l.kind == LineKind::Comment {
+                self.pending.push(l.text.clone());
+                *pos += 1;
+                continue;
+            }
             if l.indent < level && !matches!(l.kind, LineKind::FenceBody | LineKind::FenceClose) {
                 break;
             }
@@ -371,6 +478,7 @@ impl<'l> Builder<'l> {
                 }
                 out.push(Node {
                     line: l,
+                    comments: Vec::new(),
                     kids: Vec::new(),
                     fence: Some(Fence {
                         lang: lang.clone(),
@@ -380,12 +488,17 @@ impl<'l> Builder<'l> {
                 });
                 continue;
             }
+            let comments = std::mem::take(&mut self.pending);
             let kids = self.build(lines, pos, l.indent.max(level) + 1);
             out.push(Node {
                 line: l,
+                comments,
                 kids,
                 fence: None,
             });
+        }
+        if level == 0 {
+            self.pending.clear();
         }
         out
     }
@@ -503,6 +616,7 @@ impl<'l> Builder<'l> {
             let value_col = n.line.col + n.line.text[..range.start].chars().count() as u32;
             out.push(Prop {
                 key,
+                comments: n.comments.clone(),
                 value,
                 line: n.line.line_no,
                 col: value_col,
@@ -564,6 +678,7 @@ impl<'l> Builder<'l> {
             {
                 fields.push(Field {
                     span: line_span(n.line),
+                    comments: n.comments.clone(),
                     name: fname,
                     ty,
                 });
@@ -605,6 +720,7 @@ impl<'l> Builder<'l> {
             (true, Some(for_record), Some(when)) => Some(Decl::Rule(Rule {
                 span,
                 doc,
+                prop_comments: prop_comments(&props),
                 name,
                 for_record,
                 when,
@@ -630,6 +746,7 @@ impl<'l> Builder<'l> {
         Some(Decl::Constant(Constant {
             span,
             doc,
+            prop_comments: prop_comments(&props),
             name,
             value,
         }))
@@ -703,6 +820,24 @@ impl<'l> Builder<'l> {
                 self.rust_block(h2, &lines, Some(name.clone()));
                 continue;
             }
+            if let Some(w) = &word {
+                if !BLOCK_WORDS.iter().any(|k| k.eq_ignore_ascii_case(w)) {
+                    let span = Span::new(h2.line_no, h2.col, w.chars().count() as u32);
+                    let d = Diagnostic::error(
+                        E_SYNTAX,
+                        self.file,
+                        span,
+                        format!("Unknown block heading \"{w}\"."),
+                    )
+                    .with_did_you_mean(did_you_mean(&capitalize(w), BLOCK_WORDS.iter().copied()))
+                    .with_help(format!(
+                        "A block starts with one of: {}.",
+                        BLOCK_WORDS.join(", ")
+                    ));
+                    self.diags.push(d);
+                    continue;
+                }
+            }
             let Some(trigger) = self.parse(|g| &g.trigger, &h2.text, h2.line_no, h2.col) else {
                 continue;
             };
@@ -720,6 +855,7 @@ impl<'l> Builder<'l> {
         Some(Decl::Agent(Agent {
             span,
             doc,
+            prop_comments: prop_comments(&props),
             name,
             model: model?,
             tools,
@@ -798,6 +934,7 @@ impl<'l> Builder<'l> {
         Some(Decl::Function(Function {
             span,
             doc,
+            prop_comments: prop_comments(&props),
             name,
             params,
             out,
@@ -856,6 +993,7 @@ impl<'l> Builder<'l> {
         Some(Decl::Service(Service {
             span,
             doc,
+            prop_comments: prop_comments(&props),
             name,
             listen,
             state,
@@ -926,6 +1064,7 @@ impl<'l> Builder<'l> {
         Some(Decl::Command(Command {
             span,
             doc,
+            prop_comments: prop_comments(&props),
             name,
             args,
             body: body?,
@@ -1012,6 +1151,7 @@ impl<'l> Builder<'l> {
         Some(Decl::Binding(Binding {
             span,
             doc,
+            prop_comments: prop_comments(&props),
             name,
             crate_name: crate_name?,
             effect: effect?,
@@ -1104,6 +1244,7 @@ impl<'l> Builder<'l> {
             self.hoisted.push(Decl::RustBlock(RustBlock {
                 span: line_span(h2),
                 doc: self.docs.get(&h2.line_no).cloned(),
+                prop_comments: prop_comments(&props),
                 name,
                 parent,
                 params,
@@ -1117,11 +1258,17 @@ impl<'l> Builder<'l> {
     // ------------------------------------------------------------------ statements
 
     fn heads(&mut self, nodes: &[Node<'l>]) -> Vec<Option<Head>> {
-        nodes
-            .iter()
-            .map(|n| match n.line.kind {
+        let mut out = Vec::new();
+        for n in nodes {
+            let head = match n.line.kind {
                 LineKind::Item | LineKind::Control => {
-                    self.parse(|g| &g.head, &n.line.text, n.line.line_no, n.line.col)
+                    match run(&self.g.head, &n.line.text, n.line.line_no, n.line.col) {
+                        Ok(h) => Some(h),
+                        Err((ctx, errs)) => {
+                            self.statement_error(&ctx, &errs);
+                            None
+                        }
+                    }
                 }
                 _ => {
                     let msg = if n.fence.is_some() {
@@ -1132,8 +1279,10 @@ impl<'l> Builder<'l> {
                     self.error(E_STRUCTURE, line_span(n.line), msg);
                     None
                 }
-            })
-            .collect()
+            };
+            out.push(head);
+        }
+        out
     }
 
     fn stmts(&mut self, nodes: &[Node<'l>]) -> Vec<Stmt> {
@@ -1143,6 +1292,7 @@ impl<'l> Builder<'l> {
         while i < nodes.len() {
             let node = &nodes[i];
             let span = line_span(node.line);
+            let before = out.len();
             let Some(head) = &heads[i] else {
                 i += 1;
                 continue;
@@ -1156,6 +1306,7 @@ impl<'l> Builder<'l> {
                     let body = self.stmts(&node.kids);
                     out.push(Stmt {
                         span,
+                        comments: Vec::new(),
                         kind: StmtKind::ForEach {
                             filter_rule: filter_rule.clone(),
                             var: var.clone(),
@@ -1185,7 +1336,11 @@ impl<'l> Builder<'l> {
                         },
                         _ => unreachable!(),
                     };
-                    out.push(Stmt { span, kind });
+                    out.push(Stmt {
+                        span,
+                        comments: Vec::new(),
+                        kind,
+                    });
                 }
                 Head::Else => self.error(
                     E_STRUCTURE,
@@ -1201,6 +1356,7 @@ impl<'l> Builder<'l> {
                     let body = self.stmts(&node.kids);
                     out.push(Stmt {
                         span,
+                        comments: Vec::new(),
                         kind: StmtKind::Parallel(body),
                     });
                 }
@@ -1227,12 +1383,16 @@ impl<'l> Builder<'l> {
                     }
                     out.push(Stmt {
                         span,
+                        comments: Vec::new(),
                         kind: StmtKind::Try {
                             stmt: Box::new(inner.clone()),
                             otherwise,
                         },
                     });
                 }
+            }
+            if out.len() > before {
+                out[before].comments = node.comments.clone();
             }
             i += 1;
         }
@@ -1244,8 +1404,9 @@ impl<'l> Builder<'l> {
 
 /// Doc comments: a run of `>` lines directly above a heading documents it. A run at the top of
 /// the file that is separated from what follows by a blank line documents the file.
-fn collect_docs(lines: &[Line]) -> (HashMap<u32, String>, Option<String>) {
+fn collect_docs(lines: &[Line]) -> (HashMap<u32, String>, Option<String>, HashSet<u32>) {
     let mut docs = HashMap::new();
+    let mut used = HashSet::new();
     let mut file_doc = None;
     let mut seen_heading = false;
     let mut i = 0;
@@ -1260,12 +1421,19 @@ fn collect_docs(lines: &[Line]) -> (HashMap<u32, String>, Option<String>) {
                 .map(|l| l.text.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
-            match lines.get(i).map(|l| &l.kind) {
+            let is_doc = match lines.get(i).map(|l| &l.kind) {
                 Some(LineKind::Heading1 | LineKind::Heading2) => {
                     docs.insert(lines[i].line_no, text);
+                    true
                 }
-                _ if !seen_heading && file_doc.is_none() => file_doc = Some(text),
-                _ => {}
+                _ if !seen_heading && file_doc.is_none() => {
+                    file_doc = Some(text);
+                    true
+                }
+                _ => false,
+            };
+            if is_doc {
+                used.extend(lines[start..i].iter().map(|l| l.line_no));
             }
             continue;
         }
@@ -1274,7 +1442,7 @@ fn collect_docs(lines: &[Line]) -> (HashMap<u32, String>, Option<String>) {
         }
         i += 1;
     }
-    (docs, file_doc)
+    (docs, file_doc, used)
 }
 
 // ---------------------------------------------------------------------------------- errors
@@ -1292,43 +1460,120 @@ fn word_around(text: &str, at: usize) -> (usize, usize) {
     (start, end)
 }
 
+/// The words of a line with their file spans.
+fn words_of(ctx: &LineCtx) -> Vec<(String, Span)> {
+    use chumsky::span::SimpleSpan;
+    let mut out = Vec::new();
+    let mut start = None;
+    let text = ctx.text.as_str();
+    for (i, c) in text
+        .char_indices()
+        .chain(std::iter::once((text.len(), ' ')))
+    {
+        match (c.is_whitespace(), start) {
+            (false, None) => start = Some(i),
+            (true, Some(s)) => {
+                out.push((text[s..i].to_string(), ctx.span(SimpleSpan::from(s..i))));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn missing_colon(file: &str, ctx: &LineCtx) -> Diagnostic {
+    let text = ctx.text.trim_end();
+    let col = ctx.col + text.chars().count() as u32;
+    Diagnostic::error(
+        E_SYNTAX,
+        file,
+        Span::new(ctx.line, col, 1),
+        "This line is missing the \":\" at its end.",
+    )
+    .with_help(
+        "A line that has statements under it ends with a colon, like \"for each row in rows:\".",
+    )
+}
+
+/// Words and symbols that only ever continue an expression; listing them as "expected" is noise.
+const NOISE_WORDS: &[&str] = &[
+    "and", "or", "not", "is", "matches", "length", "else", "in", "as", "where", "to", "of", "with",
+    "some", "empty",
+];
+
+/// Put a word in quotes (backticks when it already contains a quote).
+fn quote(word: &str) -> String {
+    if word.contains('"') {
+        format!("`{word}`")
+    } else {
+        format!("\"{word}\"")
+    }
+}
+
 /// Turn a chumsky error into a plain-language diagnostic.
 fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
     use chumsky::span::SimpleSpan;
     let text = ctx.text.as_str();
     let start = e.span().start.min(text.len());
     let (message, range) = match e.reason() {
-        RichReason::Custom(m) => {
-            let mut m = m.to_string();
-            if !m.ends_with('.') {
-                m.push('.');
-            }
-            (m, *e.span())
-        }
+        RichReason::Custom(m) => (sentence(m), *e.span()),
         RichReason::ExpectedFound { .. } => {
             let mut expected: Vec<String> = Vec::new();
+            let mut at_end = false;
             for p in e.expected() {
                 let s = match p {
-                    RichPattern::Token(t) => format!("\"{}\"", **t),
-                    RichPattern::Label(l) => l.to_string(),
-                    RichPattern::EndOfInput => "the end of the line".to_string(),
+                    RichPattern::Token(t) => {
+                        let c: char = **t;
+                        if c.is_alphanumeric() || matches!(c, '"' | ':' | ',') {
+                            quote(&c.to_string())
+                        } else {
+                            continue; // operators and spacing
+                        }
+                    }
+                    RichPattern::Label(l) => {
+                        let l: &str = l;
+                        if l.contains("whitespace") || NOISE_WORDS.contains(&l) {
+                            continue;
+                        }
+                        if l == "identifier" {
+                            "a name".to_string()
+                        } else if l.chars().all(|c| c.is_ascii_lowercase()) {
+                            quote(l)
+                        } else {
+                            l.to_string()
+                        }
+                    }
+                    RichPattern::EndOfInput => {
+                        at_end = true;
+                        continue;
+                    }
                     _ => continue,
                 };
                 if !expected.contains(&s) {
                     expected.push(s);
                 }
             }
-            if e.found().is_some() {
-                let (ws, we) = word_around(text, start);
-                let (ws, we) = if ws < start { (start, we) } else { (ws, we) };
-                let word = &text[ws..we];
+            // The offending word: skip spaces so we never point at nothing.
+            let mut ws = start;
+            while ws < text.len() && text[ws..].starts_with(char::is_whitespace) {
+                ws += text[ws..].chars().next().map_or(1, char::len_utf8);
+            }
+            let found_word = (e.found().is_some() && ws < text.len()).then(|| {
+                let (_, we) = word_around(text, ws);
+                (ws, we)
+            });
+            if let Some((ws, we)) = found_word {
+                let q = quote(&text[ws..we]);
                 let m = if expected.is_empty() {
-                    format!("I did not expect \"{word}\" here.")
+                    let tail = if at_end {
+                        " The line should end before it."
+                    } else {
+                        ""
+                    };
+                    format!("I did not expect {q} here.{tail}")
                 } else {
-                    format!(
-                        "Expected {} here, but found \"{word}\".",
-                        join_or(&expected)
-                    )
+                    format!("Expected {} here, but found {q}.", join_or(&expected))
                 };
                 (m, SimpleSpan::from(ws..we))
             } else if !expected.is_empty() {
@@ -1337,7 +1582,7 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
             } else {
                 // The parser consumed a word and then gave up on it.
                 let (ws, we) = word_around(text, start.saturating_sub(1));
-                let m = format!("I could not understand \"{}\" here.", &text[ws..we]);
+                let m = format!("I could not understand {} here.", quote(&text[ws..we]));
                 (m, SimpleSpan::from(ws..we))
             }
         }
@@ -1347,6 +1592,26 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
         span.len = 1;
     }
     Diagnostic::error(E_SYNTAX, file, span, message)
+}
+
+/// A custom message as a sentence: capital first letter, full stop at the end.
+fn sentence(m: &impl ToString) -> String {
+    let mut m = capitalize(&m.to_string());
+    if !m.ends_with('.') {
+        m.push('.');
+    }
+    m
+}
+
+fn prop_comments(props: &[Prop<'_, '_>]) -> Vec<PropComment> {
+    props
+        .iter()
+        .filter(|p| !p.comments.is_empty())
+        .map(|p| PropComment {
+            key: p.key.name.clone(),
+            comments: p.comments.clone(),
+        })
+        .collect()
 }
 
 fn capitalize(s: &str) -> String {

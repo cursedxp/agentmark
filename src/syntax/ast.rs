@@ -9,6 +9,13 @@
 use crate::diag::Span;
 use serde::Serialize;
 
+/// Plain `>` comment lines directly above a `- key: value` property of a declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PropComment {
+    pub key: String,
+    pub comments: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ident {
     pub name: String,
@@ -110,6 +117,9 @@ pub struct Record {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Field {
     pub span: Span,
+    /// Plain `>` comment lines directly above the field.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<String>,
     pub name: Ident,
     /// `None` means "infer from the field name" (SPEC 2.1).
     pub ty: Option<TypeExpr>,
@@ -119,6 +129,8 @@ pub struct Field {
 pub struct Rule {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     pub for_record: Ident,
     pub when: Expr,
@@ -128,6 +140,8 @@ pub struct Rule {
 pub struct Agent {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     pub model: Spanned<String>,
     pub tools: Vec<Ident>,
@@ -185,6 +199,8 @@ pub struct Param {
 pub struct Function {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     pub params: Vec<Param>,
     pub out: Option<TypeExpr>,
@@ -196,6 +212,8 @@ pub struct Function {
 pub struct Service {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     pub listen: Option<Spanned<String>>,
     pub state: Option<Ident>,
@@ -219,6 +237,8 @@ pub struct Route {
 pub struct Command {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     pub args: Vec<Param>,
     /// Statements of the `## Run` block.
@@ -229,6 +249,8 @@ pub struct Command {
 pub struct Binding {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     pub crate_name: Ident,
     pub effect: Spanned<Effect>,
@@ -266,6 +288,8 @@ pub struct RustCode {
 pub struct RustBlock {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     /// Name of the declaration the block was written under, if any.
     pub parent: Option<Ident>,
@@ -279,6 +303,8 @@ pub struct RustBlock {
 pub struct Constant {
     pub span: Span,
     pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
     pub name: Ident,
     pub value: Expr,
 }
@@ -295,6 +321,9 @@ pub struct Run {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Stmt {
     pub span: Span,
+    /// Plain `>` comment lines directly above the statement (not documentation).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<String>,
     pub kind: StmtKind,
 }
 
