@@ -69,6 +69,16 @@ impl LintConfig {
         };
         // Syntax first, so a broken file gets TOML's own message.
         src.parse::<toml::Table>().map_err(|e| err(e, None))?;
+        let shape: RawShape = toml::from_str(src).map_err(|e| err(e, None))?;
+        if let Some(l) = shape.lint.filter(|l| !l.get_ref().is_table()) {
+            let r = l.span();
+            return Err(Box::new(Diagnostic::error(
+                "lint-config",
+                path,
+                at(r.start, r.len()),
+                "[lint] must be a table, like [lint] with deny = [\"missing-doc\"] under it.",
+            )));
+        }
         let doc: RawDoc = toml::from_str(src).map_err(|e| {
             err(e, Some("[lint] deny must be a list of rule names, like [\"missing-doc\"]."))
         })?;
@@ -94,6 +104,11 @@ impl LintConfig {
         }
         Ok(cfg)
     }
+}
+
+#[derive(serde::Deserialize)]
+struct RawShape {
+    lint: Option<toml::Spanned<toml::Value>>,
 }
 
 #[derive(serde::Deserialize)]

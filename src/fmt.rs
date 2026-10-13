@@ -502,7 +502,11 @@ impl Printer {
                 Some((_, i)) => {
                     // Above `else:` / `otherwise:` the comment lines up with that line.
                     let indent = match self.out.get(i + 1) {
-                        Some(n) if n.text == "otherwise:" || n.text == "- else:" => n.indent,
+                        Some(n) if n.text == "otherwise:" || n.text == "- else:" => {
+                            // never shallower than that line, but a comment that trails the
+                            // body stays in it
+                            o.indent.min(self.out[i].indent).max(n.indent)
+                        }
                         _ => o.indent.min(self.out[i].indent),
                     };
                     after.entry(i).or_default().push(Out {

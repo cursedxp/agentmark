@@ -329,6 +329,7 @@ fn a_comment_above_otherwise_or_else_lines_up_with_it() {
     - log: \"no\"
 - if a:
   - log: \"1\"
+  > trailing in if
 > above else
 - else:
   - log: \"2\"

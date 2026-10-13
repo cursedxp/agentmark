@@ -274,6 +274,9 @@ fn config_errors_are_plain_and_suggest_the_rule() {
     let toml = "# deny nothing\n[lint]\ndeny = [\"missing-doc\", \"magic-valu\"]\n";
     let d = LintConfig::from_toml_str(toml, "agentmark.toml").unwrap_err();
     assert_eq!((d.span.line, d.span.col, d.span.len), (3, 25, 10));
+    let d = LintConfig::from_toml_str("name = 1\nlint = 5\n", "agentmark.toml").unwrap_err();
+    assert!(d.message.contains("[lint] must be a table"));
+    assert_eq!((d.span.line, d.span.col), (2, 8));
     let d = LintConfig::from_toml_str("[lint\n", "agentmark.toml").unwrap_err();
     assert_eq!(d.span.line, 1);
 }
