@@ -1,0 +1,125 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/01-invoice-chaser/rules/overdue.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 35
+    doc: ~
+    kind:
+      File:
+        path: "../records/invoice.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+decls:
+  - Rule:
+      span:
+        line: 5
+        col: 3
+        len: 13
+      doc: Unpaid and more than the grace period past due.
+      name:
+        name: overdue
+        span:
+          line: 5
+          col: 9
+          len: 7
+      for_record:
+        name: Invoice
+        span:
+          line: 6
+          col: 8
+          len: 7
+      when:
+        span:
+          line: 7
+          col: 9
+          len: 47
+        kind:
+          Binary:
+            op: And
+            lhs:
+              span:
+                line: 7
+                col: 9
+                len: 26
+              kind:
+                Binary:
+                  op: Gt
+                  lhs:
+                    span:
+                      line: 7
+                      col: 9
+                      len: 5
+                    kind: Today
+                  rhs:
+                    span:
+                      line: 7
+                      col: 17
+                      len: 18
+                    kind:
+                      Binary:
+                        op: Add
+                        lhs:
+                          span:
+                            line: 7
+                            col: 17
+                            len: 3
+                          kind:
+                            Path:
+                              - name: due
+                                span:
+                                  line: 7
+                                  col: 17
+                                  len: 3
+                        rhs:
+                          span:
+                            line: 7
+                            col: 23
+                            len: 12
+                          kind:
+                            Path:
+                              - name: grace_period
+                                span:
+                                  line: 7
+                                  col: 23
+                                  len: 12
+            rhs:
+              span:
+                line: 7
+                col: 40
+                len: 16
+              kind:
+                Binary:
+                  op: Ne
+                  lhs:
+                    span:
+                      line: 7
+                      col: 40
+                      len: 6
+                    kind:
+                      Path:
+                        - name: status
+                          span:
+                            line: 7
+                            col: 40
+                            len: 6
+                  rhs:
+                    span:
+                      line: 7
+                      col: 50
+                      len: 6
+                    kind:
+                      Str: paid

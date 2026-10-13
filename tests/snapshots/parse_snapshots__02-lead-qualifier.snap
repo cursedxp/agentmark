@@ -1,0 +1,535 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/02-lead-qualifier.agent.md
+doc: ~
+imports: []
+decls:
+  - Record:
+      span:
+        line: 1
+        col: 3
+        len: 12
+      doc: ~
+      name:
+        name: Lead
+        span:
+          line: 1
+          col: 11
+          len: 4
+      fields:
+        - span:
+            line: 2
+            col: 3
+            len: 8
+          name:
+            name: id
+            span:
+              line: 2
+              col: 3
+              len: 2
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 2
+              col: 7
+              len: 4
+        - span:
+            line: 3
+            col: 3
+            len: 13
+          name:
+            name: company
+            span:
+              line: 3
+              col: 3
+              len: 7
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 3
+              col: 12
+              len: 4
+        - span:
+            line: 4
+            col: 3
+            len: 13
+          name:
+            name: message
+            span:
+              line: 4
+              col: 3
+              len: 7
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 4
+              col: 12
+              len: 4
+        - span:
+            line: 5
+            col: 3
+            len: 11
+          name:
+            name: email
+            span:
+              line: 5
+              col: 3
+              len: 5
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 5
+              col: 10
+              len: 4
+        - span:
+            line: 6
+            col: 3
+            len: 16
+          name:
+            name: score
+            span:
+              line: 6
+              col: 3
+              len: 5
+          ty:
+            kind:
+              Maybe:
+                kind:
+                  Named: int
+                span:
+                  line: 6
+                  col: 16
+                  len: 3
+            span:
+              line: 6
+              col: 10
+              len: 9
+  - Record:
+      span:
+        line: 8
+        col: 3
+        len: 21
+      doc: ~
+      name:
+        name: Qualification
+        span:
+          line: 8
+          col: 11
+          len: 13
+      fields:
+        - span:
+            line: 9
+            col: 3
+            len: 10
+          name:
+            name: score
+            span:
+              line: 9
+              col: 3
+              len: 5
+          ty:
+            kind:
+              Named: int
+            span:
+              line: 9
+              col: 10
+              len: 3
+        - span:
+            line: 10
+            col: 3
+            len: 12
+          name:
+            name: reason
+            span:
+              line: 10
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 10
+              col: 11
+              len: 4
+  - Agent:
+      span:
+        line: 12
+        col: 3
+        len: 21
+      doc: ~
+      name:
+        name: lead-qualifier
+        span:
+          line: 12
+          col: 10
+          len: 14
+      model:
+        value: "claude:haiku"
+        span:
+          line: 13
+          col: 10
+          len: 12
+      tools:
+        - name: crm
+          span:
+            line: 14
+            col: 10
+            len: 3
+        - name: email
+          span:
+            line: 14
+            col: 15
+            len: 5
+        - name: log
+          span:
+            line: 14
+            col: 22
+            len: 3
+      memory: ~
+      timeout: ~
+      blocks:
+        - span:
+            line: 16
+            col: 4
+            len: 22
+          doc: ~
+          trigger:
+            OnEvent:
+              tool:
+                name: crm
+                span:
+                  line: 16
+                  col: 9
+                  len: 3
+              event:
+                name: lead
+                span:
+                  line: 16
+                  col: 22
+                  len: 4
+          label: When crm receives lead
+          body:
+            - span:
+                line: 17
+                col: 3
+                len: 131
+              kind:
+                AskModel:
+                  with:
+                    span:
+                      line: 17
+                      col: 18
+                      len: 4
+                    kind:
+                      Path:
+                        - name: lead
+                          span:
+                            line: 17
+                            col: 18
+                            len: 4
+                  prompt:
+                    span:
+                      line: 17
+                      col: 24
+                      len: 88
+                    kind:
+                      Str: Score this inbound lead from 1 to 10 for a web agency and explain why in one sentence.
+                  as_record:
+                    name: Qualification
+                    span:
+                      line: 17
+                      col: 116
+                      len: 13
+                  into:
+                    name: q
+                    span:
+                      line: 17
+                      col: 133
+                      len: 1
+            - span:
+                line: 18
+                col: 3
+                len: 30
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 18
+                      col: 10
+                      len: 23
+                    kind:
+                      Matches:
+                        expr:
+                          span:
+                            line: 18
+                            col: 10
+                            len: 1
+                          kind:
+                            Path:
+                              - name: q
+                                span:
+                                  line: 18
+                                  col: 10
+                                  len: 1
+                        record:
+                          name: Qualification
+                          span:
+                            line: 18
+                            col: 20
+                            len: 13
+                  else_: ~
+            - span:
+                line: 19
+                col: 3
+                len: 32
+              kind:
+                ToolCall:
+                  tool:
+                    name: crm
+                    span:
+                      line: 19
+                      col: 3
+                      len: 3
+                  verb:
+                    name: update
+                    span:
+                      line: 19
+                      col: 7
+                      len: 6
+                  target:
+                    - Word:
+                        name: lead
+                        span:
+                          line: 19
+                          col: 14
+                          len: 4
+                  payload:
+                    Assign:
+                      - field:
+                          name: score
+                          span:
+                            line: 19
+                            col: 20
+                            len: 5
+                        value:
+                          span:
+                            line: 19
+                            col: 28
+                            len: 7
+                          kind:
+                            Path:
+                              - name: q
+                                span:
+                                  line: 19
+                                  col: 28
+                                  len: 1
+                              - name: score
+                                span:
+                                  line: 19
+                                  col: 30
+                                  len: 5
+                  into: ~
+                  via_do: false
+            - span:
+                line: 20
+                col: 3
+                len: 16
+              kind:
+                If:
+                  cond:
+                    span:
+                      line: 20
+                      col: 6
+                      len: 12
+                    kind:
+                      Binary:
+                        op: Ge
+                        lhs:
+                          span:
+                            line: 20
+                            col: 6
+                            len: 7
+                          kind:
+                            Path:
+                              - name: q
+                                span:
+                                  line: 20
+                                  col: 6
+                                  len: 1
+                              - name: score
+                                span:
+                                  line: 20
+                                  col: 8
+                                  len: 5
+                        rhs:
+                          span:
+                            line: 20
+                            col: 17
+                            len: 1
+                          kind:
+                            Int: 7
+                  then:
+                    - span:
+                        line: 21
+                        col: 5
+                        len: 96
+                      kind:
+                        ToolCall:
+                          tool:
+                            name: email
+                            span:
+                              line: 21
+                              col: 5
+                              len: 5
+                          verb:
+                            name: send
+                            span:
+                              line: 21
+                              col: 11
+                              len: 4
+                          target:
+                            - Word:
+                                name: address
+                                span:
+                                  line: 21
+                                  col: 16
+                                  len: 7
+                            - Value:
+                                span:
+                                  line: 21
+                                  col: 24
+                                  len: 22
+                                kind:
+                                  Str: sales@optimotion.dev
+                          payload:
+                            Value:
+                              span:
+                                line: 21
+                                col: 48
+                                len: 53
+                              kind:
+                                Interp:
+                                  - Text: "Hot lead: "
+                                  - Expr:
+                                      span:
+                                        line: 21
+                                        col: 60
+                                        len: 12
+                                      kind:
+                                        Path:
+                                          - name: lead
+                                            span:
+                                              line: 21
+                                              col: 60
+                                              len: 4
+                                          - name: company
+                                            span:
+                                              line: 21
+                                              col: 65
+                                              len: 7
+                                  - Text: " ("
+                                  - Expr:
+                                      span:
+                                        line: 21
+                                        col: 76
+                                        len: 7
+                                      kind:
+                                        Path:
+                                          - name: q
+                                            span:
+                                              line: 21
+                                              col: 76
+                                              len: 1
+                                          - name: score
+                                            span:
+                                              line: 21
+                                              col: 78
+                                              len: 5
+                                  - Text: "/10). "
+                                  - Expr:
+                                      span:
+                                        line: 21
+                                        col: 91
+                                        len: 8
+                                      kind:
+                                        Path:
+                                          - name: q
+                                            span:
+                                              line: 21
+                                              col: 91
+                                              len: 1
+                                          - name: reason
+                                            span:
+                                              line: 21
+                                              col: 93
+                                              len: 6
+                          into: ~
+                          via_do: false
+                  else_:
+                    - span:
+                        line: 23
+                        col: 5
+                        len: 54
+                      kind:
+                        ToolCall:
+                          tool:
+                            name: log
+                            span:
+                              line: 23
+                              col: 5
+                              len: 3
+                          verb: ~
+                          target: []
+                          payload:
+                            Value:
+                              span:
+                                line: 23
+                                col: 10
+                                len: 49
+                              kind:
+                                Interp:
+                                  - Text: "Lead "
+                                  - Expr:
+                                      span:
+                                        line: 23
+                                        col: 17
+                                        len: 12
+                                      kind:
+                                        Path:
+                                          - name: lead
+                                            span:
+                                              line: 23
+                                              col: 17
+                                              len: 4
+                                          - name: company
+                                            span:
+                                              line: 23
+                                              col: 22
+                                              len: 7
+                                  - Text: " scored "
+                                  - Expr:
+                                      span:
+                                        line: 23
+                                        col: 39
+                                        len: 7
+                                      kind:
+                                        Path:
+                                          - name: q
+                                            span:
+                                              line: 23
+                                              col: 39
+                                              len: 1
+                                          - name: score
+                                            span:
+                                              line: 23
+                                              col: 41
+                                              len: 5
+                                  - Text: ", no action"
+                          into: ~
+                          via_do: false

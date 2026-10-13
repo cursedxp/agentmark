@@ -1,0 +1,48 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/01-invoice-chaser/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 1
+        col: 3
+        len: 22
+      doc: ~
+      name:
+        name: grace_period
+        span:
+          line: 1
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 2
+          col: 10
+          len: 7
+        kind:
+          Duration:
+            amount: 14
+            unit: Day
+  - Constant:
+      span:
+        line: 4
+        col: 3
+        len: 29
+      doc: ~
+      name:
+        name: max_reminder_length
+        span:
+          line: 4
+          col: 13
+          len: 19
+      value:
+        span:
+          line: 5
+          col: 10
+          len: 3
+        kind:
+          Int: 800

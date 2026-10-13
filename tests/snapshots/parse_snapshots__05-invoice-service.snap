@@ -1,0 +1,1111 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/05-invoice-service.agent.md
+doc: "Non-agent example: an HTTP service plus a CLI command, using a crate binding.\nProves that Layer 2 + Layer 1 can build an ordinary Rust application."
+imports:
+  - span:
+      line: 4
+      col: 3
+      len: 18
+    doc: ~
+    kind:
+      Crate:
+        name:
+          name: sha2
+          span:
+            line: 4
+            col: 17
+            len: 4
+        alias: ~
+decls:
+  - Record:
+      span:
+        line: 6
+        col: 3
+        len: 15
+      doc: ~
+      name:
+        name: Invoice
+        span:
+          line: 6
+          col: 11
+          len: 7
+      fields:
+        - span:
+            line: 7
+            col: 3
+            len: 8
+          name:
+            name: id
+            span:
+              line: 7
+              col: 3
+              len: 2
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 7
+              col: 7
+              len: 4
+        - span:
+            line: 8
+            col: 3
+            len: 14
+          name:
+            name: customer
+            span:
+              line: 8
+              col: 3
+              len: 8
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 8
+              col: 13
+              len: 4
+        - span:
+            line: 9
+            col: 3
+            len: 13
+          name:
+            name: amount
+            span:
+              line: 9
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: money
+            span:
+              line: 9
+              col: 11
+              len: 5
+        - span:
+            line: 10
+            col: 3
+            len: 9
+          name:
+            name: due
+            span:
+              line: 10
+              col: 3
+              len: 3
+          ty:
+            kind:
+              Named: date
+            span:
+              line: 10
+              col: 8
+              len: 4
+        - span:
+            line: 11
+            col: 3
+            len: 12
+          name:
+            name: status
+            span:
+              line: 11
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 11
+              col: 11
+              len: 4
+  - Record:
+      span:
+        line: 13
+        col: 3
+        len: 16
+      doc: ~
+      name:
+        name: AppState
+        span:
+          line: 13
+          col: 11
+          len: 8
+      fields:
+        - span:
+            line: 14
+            col: 3
+            len: 25
+          name:
+            name: invoices
+            span:
+              line: 14
+              col: 3
+              len: 8
+          ty:
+            kind:
+              List:
+                kind:
+                  Named: Invoice
+                span:
+                  line: 14
+                  col: 21
+                  len: 7
+            span:
+              line: 14
+              col: 13
+              len: 15
+  - Function:
+      span:
+        line: 16
+        col: 3
+        len: 20
+      doc: ~
+      name:
+        name: net_amount
+        span:
+          line: 16
+          col: 13
+          len: 10
+      params:
+        - name:
+            name: invoice
+            span:
+              line: 17
+              col: 7
+              len: 7
+          ty:
+            kind:
+              Named: Invoice
+            span:
+              line: 17
+              col: 16
+              len: 7
+          default: ~
+        - name:
+            name: vat
+            span:
+              line: 17
+              col: 25
+              len: 3
+          ty:
+            kind:
+              Named: int
+            span:
+              line: 17
+              col: 30
+              len: 3
+          default: ~
+      out:
+        kind:
+          Named: money
+        span:
+          line: 18
+          col: 8
+          len: 5
+      effect:
+        value: Pure
+        span:
+          line: 19
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 20
+            col: 5
+            len: 50
+          kind:
+            Return:
+              span:
+                line: 20
+                col: 12
+                len: 43
+              kind:
+                Binary:
+                  op: Sub
+                  lhs:
+                    span:
+                      line: 20
+                      col: 12
+                      len: 14
+                    kind:
+                      Path:
+                        - name: invoice
+                          span:
+                            line: 20
+                            col: 12
+                            len: 7
+                        - name: amount
+                          span:
+                            line: 20
+                            col: 20
+                            len: 6
+                  rhs:
+                    span:
+                      line: 20
+                      col: 29
+                      len: 26
+                    kind:
+                      Binary:
+                        op: Div
+                        lhs:
+                          span:
+                            line: 20
+                            col: 29
+                            len: 20
+                          kind:
+                            Binary:
+                              op: Mul
+                              lhs:
+                                span:
+                                  line: 20
+                                  col: 29
+                                  len: 14
+                                kind:
+                                  Path:
+                                    - name: invoice
+                                      span:
+                                        line: 20
+                                        col: 29
+                                        len: 7
+                                    - name: amount
+                                      span:
+                                        line: 20
+                                        col: 37
+                                        len: 6
+                              rhs:
+                                span:
+                                  line: 20
+                                  col: 46
+                                  len: 3
+                                kind:
+                                  Path:
+                                    - name: vat
+                                      span:
+                                        line: 20
+                                        col: 46
+                                        len: 3
+                        rhs:
+                          span:
+                            line: 20
+                            col: 52
+                            len: 3
+                          kind:
+                            Int: 100
+  - RustBlock:
+      span:
+        line: 22
+        col: 4
+        len: 25
+      doc: ~
+      name:
+        name: fingerprint
+        span:
+          line: 22
+          col: 10
+          len: 11
+      parent:
+        name: net_amount
+        span:
+          line: 16
+          col: 13
+          len: 10
+      params:
+        - name:
+            name: invoice
+            span:
+              line: 23
+              col: 7
+              len: 7
+          ty:
+            kind:
+              Named: Invoice
+            span:
+              line: 23
+              col: 16
+              len: 7
+          default: ~
+      out:
+        kind:
+          Named: text
+        span:
+          line: 22
+          col: 25
+          len: 4
+      effect:
+        value: Pure
+        span:
+          line: 24
+          col: 11
+          len: 4
+      rust:
+        code: "use sha2::{Digest, Sha256};\nformat!(\"{:x}\", Sha256::digest(format!(\"{}{}\", invoice.id, invoice.amount).as_bytes()))"
+        line: 26
+  - Service:
+      span:
+        line: 30
+        col: 3
+        len: 12
+      doc: ~
+      name:
+        name: api
+        span:
+          line: 30
+          col: 12
+          len: 3
+      listen:
+        value: "0.0.0.0:8080"
+        span:
+          line: 31
+          col: 11
+          len: 12
+      state:
+        name: AppState
+        span:
+          line: 32
+          col: 10
+          len: 8
+      routes:
+        - span:
+            line: 34
+            col: 4
+            len: 18
+          doc: ~
+          method: GET
+          path: "/invoices/{id}"
+          path_params:
+            - id
+          body:
+            - span:
+                line: 35
+                col: 3
+                len: 65
+              kind:
+                Set:
+                  var:
+                    name: found
+                    span:
+                      line: 35
+                      col: 7
+                      len: 5
+                  expr:
+                    span:
+                      line: 35
+                      col: 15
+                      len: 53
+                    kind:
+                      FirstIn:
+                        var:
+                          name: invoice
+                          span:
+                            line: 35
+                            col: 21
+                            len: 7
+                        source:
+                          span:
+                            line: 35
+                            col: 32
+                            len: 14
+                          kind:
+                            Path:
+                              - name: state
+                                span:
+                                  line: 35
+                                  col: 32
+                                  len: 5
+                              - name: invoices
+                                span:
+                                  line: 35
+                                  col: 38
+                                  len: 8
+                        cond:
+                          span:
+                            line: 35
+                            col: 53
+                            len: 15
+                          kind:
+                            Binary:
+                              op: Eq
+                              lhs:
+                                span:
+                                  line: 35
+                                  col: 53
+                                  len: 10
+                                kind:
+                                  Path:
+                                    - name: invoice
+                                      span:
+                                        line: 35
+                                        col: 53
+                                        len: 7
+                                    - name: id
+                                      span:
+                                        line: 35
+                                        col: 61
+                                        len: 2
+                              rhs:
+                                span:
+                                  line: 35
+                                  col: 66
+                                  len: 2
+                                kind:
+                                  Path:
+                                    - name: id
+                                      span:
+                                        line: 35
+                                        col: 66
+                                        len: 2
+            - span:
+                line: 36
+                col: 3
+                len: 42
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 36
+                      col: 10
+                      len: 18
+                    kind:
+                      IsNotEmpty:
+                        span:
+                          line: 36
+                          col: 10
+                          len: 5
+                        kind:
+                          Path:
+                            - name: found
+                              span:
+                                line: 36
+                                col: 10
+                                len: 5
+                  else_:
+                    span:
+                      line: 36
+                      col: 34
+                      len: 11
+                    kind:
+                      Respond:
+                        status: 404
+                        body: ~
+            - span:
+                line: 37
+                col: 3
+                len: 17
+              kind:
+                Respond:
+                  status: 200
+                  body:
+                    span:
+                      line: 37
+                      col: 15
+                      len: 5
+                    kind:
+                      Path:
+                        - name: found
+                          span:
+                            line: 37
+                            col: 15
+                            len: 5
+        - span:
+            line: 39
+            col: 4
+            len: 22
+          doc: ~
+          method: GET
+          path: "/invoices/{id}/net"
+          path_params:
+            - id
+          body:
+            - span:
+                line: 40
+                col: 3
+                len: 65
+              kind:
+                Set:
+                  var:
+                    name: found
+                    span:
+                      line: 40
+                      col: 7
+                      len: 5
+                  expr:
+                    span:
+                      line: 40
+                      col: 15
+                      len: 53
+                    kind:
+                      FirstIn:
+                        var:
+                          name: invoice
+                          span:
+                            line: 40
+                            col: 21
+                            len: 7
+                        source:
+                          span:
+                            line: 40
+                            col: 32
+                            len: 14
+                          kind:
+                            Path:
+                              - name: state
+                                span:
+                                  line: 40
+                                  col: 32
+                                  len: 5
+                              - name: invoices
+                                span:
+                                  line: 40
+                                  col: 38
+                                  len: 8
+                        cond:
+                          span:
+                            line: 40
+                            col: 53
+                            len: 15
+                          kind:
+                            Binary:
+                              op: Eq
+                              lhs:
+                                span:
+                                  line: 40
+                                  col: 53
+                                  len: 10
+                                kind:
+                                  Path:
+                                    - name: invoice
+                                      span:
+                                        line: 40
+                                        col: 53
+                                        len: 7
+                                    - name: id
+                                      span:
+                                        line: 40
+                                        col: 61
+                                        len: 2
+                              rhs:
+                                span:
+                                  line: 40
+                                  col: 66
+                                  len: 2
+                                kind:
+                                  Path:
+                                    - name: id
+                                      span:
+                                        line: 40
+                                        col: 66
+                                        len: 2
+            - span:
+                line: 41
+                col: 3
+                len: 42
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 41
+                      col: 10
+                      len: 18
+                    kind:
+                      IsNotEmpty:
+                        span:
+                          line: 41
+                          col: 10
+                          len: 5
+                        kind:
+                          Path:
+                            - name: found
+                              span:
+                                line: 41
+                                col: 10
+                                len: 5
+                  else_:
+                    span:
+                      line: 41
+                      col: 34
+                      len: 11
+                    kind:
+                      Respond:
+                        status: 404
+                        body: ~
+            - span:
+                line: 42
+                col: 3
+                len: 89
+              kind:
+                Respond:
+                  status: 200
+                  body:
+                    span:
+                      line: 42
+                      col: 15
+                      len: 77
+                    kind:
+                      Record:
+                        - name:
+                            name: id
+                            span:
+                              line: 42
+                              col: 17
+                              len: 2
+                          value:
+                            span:
+                              line: 42
+                              col: 21
+                              len: 8
+                            kind:
+                              Path:
+                                - name: found
+                                  span:
+                                    line: 42
+                                    col: 21
+                                    len: 5
+                                - name: id
+                                  span:
+                                    line: 42
+                                    col: 27
+                                    len: 2
+                        - name:
+                            name: net
+                            span:
+                              line: 42
+                              col: 31
+                              len: 3
+                          value:
+                            span:
+                              line: 42
+                              col: 36
+                              len: 21
+                            kind:
+                              Call:
+                                func:
+                                  - name: net_amount
+                                    span:
+                                      line: 42
+                                      col: 36
+                                      len: 10
+                                args:
+                                  - span:
+                                      line: 42
+                                      col: 47
+                                      len: 5
+                                    kind:
+                                      Path:
+                                        - name: found
+                                          span:
+                                            line: 42
+                                            col: 47
+                                            len: 5
+                                  - span:
+                                      line: 42
+                                      col: 54
+                                      len: 2
+                                    kind:
+                                      Int: 19
+                        - name:
+                            name: fingerprint
+                            span:
+                              line: 42
+                              col: 59
+                              len: 11
+                          value:
+                            span:
+                              line: 42
+                              col: 72
+                              len: 18
+                            kind:
+                              Call:
+                                func:
+                                  - name: fingerprint
+                                    span:
+                                      line: 42
+                                      col: 72
+                                      len: 11
+                                args:
+                                  - span:
+                                      line: 42
+                                      col: 84
+                                      len: 5
+                                    kind:
+                                      Path:
+                                        - name: found
+                                          span:
+                                            line: 42
+                                            col: 84
+                                            len: 5
+        - span:
+            line: 44
+            col: 4
+            len: 14
+          doc: ~
+          method: POST
+          path: /invoices
+          path_params: []
+          body:
+            - span:
+                line: 45
+                col: 3
+                len: 27
+              kind:
+                ReadBody:
+                  ty:
+                    kind:
+                      Named: Invoice
+                    span:
+                      line: 45
+                      col: 16
+                      len: 7
+                  into:
+                    name: inv
+                    span:
+                      line: 45
+                      col: 27
+                      len: 3
+            - span:
+                line: 46
+                col: 3
+                len: 42
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 46
+                      col: 10
+                      len: 18
+                    kind:
+                      Binary:
+                        op: Gt
+                        lhs:
+                          span:
+                            line: 46
+                            col: 10
+                            len: 10
+                          kind:
+                            Path:
+                              - name: inv
+                                span:
+                                  line: 46
+                                  col: 10
+                                  len: 3
+                              - name: amount
+                                span:
+                                  line: 46
+                                  col: 14
+                                  len: 6
+                        rhs:
+                          span:
+                            line: 46
+                            col: 23
+                            len: 5
+                          kind:
+                            Money:
+                              minor: 0
+                              currency: EUR
+                  else_:
+                    span:
+                      line: 46
+                      col: 34
+                      len: 11
+                    kind:
+                      Respond:
+                        status: 400
+                        body: ~
+            - span:
+                line: 47
+                col: 3
+                len: 28
+              kind:
+                Append:
+                  value:
+                    span:
+                      line: 47
+                      col: 10
+                      len: 3
+                    kind:
+                      Path:
+                        - name: inv
+                          span:
+                            line: 47
+                            col: 10
+                            len: 3
+                  list:
+                    span:
+                      line: 47
+                      col: 17
+                      len: 14
+                    kind:
+                      Path:
+                        - name: state
+                          span:
+                            line: 47
+                            col: 17
+                            len: 5
+                        - name: invoices
+                          span:
+                            line: 47
+                            col: 23
+                            len: 8
+            - span:
+                line: 48
+                col: 3
+                len: 15
+              kind:
+                Respond:
+                  status: 201
+                  body:
+                    span:
+                      line: 48
+                      col: 15
+                      len: 3
+                    kind:
+                      Path:
+                        - name: inv
+                          span:
+                            line: 48
+                            col: 15
+                            len: 3
+  - Command:
+      span:
+        line: 50
+        col: 3
+        len: 19
+      doc: ~
+      name:
+        name: import-csv
+        span:
+          line: 50
+          col: 12
+          len: 10
+      args:
+        - name:
+            name: path
+            span:
+              line: 51
+              col: 9
+              len: 4
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 51
+              col: 15
+              len: 4
+          default: ~
+        - name:
+            name: dry_run
+            span:
+              line: 51
+              col: 21
+              len: 7
+          ty:
+            kind:
+              Named: bool
+            span:
+              line: 51
+              col: 30
+              len: 4
+          default:
+            span:
+              line: 51
+              col: 37
+              len: 5
+            kind:
+              Bool: false
+      body:
+        - span:
+            line: 54
+            col: 3
+            len: 45
+          kind:
+            Try:
+              stmt:
+                span:
+                  line: 54
+                  col: 7
+                  len: 41
+                kind:
+                  ReadFile:
+                    path:
+                      span:
+                        line: 54
+                        col: 17
+                        len: 4
+                      kind:
+                        Path:
+                          - name: path
+                            span:
+                              line: 54
+                              col: 17
+                              len: 4
+                    ty:
+                      kind:
+                        List:
+                          kind:
+                            Named: Invoice
+                          span:
+                            line: 54
+                            col: 33
+                            len: 7
+                      span:
+                        line: 54
+                        col: 25
+                        len: 15
+                    into:
+                      name: rows
+                      span:
+                        line: 54
+                        col: 44
+                        len: 4
+              otherwise:
+                - span:
+                    line: 56
+                    col: 7
+                    len: 30
+                  kind:
+                    Print:
+                      span:
+                        line: 56
+                        col: 14
+                        len: 23
+                      kind:
+                        Interp:
+                          - Text: "Could not read "
+                          - Expr:
+                              span:
+                                line: 56
+                                col: 31
+                                len: 4
+                              kind:
+                                Path:
+                                  - name: path
+                                    span:
+                                      line: 56
+                                      col: 31
+                                      len: 4
+                - span:
+                    line: 57
+                    col: 7
+                    len: 4
+                  kind: Stop
+        - span:
+            line: 58
+            col: 3
+            len: 21
+          kind:
+            ForEach:
+              filter_rule: ~
+              var:
+                name: row
+                span:
+                  line: 58
+                  col: 12
+                  len: 3
+              source:
+                span:
+                  line: 58
+                  col: 19
+                  len: 4
+                kind:
+                  Path:
+                    - name: rows
+                      span:
+                        line: 58
+                        col: 19
+                        len: 4
+              body:
+                - span:
+                    line: 59
+                    col: 5
+                    len: 15
+                  kind:
+                    If:
+                      cond:
+                        span:
+                          line: 59
+                          col: 8
+                          len: 11
+                        kind:
+                          Not:
+                            span:
+                              line: 59
+                              col: 12
+                              len: 7
+                            kind:
+                              Path:
+                                - name: dry_run
+                                  span:
+                                    line: 59
+                                    col: 12
+                                    len: 7
+                      then:
+                        - span:
+                            line: 60
+                            col: 7
+                            len: 28
+                          kind:
+                            Append:
+                              value:
+                                span:
+                                  line: 60
+                                  col: 14
+                                  len: 3
+                                kind:
+                                  Path:
+                                    - name: row
+                                      span:
+                                        line: 60
+                                        col: 14
+                                        len: 3
+                              list:
+                                span:
+                                  line: 60
+                                  col: 21
+                                  len: 14
+                                kind:
+                                  Path:
+                                    - name: state
+                                      span:
+                                        line: 60
+                                        col: 21
+                                        len: 5
+                                    - name: invoices
+                                      span:
+                                        line: 60
+                                        col: 27
+                                        len: 8
+                      else_: []
+        - span:
+            line: 61
+            col: 3
+            len: 38
+          kind:
+            Print:
+              span:
+                line: 61
+                col: 10
+                len: 31
+              kind:
+                Interp:
+                  - Text: "Imported "
+                  - Expr:
+                      span:
+                        line: 61
+                        col: 21
+                        len: 13
+                      kind:
+                        CountOf:
+                          rule: ~
+                          noun: ~
+                          source:
+                            span:
+                              line: 61
+                              col: 30
+                              len: 4
+                            kind:
+                              Path:
+                                - name: rows
+                                  span:
+                                    line: 61
+                                    col: 30
+                                    len: 4
+                  - Text: " rows"

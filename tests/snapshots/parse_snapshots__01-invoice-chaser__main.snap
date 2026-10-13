@@ -1,0 +1,29 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/01-invoice-chaser/main.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 40
+    doc: ~
+    kind:
+      File:
+        path: "./agents/invoice-chaser.agent.md"
+        alias: ~
+decls:
+  - Run:
+      span:
+        line: 4
+        col: 3
+        len: 3
+      doc: Entry point. Lists what runs in this binary.
+      items:
+        - name: invoice-chaser
+          span:
+            line: 5
+            col: 3
+            len: 14
