@@ -111,7 +111,7 @@ impl AnthropicModel {
             api_key: api_key.into(),
             model: model.into(),
             base_url: "https://api.anthropic.com".into(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().unwrap_or_default(),
         }
     }
 
@@ -169,10 +169,11 @@ impl ModelClient for AnthropicModel {
             .await
             .map_err(|e| RtError::Model(e.to_string()))?;
         let status = resp.status();
-        let v: Value = resp.json().await.map_err(|e| RtError::Model(e.to_string()))?;
+        let body = resp.text().await.map_err(|e| RtError::Model(format!("HTTP {status}: reading body failed: {e}")))?;
         if !status.is_success() {
-            return Err(RtError::Model(format!("HTTP {status}: {v}")));
+            return Err(RtError::Model(format!("HTTP {status}: {}", body.chars().take(500).collect::<String>())));
         }
+        let v: Value = serde_json::from_str(&body).map_err(|e| RtError::Model(format!("HTTP {status}: invalid JSON: {e}")))?;
         Ok(ModelResponse { text: Self::parse_response(&v)?, matched_prefix: None })
     }
 }

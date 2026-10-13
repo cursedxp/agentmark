@@ -61,12 +61,16 @@ impl Ctx {
         Ctx { trace, model, tools, clock, unit: String::new(), entry: String::new() }
     }
 
-    /// Mock context from a fixtures folder (`model.json`, `<tool>.<source>.json`); clock from `"today"`.
+    /// Mock context from a fixtures folder (`model.json` with a required `"today"`, `<tool>.<source>.json`); errors without `today`.
     pub fn mock(fixtures_dir: impl AsRef<Path>, trace: Trace) -> Result<Ctx, RtError> {
         let dir = fixtures_dir.as_ref();
         let model_path = dir.join("model.json");
-        let model = if model_path.exists() { MockModel::from_file(model_path)? } else { MockModel::default() };
-        let clock = model.today().map(Clock::fixed).unwrap_or_else(Clock::system);
+        let model = MockModel::from_file(&model_path)?;
+        let today = model.today().ok_or_else(|| RtError::Fixture {
+            path: model_path.display().to_string(),
+            message: "missing \"today\": mock runs need a fixed date so traces are reproducible".into(),
+        })?;
+        let clock = Clock::fixed(today);
         let tools = MockTools::load(dir)?;
         Ok(Ctx::new(trace, Arc::new(model), Arc::new(tools), clock))
     }
@@ -80,52 +84,52 @@ impl Ctx {
     pub async fn ask_model(&self, prompt: &str, context: Option<Value>) -> Result<String, RtError> {
         let resp = self.model.complete(&ModelRequest::new(prompt)).await?;
         let prefix = resp.matched_prefix.unwrap_or_else(|| prompt.chars().take(60).collect());
-        self.trace_model(&prefix, context);
+        self.trace_model(&prefix, context)?;
         Ok(resp.text)
     }
 
     /// Trace a `model` line with the current labels.
-    pub fn trace_model(&self, prompt_prefix: &str, context: Option<Value>) {
-        self.trace.model(&self.unit, &self.entry, prompt_prefix, context);
+    pub fn trace_model(&self, prompt_prefix: &str, context: Option<Value>) -> Result<(), RtError> {
+        self.trace.model(&self.unit, &self.entry, prompt_prefix, context)
     }
 
     /// Trace a `guard` line with the current unit label.
-    pub fn trace_guard(&self, name: &str, pass: bool) {
-        self.trace.guard(&self.unit, name, pass);
+    pub fn trace_guard(&self, name: &str, pass: bool) -> Result<(), RtError> {
+        self.trace.guard(&self.unit, name, pass)
     }
 
     /// Trace an email tool call.
-    pub fn trace_tool_email(&self, verb: &str, target: &str, to: &str) {
-        self.trace.tool_email(verb, target, to);
+    pub fn trace_tool_email(&self, verb: &str, target: &str, to: &str) -> Result<(), RtError> {
+        self.trace.tool_email(verb, target, to)
     }
 
     /// Trace a crm tool call (`set` only for update).
-    pub fn trace_tool_crm(&self, verb: &str, source: &str, id: &str, set: Option<Value>) {
-        self.trace.tool_crm(verb, source, id, set);
+    pub fn trace_tool_crm(&self, verb: &str, source: &str, id: &str, set: Option<Value>) -> Result<(), RtError> {
+        self.trace.tool_crm(verb, source, id, set)
     }
 
     /// Trace an http tool call (`body` if any).
-    pub fn trace_tool_http(&self, verb: &str, url: &str, body: Option<Value>) {
-        self.trace.tool_http(verb, url, body);
+    pub fn trace_tool_http(&self, verb: &str, url: &str, body: Option<Value>) -> Result<(), RtError> {
+        self.trace.tool_http(verb, url, body)
     }
 
     /// Trace a log tool call.
-    pub fn trace_tool_log(&self, message: &str) {
-        self.trace.tool_log(message);
+    pub fn trace_tool_log(&self, message: &str) -> Result<(), RtError> {
+        self.trace.tool_log(message)
     }
 
     /// Trace a served http request.
-    pub fn trace_http(&self, method: &str, path: &str, status: u16) {
-        self.trace.http(method, path, status);
+    pub fn trace_http(&self, method: &str, path: &str, status: u16) -> Result<(), RtError> {
+        self.trace.http(method, path, status)
     }
 
     /// Trace a `print` statement.
-    pub fn trace_print(&self, message: &str) {
-        self.trace.print(message);
+    pub fn trace_print(&self, message: &str) -> Result<(), RtError> {
+        self.trace.print(message)
     }
 
     /// Trace an `error` line with the current labels.
-    pub fn trace_error(&self, message: &str) {
-        self.trace.error(&self.unit, &self.entry, message);
+    pub fn trace_error(&self, message: &str) -> Result<(), RtError> {
+        self.trace.error(&self.unit, &self.entry, message)
     }
 }

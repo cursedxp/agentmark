@@ -64,11 +64,11 @@ async fn reproduces_expected_trace() {
         .ask_model("Write a short, polite payment reminder for Müller GmbH", Some(json!({"id": inv["id"]})))
         .await
         .unwrap();
-    ctx.trace_guard("no amounts changed in reminder", no_amounts_changed(&text, inv));
-    ctx.trace_guard("reminder length < 800", text.chars().count() < 800);
-    ctx.trace_tool_email("send", "customer", "ap@mueller.de");
-    ctx.trace_tool_crm("update", "invoices", "INV-1", Some(json!({"status": "reminded"})));
-    ctx.trace_tool_log("Reminded Müller GmbH about 1200.00 EUR");
+    ctx.trace_guard("no amounts changed in reminder", no_amounts_changed(&text, inv)).unwrap();
+    ctx.trace_guard("reminder length < 800", text.chars().count() < 800).unwrap();
+    ctx.trace_tool_email("send", "customer", "ap@mueller.de").unwrap();
+    ctx.trace_tool_crm("update", "invoices", "INV-1", Some(json!({"status": "reminded"}))).unwrap();
+    ctx.trace_tool_log("Reminded Müller GmbH about 1200.00 EUR").unwrap();
 
     let expected = std::fs::read_to_string(fixtures().join("expected.trace.jsonl")).unwrap();
     let want: Vec<Value> = expected.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
@@ -80,4 +80,16 @@ async fn reproduces_expected_trace() {
     // key order and exact bytes also match the fixture
     let exact: Vec<String> = expected.lines().map(String::from).collect();
     assert_eq!(ctx.trace.lines(), exact);
+}
+
+#[test]
+fn mock_ctx_requires_today() {
+    let dir = std::env::temp_dir().join(format!("agentmark-rt-notoday-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("model.json"), r#"{"responses":[]}"#).unwrap();
+    let e = Ctx::mock(&dir, Trace::memory()).err().expect("must fail without today");
+    assert!(e.to_string().contains("today"), "{e}");
+    std::fs::remove_file(dir.join("model.json")).unwrap();
+    assert!(Ctx::mock(&dir, Trace::memory()).is_err()); // no model.json at all
+    std::fs::remove_dir_all(&dir).unwrap();
 }

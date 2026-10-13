@@ -109,7 +109,10 @@ fn mul_div_percentage_without_intermediate_overflow() {
 #[test]
 fn extracts_money_from_text() {
     let got = extract_money("Invoice for 1200.00 EUR due; pay 50 USD or -3.5 GBP. Date 2026-09-01. 12 EURO no. 1,5 EUR");
-    assert_eq!(got, vec![m("1200.00 EUR"), m("50 USD"), m("-3.50 GBP"), m("5 EUR")]);
+    // "1,5 EUR" is ambiguous (decimal comma?) so it is not extracted; the guard fails closed on it
+    assert_eq!(got, vec![m("1200.00 EUR"), m("50 USD"), m("-3.50 GBP")]);
+    let got = extract_money("EUR 1300, \u{20ac}1,300.00 and $5 and 1.300,00 EUR and 7 \u{a3}");
+    assert_eq!(got, vec![m("1300 EUR"), m("1300.00 EUR"), m("5 USD"), m("7 GBP")]);
 }
 
 #[test]
@@ -122,4 +125,21 @@ fn guard_no_amounts_changed() {
     assert!(no_amounts_changed("No amounts at all.", &input));
     assert!(!no_amounts_changed("Your invoice for 1000.00 EUR is due.", &input));
     assert!(!no_amounts_changed("Pay 1200.00 USD", &input));
+}
+
+#[test]
+fn guard_fails_closed() {
+    let input = serde_json::json!({"amount": "1200.00 EUR", "small": "300.00 EUR"});
+    assert!(!no_amounts_changed("Please pay \u{20ac}1,300.00 soon", &input));
+    assert!(!no_amounts_changed("Please pay EUR 1300 soon", &input));
+    assert!(!no_amounts_changed("Please pay 1,300.00 EUR soon", &input)); // one token 1300.00, not 300.00
+    assert!(!no_amounts_changed("Please pay 1200.005 EUR soon", &input));
+    assert!(!no_amounts_changed("Please pay 1,5 EUR soon", &input)); // ambiguous separator
+    assert!(!no_amounts_changed("Please pay 1.300,00 EUR soon", &input));
+    assert!(!no_amounts_changed("Please pay $1200", &input));
+    assert!(no_amounts_changed("Please pay \u{20ac}1,200.00 and EUR 300", &input));
+    // ids and dates are not amounts
+    assert!(no_amounts_changed("Invoice INV-1 due 2026-09-01, ref 12345.", &input));
+    let fixture = "Dear M\u{fc}ller GmbH, this is a friendly reminder that invoice INV-1 for 1200.00 EUR was due on 2026-09-01. We would appreciate payment at your earliest convenience.";
+    assert!(no_amounts_changed(fixture, &serde_json::json!({"id":"INV-1","amount":"1200.00 EUR","due":"2026-09-01"})));
 }

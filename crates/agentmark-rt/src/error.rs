@@ -34,6 +34,12 @@ pub enum RtError {
     /// A tool call was malformed.
     #[error("tool error: {0}")]
     Tool(String),
+    /// The trace could not be written (I/O failure or poisoned lock).
+    #[error("trace write failed: {0}")]
+    Trace(String),
+    /// A schedule was built with invalid values.
+    #[error("invalid schedule: {0}")]
+    Schedule(String),
     /// Money arithmetic or parsing failed.
     #[error(transparent)]
     Money(#[from] MoneyError),

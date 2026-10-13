@@ -1,9 +1,9 @@
 use agentmark_rt::*;
 use serde_json::json;
 
-fn one(f: impl FnOnce(&Trace)) -> String {
+fn one(f: impl FnOnce(&Trace) -> Result<(), RtError>) -> String {
     let t = Trace::memory();
-    f(&t);
+    f(&t).unwrap();
     let l = t.lines();
     assert_eq!(l.len(), 1);
     l[0].clone()
@@ -69,8 +69,8 @@ fn file_sink_appends_lines() {
     let path = dir.join("t.jsonl");
     let _ = std::fs::remove_file(&path);
     let t = Trace::to_file(&path).unwrap();
-    t.print("a");
-    t.print("b");
+    t.print("a").unwrap();
+    t.print("b").unwrap();
     drop(t);
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"kind\":\"print\",\"message\":\"a\"}\n{\"kind\":\"print\",\"message\":\"b\"}\n");
     std::fs::remove_dir_all(&dir).unwrap();
@@ -80,10 +80,29 @@ fn file_sink_appends_lines() {
 fn ctx_helpers_use_labels() {
     let ctx = Ctx::new(Trace::memory(), std::sync::Arc::new(MockModel::new(None, vec![])), std::sync::Arc::new(MockTools::empty()), Clock::system())
         .enter("unit-x", "Entry y");
-    ctx.trace_guard("g", true);
-    ctx.trace_error("bad");
-    ctx.trace_model("p", None);
+    ctx.trace_guard("g", true).unwrap();
+    ctx.trace_error("bad").unwrap();
+    ctx.trace_model("p", None).unwrap();
     assert_eq!(ctx.trace.lines()[0], r#"{"kind":"guard","agent":"unit-x","name":"g","result":"pass"}"#);
     assert_eq!(ctx.trace.lines()[1], r#"{"kind":"error","agent":"unit-x","block":"Entry y","message":"bad"}"#);
     assert_eq!(ctx.trace.lines()[2], r#"{"kind":"model","agent":"unit-x","block":"Entry y","prompt_prefix":"p"}"#);
+}
+
+struct Failing;
+impl std::io::Write for Failing {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe closed"))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn write_errors_are_returned_not_swallowed() {
+    let t = Trace::from_writer(Box::new(Failing));
+    let e = t.print("x").unwrap_err();
+    assert!(matches!(e, RtError::Trace(ref m) if m.contains("pipe closed")), "{e}");
+    let ctx = Ctx::new(t, std::sync::Arc::new(MockModel::new(None, vec![])), std::sync::Arc::new(MockTools::empty()), Clock::system());
+    assert!(ctx.trace_tool_log("x").is_err());
 }
