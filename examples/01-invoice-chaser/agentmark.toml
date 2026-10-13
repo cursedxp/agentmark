@@ -1,0 +1,6 @@
+name = "invoice-chaser"
+version = "0.1.0"
+targets = ["rust"]
+
+[lint]
+deny = ["prompt-in-loop", "missing-doc"]

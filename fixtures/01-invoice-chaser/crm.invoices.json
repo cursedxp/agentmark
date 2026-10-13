@@ -1,0 +1,5 @@
+[
+  {"id":"INV-1","customer":"Müller GmbH","customer_email":"ap@mueller.de","amount":"1200.00 EUR","due":"2026-09-01","status":"open"},
+  {"id":"INV-2","customer":"Schmidt AG","customer_email":"buch@schmidt.de","amount":"450.00 EUR","due":"2026-10-10","status":"open"},
+  {"id":"INV-3","customer":"Weber KG","customer_email":"info@weber.de","amount":"800.00 EUR","due":"2026-08-15","status":"paid"}
+]

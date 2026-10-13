@@ -1,0 +1,6 @@
+{"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
+{"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
+{"kind":"guard","agent":"invoice-chaser","name":"reminder length < 800","result":"pass"}
+{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
+{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
+{"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
