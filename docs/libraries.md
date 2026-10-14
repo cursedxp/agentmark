@@ -217,8 +217,9 @@ Not bound (use a `## Rust` block for these):
   elsewhere; for dependencies a crate re-exports, `AGENTMARK_RUSTDOC_JSON_DIR` names a folder of
   `<crate>.json` files.
 * **A model**, for the assisted tier: `ANTHROPIC_API_KEY`, or `AGENTMARK_MODEL=mock:<model.json>` for a canned
-  one. A company that forbids external APIs can use a local one once the `local:` driver ships (reference
-  section 19).
+  one. `AGENTMARK_MODEL=openai:<model>` or `local:<model>` pick another provider, and the project's `[models]`
+  table of `agentmark.toml` works with `AGENTMARK_ENV` (reference section 19). A company that forbids external
+  APIs can run the binder on a local model.
 
 `AGENTMARK_OFFLINE=1` adds `--offline` to every cargo call the binder makes.
 

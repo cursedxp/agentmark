@@ -31,6 +31,9 @@ pub enum RtError {
     /// The `ANTHROPIC_API_KEY` environment variable is missing.
     #[error("environment variable ANTHROPIC_API_KEY is not set")]
     MissingApiKey,
+    /// The environment variable holding a provider's API key is missing.
+    #[error("environment variable {0} is not set")]
+    MissingKey(&'static str),
     /// A tool call was malformed.
     #[error("tool error: {0}")]
     Tool(String),

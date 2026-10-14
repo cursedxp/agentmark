@@ -142,7 +142,7 @@ pub(crate) fn bind_missing(
 }
 
 fn auto_bind(name: &str, project: &Project) -> Result<(), String> {
-    let (model, mock_today) = bind::model_from_env()?;
+    let (model, mock_today) = bind::model_for(bind::provider_config(project))?;
     let dir = Path::new(&project.root).join("bindings");
     let mut opts = BindOptions::new(&dir, model, mock_today.unwrap_or_else(bind::system_today));
     opts.offline = is_offline();
@@ -175,6 +175,8 @@ fn options(p: &Prepared, path: &str) -> Result<cg::Options, String> {
         crate_versions: p.versions.clone(),
         fallback_name: stem,
         extra_dependencies: p.project.config.rust_dependencies.clone(),
+        models: p.project.config.models.clone(),
+        local_base_url: p.project.config.local_base_url.clone(),
     };
     if let Some(name) = cg::dependency_clash(&p.program, &o) {
         return Err(format!(

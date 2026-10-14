@@ -19,6 +19,9 @@ All items are re-exported at the crate root (`use agentmark_rt::*;`). Every fall
 - `trait ModelClient { async fn complete(&self, &ModelRequest) -> Result<ModelResponse, RtError> }`; `ModelRequest::new(prompt)`; `ModelResponse { text, matched_prefix }`.
 - `MockModel::from_file(path)`, `MockModel::new(today, Vec<(prefix, response)>)`, `.today()`; longest-prefix match.
 - `AnthropicModel::from_env(model_id)` (reads `ANTHROPIC_API_KEY`), `AnthropicModel::new(key, model_id)` (120s request timeout; non-2xx status becomes `RtError::Model` including the status).
+- `OpenAiModel::from_env(model)` (`OPENAI_API_KEY`), `::new(key, model)`, `.with_base_url(url)`; `LocalModel::new(base_url, model, Option<key>)`. Both post a Chat Completions request to `{base}/chat/completions`.
+- `Driver::parse("claude" | "claude:<m>" | "openai:<m>" | "local:<m>" | "mock" | "mock:<path>")`, `DriverError` (`azure`/`bedrock` -> `NotSupported`), `request_model_id(driver)`, `DRIVER_HELP`, `PROVIDERS`.
+- `Router::from_env(ProviderConfig)` / `Router::new(config, getenv)`: a `ModelClient` that picks the provider per request (`AGENTMARK_MODEL`, then `AGENTMARK_ENV` through `ProviderConfig.environments`, then the request's model id); `.forced()`, `.mock_today()`, `.prepare(&Driver)`. See OPEN_QUESTIONS Q240-Q242.
 
 ## Tools
 - `trait Tools { async fn call(&self, tool, verb, &Value) -> Result<Value, RtError> }`; `MockTools::load(dir)`, `MockTools::empty()`.

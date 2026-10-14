@@ -485,9 +485,12 @@ fn bind_without_a_model_or_a_name_is_a_usage_error() {
     assert!(err(&o).contains("ANTHROPIC_API_KEY"), "{}", err(&o));
     let o = run(&["bind"]);
     assert_eq!(code(&o), 2);
-    let o = agentmark(&["bind", "sha2"]).env("AGENTMARK_MODEL", "openai:gpt").output().unwrap();
+    let o = agentmark(&["bind", "sha2"]).env("AGENTMARK_MODEL", "openai:gpt").env_remove("OPENAI_API_KEY").output().unwrap();
     assert_eq!(code(&o), 2);
-    assert!(err(&o).contains("not supported here"), "{}", err(&o));
+    assert!(err(&o).contains("OPENAI_API_KEY is not set"), "{}", err(&o));
+    let o = agentmark(&["bind", "sha2"]).env("AGENTMARK_MODEL", "azure:x").output().unwrap();
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("\"azure\" is not supported in this version"), "{}", err(&o));
 }
 
 #[test]

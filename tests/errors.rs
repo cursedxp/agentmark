@@ -30,6 +30,9 @@ const CASES: &[(&str, bool)] = &[
     ("unit-mismatch", true),
     ("missing-maybe", true),
     ("unknown-field", true),
+    ("unsupported-model-azure", true),
+    ("unsupported-model-bedrock", true),
+    ("unknown-model-provider", true),
 ];
 
 fn path_of(stem: &str) -> String {
@@ -104,6 +107,9 @@ case!(semantic effect_violation_in_rule, "effect-violation-in-rule");
 case!(semantic unit_mismatch, "unit-mismatch");
 case!(semantic missing_maybe, "missing-maybe");
 case!(semantic unknown_field, "unknown-field");
+case!(semantic unsupported_model_azure, "unsupported-model-azure");
+case!(semantic unsupported_model_bedrock, "unsupported-model-bedrock");
+case!(semantic unknown_model_provider, "unknown-model-provider");
 
 #[test]
 fn every_error_file_is_registered_and_documented() {

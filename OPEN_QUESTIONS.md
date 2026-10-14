@@ -416,7 +416,7 @@ PROMPT step 11 asks for a README whose commands work; nothing said how to keep t
 
 ## Q221 — A real run honours `AGENTMARK_MODEL=mock:<model.json>` (step 11 follow-up; the controller's decision)
 First written as "a real run cannot use a mock model": generated programs read only `ANTHROPIC_API_KEY`, so a real run with `connect.rs` could not be shown with canned model answers.
-**Choice:** the generated `real_model()` (programs that use a model) checks `AGENTMARK_MODEL`; a value `mock:<path>` loads `agentmark_rt::MockModel::from_file(path)`, the same syntax the binder uses; a bad file makes the first question fail with the file error. Anything else (or unset) is `AnthropicModel` as before. The clock stays the system clock. `tests/readme.rs` runs the README's `connect.rs` that way and asserts the email line on stdout and the `crm update` trace line.
+**Choice (superseded by Q241: the router does this now):** the generated `real_model()` (programs that use a model) checks `AGENTMARK_MODEL`; a value `mock:<path>` loads `agentmark_rt::MockModel::from_file(path)`, the same syntax the binder uses; a bad file makes the first question fail with the file error. Anything else (or unset) is `AnthropicModel` as before. The clock stays the system clock. `tests/readme.rs` runs the README's `connect.rs` that way and asserts the email line on stdout and the `crm update` trace line.
 **Why:** one variable, one meaning, in both tools; offline demonstrations and tests of real tool code.
 
 ## Q222 — `[rust.dependencies]` in `agentmark.toml` (step 11 follow-up; the controller's decision)
@@ -455,3 +455,30 @@ No model (`ANTHROPIC_API_KEY`), no rustdoc, or an unreadable binding.
 `prepare` and `check` reload the project after a binding changes, so the loop is three rounds (first binding, on-demand, final check).
 **Choice:** an on-demand failure in `check` replaces the semantic check: it is the only diagnostic, in the text output and in `--json` (code `E220`, `ok: false`).
 **Why:** the statement that failed would otherwise also get "Unknown verb", a second message about the same line.
+
+## Q240 — Which model wins: `- model:`, `AGENTMARK_ENV`, `AGENTMARK_MODEL` (step 14)
+SPEC 19 maps environments in `[models]` but does not say how that map meets an agent's own `- model:` line.
+**Choice:** strongest first: `AGENTMARK_MODEL=<driver>` (any driver string, one model for the whole program), then `AGENTMARK_ENV=<name>` looked up in `[models]` (one driver for every agent), then each agent's `- model:`. The map therefore only overrides when an environment is selected; unset `AGENTMARK_ENV` is not "production", it overrides nothing, so `- model: openai:gpt-4o` stays OpenAI although `production = "claude"`. `AGENTMARK_ENV=production` with no `production` entry also overrides nothing; any other name missing from a non-empty table is an error that lists the known names; with no `[models]` table `AGENTMARK_ENV` means nothing. An entry of plain `claude` keeps an agent's own Claude model (`claude:haiku`) and moves agents of other providers to Claude; any other forced real driver replaces every agent's model id. A forced `mock` keeps the agent's id in the request (fixtures with `"model"` still tell agents apart). The binder and the on-demand tier read the same variables and the project's `[models]`, defaulting to Claude (Q115 stays: the agent's `- model:` describes the program, not the toolchain). The table and `base_url` are baked into the generated program at build time; the two variables are read at run time.
+**Why:** a team flips `dev`/`test` without editing agent files, while a pinned `- model:` is never silently replaced just because a table exists.
+
+## Q241 — One runtime router, provider carried in `ModelRequest.model` (step 14)
+Q136 said `Ctx` holds one provider and the request carries a model id; with several providers in one program that is not enough.
+**Choice:** `agentmark_rt::Router` implements `ModelClient` and builds one client per driver on first use. `ModelRequest.model` carries the Anthropic id for `claude…` (unchanged, so traces and `model.json` fixtures keep working) and the driver string itself for `openai:<m>`, `local:<m>`, `mock`; `Driver::parse` is the one parser, used by the runtime, generated programs, `check` (E221) and `agentmark.toml` validation (E114). `Ctx` and the trace schema are untouched. The generated `real_model()` is `Router::from_env(ProviderConfig::new(..))`; the old `MODEL` constant and the hand-written `mock:` branch of Q221 are gone (the router covers both). Missing keys are reported when the first question is asked, except for a forced provider, which fails at start-up as a `NoModel` error.
+**Why:** one parsing and selection rule for every tool; no change to the trace.
+
+## Q242 — OpenAI, local and mock wire details (step 14)
+**Choice:** Chat Completions only (`POST {base}/chat/completions`, one `user` message, first choice's `message.content`; a list of text parts is joined; `null` content is an error). The token limit is sent only when the request has one: `max_completion_tokens` to OpenAI (the field every current OpenAI chat model accepts) and `max_tokens` to local servers (the field they all know); there is no default limit. OpenAI: bearer `OPENAI_API_KEY`, base `https://api.openai.com/v1`, `OPENAI_BASE_URL` overrides (proxies, tests). Local: base is `AGENTMARK_LOCAL_BASE_URL`, else `[models.local] base_url`, else `http://localhost:11434/v1`; no key is sent unless `LOCAL_API_KEY` is set. Anthropic gains `ANTHROPIC_BASE_URL` for the same reason. Bare `mock` reads `model.json` from `$AGENTMARK_FIXTURES` or the current folder; `mock:<path>` reads that file (the binder's existing syntax). No retries, no streaming, no tool calling.
+**Why:** the smallest request every OpenAI-compatible server accepts; the overrides make provider tests possible without live calls.
+
+## Q243 — `azure:` and `bedrock:` are rejected at `check`, E221 (step 14)
+**Choice:** a `- model:` that does not parse is error E221 at the model token (SPEC 10 shape): `The model provider "azure" is not supported in this version.` with the help line `A model is claude, claude:<model>, openai:<model>, local:<model> or mock.`; an unknown provider word gets `Did you mean "openai"?`; `openai:`/`local:` without a model name is an error. The same check runs on every `[models]` value (E114, at that line). Before this step `check` accepted any model string.
+**Why:** an unsupported route must fail where it is written, not at the first question of a running program.
+
+## Q244 — `[models]` keys (step 14)
+**Choice:** every key under `[models]` whose value is text is an environment name (not only `production`/`test`/`dev`); `[models.local]` is the one sub-table (`base_url`, must start with `http://` or `https://`; any other key is an error). An environment literally named `local` therefore cannot exist. `Config` gains `models` and `local_base_url`; the lint config reader still ignores the table.
+**Why:** teams have `staging`, `ci`; one reserved name keeps the provider table and the environment list in one `[models]` block as SPEC 19 writes it.
+
+## Q245 — `azure:` and `bedrock:` stay unsupported in this version (step 14)
+SPEC 20.2 lists model providers `openai`, `local`, `azure`, `bedrock`; PROMPT step 14 scopes `openai` and `local` only.
+**Choice:** `azure:` and `bedrock:` are not implemented; the behaviour is the check-time error E221 at the `- model:` line (Q243), also for `[models]` values. A trailing colon with no name (`claude:`, `openai:`, `local:`, `mock:`) is the same plain error for every provider.
+**Why:** an honest early error beats a half provider; they can be added as `Driver` variants later without changing programs.

@@ -98,7 +98,7 @@ impl ModelClient for MockModel {
 }
 
 /// Anthropic Messages API client.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AnthropicModel {
     api_key: String,
     model: String,
@@ -177,5 +177,163 @@ impl ModelClient for AnthropicModel {
         }
         let v: Value = serde_json::from_str(&body).map_err(|e| RtError::Model(format!("HTTP {status}: invalid JSON: {e}")))?;
         Ok(ModelResponse { text: Self::parse_response(&v)?, matched_prefix: None })
+    }
+}
+
+/// Request/response shape shared by OpenAI Chat Completions and compatible local servers.
+#[derive(Clone)]
+struct ChatCompletions {
+    api_key: Option<String>,
+    model: String,
+    base_url: String,
+    /// The output-limit field: OpenAI wants `max_completion_tokens`, local servers `max_tokens`.
+    limit_field: &'static str,
+    http: reqwest::Client,
+}
+
+impl ChatCompletions {
+    fn new(api_key: Option<String>, model: String, base_url: String, limit_field: &'static str) -> ChatCompletions {
+        ChatCompletions {
+            api_key,
+            model,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            limit_field,
+            http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().unwrap_or_default(),
+        }
+    }
+
+    fn request_body(&self, req: &ModelRequest) -> Value {
+        let mut body = json!({
+            "model": req.model.as_deref().unwrap_or(&self.model),
+            "messages": [{"role": "user", "content": req.prompt}],
+        });
+        if let (Some(n), Some(o)) = (req.max_tokens, body.as_object_mut()) {
+            o.insert(self.limit_field.into(), json!(n));
+        }
+        body
+    }
+
+    /// The text of the first choice (a string, or a list of `{"type":"text","text":..}` parts).
+    fn parse_response(v: &Value) -> Result<String, RtError> {
+        let content = v
+            .get("choices")
+            .and_then(Value::as_array)
+            .and_then(|c| c.first())
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .ok_or_else(|| RtError::Model(format!("unexpected response: {v}")))?;
+        match content {
+            Value::String(s) => Ok(s.clone()),
+            Value::Array(parts) => Ok(parts.iter().filter_map(|p| p.get("text").and_then(Value::as_str)).collect()),
+            _ => Err(RtError::Model(format!("the reply has no text: {v}"))),
+        }
+    }
+
+    async fn complete(&self, req: &ModelRequest) -> Result<ModelResponse, RtError> {
+        let mut call = self.http.post(format!("{}/chat/completions", self.base_url)).json(&self.request_body(req));
+        if let Some(k) = &self.api_key {
+            call = call.bearer_auth(k);
+        }
+        let resp = call.send().await.map_err(|e| RtError::Model(e.to_string()))?;
+        let status = resp.status();
+        let body = resp.text().await.map_err(|e| RtError::Model(format!("HTTP {status}: reading body failed: {e}")))?;
+        if !status.is_success() {
+            return Err(RtError::Model(format!("HTTP {status}: {}", body.chars().take(500).collect::<String>())));
+        }
+        let v: Value = serde_json::from_str(&body).map_err(|e| RtError::Model(format!("HTTP {status}: invalid JSON: {e}")))?;
+        Ok(ModelResponse { text: Self::parse_response(&v)?, matched_prefix: None })
+    }
+}
+
+/// OpenAI Chat Completions client (`openai:<model>`; key from `OPENAI_API_KEY`).
+#[derive(Debug, Clone)]
+pub struct OpenAiModel(ChatCompletions);
+
+/// The OpenAI API base URL.
+pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+
+impl OpenAiModel {
+    /// Build with an explicit API key and default model id.
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> OpenAiModel {
+        OpenAiModel(ChatCompletions::new(Some(api_key.into()), model.into(), OPENAI_BASE_URL.into(), "max_completion_tokens"))
+    }
+
+    /// Build reading the key from `OPENAI_API_KEY`.
+    pub fn from_env(model: impl Into<String>) -> Result<OpenAiModel, RtError> {
+        match std::env::var("OPENAI_API_KEY") {
+            Ok(k) if !k.is_empty() => Ok(OpenAiModel::new(k, model)),
+            _ => Err(RtError::MissingKey("OPENAI_API_KEY")),
+        }
+    }
+
+    /// Override the API base URL (Azure-style proxies, tests); `/chat/completions` is appended.
+    pub fn with_base_url(mut self, url: impl Into<String>) -> OpenAiModel {
+        self.0.base_url = url.into().trim_end_matches('/').to_string();
+        self
+    }
+
+    /// The JSON body sent to `/chat/completions` for a request.
+    pub fn request_body(&self, req: &ModelRequest) -> Value {
+        self.0.request_body(req)
+    }
+
+    /// The text of the first choice of a Chat Completions response.
+    pub fn parse_response(v: &Value) -> Result<String, RtError> {
+        ChatCompletions::parse_response(v)
+    }
+}
+
+#[async_trait]
+impl ModelClient for OpenAiModel {
+    async fn complete(&self, req: &ModelRequest) -> Result<ModelResponse, RtError> {
+        self.0.complete(req).await
+    }
+}
+
+/// The base URL of a local OpenAI-compatible server when none is configured (Ollama's default).
+pub const LOCAL_BASE_URL: &str = "http://localhost:11434/v1";
+
+/// A local OpenAI-compatible server (Ollama, LM Studio, vLLM): `local:<model>`.
+#[derive(Debug, Clone)]
+pub struct LocalModel(ChatCompletions);
+
+impl LocalModel {
+    /// Build for a base URL (ending in `/v1`; `/chat/completions` is appended) and default model.
+    /// An optional bearer key is sent when given; most local servers ignore it.
+    pub fn new(base_url: impl Into<String>, model: impl Into<String>, api_key: Option<String>) -> LocalModel {
+        LocalModel(ChatCompletions::new(api_key.filter(|k| !k.is_empty()), model.into(), base_url.into(), "max_tokens"))
+    }
+
+    /// The JSON body sent to `/chat/completions` for a request.
+    pub fn request_body(&self, req: &ModelRequest) -> Value {
+        self.0.request_body(req)
+    }
+}
+
+#[async_trait]
+impl ModelClient for LocalModel {
+    async fn complete(&self, req: &ModelRequest) -> Result<ModelResponse, RtError> {
+        self.0.complete(req).await
+    }
+}
+
+/// Debug output never contains an API key.
+impl std::fmt::Debug for ChatCompletions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatCompletions")
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("model", &self.model)
+            .field("base_url", &self.base_url)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AnthropicModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AnthropicModel")
+            .field("api_key", &"<redacted>")
+            .field("model", &self.model)
+            .field("base_url", &self.base_url)
+            .finish()
     }
 }

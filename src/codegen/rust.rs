@@ -32,6 +32,10 @@ pub struct Options {
     pub fallback_name: String,
     /// `[rust.dependencies]` of `agentmark.toml`: `(name, TOML value)`, added to `[dependencies]`.
     pub extra_dependencies: Vec<(String, String)>,
+    /// `[models]` of `agentmark.toml` (environment -> driver), baked into the program (Q240).
+    pub models: Vec<(String, String)>,
+    /// `[models.local] base_url` of `agentmark.toml`.
+    pub local_base_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,15 +53,10 @@ pub fn default_rt_path() -> String {
     format!("{}/crates/agentmark-rt", env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The Anthropic model id for a `- model:` driver (`claude`, `claude:haiku`, `claude:<id>`).
+/// The id a request carries for a `- model:` driver: the Anthropic id for `claude…`, the driver
+/// itself for `openai:`, `local:` and `mock` (the runtime's router picks the provider from it).
 pub fn model_id(driver: &str) -> String {
-    match driver.strip_prefix("claude:") {
-        None => "claude-sonnet-4-5".to_string(),
-        Some("haiku") => "claude-haiku-4-5".to_string(),
-        Some("sonnet") => "claude-sonnet-4-5".to_string(),
-        Some("opus") => "claude-opus-4-1".to_string(),
-        Some(other) => other.to_string(),
-    }
+    agentmark_rt::request_model_id(driver)
 }
 
 /// Things the author should know about the generated program (printed by `build`).
