@@ -102,7 +102,7 @@ pub fn render_binding(
         } else {
             doc_line(&it.summary)
         };
-        o.push_str(&wrap_doc(&doc));
+        o.push_str(&one_line_doc(&doc));
         o.push_str(&format!("## {}\n", it.sig.heading(&it.name)));
         o.push_str(&format!("  ```{code_lang}\n"));
         for l in it.body.lines() {
@@ -131,7 +131,7 @@ pub fn render_binding(
 /// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). Nothing is
 /// cut (SPEC 15.2: never silently drop): a long reason continues on `  > ` comment lines under
 /// the entry, each at most 120 characters.
-fn not_bound_entry(name: &str, reason: &str) -> String {
+pub fn not_bound_entry(name: &str, reason: &str) -> String {
     const MAX: usize = 120;
     let first = format!("- {name}:");
     let mut lines = vec![first];
@@ -171,22 +171,25 @@ fn not_bound_entry(name: &str, reason: &str) -> String {
     out
 }
 
-/// A documentation comment as `> ` lines of at most 120 characters (wrapped at word breaks).
-fn wrap_doc(doc: &str) -> String {
-    let mut out = String::new();
-    let mut line = String::from(">");
-    for w in doc.split_whitespace() {
-        if line.chars().count() + 1 + w.chars().count() > 120 && line != ">" {
-            out.push_str(&line);
-            out.push('\n');
-            line = String::from(">");
-        }
-        line.push(' ');
-        line.push_str(w);
+/// One `> ` line (PROMPT step 12): the summary, shortened at a word boundary with `…` when it
+/// would pass 118 characters.
+fn one_line_doc(doc: &str) -> String {
+    let flat = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= 118 {
+        return format!("> {flat}\n");
     }
-    out.push_str(&line);
-    out.push('\n');
-    out
+    let mut out = String::new();
+    for w in flat.split(' ') {
+        let add = if out.is_empty() { w.chars().count() } else { out.chars().count() + 1 + w.chars().count() };
+        if add > 115 {
+            break;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(w);
+    }
+    format!("> {}…\n", out.trim_end_matches([',', ';', ':', ' ']))
 }
 
 #[cfg(test)]

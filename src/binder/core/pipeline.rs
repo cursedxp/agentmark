@@ -179,7 +179,13 @@ async fn assist(
     let resp = model
         .complete(&ModelRequest::new(prompt))
         .await
-        .map_err(|e| format!("assisted tier: model gave no body ({})", one_line(&e.to_string())))?;
+        .map_err(|e| match e {
+            // a canned model without an answer: say so, do not echo the prompt it was asked
+            agentmark_rt::RtError::NoMockResponse { .. } => {
+                format!("assisted tier: mock model has no response for {}", item.name)
+            }
+            e => format!("assisted tier: model gave no body ({})", one_line(&e.to_string())),
+        })?;
     let body = strip_fences(&resp.text);
     if body.is_empty() {
         return Err("assisted tier: model returned an empty body".into());

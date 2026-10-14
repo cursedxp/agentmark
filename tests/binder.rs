@@ -149,8 +149,7 @@ fn generated_files_parse_as_unverified_bindings_with_doc_lines() {
         assert_eq!(out.bound, b.items.len());
         for it in &b.items {
             let doc = it.doc.as_deref().unwrap_or_else(|| panic!("{c}: {} has no doc line", it.name.name));
-            // long summaries wrap onto further `>` lines (Q110)
-            assert!(!doc.trim().is_empty(), "{c}: {}", it.name.name);
+            assert!(!doc.trim().is_empty() && !doc.contains('\n'), "{c}: {}", it.name.name);
         }
         for n in &b.not_bound {
             assert!(n.reason.as_deref().is_some_and(|r| !r.is_empty()), "{c}: {} has no reason", n.item);
@@ -197,7 +196,7 @@ fn a_body_that_fails_the_type_check_is_skipped_with_the_reason() {
 fn an_item_the_model_has_no_body_for_is_skipped_not_dropped() {
     let (_, b) = tiered("chrono", vec![]);
     let (_, why) = b.not_bound.iter().find(|(n, _)| n == "date_time_hour").expect("no canned body");
-    assert!(why.contains("model gave no body"), "{why}");
+    assert!(why.contains("mock model has no response for date_time_hour"), "{why}");
 }
 
 #[test]
@@ -611,7 +610,7 @@ fn a_dependency_json_directory_replaces_the_nightly_build() {
     let f = parse(&out.path);
     // No canned model body for it, but the item exists and was tiered (skipped by the model).
     let n = binding(&f).not_bound.iter().find(|n| n.item == "w_size").expect("w_size tiered");
-    assert!(n.reason.as_deref().unwrap().contains("model gave no body"));
+    assert!(n.reason.as_deref().unwrap().contains("mock model has no response for"));
     // Without the directory the missing JSON is named in the re-export line.
     let (_d2, o2) = demo_opts("foreign-none");
     let r = entries(&std::fs::read_to_string(bind("demo", &o2).unwrap().path).unwrap())
@@ -674,9 +673,9 @@ fn long_not_bound_causes_continue_on_comment_lines_and_survive_in_full() {
     let text = std::fs::read_to_string(&out.path).unwrap();
     let e = entries(&text);
     let r = &e["sha224_output_size"];
-    assert!(r.starts_with("assisted tier: model gave no body"), "{r}");
+    assert!(r.starts_with("assisted tier: mock model has no response for sha224_output_size"), "{r}");
+    assert!(!r.contains("prompt") && !r.contains("bind <"), "no prompt fragments: {r}");
     assert!(r.ends_with("(<sha2::Sha224 as sha2::Digest>::output_size)"), "{r}");
-    assert!(text.lines().any(|l| l.starts_with("  > ")), "continuation lines exist");
     // a long type-check error is kept whole
     let long = "error[E0308]: mismatched types: expected `Vec<u8>`, found `GenericArray<u8, <CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, U32, OidSha256>> as OutputSizeUser>::OutputSize>` at line 3";
     struct Long(&'static str);
@@ -694,7 +693,26 @@ fn long_not_bound_causes_continue_on_comment_lines_and_survive_in_full() {
     let r = &entries(&text)["sha256_digest"];
     assert!(r.contains(long), "{r}");
     // and the file still parses
-    let _ = parse(&out.path);
+    let f = parse(&out.path);
+    // the parser joins the continuation lines: the reason is the whole text
+    let n = binding(&f).not_bound.iter().find(|n| n.item == "sha256_digest").unwrap();
+    assert_eq!(n.reason.as_deref().unwrap(), r.as_str());
+    assert!(r.ends_with("(<sha2::Sha256 as sha2::Digest>::digest)"), "{r}");
+    // and so does `agentmark doc <crate>`
+    let sheet = doc_cheatsheet(&out.path).unwrap();
+    assert!(sheet.contains(long) && sheet.contains("::Digest>::digest)"), "{sheet}");
+}
+
+#[test]
+fn generated_files_round_trip_through_fmt_byte_for_byte() {
+    for (c, _) in CRATES {
+        let dir = scratch(&format!("fmt-{c}"));
+        let out = bind(c, &opts(&dir, c, vec![])).unwrap();
+        let text = std::fs::read_to_string(&out.path).unwrap();
+        assert!(text.contains("\n  > "), "{c}: has wrapped entries");
+        let f = out.path.display().to_string();
+        assert_eq!(agentmark::fmt::format_source(&text, &f).unwrap(), text, "{c}");
+    }
 }
 
 #[test]
@@ -705,4 +723,16 @@ fn alias_lines_say_which_crate_and_no_generic_noise() {
     let (n, r) = e.iter().find(|(_, r)| r.contains("is a type alias for")).expect("alias entry");
     assert!(r.contains(" from crate digest; its methods live there"), "{n}: {r}");
     assert!(r.contains("<…>") && !r.contains("U32"), "{r}");
+}
+
+#[test]
+fn indented_comment_lines_continue_a_not_bound_reason() {
+    let src = "# Binding: lib\n- crate: lib\n- effect: pure\n\n## Not bound\n- a: first part\n  > second part\n  > third\n- b: alone\n> plain note\n- c:\n  > only continuation\n";
+    let f = agentmark::syntax::parser::parse_file("lib.agent.md", src).unwrap();
+    let nb = &binding(&f).not_bound;
+    let r = |i: usize| nb[i].reason.as_deref();
+    assert_eq!((r(0), r(1), r(2)), (Some("first part second part third"), Some("alone"), Some("only continuation")));
+    // fmt joins what fits on one line and keeps the plain note
+    let out = agentmark::fmt::format_source(src, "lib.agent.md").unwrap();
+    assert!(out.contains("- a: first part second part third\n") && out.contains("> plain note"), "{out}");
 }
