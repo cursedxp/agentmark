@@ -16,6 +16,8 @@ AgentMark is a Markdown-based language for agents, services and commands: you wr
 
 The language is specified in [SPEC.md](SPEC.md), the compiler is described in [DESIGN.md](DESIGN.md), and decisions the spec left open are written down in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). Five example projects live in `examples/`; `fixtures/` holds the model answers, tool data and expected traces for running them offline.
 
+Editor support (VS Code extension, language server, tree-sitter grammar for Zed, Neovim and Helix) is described in [docs/editor.md](docs/editor.md). To have an AI assistant write AgentMark for you, copy [templates/CLAUDE.md](templates/CLAUDE.md) (Claude Code) or [templates/.cursorrules](templates/.cursorrules) (Cursor) into your project; both point the assistant at [docs/reference.md](docs/reference.md), the one file it needs.
+
 ## Install
 
 You need a Rust toolchain (stable, edition 2021).

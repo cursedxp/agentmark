@@ -62,7 +62,7 @@ use agentmark::syntax::parser::parse_file;
 
 const TOOLS: &str = include_str!("../examples/01-invoice-chaser/tools.toml");
 
-const DOCS: [&str; 4] = ["guide", "reference", "libraries", "internals"];
+const DOCS: [&str; 5] = ["guide", "reference", "libraries", "internals", "editor"];
 
 // ---------------------------------------------------------------- extraction
 
@@ -746,4 +746,161 @@ fn check_json_doc_matches_the_real_output() {
     let (d, r) = (&doc["units"][0]["blocks"][0], &real["units"][0]["blocks"][0]);
     assert_eq!(keys(d), keys(r), "keys of units[0].blocks[0]");
     assert_eq!(keys(&doc["units"][0]["effects"]), keys(&real["units"][0]["effects"]), "keys of effects");
+}
+
+// ---------------------------------------------------------------- docs/editor.md and templates/
+
+/// Files a doc may name that live in the user's project or editor setup, not in this repository.
+const USER_SIDE_PATHS: [&str; 1] = ["languages/agentmark/"];
+
+/// Every path-looking token of `text` with a `/` in it must exist in the repository, in the
+/// tree-sitter folder (the queries are named relative to it), or be a known user-side path.
+fn missing_paths(text: &str) -> Vec<String> {
+    path_tokens(text)
+        .into_iter()
+        .filter(|t| t.contains('/') && !USER_SIDE_PATHS.contains(&t.as_str()))
+        .filter(|t| !Path::new(t).exists() && !Path::new("editors/tree-sitter-agentmark").join(t).exists())
+        .collect()
+}
+
+#[test]
+fn editor_doc_mentions_only_files_that_exist() {
+    let text = read_doc("editor");
+    assert!(path_tokens(&text).len() >= 8, "docs/editor.md should name the files it talks about");
+    let missing = missing_paths(&text);
+    assert!(missing.is_empty(), "docs/editor.md names files that do not exist: {missing:?}");
+    // the markdown links resolve too
+    for rest in text.split("](").skip(1) {
+        let target = rest.split(')').next().unwrap();
+        if !target.starts_with("http") && !target.starts_with('#') {
+            assert!(Path::new("docs").join(target.split('#').next().unwrap()).exists(), "docs/editor.md links to {target}");
+        }
+    }
+}
+
+/// The settings and commands the doc names are the ones the extension declares.
+#[test]
+fn editor_doc_names_the_real_settings_and_commands() {
+    let text = read_doc("editor");
+    let pkg: serde_json::Value = serde_json::from_str(&std::fs::read_to_string("editors/vscode/package.json").unwrap()).unwrap();
+    let props = pkg["contributes"]["configuration"]["properties"].as_object().unwrap();
+    for key in props.keys() {
+        assert!(text.contains(&format!("`{key}`")), "docs/editor.md does not explain the setting {key}");
+    }
+    for word in text.split('`').skip(1).step_by(2).filter(|w| w.starts_with("agentmark.") && w.contains('.')) {
+        let known = props.contains_key(word) || word.ends_with(".toml");
+        assert!(known, "docs/editor.md names `{word}`, which the extension does not declare");
+    }
+    for c in pkg["contributes"]["commands"].as_array().unwrap() {
+        let title = c["title"].as_str().unwrap().trim_start_matches("AgentMark: ");
+        assert!(text.contains(title), "docs/editor.md does not mention the command \"{title}\"");
+    }
+}
+
+/// The complete `agentmark.toml` of the doc is accepted by the compiler and uses exactly the
+/// top-level keys of the JSON schema the extension ships.
+#[test]
+fn editor_doc_toml_is_a_valid_config() {
+    let block = blocks_of("editor")
+        .into_iter()
+        .find(|b| b.modifier("name").as_deref() == Some("agentmark.toml"))
+        .expect("docs/editor.md shows a complete agentmark.toml (name=agentmark.toml)");
+    let parsed: toml::Table = toml::from_str(&block.body).expect("the sample is TOML");
+    let schema: serde_json::Value = serde_json::from_str(&std::fs::read_to_string("editors/vscode/schemas/agentmark.schema.json").unwrap()).unwrap();
+    let mut want: Vec<&str> = schema["properties"].as_object().unwrap().keys().map(String::as_str).collect();
+    let mut got: Vec<&str> = parsed.keys().map(String::as_str).collect();
+    want.sort();
+    got.sort();
+    assert_eq!(got, want, "the sample shows every key the schema knows");
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("agentmark.toml"), format!("{}\n", block.body)).unwrap();
+    std::fs::write(dir.path().join("tools.toml"), TOOLS).unwrap();
+    std::fs::write(dir.path().join("main.agent.md"), "> Logs once.\n# Agent: hello\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n").unwrap();
+    let project = Project::load(dir.path().to_str().unwrap());
+    let errors: Vec<_> = match sema::check(&project) {
+        Ok(_) => Vec::new(),
+        Err(d) => d.into_iter().filter(|x| x.severity == Severity::Error).collect(),
+    };
+    assert!(errors.is_empty(), "docs/editor.md agentmark.toml is rejected:\n{}", project.render(&errors));
+}
+
+/// The text rendering of the panel names every unit, kind and tool that `check --json` reports.
+#[test]
+fn editor_doc_panel_matches_check_json() {
+    let block = blocks_of("editor")
+        .into_iter()
+        .find(|b| b.body.starts_with("What can this agent touch"))
+        .expect("docs/editor.md shows the panel as text");
+    let out = Command::new(env!("CARGO_BIN_EXE_agentmark"))
+        .args(["check", "--json", "examples/01-invoice-chaser"])
+        .env("TMPDIR", support::compiler_tmp())
+        .env("CARGO_TARGET_DIR", support::gen_target())
+        .output_locked();
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).expect("check --json prints JSON");
+    assert!(block.body.contains("Check passed for examples/01-invoice-chaser"));
+    for u in report["units"].as_array().unwrap() {
+        let head = format!("{}  {}  [{}]", u["name"].as_str().unwrap(), u["kind"].as_str().unwrap(), u["effects"]["class"].as_str().unwrap());
+        assert!(block.body.contains(&head), "the panel sample lacks the heading \"{head}\"");
+        let tools = &u["effects"]["tools"];
+        for n in tools["network"].as_array().unwrap().iter().chain(tools["local"].as_array().unwrap()) {
+            assert!(block.body.contains(n.as_str().unwrap()), "the panel sample lacks the tool {n}");
+        }
+        for b in u["blocks"].as_array().unwrap() {
+            assert!(block.body.contains(b["label"].as_str().unwrap()), "the panel sample lacks the block {}", b["label"]);
+        }
+    }
+}
+
+const TEMPLATES: [&str; 2] = ["templates/CLAUDE.md", "templates/.cursorrules"];
+
+/// Both templates send the assistant to docs/reference.md, and every `agentmark <command>` they
+/// show is a command `agentmark --help` lists.
+#[test]
+fn templates_point_at_the_reference_and_show_real_commands() {
+    let help = Command::new(env!("CARGO_BIN_EXE_agentmark"))
+        .arg("--help")
+        .output_locked();
+    let help = String::from_utf8_lossy(&help.stdout).to_string();
+    let commands: Vec<String> = help
+        .lines()
+        .skip_while(|l| !l.starts_with("Commands:"))
+        .skip(1)
+        .take_while(|l| l.starts_with("  "))
+        .filter_map(|l| l.split_whitespace().next().map(str::to_string))
+        .collect();
+    assert!(commands.len() >= 8, "could not read the command list from --help: {commands:?}");
+    for path in TEMPLATES {
+        let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+        assert!(text.contains("docs/reference.md"), "{path} must point at docs/reference.md");
+        let mut shown = 0;
+        for rest in text.split("agentmark ").skip(1) {
+            let word: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+            // prose such as "agentmark.toml" or "agentmark build compiles" is not a command line
+            let is_cmd_line = rest.starts_with(&word) && !rest[word.len()..].starts_with('.');
+            if word.is_empty() || !is_cmd_line || !text.contains(&format!("`agentmark {word}")) {
+                continue;
+            }
+            assert!(commands.contains(&word), "{path} shows `agentmark {word}`, which `agentmark --help` does not list");
+            shown += 1;
+        }
+        assert!(shown >= 5, "{path} should show the workflow commands, found {shown}");
+        for c in ["check", "fmt", "lint", "trace"] {
+            assert!(text.contains(&format!("agentmark {c}")), "{path} must teach `agentmark {c}`");
+        }
+        // the other paths are the user's project layout, not this repository's
+    }
+    assert!(Path::new("docs/reference.md").exists());
+}
+
+/// Every flag a template teaches exists on the command.
+#[test]
+fn template_flags_exist() {
+    for (cmd, flags) in [("check", vec!["--allow-unverified"]), ("fmt", vec!["--check"]), ("trace", vec!["--mock", "--fixtures"])] {
+        let out = Command::new(env!("CARGO_BIN_EXE_agentmark")).args([cmd, "--help"]).output_locked();
+        let help = String::from_utf8_lossy(&out.stdout).to_string();
+        for f in flags {
+            assert!(help.contains(f), "`agentmark {cmd} --help` has no {f}");
+        }
+    }
 }

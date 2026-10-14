@@ -553,3 +553,11 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q271 — `agentmark.toml` schema and `[models]` (step 16)
 **Choice:** `schemas/agentmark.schema.json` covers `name`, `version`, `targets`, `[lint] deny`, `[rust.dependencies]`, `[lsp] model_actions` and `[models]`, mirroring the compiler on dev: driver `^(claude(:\S+)?|openai:\S+|local:\S+|mock(:\S+)?)$` (azure and bedrock are rejected), `local` is either a driver string or a table with `base_url` matching `^https?://`. The schema is registered as `tomlValidation` (Even Better TOML's contribution point, no manual association). The extension is bundled with esbuild into `dist/extension.js`, so the vsix has 9 files and vsce prints no warnings.
 **Why:** SPEC 19 defines the keys; the schema must not lag the compiler.
+
+## Q290 — Setup snippets for Zed, Neovim and Helix are not executed (step 18)
+**Choice:** `docs/editor.md` gives configuration for Neovim (`vim.lsp.config`, `nvim-treesitter` main branch with a local `path`), Helix (`languages.toml`, `hx --grammar build`) and Zed (a dev extension with a `file://` grammar). Only what the repository can check is tested: the paths exist, the `agentmark.toml` sample is accepted, the settings match `package.json`. The editors themselves are not installed in CI, so their option names (for example `install_info.path`, `file-types` globs, Zed `[grammars]` keys) follow each editor's documentation as understood at writing time and may need adjusting for a given editor version. The doc says "adjust to the version of your editor".
+**Why:** running three more editors in the test-suite costs more than the snippets are worth; the fallback (any LSP client plus `agentmark-lsp`) is stated first.
+
+## Q291 — Templates carry no copy of the reference (step 18)
+**Choice:** `templates/CLAUDE.md` and `templates/.cursorrules` tell the assistant to read `docs/reference.md` and, for a project outside the checkout, to keep a copy of it (suggested name `docs/agentmark-reference.md`). The templates themselves do not embed the reference, so there is one file to keep current (SPEC 20.6).
+**Why:** a pasted copy in two templates would drift; the test-suite pins that both templates name `docs/reference.md` and only show commands `agentmark --help` lists.
