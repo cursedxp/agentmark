@@ -113,11 +113,28 @@ pub fn cargo_build_in(out: &Path) -> Output {
 
 static BUILD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Held while anything cargo-builds into (or executes from) the shared `target/gen`.
+pub fn build_lock() -> std::sync::MutexGuard<'static, ()> {
+    BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// `Command::output` under the build lock, for `agentmark run/trace/build` (they cargo-build).
+pub trait OutputLocked {
+    fn output_locked(&mut self) -> Output;
+}
+
+impl OutputLocked for Command {
+    fn output_locked(&mut self) -> Output {
+        let _g = build_lock();
+        self.output().unwrap()
+    }
+}
+
 /// Builds the generated project in `out` and copies its binary to `out/<name>.bin`, so the test
 /// runs a private copy that no later build in the shared target folder can relink under it.
 /// Asserts the build succeeds without warnings.
 pub fn build_bin(out: &Path, name: &str) -> PathBuf {
-    let _g = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = build_lock();
     let b = cargo_build_in(out);
     assert!(b.status.success(), "{name}: cargo build failed:\n{}", stderr(&b));
     assert!(!stderr(&b).contains("warning"), "{name}: generated code must be warning free:\n{}", stderr(&b));

@@ -13,7 +13,7 @@ use support::*;
 
 /// `agentmark trace <path> --mock --fixtures <dir>`: the trace lines.
 fn trace_of(path: &str, fixtures: &Path) -> Vec<Value> {
-    let o = agentmark(&["trace", path, "--mock", "--fixtures", s(fixtures)]).output().unwrap();
+    let o = agentmark(&["trace", path, "--mock", "--fixtures", s(fixtures)]).output_locked();
     assert!(o.status.success(), "trace failed:\n{}", stderr(&o));
     parse_lines(&stdout(&o))
 }
@@ -76,16 +76,16 @@ fn build_writes_the_spec_layout_and_the_project_compiles_warning_free() {
 #[test]
 fn run_prints_the_log_and_trace_prints_json_lines_only() {
     let fx = format!("{ROOT}/fixtures/01-invoice-chaser");
-    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output().unwrap();
+    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output_locked();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("Reminded Müller GmbH about 1200.00 EUR"));
-    let t = agentmark(&["trace", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output().unwrap();
+    let t = agentmark(&["trace", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output_locked();
     assert_eq!(parse_lines(&stdout(&t)).len(), 6);
 }
 
 #[test]
 fn mock_without_fixtures_is_asked_for_them() {
-    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock"]).output().unwrap();
+    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock"]).output_locked();
     assert_eq!(o.status.code(), Some(2));
     assert!(stderr(&o).contains("--fixtures"), "{}", stderr(&o));
 }
@@ -109,7 +109,7 @@ fn a_missing_model_answer_is_reported_not_swallowed() {
     let fx = temp("fx04b");
     write(&fx, "crm.invoices.json", "[]");
     write(&fx, "model.json", &model_json(&[]));
-    let o = agentmark(&["trace", &format!("{ROOT}/examples/04-daily-report"), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["trace", &format!("{ROOT}/examples/04-daily-report"), "--mock", "--fixtures", s(&fx)]).output_locked();
     // the block fails, the run says so, and the trace records the error
     assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
     let t = parse_lines(&stdout(&o));
@@ -300,7 +300,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     assert!(o.status.success(), "the test source must be valid:\n{}\n{}", stdout(&o), stderr(&o));
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
-    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("shout.agent.md:13"), "points at the line of the mistake:\n{e}");
@@ -319,7 +319,7 @@ fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
     let (d, file) = single("semicolon", "semi.agent.md", BROKEN_SEMICOLON);
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
-    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("semi.agent.md:8"), "points at the block heading:\n{e}");
@@ -331,7 +331,7 @@ fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
 fn build_checks_the_generated_project_and_reports_user_rust_plainly() {
     let (d, file) = single("buildcheck", "semi.agent.md", BROKEN_SEMICOLON);
     let out = temp("buildcheck-out");
-    let o = agentmark(&["build", s(&file), "-o", s(&out)]).output().unwrap();
+    let o = agentmark(&["build", s(&file), "-o", s(&out)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("semi.agent.md:8") && e.contains("does not compile"), "{e}");
@@ -477,7 +477,7 @@ fn a_failing_command_leaves_an_error_line_in_the_trace() {
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
     write(&fx, "command.json", r#"{"command":"slurp","args":{"path":"missing.txt"}}"#);
-    let o = agentmark(&["trace", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["trace", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
     let t = parse_lines(&stdout(&o));
     assert_eq!(t.len(), 1, "{t:#?}");

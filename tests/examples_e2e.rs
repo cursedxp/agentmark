@@ -42,7 +42,7 @@ fn lines(v: &[Value]) -> String {
 /// `agentmark build examples/<name> --target rust -o <tmp>` then `cargo build`; returns the program.
 fn build_example(name: &str, project: &str) -> (Tmp, PathBuf) {
     let out = temp(&format!("e2e-{name}"));
-    let o = agentmark(&["build", &format!("{ROOT}/examples/{name}"), "--target", "rust", "-o", s(&out)]).output().unwrap();
+    let o = agentmark(&["build", &format!("{ROOT}/examples/{name}"), "--target", "rust", "-o", s(&out)]).output_locked();
     assert!(o.status.success(), "{name}: agentmark build failed:\n{}", stderr(&o));
     let bin = build_bin(&out, project);
     (out, bin)
