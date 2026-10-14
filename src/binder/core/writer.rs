@@ -220,6 +220,15 @@ pub fn add_on_demand(text: &str, added: &[BoundItem], code_lang: &str, proposed:
         };
         proposed = proposed.max(old);
     }
+    // no proposal on file: the class a person approved (or the file's own claim) is the floor
+    if !lines[..top_end].iter().any(|l| l.starts_with("- proposed-effect:")) {
+        let floor = match lines[..top_end].iter().find_map(|l| l.strip_prefix("- effect:")).map(str::trim) {
+            Some("network") => ProposedEffect::Network,
+            Some("local") => ProposedEffect::Local,
+            _ => ProposedEffect::Pure,
+        };
+        proposed = proposed.max(floor);
+    }
     let prop_line = format!("- proposed-effect: {proposed}");
     match lines[..top_end].iter().position(|l| l.starts_with("- proposed-effect:")) {
         Some(i) => lines[i] = prop_line,

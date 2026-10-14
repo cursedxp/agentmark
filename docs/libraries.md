@@ -272,7 +272,7 @@ needs the 224-bit hash, and the binding lists it as not bound:
   ```
 
 ## Not bound
-- sha224_digest: assisted tier: mock model has no response for sha224_digest (<sha2::Sha224 as sha2::Digest>::digest)
+- sha224_digest: assisted tier: assisted body failed type-check: error[E0308]: mismatched types (<sha2::Sha224 as sha2::Digest>::digest)
 ````
 
 ````text name=ondemand/main.agent.md
@@ -316,7 +316,10 @@ What happened, in order:
   `bindings/<crate>.agent.md.prev`.
 
 The model gets two tries; the second one is told what was wrong with the first. If both fail, nothing is changed
-and the build stops at your statement. The error names the item and what to do:
+and the build stops at your statement. The error names the item, says which of three things went wrong (the code did not
+pass the type check; the model could not be reached, with the reason; the signature the model chose does not fit your
+statement) and what to do. The compiler's own text is not shown; it is written to the log file named in the last line,
+for a bug report:
 
 ```console env=AGENTMARK_MODEL=mock:$REPO/tests/binder/ondemand-bad.json env=AGENTMARK_RUSTDOC_JSON=$REPO/tests/binder/sha2.json env=AGENTMARK_RUSTDOC_JSON_DIR=$REPO/tests/binder env=AGENTMARK_OFFLINE=1 both
 $ agentmark check ondemand
@@ -326,7 +329,7 @@ ondemand/main.agent.md:8
   - sha2 sha224_digest payload -> digest
          ^^^^^^^^^^^^^
   Could not bind "sha224_digest" of sha2 on demand: the code the model wrote did not pass the type check, twice.
-  Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md.
+  Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md. Details for a bug report: ondemand/target/agentmark/ondemand-sha2-sha224_digest.log
 
 1 error, 0 warnings: not ok.
 ```

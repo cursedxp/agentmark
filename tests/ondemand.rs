@@ -121,12 +121,19 @@ fn invalid_rust_twice_stops_with_the_documented_error_and_changes_nothing() {
     let expected = format!(
         "{}:8\n  - sha2 sha224_digest payload -> digest\n         ^^^^^^^^^^^^^\n  \
          Could not bind \"sha224_digest\" of sha2 on demand: the code the model wrote did not pass the type check, twice.\n  \
-         Nothing was changed. Use a ## Rust block for \"sha224_digest\", or bind it by hand in bindings/sha2.agent.md.\n",
-        file.display()
+         Nothing was changed. Use a ## Rust block for \"sha224_digest\", or bind it by hand in bindings/sha2.agent.md. \
+         Details for a bug report: {}/target/agentmark/ondemand-sha2-sha224_digest.log\n",
+        file.display(),
+        d.display()
     );
     assert!(err.contains(&expected), "{err}\n-- expected --\n{expected}");
     assert!(err.contains("1 error: not built."), "{err}");
     assert!(!err.contains("error[E"), "no rustc output reaches the author: {err}");
+
+    // the details, compiler text included, are in the log file and nowhere else
+    let log = std::fs::read_to_string(d.join("target/agentmark/ondemand-sha2-sha224_digest.log")).unwrap();
+    assert!(log.contains("attempt 2: the code does not compile"), "{log}");
+    assert!(log.contains("this_function_does_not_exist"), "{log}");
 
     // never a broken build: nothing written, the binding is byte for byte what it was
     assert!(!out_dir.exists());
@@ -149,6 +156,54 @@ fn check_json_reports_the_failure_as_a_diagnostic() {
     assert_eq!(v["ok"], false);
     assert_eq!(v["diagnostics"][0]["code"], "E220");
     assert_eq!(v["diagnostics"][0]["line"], 8);
+}
+
+
+const USES_SHA224_NEW: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha224_new payload -> digest\n- print: \"done\"\n";
+
+fn error_of(o: &Output) -> String {
+    let err = stderr(o);
+    let at = err.find("fingerprint.agent.md:8").unwrap_or_else(|| panic!("{err}"));
+    err[at..].lines().take(5).collect::<Vec<_>>().join("\n")
+}
+
+#[test]
+fn a_model_that_gives_no_answer_is_said_so() {
+    // the canned model has nothing for this item
+    let (d, model) = project("ondemand-none", GOOD_BODY);
+    std::fs::write(&model, r#"{"responses":[]}"#).unwrap();
+    let o = run(&["check", s(&d)], &model);
+    assert_eq!(o.status.code(), Some(1));
+    let e = error_of(&o);
+    assert!(
+        e.contains("Could not bind \"sha224_digest\" of sha2 on demand: the model could not be reached: the mock model has no answer for this.\n"),
+        "{e}"
+    );
+    assert!(!e.contains("type check"), "{e}");
+}
+
+#[test]
+fn a_signature_that_does_not_fit_the_statement_is_said_so() {
+    let (d, model) = project("ondemand-sigfit", GOOD_BODY);
+    write(&d, "fingerprint.agent.md", USES_SHA224_NEW);
+    let wrong = "## sha224_new(a: bytes, b: bytes) -> bytes\nOk(a)";
+    std::fs::write(&model, serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_new\n","response":wrong}]}).to_string()).unwrap();
+    let o = run(&["check", s(&d)], &model);
+    assert_eq!(o.status.code(), Some(1));
+    let e = error_of(&o);
+    assert!(
+        e.contains("Could not bind \"sha224_new\" of sha2 on demand: the signature the model chose does not fit your statement (1 value, 2 parameters).\n"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_statement_in_a_file_that_does_not_import_the_crate_is_not_ours() {
+    let (d, model) = project("ondemand-noimport", GOOD_BODY);
+    write(&d, "fingerprint.agent.md", &USES_SHA224.replace("# Import: crate sha2\n\n", ""));
+    let o = run(&["check", s(&d)], &model);
+    assert!(!stderr(&o).contains("on demand"), "{}", stderr(&o));
+    assert!(!binding_of(&d).contains("Written on demand"));
 }
 
 // ---- the tier as a library call, with a fake type checker ----
@@ -290,6 +345,64 @@ mod library {
         assert_eq!(done, ["sha224_digest", "sha384_digest"]);
     }
 
+
+    #[test]
+    fn nothing_is_saved_until_every_crate_succeeded() {
+        use agentmark::binder::{commit_on_demand, produce_on_demand};
+        let d = temp("ondemand-multi");
+        // two bindings in one folder: sha2 (accepts the body) and chrono (rejects it)
+        let (a0, _) = opts(&d, r#"{"responses":[]}"#, 0);
+        bind("sha2", &a0).unwrap();
+        let mut b0 = a0;
+        b0.rustdoc_json = Some(fixture("chrono"));
+        b0.foreign_rustdoc = vec![];
+        bind("chrono", &b0).unwrap();
+        let ma = serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_digest\n","response":"Ok(vec![])"}]}).to_string();
+        let (a, _) = opts(&d, &ma, 0);
+        let mb = serde_json::json!({"responses":[{"prompt_prefix":"on-demand chrono date_time_year\n","response":"Ok(1)"}]}).to_string();
+        let (mut b, _) = opts(&d, &mb, 100);
+        b.rustdoc_json = Some(fixture("chrono"));
+        b.foreign_rustdoc = vec![];
+        let (sha, chrono) = (d.join("bindings/sha2.agent.md"), d.join("bindings/chrono.agent.md"));
+        let (sha_before, chrono_before) = (std::fs::read_to_string(&sha).unwrap(), std::fs::read_to_string(&chrono).unwrap());
+        assert!(chrono_before.contains("- date_time_year:"), "date_time_year must start out not bound");
+
+        let (_, mut sink) = lines();
+        let pa = produce_on_demand("sha2", &[use_of("sha224_digest", 1)], &a, &mut sink).unwrap().unwrap();
+        let eb = produce_on_demand("chrono", &[OnDemandUse { item: "date_time_year".into(), statement: "chrono date_time_year d".into(), arity: 1 }], &b, &mut sink);
+        assert!(matches!(eb, Err(OnDemandError::Failed(_))));
+        // the caller stops here: crate A was produced but never committed
+        assert_eq!(std::fs::read_to_string(&sha).unwrap(), sha_before);
+        assert_eq!(std::fs::read_to_string(&chrono).unwrap(), chrono_before);
+
+        commit_on_demand(&[pa]).unwrap();
+        assert!(std::fs::read_to_string(&sha).unwrap().contains("## sha224_digest"));
+        assert_eq!(std::fs::read_to_string(&chrono).unwrap(), chrono_before);
+    }
+
+    #[test]
+    fn a_hand_written_binding_needs_a_known_version() {
+        let d = temp("ondemand-handwritten");
+        std::fs::create_dir_all(d.join("bindings")).unwrap();
+        let hand = "# Binding: sha2\n- crate: sha2\n- effect: pure\n\n## Not bound\n- sha224_digest: no\n";
+        std::fs::write(d.join("bindings/sha2.agent.md"), hand).unwrap();
+        let m = serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_digest\n","response":"Ok(vec![])"}]}).to_string();
+        let (mut o, _) = opts(&d, &m, 0);
+        o.rustdoc_json = None;
+        let (_, mut sink) = lines();
+        let e = bind_on_demand("sha2", &[use_of("sha224_digest", 1)], &o, &mut sink).unwrap_err();
+        let OnDemandError::Setup(m) = e else { panic!() };
+        assert!(m.to_string().contains("does not say which version of \"sha2\""), "{m}");
+        // a lock file names the version (then the rustdoc for it is needed, which this test lacks)
+        std::fs::write(d.join("Cargo.lock"), "[[package]]\nname = \"sha2\"\nversion = \"0.10.9\"\n").unwrap();
+        o.rustdoc_json = Some(fixture("sha2"));
+        o.foreign_rustdoc = vec![fixture("digest")];
+        bind_on_demand("sha2", &[use_of("sha224_digest", 1)], &o, &mut sink).unwrap();
+        // hand-written file: approval floor kept (no proposal on file, effect pure -> pure)
+        let t = std::fs::read_to_string(d.join("bindings/sha2.agent.md")).unwrap();
+        assert!(t.contains("- effect: unverified\n- proposed-effect: pure\n"), "{t}");
+    }
+
     struct OnlyFor(&'static str);
     impl TypeChecker for OnlyFor {
         fn check(&self, r: &CheckRequest<'_>) -> Result<(), String> {
@@ -357,9 +470,9 @@ mod library {
         let out = add_on_demand(one, &[item("a")], "rust", ProposedEffect::Pure);
         assert_eq!(
             out,
-            "# Binding: c\n- crate: c\n- effect: unverified\n- proposed-effect: pure\n\n> Does it.\n## a() -> int\n  ```rust\n  Ok(1)\n  ```\n"
+            "# Binding: c\n- crate: c\n- effect: unverified\n- proposed-effect: network\n\n> Does it.\n## a() -> int\n  ```rust\n  Ok(1)\n  ```\n"
         );
-        // a proposal never goes down: network stays network
+        // the approved class is the floor of the proposal; and a proposal never goes down
         let again = add_on_demand(&out.replace("proposed-effect: pure", "proposed-effect: network"), &[], "rust", ProposedEffect::Pure);
         assert!(again.contains("- proposed-effect: network"));
     }

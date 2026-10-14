@@ -5,9 +5,10 @@
 use std::path::Path;
 
 use super::bind;
-use crate::binder::{bind_on_demand, BindOptions, OnDemandError, OnDemandUse};
+use crate::binder::core::ondemand::Cause;
+use crate::binder::{commit_on_demand, produce_on_demand, BindOptions, OnDemandError, OnDemandUse};
 use crate::diag::{Diagnostic, Span};
-use crate::project::Project;
+use crate::project::{Project, ResolvedImport};
 use crate::syntax::ast::{Decl, Stmt, StmtKind, TargetPart};
 
 /// E220: the model could not produce code that compiles, after two attempts.
@@ -88,6 +89,14 @@ fn find(project: &Project) -> Vec<Found> {
         for s in statements(project, file) {
             let StmtKind::ToolCall { tool, verb: Some(verb), target, .. } = &s.kind else { continue };
             let Some((bf, b)) = bindings.iter().find(|(_, b)| b.name.name == tool.name) else { continue };
+            // only a binding this file imports (`# Import: crate x`) is one it may extend
+            let imported = project.files[file]
+                .imports
+                .iter()
+                .any(|i| matches!(i, ResolvedImport::Crate { name, .. } if *name == b.crate_name.name));
+            if !imported {
+                continue;
+            }
             if !b.not_bound.iter().any(|n| n.item == verb.name) || b.items.iter().any(|i| i.name.name == verb.name) {
                 continue;
             }
@@ -108,7 +117,8 @@ fn find(project: &Project) -> Vec<Found> {
 }
 
 /// Write every item the project's statements need. `Ok(true)` = a binding file changed (load the
-/// project again), `Ok(false)` = nothing to do.
+/// project again), `Ok(false)` = nothing to do. All crates are produced first and saved only when
+/// every one of them succeeded.
 pub(crate) fn resolve(project: &Project) -> Result<bool, Failure> {
     let found = find(project);
     if found.is_empty() {
@@ -116,7 +126,7 @@ pub(crate) fn resolve(project: &Project) -> Result<bool, Failure> {
     }
     let (model, mock_today) = bind::model_from_env().map_err(Failure::Setup)?;
     let offline = matches!(std::env::var("AGENTMARK_OFFLINE").as_deref(), Ok("1") | Ok("true"));
-    let mut changed = false;
+    let mut produced = Vec::new();
     let mut done: Vec<usize> = Vec::new();
     for f in &found {
         if done.contains(&f.binding_file) {
@@ -130,34 +140,71 @@ pub(crate) fn resolve(project: &Project) -> Result<bool, Failure> {
         let mut opts = BindOptions::new(&dir, model.clone(), mock_today.unwrap_or_else(bind::system_today));
         opts.offline = offline;
         let mut log = |l: &str| eprintln!("{l}");
-        match bind_on_demand(&f.crate_name, &uses, &opts, &mut log) {
-            Ok(items) => changed |= !items.is_empty(),
+        match produce_on_demand(&f.crate_name, &uses, &opts, &mut log) {
+            Ok(p) => produced.extend(p),
             Err(OnDemandError::Setup(e)) => {
                 return Err(Failure::Setup(format!("cannot write the library code for \"{}\" on demand: {e}", f.crate_name)))
             }
             Err(OnDemandError::Failed(fail)) => {
                 // the statement that asked for the failed item
                 let at = found.iter().find(|g| g.binding_file == f.binding_file && g.use_.item == fail.item).unwrap_or(f);
-                return Err(Failure::Item(Box::new(failure_diagnostic(project, at, &fail.item))));
+                let log_path = write_log(project, at, &fail);
+                return Err(Failure::Item(Box::new(failure_diagnostic(project, at, &fail, log_path.as_deref()))));
             }
         }
     }
-    Ok(changed)
+    if produced.is_empty() {
+        return Ok(false);
+    }
+    commit_on_demand(&produced).map_err(|e| Failure::Setup(format!("cannot save the new library code: {e}")))?;
+    Ok(true)
+}
+
+/// Where the details of a failed item go: `<project>/target/agentmark/ondemand-<crate>-<item>.log`.
+pub(crate) fn log_path(project: &Project, crate_name: &str, item: &str) -> std::path::PathBuf {
+    Path::new(&project.root).join("target/agentmark").join(format!("ondemand-{crate_name}-{item}.log"))
+}
+
+/// Every complaint, compiler text included, for a bug report. `None` if it cannot be written.
+fn write_log(project: &Project, f: &Found, fail: &crate::binder::core::ondemand::Failure) -> Option<String> {
+    let path = log_path(project, &f.crate_name, &fail.item);
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    let mut text = format!("on-demand binding of \"{}\" ({}), statement: {}\n\n", fail.item, f.crate_name, f.use_.statement);
+    for (i, c) in fail.complaints.iter().enumerate() {
+        text.push_str(&format!("attempt {}: {c}\n", i + 1));
+    }
+    std::fs::write(&path, text).ok()?;
+    Some(path.display().to_string())
 }
 
 /// The error of SPEC 10 shape at the author's statement (documented in docs/reference.md 15.2).
-fn failure_diagnostic(project: &Project, f: &Found, item: &str) -> Diagnostic {
+fn failure_diagnostic(
+    project: &Project,
+    f: &Found,
+    fail: &crate::binder::core::ondemand::Failure,
+    log: Option<&str>,
+) -> Diagnostic {
+    let item = &fail.item;
+    let why = match fail.cause {
+        Cause::NoAnswer => format!("the model could not be reached: {}.", fail.detail),
+        Cause::Signature => format!(
+            "the signature the model chose does not fit your statement ({}).",
+            fail.detail
+        ),
+        Cause::Compile => "the code the model wrote did not pass the type check, twice.".to_string(),
+    };
+    let mut help = format!(
+        "Nothing was changed. Use a ## Rust block for \"{item}\", or bind it by hand in bindings/{}.agent.md.",
+        f.crate_name
+    );
+    if let Some(l) = log {
+        help.push_str(&format!(" Details for a bug report: {l}"));
+    }
     Diagnostic::error(
         E_ON_DEMAND,
         &project.files[f.file].path,
         f.verb,
-        format!(
-            "Could not bind \"{item}\" of {} on demand: the code the model wrote did not pass the type check, twice.",
-            f.binding
-        ),
+        format!("Could not bind \"{item}\" of {} on demand: {why}", f.binding),
     )
-    .with_help(format!(
-        "Nothing was changed. Use a ## Rust block for \"{item}\", or bind it by hand in bindings/{}.agent.md.",
-        f.crate_name
-    ))
+    .with_help(help)
 }

@@ -288,7 +288,7 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
         prev.push(".prev");
         std::fs::copy(&path, PathBuf::from(prev)).map_err(|e| BindError::Io(e.to_string()))?;
     }
-    std::fs::write(&path, &text).map_err(|e| BindError::Io(format!("{}: {e}", path.display())))?;
+    write_atomic(&path, &text).map_err(|e| BindError::Io(format!("{}: {e}", path.display())))?;
     Ok(BindOutcome {
         path,
         generated: true,
@@ -318,17 +318,62 @@ pub enum OnDemandError {
     Failed(core::ondemand::Failure),
 }
 
-/// The on-demand tier (SPEC 15.2, last row) for one crate: write the body of every item in
-/// `uses` that the binding lists under `## Not bound`, type-check it, and save all of them to
-/// `bindings/<crate>.agent.md` as one change. The file is `unverified` afterwards. Either every
-/// item is written or the file is left exactly as it was. `log` gets one plain line per model
-/// attempt. Returns the names of the items now bound.
-pub fn bind_on_demand(
+/// The result of [`produce_on_demand`]: the new text of one binding file, not yet written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OnDemandProduced {
+    pub path: PathBuf,
+    pub old_text: String,
+    pub new_text: String,
+    /// Names of the items that are bound in `new_text`.
+    pub items: Vec<String>,
+}
+
+/// Write a file so that a reader sees the old or the new content, never half of it.
+pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".tmp{}", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
+/// The version of `crate_name` the project is locked to: a `Cargo.lock` next to `bindings/` (or
+/// above `.agentmark/bindings/`).
+fn locked_version(bindings_dir: &Path, crate_name: &str) -> Option<String> {
+    let mut dirs = vec![];
+    if let Some(p) = bindings_dir.parent() {
+        dirs.push(p.to_path_buf());
+        if let Some(pp) = p.parent() {
+            dirs.push(pp.to_path_buf());
+        }
+    }
+    for d in dirs {
+        let Ok(text) = std::fs::read_to_string(d.join("Cargo.lock")) else { continue };
+        let mut lines = text.lines();
+        while let Some(l) = lines.next() {
+            if l.trim() == format!("name = \"{crate_name}\"") {
+                if let Some(v) = lines.next().and_then(|l| l.trim().strip_prefix("version = \"")) {
+                    return v.strip_suffix('"').map(String::from);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// First half of the on-demand tier (SPEC 15.2, last row) for one crate: write the body of every
+/// item in `uses` that the binding lists under `## Not bound`, type-check it, and compute the new
+/// binding text. Nothing is written; [`commit_on_demand`] does that, so a caller with several
+/// crates can commit only when every crate succeeded. `log` gets one plain line per model
+/// attempt. `Ok(None)` = nothing in `uses` is listed as not bound.
+pub fn produce_on_demand(
     crate_name: &str,
     uses: &[OnDemandUse],
     opts: &BindOptions,
     log: &mut (dyn FnMut(&str) + Send),
-) -> Result<Vec<String>, OnDemandError> {
+) -> Result<Option<OnDemandProduced>, OnDemandError> {
     use self::core::ondemand::{write_item, Request};
     let setup = OnDemandError::Setup;
     let path = binding_path(&opts.bindings_dir, crate_name);
@@ -353,17 +398,26 @@ pub fn bind_on_demand(
         }
     }
     if todo.is_empty() {
-        return Ok(vec![]);
+        return Ok(None);
     }
 
     let env_json = rust::fetch::env_nonempty(rust::fetch::ENV_JSON).map(PathBuf::from);
     let json_given = opts.rustdoc_json.clone().or(env_json);
+    // the version the binding is for: its header, else the project's lock file, else the rustdoc
+    // the caller supplied; never "the newest" (the API the author wrote against is the old one)
     let version = match (&opts.version, header_version(&path, crate_name), &json_given) {
         (Some(v), _, _) => v.clone(),
         (None, Some(v), _) => v,
-        (None, None, Some(j)) => model_version(j).map_err(setup)?,
-        (None, None, None) => rust::resolve_version(&spec(crate_name, None, opts))
-            .map_err(|e| setup(BindError::Metadata(e)))?,
+        (None, None, json) => match (locked_version(&opts.bindings_dir, crate_name), json) {
+            (Some(v), _) => v,
+            (None, Some(j)) => model_version(j).map_err(setup)?,
+            (None, None) => {
+                return Err(setup(BindError::Metadata(format!(
+                    "this binding was written by hand and does not say which version of \"{crate_name}\" it is for; \
+                     run `agentmark bind {crate_name} --version <the version you use>` or add the generated header"
+                ))))
+            }
+        },
     };
     let (ci, _scratch) = load_crate(crate_name, &version, json_given, opts).map_err(setup)?;
     let default_checker;
@@ -389,12 +443,49 @@ pub fn bind_on_demand(
         .chain(added.iter().map(|i| i.body.as_str()))
         .collect();
     let proposed = propose_effect(&ci.hints, texts);
-    let out = core::add_on_demand(&text, &added, &ci.code_lang, proposed);
-    let mut prev = path.clone().into_os_string();
-    prev.push(".prev");
-    std::fs::copy(&path, PathBuf::from(prev)).map_err(|e| setup(BindError::Io(e.to_string())))?;
-    std::fs::write(&path, out).map_err(|e| setup(BindError::Io(format!("{}: {e}", path.display()))))?;
-    Ok(added.into_iter().map(|i| i.name).collect())
+    let new_text = core::add_on_demand(&text, &added, &ci.code_lang, proposed);
+    Ok(Some(OnDemandProduced {
+        path,
+        old_text: text,
+        new_text,
+        items: added.into_iter().map(|i| i.name).collect(),
+    }))
+}
+
+/// Second half: save what [`produce_on_demand`] made. The previous files are kept as `.prev`
+/// first; each file is replaced atomically. If a write fails, files already replaced are put back.
+pub fn commit_on_demand(all: &[OnDemandProduced]) -> Result<(), BindError> {
+    let mut done: Vec<&OnDemandProduced> = Vec::new();
+    for p in all {
+        let mut prev = p.path.clone().into_os_string();
+        prev.push(".prev");
+        let step = std::fs::write(PathBuf::from(prev), &p.old_text)
+            .and_then(|_| write_atomic(&p.path, &p.new_text));
+        if let Err(e) = step {
+            for d in done {
+                let _ = write_atomic(&d.path, &d.old_text);
+            }
+            return Err(BindError::Io(format!("{}: {e}", p.path.display())));
+        }
+        done.push(p);
+    }
+    Ok(())
+}
+
+/// One crate, produce and commit (the single-crate case). Returns the items now bound.
+pub fn bind_on_demand(
+    crate_name: &str,
+    uses: &[OnDemandUse],
+    opts: &BindOptions,
+    log: &mut (dyn FnMut(&str) + Send),
+) -> Result<Vec<String>, OnDemandError> {
+    match produce_on_demand(crate_name, uses, opts, log)? {
+        None => Ok(vec![]),
+        Some(p) => {
+            commit_on_demand(std::slice::from_ref(&p)).map_err(OnDemandError::Setup)?;
+            Ok(p.items)
+        }
+    }
 }
 
 /// Drive an async future from sync code, on its own thread so it also works when the caller is

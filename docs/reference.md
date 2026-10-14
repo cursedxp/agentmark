@@ -869,7 +869,7 @@ typo.agent.md:7
   call, E210 statement, E211 hard limit, E212 `parallel` write conflict, E213 `do`, E214 `# Run`, E215 agent
   properties, E216 constants, E217 duplicate field, E218 two services with state), and warnings `W001` guessed
   type, `W002` unused import, `W003` unused declaration, `W004` library without binding, `W005` unapproved
-  library, `W006` several runnable declarations in one file, `W007` long line caused by string text, `W008` a library whose effect is assumed from its proposal (`--allow-unverified`). E219 is a crate import that has no binding although a statement or an agent's `tools:` line uses it.
+  library, `W006` several runnable declarations in one file, `W007` long line caused by string text, `W008` a library whose effect is assumed from its proposal (`--allow-unverified`). E219 is a crate import that has no binding although a statement or an agent's `tools:` line uses it. E220 is an on-demand library item the model could not bind (15.2).
 
 ## 11. Testing contract
 
@@ -1265,11 +1265,17 @@ fingerprint.agent.md:8
   - sha2 sha224_digest payload -> digest
          ^^^^^^^^^^^^^
   Could not bind "sha224_digest" of sha2 on demand: the code the model wrote did not pass the type check, twice.
-  Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md.
+  Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md. Details for a bug report: target/agentmark/ondemand-sha2-sha224_digest.log
 ```
 
+The middle sentence depends on the cause: "the code the model wrote did not pass the type check, twice." (shown), "the model could not be
+reached: <reason>." (API error, timeout, no answer), or "the signature the model chose does not fit your statement (1 value, 2 parameters)."
+Several libraries are handled together: no binding file is changed unless every library succeeded. Only a statement in a file that imports the
+library (`# Import: crate sha2`) counts. A hand-written binding (no generated header) is bound against the version in `Cargo.lock` next to
+`bindings/`, else the rustdoc JSON supplied; if neither is known the error says so, it never guesses the newest.
+
 If the tier cannot start at all (no model, no rustdoc), the command prints `agentmark: cannot write the library code for "sha2" on demand: <why>`
-and stops with exit code 1 (`check` goes on to report the unknown item). Q230 to Q236 record the edge cases.
+and stops with exit code 1 (`check` goes on to report the unknown item). Q230 to Q235 record the edge cases.
 
 The binder never silently drops an item: everything is bound or listed as not bound. The precise edge cases are
 decisions Q70 to Q82; for example, closures stay skipped because AgentMark has no function type (Q75).

@@ -26,11 +26,38 @@ pub struct Request<'a> {
     pub arity: usize,
 }
 
-/// Both attempts failed. `complaints` has one plain sentence per attempt.
+/// Why the last attempt failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cause {
+    /// The model gave no code (API error, timeout, nothing canned).
+    NoAnswer,
+    /// The signature the model chose does not fit the statement.
+    Signature,
+    /// The code does not pass the type check.
+    Compile,
+}
+
+/// Both attempts failed. `complaints` has one entry per attempt (the full text, compiler output
+/// included, for a log file); `cause` and `detail` describe the last one for the author.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Failure {
     pub item: String,
     pub complaints: Vec<String>,
+    pub cause: Cause,
+    /// One short line: the reason the model could not be reached, or what does not fit.
+    pub detail: String,
+}
+
+struct Complaint {
+    cause: Cause,
+    text: String,
+    detail: String,
+}
+
+impl Complaint {
+    fn new(cause: Cause, text: impl Into<String>, detail: impl Into<String>) -> Complaint {
+        Complaint { cause, text: text.into(), detail: detail.into() }
+    }
 }
 
 /// The first line of the prompt is `on-demand <crate> <item>`, so mock fixtures can key on it.
@@ -131,13 +158,13 @@ pub async fn write_item(
         Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => Some(sig.clone()),
         Shape::Skipped { .. } => None,
     });
-    let mut complaints: Vec<String> = Vec::new();
+    let mut complaints: Vec<Complaint> = Vec::new();
     for attempt in 1..=ATTEMPTS {
         let tries = if attempt > 1 { format!(" (try {attempt} of {ATTEMPTS})") } else { String::new() };
         let say = |log: &mut (dyn FnMut(&str) + Send), outcome: &str| {
             log(&format!("binding {}: writing {} on demand{tries}\u{2026} {outcome}", req.crate_name, req.item));
         };
-        match attempt_once(ci, req, known.as_ref(), complaints.last().map(String::as_str), model, checker).await {
+        match attempt_once(ci, req, known.as_ref(), complaints.last().map(|c| c.text.as_str()), model, checker).await {
             Ok((sig, body)) => {
                 say(log, "done");
                 let base = match item {
@@ -160,7 +187,13 @@ pub async fn write_item(
             }
         }
     }
-    Err(Failure { item: req.item.to_string(), complaints })
+    let last = complaints.last().expect("at least one attempt");
+    Err(Failure {
+        item: req.item.to_string(),
+        cause: last.cause,
+        detail: last.detail.clone(),
+        complaints: complaints.iter().map(|c| c.text.clone()).collect(),
+    })
 }
 
 async fn attempt_once(
@@ -170,27 +203,34 @@ async fn attempt_once(
     previous: Option<&str>,
     model: &dyn ModelClient,
     checker: &dyn TypeChecker,
-) -> Result<(Sig, String), String> {
+) -> Result<(Sig, String), Complaint> {
     let resp = model
         .complete(&ModelRequest::new(prompt(ci, req, known, previous)))
         .await
-        .map_err(|e| format!("the model gave no code ({})", one_line(&e.to_string())))?;
+        .map_err(|e| {
+            let why = match e {
+                agentmark_rt::RtError::NoMockResponse { .. } => "the mock model has no answer for this".to_string(),
+                e => one_line(&e.to_string()),
+            };
+            Complaint::new(Cause::NoAnswer, format!("the model gave no code ({why})"), why)
+        })?;
     let mut text = strip_fences(&resp.text);
     let sig = match known {
         Some(s) => s.clone(),
         None => {
             let (first, rest) = text.split_once('\n').unwrap_or((text.as_str(), ""));
             if !first.trim_start().starts_with("## ") {
-                return Err("the first line must be the signature, \"## name(params) -> type\"".into());
+                let t = "the first line must be the signature, \"## name(params) -> type\"";
+                return Err(Complaint::new(Cause::Signature, t, "it gave no signature"));
             }
-            let sig = parse_heading(first.trim(), req.item)?;
+            let sig = parse_heading(first.trim(), req.item).map_err(|e| Complaint::new(Cause::Signature, e.clone(), e))?;
             if sig.params.len() != req.arity {
-                return Err(format!(
-                    "the statement gives {} value{} but the signature has {} parameter{}",
-                    req.arity,
-                    if req.arity == 1 { "" } else { "s" },
-                    sig.params.len(),
-                    if sig.params.len() == 1 { "" } else { "s" }
+                let (v, p) = (req.arity, sig.params.len());
+                let (vs, ps) = (if v == 1 { "" } else { "s" }, if p == 1 { "" } else { "s" });
+                return Err(Complaint::new(
+                    Cause::Signature,
+                    format!("the statement gives {v} value{vs} but the signature has {p} parameter{ps}"),
+                    format!("{v} value{vs}, {p} parameter{ps}"),
                 ));
             }
             text = strip_fences(rest);
@@ -198,13 +238,16 @@ async fn attempt_once(
         }
     };
     if text.is_empty() {
-        return Err("the code was empty".into());
+        return Err(Complaint::new(Cause::Compile, "the code was empty", "the code was empty"));
     }
     if text.contains("```") {
-        return Err("the code contains a code fence".into());
+        return Err(Complaint::new(Cause::Compile, "the code contains a code fence", "the code contains a code fence"));
     }
     checker
         .check(&CheckRequest { crate_name: &ci.name, version: &ci.version, name: req.item, sig: &sig, body: &text })
-        .map_err(|e| format!("the code does not compile: {}", one_line(&e)))?;
+        .map_err(|e| {
+            let full = format!("the code does not compile: {}", one_line(&e));
+            Complaint::new(Cause::Compile, full, "the code does not compile")
+        })?;
     Ok((sig, text))
 }
