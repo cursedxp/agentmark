@@ -2179,18 +2179,25 @@ Nothing here changes the language. This was built after v0.1 passed all its test
 
 ## 22. v0.3: a general-purpose Markdown language
 
-Section 22 of the specification makes the core (Layer 2) a general-purpose language, and it is where a program that has
-nothing to do with agents finds its tools: user-defined types and `match` (22.1), collection words (22.2), a built-in library
-and the `file` tool (22.3), opaque library handles (22.4), user-defined tools (22.5) and programs with a default command
-(22.6). Everything in it is Layer 2, and every sample in it is a program that uses no agent and no `## Rust` block. The
-agent sections (2.2, 2.3, 3, 4.2, 4.4) stay where the specification puts them; an agent is built from the same parts.
+Section 22 of the specification makes the core a general-purpose language. A program that has nothing to do with agents finds its tools here.
+
+| section | what it adds |
+|---|---|
+| [22.1](#221-user-defined-types) | user-defined types and `match` |
+| [22.2](#222-collection-words) | collection words |
+| [22.3](#223-the-built-in-library) | the built-in library and the `file` tool |
+| [22.4](#224-opaque-library-types) | opaque library handles |
+| [22.5](#225-user-defined-tools) | user-defined tools |
+| [22.6](#226-programs) | programs with a default command |
+
+**Rules**
+- Everything in section 22 is layer 2.
+- Every sample in it is a program that uses no agent and no `## Rust` block.
+- The agent sections 2.2, 2.3, 3, 4.2 and 4.4 stay where the specification puts them. An agent is built from the same parts.
 
 ### 22.1 User-defined types
 
-An `# Enum` lists variants; a variant may carry named fields. A `# Type` gives another name to a type: the two are
-interchangeable. A value of a variant with fields is written `Circle { radius: 3 }`, a variant without fields is just its
-name, `Empty`. `match` takes a value apart: one branch per variant, and inside a branch the name after the variant
-(`c`) holds that variant's fields.
+An `# Enum` lists variants, and a `# Type` gives another name to a type. `match` takes an enum value apart, one branch per variant:
 
 ```agentmark
 # Enum: Shape
@@ -2230,17 +2237,21 @@ name, `Empty`. `match` takes a value apart: one branch per variant, and inside a
 - print: describe(Shape.Empty)
 ```
 
-* The names of records, enums and types share one namespace. Two of them with the same name are an error.
-* Variant names are unique inside one enum. Two enums may both have a variant `Empty`; the name then needs its enum,
-  `Shape.Empty` (or `billing.Shape.Empty` through a module alias), and a bare `Empty` is an error that lists the choices.
-  Inside a `match` the branches are looked up in the enum being matched, so they never need the qualifier.
-* A variable or a constant with the same name as a variant wins over the variant.
-* A variant's fields are given by name, each exactly once; a field of type `maybe` may be left out. A variant cannot have a
-  field called `kind` (see the JSON form below).
-* Enum values compare with `=` and `!=`. They cannot be written into text as a whole (`"{shape}"`) and have no fields of
-  their own: read a field inside the branch of the variant that has it.
-* An alias is replaced by what it names wherever it is written, so it never shows up in an error message or in the
-  generated program. An alias that is defined in terms of itself is an error.
+**Rules**
+- A variant may carry named fields. A value of such a variant is written `Circle { radius: 3 }`, and a variant without fields is just its name, `Empty`.
+- Inside a branch of `match`, the name after the variant, such as `c`, holds that variant's fields.
+- A `# Type` and the type it names are interchangeable.
+- The names of records, enums and types share one namespace. Two of them with the same name are an error.
+- Variant names are unique inside one enum.
+- Two enums may both have a variant `Empty`. The name then needs its enum, as in `Shape.Empty`, or `billing.Shape.Empty` through a module alias. A bare `Empty` is an error that lists the choices.
+- Inside a `match`, the branches are looked up in the enum being matched, so they never need the qualifier.
+- A variable or a constant with the same name as a variant wins over the variant.
+- A variant's fields are given by name, each exactly once. A field of type `maybe` may be left out.
+- A variant cannot have a field called `kind`, because of the JSON form below.
+- Enum values compare with `=` and `!=`. They cannot be written into text as a whole, such as `"{shape}"`, and they have no fields of their own. Read a field inside the branch of the variant that has it.
+- An alias is replaced by what it names wherever it is written, so it never shows up in an error message or in the generated program. An alias that is defined in terms of itself is an error.
+
+**Matching a `maybe` or a `result`**
 
 `match` also takes a `maybe` and a `result`:
 
@@ -2281,12 +2292,16 @@ name, `Empty`. `match` takes a value apart: one branch per variant, and inside a
     - print: "could not read: {problem}"
 ```
 
-* On a `maybe`, the branches are `some x` and `none`. On a `result`, they are `ok x` and `error e`; `e` is the failure's
-  message as text. A `result` is matched at the call, as above, or stored first with `- set parsed = read_count(path)` and matched once; nothing else can read a stored result (Q300).
-A `maybe` value is written `some x` or `none`. In a branch the name after the variant (or after `ok` / `error`) is optional when the
-value is not used: `- error:`. A function that returns `result of T` is also used with `try`, without `do` (`try do f(x) -> v` means
-the same), and `if ... is some x:` works on any `maybe`
-expression, including a call. A record is built the same way as a variant, with every field that is not `maybe` given:
+- On a `maybe`, the branches are `some x` and `none`. On a `result`, they are `ok x` and `error e`, where `e` is the failure's message as text.
+- A `result` is matched at the call, as above, or stored first with `- set parsed = read_count(path)` and matched once. Nothing else can read a stored result, per Q300.
+- A `maybe` value is written `some x` or `none`.
+- In a branch, the name after the variant, or after `ok` or `error`, is optional when the value is not used, as in `- error:`.
+- A function that returns `result of T` is also used with `try`, without `do`. `try do f(x) -> v` means the same.
+- `if ... is some x:` works on any `maybe` expression, including a call.
+
+**Building a record**
+
+A record is built the same way as a variant, with every field that is not `maybe` given:
 
 ```agentmark
 # Record: Sale
@@ -2322,8 +2337,14 @@ expression, including a call. A record is built the same way as a variant, with 
   - print: "EU {eu.amount}"
 ```
 
-* Every case must be handled, or an `- otherwise:` branch must say what happens to the rest. `otherwise:` is the last
-  branch; one that can never run is a warning. The error names what is missing:
+**Every case must be handled**
+- Every case must be handled, or an `- otherwise:` branch must say what happens to the rest.
+- `otherwise:` is the last branch. One that can never run is a warning.
+- A misspelled variant in a branch or in a value gets the usual suggestion: `Shape has no variant "Circel". Did you mean "Circle"?`
+- `match` is a statement. It is pure unless its branches are not.
+- `match` counts as one level of nesting, whatever the number of branches. The limit is 3.
+
+The error names what is missing:
 
 ```agentmark invalid name=shapes.agent.md says=does_not_handle_the_variant_"Empty"_of_Shape
 # Enum: Shape
@@ -2349,18 +2370,28 @@ shapes.agent.md:10
   Add a branch for it ("- Empty:"), or an "- otherwise:" branch for everything else.
 ```
 
-* A misspelled variant in a branch or in a value gets the usual suggestion: `Shape has no variant "Circel". Did you mean
-  "Circle"?`
-* `match` is a statement. It is pure unless its branches are not, and it counts as one level of nesting (the limit of 3)
-  whatever the number of branches.
+**JSON.** An enum value is an object whose `kind` field names the variant, followed by the variant's fields: `{"kind":"Circle","radius":3}` and `{"kind":"Empty"}`, per Q301. That is what `read file`, `read body` and `respond` read and write.
 
-**JSON.** An enum value is an object whose `kind` field names the variant, followed by the variant's fields:
-`{"kind":"Circle","radius":3}`, `{"kind":"Empty"}` (Q301). That is what `read file`, `read body` and `respond` read and write.
+**Errors**
+
+| code | message | fix |
+|---|---|---|
+| E300 | The name is the same as another declaration's. | rename one |
+| E301 | The enum has no variants. | list the variants under the heading, like `- Circle: radius: int` or `- Empty` |
+| E303 | A variant cannot have a field called `kind`. | pick another name, for example `type` or `label` |
+| E305 | Unknown enum or variant, for example `Shape has no variant "Circel".` | write a variant bare, or after its enum as in `Shape.Empty` |
+| E306 | A variant with fields is written without them, or with the wrong ones. | write `Circle { radius: 3 }` with every field that is not `maybe` |
+| E307 | The name is a variant of several enums here. | say which one you mean, as in `Shape.Empty` |
+| E308 | `match` works on an enum, a `maybe` or a `result`, but this is something else. | use `if` for a yes/no or a comparison |
+| E309 | A branch name is not a branch of the value matched. | use the branches the message lists |
+| E310 | `This "match" does not handle the variant "Empty" of Shape.` | add a branch `- Empty:`, or an `- otherwise:` branch for everything else |
+| E313 | A `result` can only be matched. | write `- match <call>:` with the branches `ok value` and `error problem` |
+
+**Next:** [22.2 Collection words](#222-collection-words)
 
 ### 22.2 Collection words
 
-Lists are `list of T`, maps are `map of K to V` (keys: `text`, `int`, `date`, `datetime` or `bool`). The words below are
-expressions unless marked as statements. They are pure: they build a new value and never change their input.
+Lists are `list of T`. Maps are `map of K to V`, with keys of type `text`, `int`, `date`, `datetime` or `bool`.
 
 ```agentmark
 # Record: Sale
@@ -2376,10 +2407,15 @@ expressions unless marked as statements. They are pure: they build a new value a
   - return sum of amount in eu
 ```
 
-Inside the expression after `where`, `by`, `to` and `of … in`, the current element is called `item`, and when it is a record its
-fields are in scope by their bare names, as in a `for each` over a record. `rows where region = "EU"` and
-`rows where item.region = "EU"` mean the same. For a list of text or numbers only `item` exists:
-`names where item != "a"`.
+**Rules**
+- The words are expressions unless marked as statements below. They are pure: they build a new value and never change their input.
+- Inside the expression after `where`, `by`, `to` and `of … in`, the current element is called `item`.
+- When the element is a record, its fields are in scope by their bare names, as in a `for each` over a record. So `rows where region = "EU"` and `rows where item.region = "EU"` mean the same.
+- For a list of text or numbers only `item` exists, as in `names where item != "a"`.
+- Results that can be empty are `maybe` values. Open them with `is some` before you use them.
+- `append`, `put` and `remove` change a variable or a `state.…` path, never a computed value. `put` and `remove` are statement words, so a tool cannot have those names.
+
+**Expression forms**
 
 | form | result |
 |---|---|
@@ -2399,7 +2435,7 @@ fields are in scope by their bare names, as in a `for each` over a record. `rows
 | `totals at "EU"` | `maybe` of the value: empty when the key is absent |
 | `keys of totals` · `values of totals` | a list, keys in order |
 
-Statements:
+**Statement forms**
 
 | statement | meaning |
 |---|---|
@@ -2408,6 +2444,8 @@ Statements:
 | `remove k from m` | delete the entry of key `k`; nothing happens when it is absent |
 | `for each row in rows with index i:` | `i` counts the position from 1 |
 | `for each region, total in totals:` | the entries of a map, in key order |
+
+More words in use:
 
 ```agentmark
 # Record: Sale
@@ -2439,7 +2477,7 @@ Statements:
   - return ages
 ```
 
-Results that can be empty are `maybe` values, so they are opened with `is some` before they are used:
+Open a result that can be empty before you use it:
 
 ```agentmark fragment
 - if max of qty in sales is some most:
@@ -2448,21 +2486,19 @@ Results that can be empty are `maybe` values, so they are opened with `is some` 
   - print: "nothing sold in the EU"
 ```
 
-How the words read, in the places where a reader could hesitate:
+**How the words read**
+- **A source is a name, a call or a parenthesis:** `sort (rows where amount > 5 EUR) by amount` needs the parentheses. `rows where …` and `totals at key` hang off a name or a call.
+- `keys of` and `values of` also stand where a source is expected, as in `sum of values of totals`.
+- **A literal takes every comma after it:** `f(list of 1, 2, 3)` passes one list, and `f((list of 1, 2), 3)` passes two arguments. A `list of Sale` after `as` or `->` is a type, since the position decides.
+- **`where` runs to the end of the expression**, so `rows where a = 1 and b = 2` filters on both.
+- **Money:** `sum of`, `sort` and `min` or `max` over money need one currency. Two currencies are a run-time error, `currency mismatch: EUR vs USD`, never a guess. The sum of an empty list of money is `0 EUR`.
+- **Maps** iterate, print and serialise in key order. As JSON a map is an object, as in `{"DE": 1, "EU": 2}`.
+- **Purity:** The expression that runs per element may read values and call pure functions, nothing else. `names where shout(item) = "a"` is an error when `shout` prints. Use a `for each` loop for that.
+- **Names:** A variable with the name of a field of the element is an error inside the word. After `set region = "US"`, the expression `sales where region = "EU"` fails. Write `item.region` for the field, or rename the variable.
+- **`item`:** A variable called `item` is hidden by the element inside the expression. Inside a word, `item` is the innermost element. So `nested where (count of item where item > 1) > 1` counts the inner `item` in the second one.
+- **Copies:** A parameter or loop variable that is appended to is a copy. The caller keeps its list.
 
-* **A source is a name, a call or a parenthesis.** `sort (rows where amount > 5 EUR) by amount` needs the parentheses; `rows
-  where …` and `totals at key` hang off a name or a call. `keys of` and `values of` also stand where a source is expected:
-  `sum of values of totals`.
-* **A literal takes every comma after it.** `f(list of 1, 2, 3)` passes one list; write `f((list of 1, 2), 3)` for two
-  arguments. `list of Sale` after `as` or `-> ` is a type, not a literal; the position decides.
-* **`where` runs to the end of the expression**, so `rows where a = 1 and b = 2` filters on both.
-* **Money.** `sum of`, `sort` and `min`/`max` over money need one currency: two currencies are a run-time error
-  (`currency mismatch: EUR vs USD`), never a guess. The sum of an empty list of money is `0 EUR`.
-* **Maps** iterate, print and serialise in key order; as JSON a map is an object (`{"DE": 1, "EU": 2}`).
-* **Purity.** The expression that runs per element may read values and call pure functions, nothing else.
-  `names where shout(item) = "a"` is an error when `shout` prints; use a `for each` loop for that.
-* **Names.** A variable that has the name of a field of the element is an error inside the word (`set region = "US"`, then `sales where region = "EU"`): write `item.region` for the field, or rename the variable. A variable called `item` is hidden by the element inside the expression. Inside a word, `item` is the innermost element: `nested where (count of item where item > 1) > 1` counts the
-  inner `item` in the second one. A parameter or loop variable that is appended to is a copy; the caller keeps its list.
+A list with two kinds of value is an error:
 
 ```agentmark invalid
 # Function: f
@@ -2470,7 +2506,24 @@ How the words read, in the places where a reader could hesitate:
   - set mixed = list of 1, "two"
 ```
 
-Decisions behind these rules are `Q320` to `Q328` in `OPEN_QUESTIONS.md`; the errors are `E320` to `E329`. `append`, `put` and `remove` change a variable or a `state.…` path, never a computed value; `put` and `remove` are statement words, so a tool cannot have those names.
+The decisions behind these rules are Q320 to Q328 in `OPEN_QUESTIONS.md`.
+
+**Errors**
+
+| code | message | fix |
+|---|---|---|
+| E320 | Every element of a list or map must be the same kind of value. | use one kind of value |
+| E321 | A map cannot be keyed by this type, or `group … by` needs a key that is text, a number, a date or a yes/no value. | key by text, a number, a date, a datetime or a yes/no value |
+| E322 | The word needs values it can put in order. | sort or compare numbers, text or dates |
+| E323 | `sum of` adds numbers or money, but these are something else. | sum the numbers or amounts of a field, as in `sum of amount in rows` |
+| E324 | The word needs a list, or a map, but this is something else. | pass a list, or write a map like `map of "EU" to 1, "US" to 2` |
+| E325 | `join` glues a list of text, but this is a list of something else. | turn the values into text first, for example `map rows to "{item.id}"` |
+| E326 | The keys or values of this map are not the kind the map holds. | use values of the map's kinds |
+| E327 | A name is a variable here and also a field of the element, so it is unclear which is meant. | write `item.<name>` for the field, or rename the variable |
+| E328 | `append`, `put` or `remove` changes a variable, but this is not one. | name the value first with `set`, change that, and use it afterwards |
+| E329 | A line nests more than the allowed levels of parentheses or braces. | name the inner part with `set` on a line of its own |
+
+**Next:** [22.3 The built-in library](#223-the-built-in-library)
 
 ### 22.3 The built-in library
 
