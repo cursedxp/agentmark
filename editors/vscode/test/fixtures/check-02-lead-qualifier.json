@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "path": "examples/02-lead-qualifier",
+  "diagnostics": [],
+  "units": [
+    {
+      "name": "lead-qualifier",
+      "kind": "agent",
+      "file": "examples/02-lead-qualifier/agents/lead-qualifier.agent.md",
+      "effects": {
+        "class": "model",
+        "summary": "model, network(crm, email), local(log)",
+        "tools": {
+          "model": true,
+          "network": [
+            "crm",
+            "email"
+          ],
+          "local": [
+            "log"
+          ],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "When crm receives lead",
+          "file": "examples/02-lead-qualifier/agents/lead-qualifier.agent.md",
+          "line": 10,
+          "effects": {
+            "class": "model",
+            "summary": "model, network(crm, email), local(log)",
+            "tools": {
+              "model": true,
+              "network": [
+                "crm",
+                "email"
+              ],
+              "local": [
+                "log"
+              ],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "inferred_fields": [],
+  "unverified_bindings": [],
+  "rust_blocks": []
+}

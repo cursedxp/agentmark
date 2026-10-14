@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "path": "examples/01-invoice-chaser",
+  "diagnostics": [],
+  "units": [
+    {
+      "name": "invoice-chaser",
+      "kind": "agent",
+      "file": "examples/01-invoice-chaser/agents/invoice-chaser.agent.md",
+      "effects": {
+        "class": "model",
+        "summary": "model, network(crm, email), local(log)",
+        "tools": {
+          "model": true,
+          "network": [
+            "crm",
+            "email"
+          ],
+          "local": [
+            "log"
+          ],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "Every day at 09:00",
+          "file": "examples/01-invoice-chaser/agents/invoice-chaser.agent.md",
+          "line": 10,
+          "effects": {
+            "class": "model",
+            "summary": "model, network(crm, email), local(log)",
+            "tools": {
+              "model": true,
+              "network": [
+                "crm",
+                "email"
+              ],
+              "local": [
+                "log"
+              ],
+              "unverified": []
+            }
+          }
+        },
+        {
+          "label": "Do remind",
+          "file": "examples/01-invoice-chaser/agents/invoice-chaser.agent.md",
+          "line": 14,
+          "effects": {
+            "class": "model",
+            "summary": "model, network(email, crm), local(log)",
+            "tools": {
+              "model": true,
+              "network": [
+                "email",
+                "crm"
+              ],
+              "local": [
+                "log"
+              ],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "overdue",
+      "kind": "rule",
+      "file": "examples/01-invoice-chaser/rules/overdue.agent.md",
+      "effects": {
+        "class": "pure",
+        "summary": "pure",
+        "tools": {
+          "model": false,
+          "network": [],
+          "local": [],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "overdue",
+          "file": "examples/01-invoice-chaser/rules/overdue.agent.md",
+          "line": 5,
+          "effects": {
+            "class": "pure",
+            "summary": "pure",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "inferred_fields": [],
+  "unverified_bindings": [],
+  "rust_blocks": []
+}

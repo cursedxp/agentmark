@@ -462,3 +462,11 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q258 — Formatting (step 15)
 **Choice:** `textDocument/formatting` returns one edit replacing the whole document with `fmt::format_source`, an empty list when it is already canonical, and `null` when the file does not parse (the diagnostics already say why) or lives under `bindings/` (generated, Q111). Format-on-save is the client's `formatOnSave` calling this; the server has no `willSaveWaitUntil`.
 **Why:** one style, no options (SPEC 18.6); a half-written file is never rewritten.
+
+## Q259 — VS Code extension layout and testing (step 16)
+**Choice:** `editors/vscode/` is TypeScript compiled with `tsc` (no bundler); pure modules (`checkjson.ts`, `panel.ts`, `server.ts`) hold all logic and `extension.ts` is the only file importing `vscode`. Tests run with `node --test` (`npm test`): the TextMate grammar is tokenized with `vscode-textmate` over every `examples/**/*.agent.md`, `agentmark.toml` examples are validated against the schema with `ajv`, and the panel is rendered from `check --json` output recorded from the real CLI (`test/fixtures/check-*.json`). `vsce package` succeeds; it only warns that the extension is not bundled. The Rust `cargo test` does not run the node tests.
+**Why:** an extension host cannot run in CI cheaply; the LSP is already tested with `lsp-types` (step 15), so the client stays thin.
+
+## Q260 — `agentmark.toml` schema and `[models]` (step 16)
+**Choice:** `schemas/agentmark.schema.json` covers `name`, `version`, `targets`, `[lint] deny`, `[rust.dependencies]`, `[lsp] model_actions` and `[models]` (any environment name maps to a driver string checked against SPEC 19; `[models.local] base_url`). `[models]` is accepted by the schema although this branch's compiler does not parse it yet (it arrives with step 14). VS Code has no native TOML validation, so the schema is registered as `jsonValidation` and is usable by TOML extensions (Even Better TOML) through `evenBetterToml.schema.associations`; the user sets that path once.
+**Why:** SPEC 19 defines the keys; the schema must not lag the compiler.

@@ -1,0 +1,122 @@
+{
+  "name": "agentmark",
+  "displayName": "AgentMark",
+  "description": "Language support for AgentMark (.agent.md): highlighting, language server, agentmark.toml schema and a panel showing what an agent can touch.",
+  "version": "0.1.0",
+  "publisher": "agentmark",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agentmark/agentmark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "agentmark",
+    "agent",
+    "markdown",
+    "llm"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/agentmark.toml",
+    "onLanguage:agentmark"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "agentmark",
+        "aliases": [
+          "AgentMark",
+          "agentmark"
+        ],
+        "extensions": [
+          ".agent.md"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "agentmark",
+        "scopeName": "source.agentmark",
+        "path": "./syntaxes/agentmark.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.rust.agentmark": "rust"
+        }
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "agentmark.toml",
+        "url": "./schemas/agentmark.schema.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[agentmark]": {
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true
+      }
+    },
+    "commands": [
+      {
+        "command": "agentmark.showTouchPanel",
+        "title": "AgentMark: Show what this agent can touch"
+      },
+      {
+        "command": "agentmark.restartServer",
+        "title": "AgentMark: Restart language server"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "agentmark.showTouchPanel",
+          "when": "resourceLangId == agentmark",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AgentMark",
+      "properties": {
+        "agentmark.server.path": {
+          "type": "string",
+          "default": "agentmark-lsp",
+          "description": "Path to the agentmark-lsp binary (looked up on PATH by default)."
+        },
+        "agentmark.cli.path": {
+          "type": "string",
+          "default": "agentmark",
+          "description": "Path to the agentmark binary used for `check --json` (the touch panel)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "test": "tsc -p . && node --test out/test/*.test.js",
+    "package": "vsce package",
+    "vscode:prepublish": "tsc -p ."
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.0.0",
+    "ajv": "^8.12.0",
+    "smol-toml": "^1.3.0"
+  }
+}
