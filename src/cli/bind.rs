@@ -15,15 +15,9 @@ use crate::binder::{bind, BindError, BindOptions, BindOutcome, Regenerated};
 use crate::syntax::ast::{Decl, Effect};
 use crate::syntax::parser::parse_file;
 
-/// Kept for callers without a project (no `[models]` table).
-#[allow(dead_code)]
-pub(crate) fn model_from_env() -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String> {
-    model_for(ProviderConfig::default())
-}
-
 /// The binder's model: `AGENTMARK_MODEL`, else the `[models]` entry `AGENTMARK_ENV` names in the
 /// project's `agentmark.toml`, else Claude (Q240). Same driver strings as a program's `- model:`.
-pub(crate) fn model_for(config: ProviderConfig) -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String> {
+pub fn model_for(config: ProviderConfig) -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String> {
     let router = Router::from_env(config).map_err(|e| {
         format!("{e}. Set it, or point AGENTMARK_MODEL at a mock:<model.json> for offline use")
     })?;
@@ -39,7 +33,7 @@ pub(crate) fn model_for(config: ProviderConfig) -> Result<(Arc<dyn ModelClient>,
 
 /// `[models]` of the project's `agentmark.toml`, for the router (a missing or bad file is plain defaults:
 /// `check` reports the file's own errors).
-pub(crate) fn provider_config(project: &crate::project::Project) -> ProviderConfig {
+pub fn provider_config(project: &crate::project::Project) -> ProviderConfig {
     ProviderConfig {
         environments: project.config.models.iter().cloned().collect(),
         local_base_url: project.config.local_base_url.clone(),

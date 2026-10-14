@@ -49,7 +49,9 @@ pub struct Server {
     goods: HashMap<String, Rc<Good>>,
     /// URIs that currently show diagnostics we published.
     published: HashSet<String>,
-    runner: Option<ModelRunner>,
+    runner: Option<Rc<ModelRunner>>,
+    /// No fixed model: each project's own (binder's choice) is resolved when an action runs (Q256).
+    from_env: bool,
     dirty: bool,
     /// The client understands snippet text edits (`experimental.snippetTextEdit`, Q255).
     snippets: bool,
@@ -93,8 +95,27 @@ fn cast<P: DeserializeOwned>(v: Value) -> Result<P, String> {
 
 impl Server {
     pub fn new(conn: Connection, model: Option<Arc<dyn ModelClient>>) -> Server {
-        let runner = model.and_then(|m| ModelRunner::new(m).ok());
-        Server { conn, docs: Docs::new(), cache: HashMap::new(), goods: HashMap::new(), published: HashSet::new(), runner, dirty: false, snippets: false }
+        let runner = model.and_then(|m| ModelRunner::new(m).ok()).map(Rc::new);
+        Server { conn, docs: Docs::new(), cache: HashMap::new(), goods: HashMap::new(), published: HashSet::new(), runner, from_env: false, dirty: false, snippets: false }
+    }
+
+    /// A server whose model is the binder's choice for each project (`AGENTMARK_MODEL`, `AGENTMARK_ENV` + `[models]`).
+    pub fn from_env(conn: Connection) -> Server {
+        Server { from_env: true, ..Server::new(conn, None) }
+    }
+
+    /// The model for a project: the fixed one, else what `agentmark bind` would use there.
+    fn runner_for(&self, a: &Analysis) -> Result<Rc<ModelRunner>, (ErrorCode, String)> {
+        if let Some(r) = &self.runner {
+            return Ok(r.clone());
+        }
+        if !self.from_env {
+            return Err((ErrorCode::InvalidRequest, "no model is configured".to_string()));
+        }
+        let (model, _) = agentmark::cli::bind::model_for(agentmark::cli::bind::provider_config(&a.project))
+            .map_err(|e| (ErrorCode::InvalidRequest, format!("no model is configured: {e}")))?;
+        let runner = ModelRunner::new(model).map_err(|e| (ErrorCode::InternalError, e.to_string()))?;
+        Ok(Rc::new(runner))
     }
 
     /// Do the `initialize` handshake and serve until `exit`.
@@ -362,7 +383,7 @@ impl Server {
         let (path, text) = self.doc(&p.text_document.uri)?;
         let a = self.analysis_for(&path);
         let mut acts = actions::quick_fixes(&a, &path, &text, p.range, self.snippets);
-        if a.model_actions_enabled() && self.runner.is_some() {
+        if a.model_actions_enabled() && self.runner_for(&a).is_ok() {
             acts.extend(actions::model_actions(&p.text_document.uri, &text, p.range.start.line as usize));
         }
         if let Some(only) = &p.context.only {
@@ -386,8 +407,9 @@ impl Server {
         let uri: Uri = uri.parse().map_err(|_| (ErrorCode::InvalidParams, "bad uri".to_string()))?;
         let (path, text) = self.doc(&uri)?;
         self.model_gate(&path)?;
-        let runner = self.runner.as_ref().ok_or((ErrorCode::InvalidRequest, "no model is configured".to_string()))?;
-        let edits = actions::suggest_guard(runner, &path, &text, line).map_err(|e| (ErrorCode::RequestFailed, e))?;
+        let a = self.analysis_for(&path);
+        let runner = self.runner_for(&a)?;
+        let edits = actions::suggest_guard(&runner, &path, &text, line).map_err(|e| (ErrorCode::RequestFailed, e))?;
         action.edit = Some(lsp_types::WorkspaceEdit { changes: Some(HashMap::from([(uri, edits)])), ..Default::default() });
         Ok(json!(action))
     }
@@ -419,8 +441,8 @@ impl Server {
             let old = map.new_to_old(start)?;
             ck.blocks.iter().find(|b| b.file == fid && b.span.line as usize == old + 1).map(|b| b.effect.to_string())
         });
-        let runner = self.runner.as_ref().ok_or((ErrorCode::InvalidRequest, "no model is configured".to_string()))?;
-        let answer = actions::explain(runner, &text, line as usize, effects.as_deref()).map_err(|e| (ErrorCode::RequestFailed, e))?;
+        let runner = self.runner_for(&a)?;
+        let answer = actions::explain(&runner, &text, line as usize, effects.as_deref()).map_err(|e| (ErrorCode::RequestFailed, e))?;
         self.send(Notification::new(
             ShowMessage::METHOD.to_string(),
             ShowMessageParams { typ: MessageType::INFO, message: answer.clone() },

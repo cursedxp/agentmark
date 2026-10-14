@@ -477,3 +477,17 @@ mod library {
         assert!(again.contains("- proposed-effect: network"));
     }
 }
+
+#[test]
+fn on_demand_binding_honours_the_models_table() {
+    // no AGENTMARK_MODEL, no key: AGENTMARK_ENV=test names the canned model in [models] (Q240)
+    let (d, model) = project("ondemand-models", GOOD_BODY);
+    write(&d, "agentmark.toml", &format!("name = \"p\"\n\n[models]\ntest = \"mock:{model}\"\n"));
+    let mut c = agentmark(&["check", s(&d)]);
+    bind_env(&mut c);
+    c.env_remove("AGENTMARK_MODEL").env_remove("ANTHROPIC_API_KEY").env("AGENTMARK_ENV", "test");
+    let o = c.output_locked();
+    let err = stderr(&o);
+    assert!(err.contains("binding sha2: writing sha224_digest on demand\u{2026} done"), "{err}");
+    assert!(binding_of(&d).contains(GOOD_BODY));
+}
