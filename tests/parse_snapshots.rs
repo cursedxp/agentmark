@@ -28,9 +28,15 @@ fn example_files() -> Vec<PathBuf> {
 }
 
 #[test]
-fn there_are_nine_example_files() {
-    // 01 is a project folder with five files, 02-05 are single files.
-    assert_eq!(example_files().len(), 9);
+fn every_example_is_a_project_folder_with_an_entry_point() {
+    // 01-05 are project folders (SPEC 18.1); the old single files 02-05 may still sit next to them
+    // until the code generator's tests stop referencing them.
+    for n in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
+        for f in ["agentmark.toml", "tools.toml", "main.agent.md"] {
+            assert!(Path::new("examples").join(n).join(f).is_file(), "examples/{n}/{f} is missing");
+        }
+    }
+    assert!(example_files().len() >= 30);
 }
 
 #[test]

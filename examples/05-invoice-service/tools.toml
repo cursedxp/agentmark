@@ -1,0 +1,20 @@
+# Tool manifest shared by all examples. See SPEC.md section 7.
+
+[email]
+verbs = ["send"]
+targets = ["customer", "address"]
+effect = "network"
+
+[crm]
+verbs = ["list", "get", "update"]
+sources = ["invoices", "leads", "tickets"]
+events = ["lead", "ticket"]
+effect = "network"
+
+[http]
+verbs = ["get", "post"]
+effect = "network"
+
+[log]
+verbs = []
+effect = "local"

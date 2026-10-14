@@ -1,0 +1,8 @@
+{"kind":"model","agent":"lead-qualifier","block":"When crm receives lead","prompt_prefix":"Score this inbound lead from 1 to 10","context":{"id":"L-1"}}
+{"kind":"guard","agent":"lead-qualifier","name":"q matches Qualification","result":"pass"}
+{"kind":"tool","tool":"crm","verb":"update","source":"leads","id":"L-1","set":{"score":9}}
+{"kind":"tool","tool":"email","verb":"send","target":"address","to":"sales@optimotion.dev"}
+{"kind":"model","agent":"lead-qualifier","block":"When crm receives lead","prompt_prefix":"Score this inbound lead from 1 to 10","context":{"id":"L-2"}}
+{"kind":"guard","agent":"lead-qualifier","name":"q matches Qualification","result":"pass"}
+{"kind":"tool","tool":"crm","verb":"update","source":"leads","id":"L-2","set":{"score":9}}
+{"kind":"tool","tool":"email","verb":"send","target":"address","to":"sales@optimotion.dev"}

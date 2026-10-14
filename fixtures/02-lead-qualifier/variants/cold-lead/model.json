@@ -1,0 +1,6 @@
+{
+  "today": "2026-10-13",
+  "responses": [
+    {"prompt_prefix": "Score this inbound lead from 1 to 10", "response": "{\"score\": 3, \"reason\": \"No budget and no timeline.\"}"}
+  ]
+}

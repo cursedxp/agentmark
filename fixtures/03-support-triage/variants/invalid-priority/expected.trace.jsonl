@@ -1,0 +1,2 @@
+{"kind":"model","agent":"support-triage","block":"Every 15 minutes","prompt_prefix":"Classify priority as low, medium or high","context":{"id":"T-5"}}
+{"kind":"guard","agent":"support-triage","name":"t.priority = \"low\" or t.priority = \"medium\" or t.priority = \"high\"","result":"fail"}

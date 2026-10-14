@@ -8,20 +8,20 @@ imports:
   - span:
       line: 1
       col: 3
-      len: 35
-    doc: ~
-    kind:
-      File:
-        path: "../records/invoice.agent.md"
-        alias: ~
-  - span:
-      line: 2
-      col: 3
       len: 29
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 35
+    doc: ~
+    kind:
+      File:
+        path: "../records/invoice.agent.md"
         alias: ~
 decls:
   - Rule:

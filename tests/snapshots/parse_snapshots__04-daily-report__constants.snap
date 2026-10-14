@@ -1,0 +1,29 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/04-daily-report/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 1
+        col: 3
+        len: 22
+      doc: ~
+      name:
+        name: grace_period
+        span:
+          line: 1
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 2
+          col: 10
+          len: 7
+        kind:
+          Duration:
+            amount: 14
+            unit: Day

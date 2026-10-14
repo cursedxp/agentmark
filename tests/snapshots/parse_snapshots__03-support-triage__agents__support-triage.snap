@@ -1,0 +1,565 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/03-support-triage/agents/support-triage.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 34
+    doc: ~
+    kind:
+      File:
+        path: "../records/ticket.agent.md"
+        alias: ~
+  - span:
+      line: 3
+      col: 3
+      len: 34
+    doc: ~
+    kind:
+      File:
+        path: "../records/triage.agent.md"
+        alias: ~
+decls:
+  - Agent:
+      span:
+        line: 6
+        col: 3
+        len: 21
+      doc: Classifies tickets that have no priority yet and alerts on the high ones. Never replies to customers.
+      name:
+        name: support-triage
+        span:
+          line: 6
+          col: 10
+          len: 14
+      model:
+        value: claude
+        span:
+          line: 7
+          col: 10
+          len: 6
+      tools:
+        - name: crm
+          span:
+            line: 8
+            col: 10
+            len: 3
+        - name: http
+          span:
+            line: 8
+            col: 15
+            len: 4
+        - name: log
+          span:
+            line: 8
+            col: 21
+            len: 3
+      memory: ~
+      timeout: ~
+      blocks:
+        - span:
+            line: 10
+            col: 4
+            len: 16
+          doc: ~
+          trigger:
+            Every:
+              amount: 15
+              unit: Minute
+          label: Every 15 minutes
+          body:
+            - span:
+                line: 11
+                col: 3
+                len: 31
+              kind:
+                ForEach:
+                  filter_rule: ~
+                  var:
+                    name: ticket
+                    span:
+                      line: 11
+                      col: 12
+                      len: 6
+                  source:
+                    span:
+                      line: 11
+                      col: 22
+                      len: 11
+                    kind:
+                      Path:
+                        - name: crm
+                          span:
+                            line: 11
+                            col: 22
+                            len: 3
+                        - name: tickets
+                          span:
+                            line: 11
+                            col: 26
+                            len: 7
+                  body:
+                    - span:
+                        line: 12
+                        col: 5
+                        len: 32
+                      kind:
+                        If:
+                          cond:
+                            span:
+                              line: 12
+                              col: 8
+                              len: 28
+                            kind:
+                              IsNotEmpty:
+                                span:
+                                  line: 12
+                                  col: 8
+                                  len: 15
+                                kind:
+                                  Path:
+                                    - name: ticket
+                                      span:
+                                        line: 12
+                                        col: 8
+                                        len: 6
+                                    - name: priority
+                                      span:
+                                        line: 12
+                                        col: 15
+                                        len: 8
+                          then:
+                            - span:
+                                line: 13
+                                col: 7
+                                len: 4
+                              kind: Stop
+                          else_: []
+                    - span:
+                        line: 14
+                        col: 5
+                        len: 51
+                      kind:
+                        AskModel:
+                          with:
+                            span:
+                              line: 14
+                              col: 20
+                              len: 6
+                            kind:
+                              Path:
+                                - name: ticket
+                                  span:
+                                    line: 14
+                                    col: 20
+                                    len: 6
+                          prompt:
+                            span:
+                              line: 14
+                              col: 28
+                              len: 13
+                            kind:
+                              Path:
+                                - name: triage_prompt
+                                  span:
+                                    line: 14
+                                    col: 28
+                                    len: 13
+                          as_record:
+                            name: Triage
+                            span:
+                              line: 14
+                              col: 45
+                              len: 6
+                          into:
+                            name: t
+                            span:
+                              line: 14
+                              col: 55
+                              len: 1
+                    - span:
+                        line: 16
+                        col: 5
+                        len: 73
+                      comments:
+                        - "The model must pick one of the three allowed priorities, nothing else."
+                      kind:
+                        Guard:
+                          cond:
+                            span:
+                              line: 16
+                              col: 12
+                              len: 66
+                            kind:
+                              Binary:
+                                op: Or
+                                lhs:
+                                  span:
+                                    line: 16
+                                    col: 12
+                                    len: 43
+                                  kind:
+                                    Binary:
+                                      op: Or
+                                      lhs:
+                                        span:
+                                          line: 16
+                                          col: 12
+                                          len: 18
+                                        kind:
+                                          Binary:
+                                            op: Eq
+                                            lhs:
+                                              span:
+                                                line: 16
+                                                col: 12
+                                                len: 10
+                                              kind:
+                                                Path:
+                                                  - name: t
+                                                    span:
+                                                      line: 16
+                                                      col: 12
+                                                      len: 1
+                                                  - name: priority
+                                                    span:
+                                                      line: 16
+                                                      col: 14
+                                                      len: 8
+                                            rhs:
+                                              span:
+                                                line: 16
+                                                col: 25
+                                                len: 5
+                                              kind:
+                                                Str: low
+                                      rhs:
+                                        span:
+                                          line: 16
+                                          col: 34
+                                          len: 21
+                                        kind:
+                                          Binary:
+                                            op: Eq
+                                            lhs:
+                                              span:
+                                                line: 16
+                                                col: 34
+                                                len: 10
+                                              kind:
+                                                Path:
+                                                  - name: t
+                                                    span:
+                                                      line: 16
+                                                      col: 34
+                                                      len: 1
+                                                  - name: priority
+                                                    span:
+                                                      line: 16
+                                                      col: 36
+                                                      len: 8
+                                            rhs:
+                                              span:
+                                                line: 16
+                                                col: 47
+                                                len: 8
+                                              kind:
+                                                Str: medium
+                                rhs:
+                                  span:
+                                    line: 16
+                                    col: 59
+                                    len: 19
+                                  kind:
+                                    Binary:
+                                      op: Eq
+                                      lhs:
+                                        span:
+                                          line: 16
+                                          col: 59
+                                          len: 10
+                                        kind:
+                                          Path:
+                                            - name: t
+                                              span:
+                                                line: 16
+                                                col: 59
+                                                len: 1
+                                            - name: priority
+                                              span:
+                                                line: 16
+                                                col: 61
+                                                len: 8
+                                      rhs:
+                                        span:
+                                          line: 16
+                                          col: 72
+                                          len: 6
+                                        kind:
+                                          Str: high
+                          else_: ~
+                    - span:
+                        line: 17
+                        col: 5
+                        len: 40
+                      kind:
+                        ToolCall:
+                          tool:
+                            name: crm
+                            span:
+                              line: 17
+                              col: 5
+                              len: 3
+                          verb:
+                            name: update
+                            span:
+                              line: 17
+                              col: 9
+                              len: 6
+                          target:
+                            - Word:
+                                name: ticket
+                                span:
+                                  line: 17
+                                  col: 16
+                                  len: 6
+                          payload:
+                            Assign:
+                              - field:
+                                  name: priority
+                                  span:
+                                    line: 17
+                                    col: 24
+                                    len: 8
+                                value:
+                                  span:
+                                    line: 17
+                                    col: 35
+                                    len: 10
+                                  kind:
+                                    Path:
+                                      - name: t
+                                        span:
+                                          line: 17
+                                          col: 35
+                                          len: 1
+                                      - name: priority
+                                        span:
+                                          line: 17
+                                          col: 37
+                                          len: 8
+                          into: ~
+                          via_do: false
+                    - span:
+                        line: 18
+                        col: 5
+                        len: 23
+                      kind:
+                        If:
+                          cond:
+                            span:
+                              line: 18
+                              col: 8
+                              len: 19
+                            kind:
+                              Binary:
+                                op: Eq
+                                lhs:
+                                  span:
+                                    line: 18
+                                    col: 8
+                                    len: 10
+                                  kind:
+                                    Path:
+                                      - name: t
+                                        span:
+                                          line: 18
+                                          col: 8
+                                          len: 1
+                                      - name: priority
+                                        span:
+                                          line: 18
+                                          col: 10
+                                          len: 8
+                                rhs:
+                                  span:
+                                    line: 18
+                                    col: 21
+                                    len: 6
+                                  kind:
+                                    Str: high
+                          then:
+                            - span:
+                                line: 19
+                                col: 7
+                                len: 88
+                              kind:
+                                ToolCall:
+                                  tool:
+                                    name: http
+                                    span:
+                                      line: 19
+                                      col: 7
+                                      len: 4
+                                  verb:
+                                    name: post
+                                    span:
+                                      line: 19
+                                      col: 12
+                                      len: 4
+                                  target:
+                                    - Value:
+                                        span:
+                                          line: 19
+                                          col: 17
+                                          len: 33
+                                        kind:
+                                          Str: "https://hooks.example.com/alert"
+                                  payload:
+                                    Value:
+                                      span:
+                                        line: 19
+                                        col: 52
+                                        len: 43
+                                      kind:
+                                        Record:
+                                          - name:
+                                              name: ticket
+                                              span:
+                                                line: 19
+                                                col: 54
+                                                len: 6
+                                            value:
+                                              span:
+                                                line: 19
+                                                col: 62
+                                                len: 9
+                                              kind:
+                                                Path:
+                                                  - name: ticket
+                                                    span:
+                                                      line: 19
+                                                      col: 62
+                                                      len: 6
+                                                  - name: id
+                                                    span:
+                                                      line: 19
+                                                      col: 69
+                                                      len: 2
+                                          - name:
+                                              name: category
+                                              span:
+                                                line: 19
+                                                col: 73
+                                                len: 8
+                                            value:
+                                              span:
+                                                line: 19
+                                                col: 83
+                                                len: 10
+                                              kind:
+                                                Path:
+                                                  - name: t
+                                                    span:
+                                                      line: 19
+                                                      col: 83
+                                                      len: 1
+                                                  - name: category
+                                                    span:
+                                                      line: 19
+                                                      col: 85
+                                                      len: 8
+                                  into: ~
+                                  via_do: false
+                          else_: []
+                    - span:
+                        line: 20
+                        col: 5
+                        len: 55
+                      kind:
+                        ToolCall:
+                          tool:
+                            name: log
+                            span:
+                              line: 20
+                              col: 5
+                              len: 3
+                          verb: ~
+                          target: []
+                          payload:
+                            Value:
+                              span:
+                                line: 20
+                                col: 10
+                                len: 50
+                              kind:
+                                Interp:
+                                  - Text: "Triaged "
+                                  - Expr:
+                                      span:
+                                        line: 20
+                                        col: 20
+                                        len: 9
+                                      kind:
+                                        Path:
+                                          - name: ticket
+                                            span:
+                                              line: 20
+                                              col: 20
+                                              len: 6
+                                          - name: id
+                                            span:
+                                              line: 20
+                                              col: 27
+                                              len: 2
+                                  - Text: " as "
+                                  - Expr:
+                                      span:
+                                        line: 20
+                                        col: 35
+                                        len: 10
+                                      kind:
+                                        Path:
+                                          - name: t
+                                            span:
+                                              line: 20
+                                              col: 35
+                                              len: 1
+                                          - name: priority
+                                            span:
+                                              line: 20
+                                              col: 37
+                                              len: 8
+                                  - Text: /
+                                  - Expr:
+                                      span:
+                                        line: 20
+                                        col: 48
+                                        len: 10
+                                      kind:
+                                        Path:
+                                          - name: t
+                                            span:
+                                              line: 20
+                                              col: 48
+                                              len: 1
+                                          - name: category
+                                            span:
+                                              line: 20
+                                              col: 50
+                                              len: 8
+                          into: ~
+                          via_do: false

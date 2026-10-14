@@ -1,0 +1,46 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/02-lead-qualifier/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 1
+        col: 3
+        len: 24
+      doc: ~
+      name:
+        name: hot_lead_score
+        span:
+          line: 1
+          col: 13
+          len: 14
+      value:
+        span:
+          line: 2
+          col: 10
+          len: 1
+        kind:
+          Int: 7
+  - Constant:
+      span:
+        line: 4
+        col: 3
+        len: 24
+      doc: ~
+      name:
+        name: scoring_prompt
+        span:
+          line: 4
+          col: 13
+          len: 14
+      value:
+        span:
+          line: 5
+          col: 10
+          len: 88
+        kind:
+          Str: Score this inbound lead from 1 to 10 for a web agency and explain why in one sentence.

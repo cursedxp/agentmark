@@ -283,3 +283,20 @@ SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **C
 
 ## Q117 — `bind --all` and a binding file with another name
 `bind` always writes `<crate>.agent.md`. For a file whose `- crate:` differs from its name, `--all` would create a second file. **Choice:** it refuses that entry with a message asking to rename the file (exit 1); the other bindings are still refreshed. `bind <crate>` and `--all` are mutually exclusive.
+
+## Q150 — One mock response per prompt: branch coverage through `variants/` (step 9)
+`MockModel` matches on the prompt text only, so every `ask model` of one prompt gets the same reply; a single run cannot show both a hot and a cold lead (02), or a high and a low ticket (03).
+**Choice:** the top-level fixture folder covers the main path (02: two hot leads; 03: high ticket, then `stop`). The other branches live in `fixtures/<name>/variants/<case>/` with the same file set (`model.json`, tool JSON, `expected.trace.jsonl`): 02 `cold-lead`, 03 `low-priority` and `invalid-priority` (guard fail), 04 `empty-summary` (guard fail), 05 `missing-csv` (`try … otherwise`). A harness that wants full branch coverage runs each variant folder as its own fixture dir; one that ignores `variants/` still gets a valid main fixture.
+
+## Q151 — `bytes` input of a binding (05)
+The assisted `sha256_digest` binding takes `data: bytes` (`AsRef<[u8]>`, Q-binder), but the language has no text-to-bytes step, so `sha2 sha256_digest "{invoice.id}{invoice.amount}" -> digest` fails sema ("must be bytes, but this is text").
+**Choice:** the committed `examples/05-invoice-service/bindings/sha2.agent.md` is hand-edited (allowed by SPEC 15.4): `data: text`, body `digest(data.as_bytes())`, with a header note; effect approved as `pure`. `bind sha2 --force` would restore the bytes form. Proper fix (later): a `bytes of <text>` expression, or the binder instantiating `AsRef<[u8]>` as text when a text caller exists.
+
+## Q152 — Where `## Rust: fingerprint` lives in 05
+Rust blocks hoist to module level but must be written under a declaration. **Choice:** `functions/invoice-fingerprint.agent.md` holds `# Function: invoice_fingerprint` (binding call + `return fingerprint(digest)`) and the `## Rust: fingerprint -> text` block, which only hex-formats bytes. The service calls `invoice_fingerprint(found)`.
+
+## Q153 — Trace details for services and commands (05)
+Written into `fixtures/05-invoice-service/expected.trace.jsonl`: (a) the `http` line's `path` is the concrete request path (`/invoices/INV-1`), not the route template; (b) a guard's `name` is its condition only (`found is not empty`), without `else respond 404`; (c) per request the guard line comes before the `http` line (the http line is written when the response is produced); (d) `print` lines from the command follow all request lines. `requests.json` = `[{method, path, body?}]`; `command.json` = `{command, args}` with relative file args resolved against the fixture folder; `state.invoices.json` seeds `AppState.invoices` for both service and command (Q9).
+
+## Q154 — Event entries and `--once` in fixtures (02)
+`crm.leads.json` is both the fixture data and the event source: each item fires `## When crm receives lead` once with `lead` bound. `score` is `null` (a `maybe int`) in the input.
