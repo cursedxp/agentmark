@@ -46,6 +46,9 @@ pub enum RtError {
     /// Money arithmetic or parsing failed.
     #[error(transparent)]
     Money(#[from] MoneyError),
+    /// A built-in library call failed; the message is plain language (SPEC 22.3).
+    #[error("{0}")]
+    Lib(String),
     /// An I/O error (trace file etc.).
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),

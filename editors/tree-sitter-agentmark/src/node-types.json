@@ -36,6 +36,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -53,6 +57,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -123,6 +131,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -140,6 +152,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -214,6 +230,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -231,6 +251,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -300,6 +324,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -317,6 +345,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -412,6 +444,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -429,6 +465,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -552,6 +592,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -569,6 +613,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -717,6 +765,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -734,6 +786,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -766,6 +822,29 @@
         },
         {
           "type": "unary_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "call_statement",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "bind",
+          "named": true
+        },
+        {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         }
       ]
@@ -866,6 +945,10 @@
             "named": true
           },
           {
+            "type": "module_call",
+            "named": true
+          },
+          {
             "type": "money",
             "named": true
           },
@@ -921,6 +1004,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -938,6 +1025,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -1036,6 +1127,10 @@
             "named": true
           },
           {
+            "type": "module_call",
+            "named": true
+          },
+          {
             "type": "money",
             "named": true
           },
@@ -1121,6 +1216,32 @@
     "fields": {}
   },
   {
+    "type": "decode_expression",
+    "named": true,
+    "fields": {
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "module_call",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "do_heading",
     "named": true,
     "fields": {
@@ -1139,7 +1260,18 @@
   {
     "type": "do_statement",
     "named": true,
-    "fields": {},
+    "fields": {
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -1177,6 +1309,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -1194,6 +1330,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -1330,6 +1470,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -1347,6 +1491,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -1426,6 +1574,10 @@
             "named": true
           },
           {
+            "type": "module_call",
+            "named": true
+          },
+          {
             "type": "money",
             "named": true
           },
@@ -1502,6 +1654,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -1519,6 +1675,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -1614,6 +1774,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -1631,6 +1795,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -1677,6 +1845,10 @@
           },
           {
             "type": "ask_statement",
+            "named": true
+          },
+          {
+            "type": "call_statement",
             "named": true
           },
           {
@@ -1764,6 +1936,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -1781,6 +1957,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -1927,6 +2107,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -1944,6 +2128,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -2018,6 +2206,10 @@
           "named": true
         },
         {
+          "type": "module_call",
+          "named": true
+        },
+        {
           "type": "money",
           "named": true
         },
@@ -2031,6 +2223,126 @@
         },
         {
           "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "module_call",
+    "named": true,
+    "fields": {
+      "function": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "module": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "binary_expression",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "builtin",
+          "named": true
+        },
+        {
+          "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
+          "type": "count_expression",
+          "named": true
+        },
+        {
+          "type": "date",
+          "named": true
+        },
+        {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "field_expression",
+          "named": true
+        },
+        {
+          "type": "first_expression",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
+          "named": true
+        },
+        {
+          "type": "money",
+          "named": true
+        },
+        {
+          "type": "no_amounts_changed",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        },
+        {
+          "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "predicate",
+          "named": true
+        },
+        {
+          "type": "record_literal",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary_expression",
           "named": true
         }
       ]
@@ -2149,6 +2461,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -2166,6 +2482,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -2261,6 +2581,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -2278,6 +2602,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -2373,6 +2701,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -2390,6 +2722,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -2464,6 +2800,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -2481,6 +2821,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -2590,6 +2934,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "driver",
           "named": true
         },
@@ -2611,6 +2959,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -2693,6 +3045,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -2710,6 +3066,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -2780,6 +3140,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -2797,6 +3161,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -2840,7 +3208,7 @@
     "fields": {
       "type": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "type",
@@ -2883,6 +3251,10 @@
         },
         {
           "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -3022,6 +3394,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -3039,6 +3415,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -3114,6 +3494,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -3131,6 +3515,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -3201,6 +3589,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -3218,6 +3610,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -3292,6 +3688,10 @@
             "named": true
           },
           {
+            "type": "module_call",
+            "named": true
+          },
+          {
             "type": "money",
             "named": true
           },
@@ -3358,6 +3758,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -3375,6 +3779,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -3541,6 +3949,10 @@
             "named": true
           },
           {
+            "type": "module_call",
+            "named": true
+          },
+          {
             "type": "money",
             "named": true
           },
@@ -3591,6 +4003,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -3608,6 +4024,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -3719,6 +4139,10 @@
           "named": true
         },
         {
+          "type": "call_statement",
+          "named": true
+        },
+        {
           "type": "do_statement",
           "named": true
         },
@@ -3816,6 +4240,60 @@
     "type": "tool_call",
     "named": true,
     "fields": {
+      "destination": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "date",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "field_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "module_call",
+            "named": true
+          },
+          {
+            "type": "money",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "record_literal",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
       "payload": {
         "multiple": true,
         "required": false,
@@ -3853,6 +4331,10 @@
             "named": true
           },
           {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
             "type": "duration",
             "named": true
           },
@@ -3870,6 +4352,10 @@
           },
           {
             "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
             "named": true
           },
           {
@@ -3964,6 +4450,10 @@
           "named": true
         },
         {
+          "type": "module_call",
+          "named": true
+        },
+        {
           "type": "money",
           "named": true
         },
@@ -4046,6 +4536,10 @@
           "named": true
         },
         {
+          "type": "call_statement",
+          "named": true
+        },
+        {
           "type": "do_statement",
           "named": true
         },
@@ -4120,6 +4614,10 @@
       "required": true,
       "types": [
         {
+          "type": "handle_type",
+          "named": true
+        },
+        {
           "type": "type",
           "named": true
         }
@@ -4163,6 +4661,10 @@
           "named": true
         },
         {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
           "type": "duration",
           "named": true
         },
@@ -4180,6 +4682,10 @@
         },
         {
           "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
           "named": true
         },
         {
@@ -4487,6 +4993,10 @@
   {
     "type": "guard",
     "named": false
+  },
+  {
+    "type": "handle_type",
+    "named": true
   },
   {
     "type": "http_method",

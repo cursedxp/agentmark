@@ -48,6 +48,7 @@ module.exports = grammar({
     [$._atom, $.collection_expression],
     [$._expression, $.collection_expression],
     [$.type, $._atom],
+    [$._atom, $.decode_expression],
   ],
 
   rules: {
@@ -326,7 +327,13 @@ module.exports = grammar({
         seq('maybe', $.type),
         seq('result', 'of', $.type),
         seq('map', 'of', $.type, 'to', $.type),
+        $.handle_type,
       ),
+
+    // `handle of sha2.Sha256`, `mut handle of …`, `consume handle of …` (SPEC 22.4). One token,
+    // so `handle`, `mut` and `consume` stay plain identifiers everywhere else.
+    handle_type: () =>
+      token(/((mut|consume)[ \t]+)?handle[ \t]+of[ \t]+[A-Za-z_][A-Za-z0-9_-]*(\.[A-Za-z_][A-Za-z0-9_-]*)*/),
 
     // ---- statements ------------------------------------------------------
 
@@ -373,6 +380,7 @@ module.exports = grammar({
         $.remove_statement,
         $.respond_statement,
         $.print_statement,
+        $.call_statement,
         $.tool_call,
       ),
 
@@ -433,12 +441,26 @@ module.exports = grammar({
       seq(
         'do',
         repeat1($._atom),
+        optional(seq('as', field('type', $.type))),
         optional(seq(':', commaSep1($._expression))),
         optional($.bind),
       ),
 
+    // `read file p as T -> x`, `read body as T -> x`, `read input -> x`
     read_statement: ($) =>
-      seq('read', repeat1($._atom), 'as', field('type', $.type), optional($.bind)),
+      seq(
+        'read',
+        repeat1($._atom),
+        optional(seq('as', field('type', $.type))),
+        optional($.bind),
+      ),
+
+    // `csv.parse(content) as list of Sale -> sales` (after `try` or `do`, SPEC 22.3)
+    call_statement: ($) =>
+      seq(
+        choice($.module_call, $.decode_expression),
+        $.bind,
+      ),
 
     append_statement: ($) =>
       seq('append', $._expression, 'to', field('target', $._expression)),
@@ -458,6 +480,7 @@ module.exports = grammar({
       seq(
         field('tool', $.identifier),
         optional(seq(field('verb', $.identifier), repeat($._atom))),
+        optional(seq('to', field('destination', $._atom))),
         optional(seq(':', field('payload', commaSep1($._expression)))),
         optional($.bind),
       ),
@@ -481,6 +504,7 @@ module.exports = grammar({
         $.builtin,
         $.field_expression,
         $.call_expression,
+        $.module_call,
         $.record_literal,
       ),
 
@@ -492,6 +516,7 @@ module.exports = grammar({
         $.unary_expression,
         $.predicate,
         $.length_expression,
+        $.decode_expression,
         $.count_expression,
         $.first_expression,
         $.no_amounts_changed,
@@ -621,6 +646,21 @@ module.exports = grammar({
         optional(commaSep1($._expression)),
         ')',
       ),
+
+    // `text.split(t, ",")`: a function of the built-in library (SPEC 22.3)
+    module_call: ($) =>
+      seq(
+        field('module', $.identifier),
+        '.',
+        field('function', $.identifier),
+        '(',
+        optional(commaSep1($._expression)),
+        ')',
+      ),
+
+    // `json.parse(t) as Note`, `csv.parse(t) as list of Sale`
+    decode_expression: ($) =>
+      prec.dynamic(1, seq($.module_call, 'as', field('type', $.type))),
 
     record_literal: ($) =>
       seq('{', optional(commaSep1($.record_pair)), '}'),

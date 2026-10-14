@@ -39,8 +39,36 @@ fn use_line(path: &str, items: &[&str]) -> String {
     }
 }
 
+/// `body` with the text of its string literals blanked out: a word inside a string (`"log.txt"`) is
+/// not a use of the item of that name.
+fn without_strings(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut in_str = false;
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        match (in_str, c) {
+            (true, '\\') => {
+                chars.next();
+                out.push(' ');
+            }
+            (true, '"') => {
+                in_str = false;
+                out.push('"');
+            }
+            (true, _) => out.push(' '),
+            (false, '"') => {
+                in_str = true;
+                out.push('"');
+            }
+            (false, _) => out.push(c),
+        }
+    }
+    out
+}
+
 fn pick<'a>(body: &str, names: &[&'a str]) -> Vec<&'a str> {
-    names.iter().copied().filter(|w| has_word(body, w)).collect()
+    let code = without_strings(body);
+    names.iter().copied().filter(|w| has_word(&code, w)).collect()
 }
 
 /// `use` lines for exactly what `body` mentions (generated code stays warning free).
@@ -543,8 +571,9 @@ pub fn records_rs(c: &Ctxt) -> String {
         }
         body.push_str("        }\n    }\n}\n\n");
     }
+    let serde_use = if body.is_empty() { "" } else { "use serde::{Deserialize, Serialize};\n" };
     format!(
-        "//! Records.\n#![allow(dead_code)]\n\nuse serde::{{Deserialize, Serialize}};\n{}\n{}",
+        "//! Records.\n#![allow(dead_code)]\n\n{serde_use}{}\n{}",
         imports_with(&body, c, false),
         body.trim_end()
     ) + "\n"
@@ -692,12 +721,21 @@ pub fn bindings_rs(c: &Ctxt) -> String {
             effect_word(b.effect)
         ));
         for it in c.p.bindings.iter().filter(|x| x.binding == b.binding) {
-            let m = &c.n.binding_items[&(it.binding.clone(), it.item.clone())];
+            let m = &c.n.binding_items[&(it.binding.clone(), crate::ir::binding_key(&it.item, it.on.as_deref()))];
             let file = rel(c, &it.source.file);
             let params = it
                 .params
                 .iter()
-                .map(|p| format!("{}: {}", c.n.local(&p.name), rust_type(&p.ty, c.n)))
+                .zip(&it.modes)
+                .map(|(p, mode)| {
+                    let ty = rust_type(&p.ty, c.n);
+                    let ty = match (&p.ty, mode) {
+                        (Type::Handle(_), HandleMode::Shared) => format!("&{ty}"),
+                        (Type::Handle(_), HandleMode::Mut) => format!("&mut {ty}"),
+                        _ => ty,
+                    };
+                    format!("{}: {}", c.n.local(&p.name), ty)
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
             let ret = it.ret.as_ref().map_or("()".to_string(), |t| rust_type(t, c.n));

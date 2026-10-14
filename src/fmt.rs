@@ -362,6 +362,11 @@ impl Printer {
             self.heading(&item.doc, item.span.line, h);
             self.fence(1, &item.rust);
         }
+        for h in &b.handles {
+            self.blank();
+            self.heading(&None, h.span.line, format!("## Handle: {}", h.name));
+            self.fence(1, &h.rust);
+        }
         if !b.not_bound.is_empty() {
             self.blank();
             let before = b.not_bound.first().map_or(u32::MAX, |n| n.span.line);
@@ -752,6 +757,10 @@ pub(crate) fn type_text(t: &TypeExpr) -> String {
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
         TypeKind::Map(k, v) => format!("map of {} to {}", type_text(k), type_text(v)),
+        TypeKind::Handle { name, mode } => match mode.word() {
+            Some(w) => format!("{w} handle of {name}"),
+            None => format!("handle of {name}"),
+        },
     }
 }
 
@@ -872,6 +881,22 @@ fn simple_text(s: &Stmt) -> String {
         StmtKind::Append { value, list } => {
             format!("append {} to {}", expr_text(value), expr_text(list))
         }
+        StmtKind::ReadInput { into } => format!("read input -> {}", into.name),
+        StmtKind::File { verb, path, arg, into } => {
+            let mut t = format!("file {} {}", verb.name, expr_text(path));
+            match arg {
+                Some(FileArg::To(e)) => t.push_str(&format!(" to {}", expr_text(e))),
+                Some(FileArg::Content(e)) => t.push_str(&format!(": {}", expr_text(e))),
+                None => {}
+            }
+            if let Some(i) = into {
+                t.push_str(&format!(" -> {}", i.name));
+            }
+            t
+        }
+        StmtKind::CallInto { call, into, via_do } => {
+            format!("{}{} -> {}", if *via_do { "do " } else { "" }, expr_text(call), into.name)
+        }
         StmtKind::Print(e) => format!("print: {}", expr_text(e)),
         StmtKind::Coll(c) => collections::simple(c).unwrap_or_else(|| "stop".to_string()),
         // Statements with a body never reach here from the parser; print the head if they do.
@@ -983,6 +1008,7 @@ fn raw_expr(e: &Expr) -> String {
         }
         ExprKind::Not(x) => format!("not {}", at_least(x, 3)),
         ExprKind::Call { func, args } => format!("{}({})", path_text(func), exprs_text(args)),
+        ExprKind::Decode { call, ty } => format!("{} as {}", raw_expr(call), type_text(ty)),
         ExprKind::Record(fields) => {
             if fields.is_empty() {
                 "{}".to_string()

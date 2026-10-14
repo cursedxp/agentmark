@@ -92,6 +92,21 @@ test("blocks, statements, guards and strings", async () => {
   assert.ok(has(t[6], "customer", "entity.name.tag.target"));
 });
 
+test("built-in library calls: module, function, and the file tool", async () => {
+  const g = await loadGrammar();
+  const t = tokens(g, [
+    "- set parts = text.split(line, \",\")",
+    "- try do csv.parse(content) as list of Sale -> sales",
+    "- file rename path.join(a, b) to path.join(a, c)",
+  ].join("\n"));
+  assert.ok(has(t[0], "text", "support.class.builtin-module"));
+  assert.ok(has(t[0], "split", "support.function.builtin"));
+  assert.ok(has(t[1], "csv", "support.class.builtin-module"));
+  assert.ok(has(t[1], "parse", "support.function.builtin"));
+  assert.ok(has(t[2], "path", "support.class.builtin-module"));
+  assert.ok(has(t[2], "join", "support.function.builtin"));
+});
+
 test("a rust fence is handed to the rust grammar", async () => {
   const g = await loadGrammar();
   const t = tokens(g, "## Rust: h -> text\n- effect: pure\n  ```rust\n  let x = 1;\n  ```\n- after: 1");
@@ -158,4 +173,17 @@ test("collection words (SPEC 22.2) get their own scope", async () => {
   // words inside a string stay string
   const s2 = tokens(g, '  - print: "sort the list by name"');
   assert.ok(!s2[0].some((x) => x.scopes.some((sc) => sc.includes("support.function.collection"))));
+});
+
+test("handle types in a binding heading", async () => {
+  const g = await loadGrammar();
+  const t = tokens(g, "## update(self: mut handle of sha2.Sha256, data: bytes)\n## sha256_new() -> handle of sha2.Sha256");
+  assert.ok(has(t[0], "update", "entity.name.function"));
+  assert.ok(has(t[0], "self", "variable.parameter"));
+  assert.ok(has(t[0], "mut", "storage.modifier.handle-mode"));
+  assert.ok(has(t[0], "handle", "support.type"));
+  assert.ok(has(t[0], "sha2.Sha256", "support.type.handle"));
+  assert.ok(has(t[0], "data", "variable.parameter"));
+  assert.ok(has(t[0], "bytes", "support.type"));
+  assert.ok(has(t[1], "handle of sha2.Sha256", "support.type"));
 });

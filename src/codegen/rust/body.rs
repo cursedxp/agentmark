@@ -116,6 +116,7 @@ impl<'a> Body<'a> {
     /// Write a function body (top level: the last statement becomes the tail expression).
     pub fn function_body(&mut self, stmts: &[Stmt]) {
         collect_assigned(stmts, &mut self.assigned);
+        collect_mut_handles(self.p, stmts, &mut self.assigned);
         collect_matches(stmts, &mut self.lenient);
         self.block(stmts, true);
     }
@@ -160,6 +161,14 @@ impl<'a> Body<'a> {
 
     fn rty(&self, t: &Type) -> String {
         rust_type(t, self.n)
+    }
+
+    /// A handle variable is `mut` when any variable of that name is lent mutably; one that
+    /// is only handed on (or made again later) would warn, so the line says it is fine.
+    fn allow_unused_mut(&mut self, m: &str, ty: &Type) {
+        if !m.is_empty() && matches!(ty, Type::Handle(_)) {
+            self.line("#[allow(unused_mut)]");
+        }
     }
 
     fn stop_value(&self) -> String {
@@ -224,6 +233,7 @@ impl<'a> Body<'a> {
         match &s.kind {
             StmtKind::Let { name, ty, value } => {
                 let m = if self.assigned.contains(name) { "mut " } else { "" };
+                self.allow_unused_mut(m, ty);
                 let v = self.conv(value, ty);
                 self.line(&format!("let {m}{} = {v};", self.n.local(name)));
             }
@@ -370,6 +380,7 @@ impl<'a> Body<'a> {
         match into {
             Some(v) => {
                 let m = if self.assigned.contains(&v.name) { "mut " } else { "" };
+                self.allow_unused_mut(m, &v.ty);
                 let name = self.n.local(&v.name);
                 let value = eff.value.unwrap_or_else(|| "()".into());
                 if eff.temps.is_empty() && eff.lines.is_empty() {
@@ -435,8 +446,11 @@ impl<'a> Body<'a> {
         match (defines, otherwise) {
             (Some(d), None) => {
                 let name = self.n.local(&d.name);
+                let m = if self.assigned.contains(&d.name) { "mut " } else { "" };
+                self.allow_unused_mut(m, &d.ty);
                 let f = fut(self, ind);
-                self.line(&format!("let {name} = match {f} {{"));
+                self.line("#[allow(unused_variables)]");
+                self.line(&format!("let {m}{name} = match {f} {{"));
                 self.line("    Ok(answer) => answer,");
                 self.line("    Err(err) => {");
                 self.failure_exit("        ");
@@ -452,8 +466,11 @@ impl<'a> Body<'a> {
             (Some(d), Some(other)) => {
                 let name = self.n.local(&d.name);
                 let ty = self.rty(&d.ty);
+                // the value may never be read after the `try` (it only had to parse)
+                self.line("#[allow(unused_variables, unused_assignments)]");
                 self.line(&format!("let {name}: {ty};"));
                 let f = fut(self, ind);
+                self.line("#[allow(unused_assignments)]");
                 self.line(&format!("match {f} {{"));
                 self.line(&format!("    Ok(answer) => {name} = answer,"));
                 self.line("    Err(_) => {");
@@ -515,11 +532,12 @@ impl<'a> Body<'a> {
                 }
             }
             EffectCall::Tool(t) => self.tool_call(t, into),
-            EffectCall::Binding { binding, item, args } => {
+            EffectCall::Binding { binding, item, on, args } => {
                 let bs = self.n.bindings.get(binding).cloned().unwrap_or_else(|| binding.clone());
-                let m = self.n.binding_items.get(&(binding.clone(), item.clone())).cloned().unwrap_or_else(|| value_ident(item));
-                let params = self.p.bindings.iter().find(|b| &b.binding == binding && &b.item == item).map(|b| b.params.clone());
-                let a = self.args(args, params.as_deref());
+                let key = binding_key(item, on.as_deref());
+                let m = self.n.binding_items.get(&(binding.clone(), key)).cloned().unwrap_or_else(|| value_ident(item));
+                let bf = self.p.bindings.iter().find(|b| &b.binding == binding && &b.item == item && &b.on == on);
+                let a = self.binding_args(args, bf);
                 Eff::value(format!("bindings::{bs}::{m}({a}).await?"))
             }
             EffectCall::Rust { name, args } => {
@@ -529,7 +547,21 @@ impl<'a> Body<'a> {
                 Eff::value(format!("bindings::{f}({a})"))
             }
             EffectCall::Fn { name, args } => Eff::value(self.fn_call(name, args)),
+            EffectCall::File(fc) => {
+                let path = self.txt(&fc.path);
+                let more = fc.arg.as_ref().map(|a| format!(", {}", self.txt(a))).unwrap_or_default();
+                let code = format!("agentmark_rt::stdlib::file::{}(ctx, {path}{more})?", fc.verb);
+                match fc.verb.as_str() {
+                    "read" | "list" | "exists" => Eff::value(code),
+                    _ => Eff::lines(vec![format!("{code};")]),
+                }
+            }
+            EffectCall::Std(x) => match &x.kind {
+                ExprKind::Std { module, name, args, decode } => Eff::value(self.std_call(module, name, args, decode.as_ref(), true)),
+                _ => Eff::value(self.val(x)),
+            },
             EffectCall::Io(io) => match io {
+                IoCall::ReadInput => Eff::value("agentmark_rt::stdlib::read_input()?".to_string()),
                 IoCall::ReadFile { path, ty } => {
                     let p = self.txt(path);
                     let v = match ty {
@@ -553,6 +585,33 @@ impl<'a> Body<'a> {
         }
     }
 
+    /// A call of the built-in library (SPEC 22.3). `question`: turn a `result` into its value.
+    fn std_call(&self, module: &str, name: &str, args: &[Expr], decode: Option<&Type>, question: bool) -> String {
+        use super::stdlib::Pass;
+        let Some(f) = crate::stdlib::lookup(module, name) else {
+            panic!("internal compiler error: {module}.{name} is not in the library table");
+        };
+        let rendered: Vec<String> = f
+            .params
+            .iter()
+            .zip(args)
+            .map(|((_, want), a)| match super::stdlib::pass(*want) {
+                Pass::Text => self.txt(a),
+                Pass::Ref => format!("&{}", paren(self.ex(a), P_UNARY)),
+                Pass::Value => self.val(a),
+            })
+            .collect();
+        let num = args
+            .first()
+            .filter(|_| f.params.iter().any(|p| p.1 == crate::stdlib::Ty::Num))
+            .map(|a| self.rty(&a.ty));
+        let dec = decode.map(|t| match (module, t) {
+            ("csv", Type::List(item)) => self.rty(item),
+            _ => self.rty(t),
+        });
+        super::stdlib::call(f, &rendered, num.as_deref(), dec.as_deref(), question)
+    }
+
     fn fn_call(&self, name: &str, args: &[Expr]) -> String {
         let f = self.p.functions.iter().find(|f| f.name == name);
         let a = self.args(args, f.map(|f| f.params.as_slice()));
@@ -567,6 +626,28 @@ impl<'a> Body<'a> {
         } else {
             format!("{path}(ctx, {a}).await?")
         }
+    }
+
+    /// Arguments of a binding call: handles are lent (`&h`, `&mut h`) or handed over (`h`)
+    /// as the item's parameter says; everything else is a value.
+    fn binding_args(&self, args: &[Expr], item: Option<&BindingFn>) -> String {
+        args.iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let p = item.and_then(|b| b.params.get(i));
+                let mode = item.and_then(|b| b.modes.get(i)).copied().unwrap_or(HandleMode::Shared);
+                match (p, &a.ty) {
+                    (Some(_), Type::Handle(_)) => match mode {
+                        HandleMode::Shared => format!("&{}", paren(self.ex(a), P_ATOM)),
+                        HandleMode::Mut => format!("&mut {}", paren(self.ex(a), P_ATOM)),
+                        HandleMode::Consume => self.val(a),
+                    },
+                    (Some(p), _) => self.conv(a, &p.ty),
+                    (None, _) => self.val(a),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn args(&self, args: &[Expr], params: Option<&[Param]>) -> String {
@@ -760,7 +841,8 @@ impl<'a> Body<'a> {
     /// An expression to be used by value: places of non-`Copy` types are cloned.
     pub fn val(&self, e: &Expr) -> String {
         let x = self.ex(e);
-        if is_place(e) && !is_copy(&e.ty) {
+        // a handle moves; it is never cloned
+        if is_place(e) && !is_copy(&e.ty) && !matches!(e.ty, Type::Handle(_)) {
             format!("{}.clone()", paren(x, P_ATOM))
         } else {
             x.s
@@ -887,6 +969,7 @@ impl<'a> Body<'a> {
                     atom(format!("bindings::{f}({})", self.args(args, params.as_deref())))
                 }
             },
+            ExprKind::Std { module, name, args, decode } => atom(self.std_call(module, name, args, decode.as_ref(), false)),
             ExprKind::Record(fields) => {
                 let inner = fields
                     .iter()
@@ -1111,6 +1194,7 @@ fn cheap(e: &Expr) -> bool {
 fn has_await(e: &Expr) -> bool {
     match &e.kind {
         ExprKind::Call { .. } | ExprKind::Source { .. } | ExprKind::Coll(_) => true,
+        ExprKind::Std { args, .. } => args.iter().any(has_await),
         ExprKind::Count { filter, source } => filter.is_some() || has_await(source),
         ExprKind::Field { base, .. } => has_await(base),
         ExprKind::Unwrap { inner, .. } => has_await(inner),
@@ -1137,7 +1221,7 @@ fn uses_bare(e: &Expr, var: &str) -> bool {
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if uses_bare(e, var))),
         ExprKind::Binary { lhs, rhs, .. } => uses_bare(lhs, var) || uses_bare(rhs, var),
         ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => uses_bare(x, var),
-        ExprKind::Call { args, .. } => args.iter().any(|a| uses_bare(a, var)),
+        ExprKind::Call { args, .. } | ExprKind::Std { args, .. } => args.iter().any(|a| uses_bare(a, var)),
         ExprKind::Record(fs) => fs.iter().any(|(_, v)| uses_bare(v, var)),
         ExprKind::Count { source, .. } => uses_bare(source, var),
         ExprKind::First { source, cond, .. } => uses_bare(source, var) || uses_bare(cond, var),
@@ -1185,6 +1269,22 @@ pub fn visit_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Stmt)) {
             _ => {}
         }
     }
+}
+
+/// Handle variables a binding call borrows mutably (`mut handle of …`): they need `let mut`.
+fn collect_mut_handles(p: &Program, stmts: &[Stmt], out: &mut HashSet<String>) {
+    visit_stmts(stmts, &mut |s| {
+        if let StmtKind::Effect { call: EffectCall::Binding { binding, item, on, args }, .. } = &s.kind {
+            let Some(bf) = p.bindings.iter().find(|b| &b.binding == binding && &b.item == item && &b.on == on) else {
+                return;
+            };
+            for (m, a) in bf.modes.iter().zip(args) {
+                if let (HandleMode::Mut, ExprKind::Var(v)) = (m, &a.kind) {
+                    out.insert(v.clone());
+                }
+            }
+        }
+    });
 }
 
 fn collect_assigned(stmts: &[Stmt], out: &mut HashSet<String>) {
@@ -1268,7 +1368,9 @@ fn call_exprs(call: &EffectCall) -> Vec<&Expr> {
         EffectCall::Binding { args, .. } | EffectCall::Rust { args, .. } | EffectCall::Fn { args, .. } => args.iter().collect(),
         EffectCall::Io(IoCall::ReadFile { path, .. }) => vec![path],
         EffectCall::Io(IoCall::Print { message }) => vec![message],
-        EffectCall::Io(IoCall::ReadBody { .. }) => vec![],
+        EffectCall::Io(IoCall::ReadBody { .. } | IoCall::ReadInput) => vec![],
+        EffectCall::File(f) => std::iter::once(&f.path).chain(f.arg.iter()).collect(),
+        EffectCall::Std(x) => vec![x],
         EffectCall::Trace(TraceEvent::Guard { ok, .. }) => vec![ok],
     }
 }
@@ -1299,7 +1401,7 @@ fn count_unwraps(e: &Expr, out: &mut Vec<(String, String, usize)>) {
             count_unwraps(rhs, out);
         }
         ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => count_unwraps(x, out),
-        ExprKind::Call { args, .. } => args.iter().for_each(|a| count_unwraps(a, out)),
+        ExprKind::Call { args, .. } | ExprKind::Std { args, .. } => args.iter().for_each(|a| count_unwraps(a, out)),
         ExprKind::Record(fs) => fs.iter().for_each(|(_, v)| count_unwraps(v, out)),
         ExprKind::Count { source, .. } => count_unwraps(source, out),
         ExprKind::Matches { expr, .. } => count_unwraps(expr, out),

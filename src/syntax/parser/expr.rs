@@ -271,6 +271,31 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
                 kind: TypeKind::Map(Box::new(k), Box::new(v)),
                 span: at(e),
             });
+        // `[mut|consume] handle of sha2.Sha256` (SPEC 22.4)
+        let handle = choice((
+            kw("mut").to(HandleMode::Mut),
+            kw("consume").to(HandleMode::Consume),
+        ))
+        .then_ignore(sp1())
+        .or_not()
+        .then_ignore(kw("handle"))
+        .then_ignore(sp1())
+        .then_ignore(kw("of"))
+        .then_ignore(sp1())
+        .then(
+            name()
+                .map(|id| id.name)
+                .separated_by(just('.'))
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .map_with(|(mode, path), e| TypeExpr {
+            kind: TypeKind::Handle {
+                name: path.join("."),
+                mode: mode.unwrap_or(HandleMode::Shared),
+            },
+            span: at(e),
+        });
         // `lst of int`, `mayb int`: a word that is nearly a type constructor, followed by more type
         let typo = name()
             .filter(|id: &Ident| did_you_mean(&id.name, ["maybe", "list", "result", "map"]).is_some())
@@ -290,7 +315,7 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
             span: id.span,
             kind: TypeKind::Named(id.name),
         });
-        choice((maybe, list, result, map, typo, named)).labelled("a type")
+        choice((handle, maybe, list, result, map, typo, named)).labelled("a type")
     })
     .boxed()
 }
@@ -514,11 +539,15 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .labelled("a quoted text");
 
             // ---- paths and calls
+            // `regex.matches(...)`: after a dot a reserved word is fine when a call follows
+            let later = choice((word(), ident().then_ignore(just('(').rewind())));
             let path_idents = word()
                 .labelled("a value")
-                .separated_by(just('.'))
-                .at_least(1)
-                .collect::<Vec<Ident>>();
+                .then(just('.').ignore_then(later).repeated().collect::<Vec<Ident>>())
+                .map(|(first, mut rest)| {
+                    rest.insert(0, first);
+                    rest
+                });
             let args = expr
                 .clone()
                 .padded_by(sp())
@@ -526,6 +555,20 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .allow_trailing()
                 .collect::<Vec<_>>()
                 .delimited_by(just('('), just(')'));
+            // `json.parse(t) as Note`, `csv.parse(t) as list of Sale`
+            let decode = path_idents
+                .clone()
+                .then(args.clone())
+                .try_map(|(p, a), span| {
+                    if p.len() == 2 && matches!(p[0].name.as_str(), "json" | "csv") && p[1].name == "parse" {
+                        Ok((p, a))
+                    } else {
+                        Err(Rich::custom(span, "only json.parse and csv.parse take \"as\""))
+                    }
+                })
+                .map_with(|(p, a), e| mk(ExprKind::Call { func: p, args: a }, e))
+                .then(sp1().ignore_then(kw("as")).ignore_then(sp1()).ignore_then(type_expr()))
+                .map_with(|(call, ty), e| mk(ExprKind::Decode { call: Box::new(call), ty }, e));
             let path_or_call = path_idents
                 .clone()
                 .then(args.or_not())
@@ -665,6 +708,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 first_in,
                 no_amounts,
                 atom_kw,
+                decode,
                 path_or_call,
             ))
             .labelled("a value");

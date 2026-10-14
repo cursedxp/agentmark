@@ -15,9 +15,11 @@
 //! are not in rustdoc's impl item list and therefore not seen.
 
 use super::types::*;
-use crate::binder::core::{CrateItems, EffectHints, Item, NotBoundEntry, Param, Shape, Sig};
+use crate::binder::core::{CrateItems, EffectHints, HandleMode, Item, NotBoundEntry, Param, Shape, Sig, Ty};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::rc::Rc;
 
 /// rustdoc JSON `format_version` this reader understands (nightly 2026-10, rustdoc-types 0.5x).
 pub const SUPPORTED_FORMAT: u64 = 61;
@@ -49,6 +51,9 @@ const STYLE_GUIDE: &str = "\
 datetime = chrono::DateTime<chrono::Utc>, duration = chrono::Duration, list of T = Vec<T>, maybe T = Option<T>.\n\
 - Convert integers with `try_from(..)?`, never `as`. No floats. No `unwrap`/`expect`/`panic!`.\n\
 - Refer to the library by full path (`chrono::NaiveDate::from_ymd_opt`); the body has no `use` lines.\n\
+- `handle of <crate>.<Type>` is the library's own Rust type `<crate>::<Type>`, never converted: a plain `handle of` \
+parameter is `&T`, `mut handle of` is `&mut T`, `consume handle of` is `T`, a returned `handle of` is the owned value; \
+the parameter named `self` is `self_` in Rust.\n\
 - Keep it short: call the library, convert the result to the declared AgentMark type.";
 
 pub fn snake(s: &str) -> String {
@@ -170,6 +175,12 @@ struct Walk<'a> {
     foreign_uses: Vec<(String, Vec<String>)>,
     names: HashSet<String>,
     items: Vec<Item>,
+    /// Public types that become `handle of <crate>.<Type>` (SPEC 22.4): the paths a signature
+    /// can name them by -> the dotted name below the crate.
+    ctx: Rc<LiftCtx>,
+    /// Type alias public path -> its `alias_…` line under `## Not bound`; dropped when the alias
+    /// turned out to be a handle whose methods are bound.
+    alias_entries: HashMap<Vec<String>, String>,
 }
 
 pub fn read_crate(json: &str) -> Result<CrateItems, String> {
@@ -219,10 +230,14 @@ fn walked(doc: &Value) -> Result<Walk<'_>, String> {
         foreign_uses: Vec::new(),
         names: HashSet::new(),
         items: Vec::new(),
+        ctx: Rc::new(LiftCtx::default()),
+        alias_entries: HashMap::new(),
     };
     w.seen_modules.insert(root_id);
     let prefix = vec![w.crate_ident.clone()];
     w.walk_module(root_id, &prefix);
+    let ctx = w.lift_ctx();
+    w.ctx = Rc::new(ctx);
     Ok(w)
 }
 
@@ -243,6 +258,7 @@ pub fn read_crate_with(json: &str, foreign: &[String]) -> Result<CrateItems, Str
         let fdoc = parse_doc(f)?;
         w.emit_foreign(&fdoc);
     }
+    let handle_types = w.ctx.rust_types.borrow().clone();
     Ok(CrateItems {
         name,
         version,
@@ -252,6 +268,7 @@ pub fn read_crate_with(json: &str, foreign: &[String]) -> Result<CrateItems, Str
         hints: effect_hints(),
         items: w.items,
         extra_not_bound: w.extra,
+        handle_types,
     })
 }
 
@@ -359,6 +376,82 @@ impl<'a> Walk<'a> {
         }
     }
 
+    /// What the lift needs to know of the crate: the public types that become handles, who
+    /// implements which trait, and the public path of every type.
+    fn lift_ctx(&self) -> LiftCtx {
+        let mut ctx = LiftCtx::default();
+        for id in &self.order {
+            let Some(it) = self.get(*id) else { continue };
+            let k = kind(it);
+            let path = &self.pub_paths[id];
+            let canon: Option<Vec<String>> = self.doc["paths"][id.to_string()]["path"]
+                .as_array()
+                .map(|c| c.iter().filter_map(|s| s.as_str().map(String::from)).collect());
+            if let Some(c) = &canon {
+                if c != path {
+                    ctx.pubmap.insert(c.clone(), path.clone());
+                }
+            }
+            if path.len() < 2 {
+                continue;
+            }
+            let params = |g: &Value| -> (usize, usize, usize) {
+                let ps = g["params"].as_array().cloned().unwrap_or_default();
+                let n = |key: &str| ps.iter().filter(|p| p["kind"].get(key).is_some()).count();
+                (n("lifetime"), n("type"), n("const"))
+            };
+            let def = match k {
+                "struct" | "enum" | "union" => {
+                    let g = &it["inner"][k]["generics"];
+                    // a rustdoc file without `generics` cannot say a type is plain: no handle
+                    if g.is_null() {
+                        continue;
+                    }
+                    let (lt, ty, cn) = params(g);
+                    (cn == 0).then_some((lt, ty > 0))
+                }
+                "type_alias" => {
+                    let a = &it["inner"]["type_alias"];
+                    let plain = a["generics"]["params"].as_array().is_some_and(|p| p.is_empty()) && {
+                        let t = TypeParser::new(self.doc, None).parse(&a["type"]);
+                        matches!(&t, RT::Path { .. }) && !t.is_std_path()
+                    };
+                    plain.then_some((0, false))
+                }
+                _ => None,
+            };
+            let Some((lifetimes, generic)) = def else { continue };
+            let d = HandleDef { name: path.join("."), rust_path: path.join("::"), lifetimes, generic };
+            ctx.handles.insert(path.clone(), d.clone());
+            if let Some(c) = canon.filter(|c| c.len() >= 2) {
+                ctx.handles.entry(c).or_insert(d);
+            }
+        }
+        // implementors of traits: the crate's own concrete types
+        if let Some(index) = self.doc["index"].as_object() {
+            for it in index.values().filter(|i| kind(i) == "impl") {
+                let imp = &it["inner"]["impl"];
+                if imp["is_synthetic"] == true || !imp["blanket_impl"].is_null() || imp["is_negative"] == true || imp["trait"].is_null() {
+                    continue;
+                }
+                let tpath = imp["trait"]["path"].as_str().unwrap_or("?");
+                let tname = TypeParser::new(self.doc, None)
+                    .full_path_of(imp["trait"]["id"].as_u64(), tpath)
+                    .join("::");
+                let ty = TypeParser::new(self.doc, None).parse(&imp["for"]);
+                let concrete = matches!(&ty, RT::Path { args, .. } if args.is_empty())
+                    && imp["generics"]["params"].as_array().is_none_or(|p| p.is_empty());
+                if concrete {
+                    let v = ctx.implementors.entry(tname).or_default();
+                    if !v.contains(&ty) {
+                        v.push(ty);
+                    }
+                }
+            }
+        }
+        ctx
+    }
+
     fn unique(&mut self, base: String) -> String {
         let base = if base.is_empty() { "item".to_string() } else { base };
         let mut n = base.clone();
@@ -399,6 +492,7 @@ impl<'a> Walk<'a> {
                             .is_std_path();
                     if !std_target && target_id.is_none_or(|t| self.get(t).is_none()) {
                         let name = self.unique(format!("alias_{}", snake(&path[1..].join("_"))));
+                        self.alias_entries.insert(path.clone(), name.clone());
                         let ty = TypeParser::new(self.doc, None).parse(&it["inner"]["type_alias"]["type"]);
                         self.extra.push(NotBoundEntry {
                             name,
@@ -521,7 +615,10 @@ impl<'a> Walk<'a> {
                 .collect();
             let receiverless = |m: &Value| m["inner"]["function"]["sig"]["inputs"][0][0] != "self";
             for (apath, aty) in &aliases {
-                for m in methods.iter().filter(|m| receiverless(m)) {
+                // an alias that is a handle (SPEC 22.4) gets every method of the trait, the ones
+                // with a `self` included
+                let is_handle = self.ctx.handles.contains_key(apath);
+                for m in methods.iter().filter(|m| is_handle || receiverless(m)) {
                     let owner = Owner {
                         self_ty: aty.clone(),
                         impl_generics: Value::Null,
@@ -532,10 +629,16 @@ impl<'a> Walk<'a> {
                     let item = self.build_fn(fdoc, m, apath, Some(owner));
                     self.items.push(item);
                 }
+                if is_handle && !methods.is_empty() {
+                    if let Some(entry) = self.alias_entries.get(apath).cloned() {
+                        self.extra.retain(|e| e.name != entry);
+                    }
+                }
             }
             let with_self: Vec<&str> = methods.iter().filter(|m| !receiverless(m)).filter_map(|m| m["name"].as_str()).collect();
             // one entry per method and alias, so no name is hidden inside a list (SPEC 15.2)
-            for (apath, _) in &aliases {
+            let ctx = self.ctx.clone();
+            for (apath, _) in aliases.iter().filter(|(p, _)| !ctx.handles.contains_key(p)) {
                 for m in &with_self {
                     let name = self.unique(format!("{}_{}", snake(&apath[1..].join("_")), snake(m)));
                     self.extra.push(NotBoundEntry {
@@ -578,21 +681,27 @@ impl<'a> Walk<'a> {
         // Generics (fn and impl) -> bounds map and hazards.
         let mut bounds: Vec<(String, Vec<Bound>)> = Vec::new();
         let mut has_generics = false;
+        let mut self_bound = false;
+        let mut impl_generics = false;
+        let ctx = self.ctx.clone();
         let mut gens = vec![&inner["generics"]];
         if let Some(o) = &owner {
             gens.push(&o.impl_generics);
         }
-        for g in gens {
+        for (gi, g) in gens.into_iter().enumerate() {
             for p in g["params"].as_array().into_iter().flatten() {
                 let n = p["name"].as_str().unwrap_or("?").to_string();
                 if p["kind"].get("lifetime").is_some() {
                     tp.hz.lifetimes = true;
                 } else if let Some(t) = p["kind"].get("type") {
                     has_generics = true;
+                    // the impl's own type parameters (`impl<Tz: TimeZone> … for DateTime<Tz>`)
+                    impl_generics |= gi == 1;
                     let b = tp.parse_bounds(&t["bounds"]);
                     bounds.push((n, b));
                 } else {
                     has_generics = true;
+                    impl_generics |= gi == 1;
                 }
             }
             for w in g["where_predicates"].as_array().into_iter().flatten() {
@@ -603,6 +712,9 @@ impl<'a> Walk<'a> {
                             Some((_, v)) => v.extend(b),
                             None => bounds.push((n, b)),
                         },
+                        // `where Self: FixedOutputReset`: a condition on the type the method is
+                        // bound on; only the type checker can tell whether it holds
+                        other if owner.is_some() && Some(&other) == self_ty.as_ref() => self_bound = true,
                         _ => tp.hz.assoc = true,
                     }
                 } else if w.get("lifetime_predicate").is_some() {
@@ -660,52 +772,80 @@ impl<'a> Walk<'a> {
             .collect();
 
         let source_sig = render_sig(&fname, recv, &params, &ret_rt, &bounds, is_async);
-        let lifter = Lifter { bounds: &bounds };
-        let contract_of = |sig: &Sig| contract(&name, sig);
-
+        let contract_of = |sig: &Sig, h: &BTreeMap<String, String>| super::checker::rust_fn_header_with(&name, sig, h);
         let skipped = |reason: String| Shape::Skipped { reason };
+        // Lifetimes and associated types keep an item out of reach unless it has a handle: a handle
+        // owns whatever the Rust value borrows, and the assisted tier writes that glue.
+        let borrowy = hz.lifetimes || hz.assoc;
+        let borrow_reason = if hz.lifetimes { "lifetimes in the public API" } else { "associated types in the signature" };
+        let fail = |msg: String| skipped(if borrowy { borrow_reason.to_string() } else { msg });
+        let build = |catchall: bool| -> (Shape, Option<String>, BTreeMap<String, String>) {
+        let lifter = Lifter { bounds: &bounds, ctx: &ctx, catchall, pending: RefCell::new(BTreeMap::new()) };
+        // a method of a handle type is written with its method name; the handle tells methods apart
+        let recv_handle = match recv {
+            Recv::None | Recv::Other => None,
+            _ => self_ty.as_ref().and_then(|t| lifter.handle_of(t)),
+        };
+        let heading = recv_handle.as_ref().map(|h| {
+            let prefix = format!("{}_", snake(&h.split('.').skip(1).collect::<Vec<_>>().join("_")));
+            name.strip_prefix(&prefix).unwrap_or(&name).to_string()
+        });
         let shape = (|| {
             if is_unsafe {
                 return skipped("unsafe function".into());
-            }
-            if hz.lifetimes {
-                return skipped("lifetimes in the public API".into());
-            }
-            if hz.assoc {
-                return skipped("associated types in the signature".into());
             }
             if hz.closure {
                 return skipped("takes a closure and AgentMark has no function type".into());
             }
             match recv {
                 Recv::Other => return skipped("unsupported receiver (self: Box<Self> or similar)".into()),
-                Recv::MutRef => return skipped("mutates its receiver (&mut self)".into()),
+                Recv::MutRef if recv_handle.is_none() => return skipped("mutates its receiver (&mut self)".into()),
                 _ => {}
             }
             let mut sparams: Vec<Param> = Vec::new();
-            if matches!(recv, Recv::Value | Recv::Ref) {
+            if let Some(h) = &recv_handle {
+                let mode = match recv {
+                    Recv::Value => HandleMode::Consume,
+                    Recv::MutRef => HandleMode::Mut,
+                    _ => HandleMode::Shared,
+                };
+                sparams.push(Param { name: "self".into(), ty: Ty::handle(h.clone(), mode) });
+            } else if matches!(recv, Recv::Value | Recv::Ref) {
                 let st = self_ty.as_ref().unwrap();
                 match lifter.value(st) {
                     Ok(ty) => sparams.push(Param { name: recv_name.clone().unwrap(), ty }),
-                    Err(e) => return skipped(format!("method needs a value that AgentMark cannot hold: {e}")),
+                    Err(e) => return fail(format!("method needs a value that AgentMark cannot hold: {e}")),
                 }
             }
             for ((_, rt), pn) in params.iter().zip(&pnames) {
-                match lifter.value(rt) {
+                match lifter.param(rt) {
                     Ok(ty) => sparams.push(Param { name: pn.clone(), ty }),
-                    Err(e) => return skipped(format!("parameter `{pn}`: {e}")),
+                    Err(e) => return fail(format!("parameter `{pn}`: {e}")),
                 }
             }
             let ret = match lifter.ret(&ret_rt) {
                 Ok(r) => r,
-                Err(e) => return skipped(format!("return type: {e}")),
+                Err(e) => return fail(format!("return type: {e}")),
             };
             let sig = Sig { params: sparams, ret };
+            let handle_item = sig.params.iter().any(|p| matches!(p.ty, Ty::Handle { .. }))
+                || matches!(sig.ret, Some(Ty::Handle { .. }));
+            if borrowy && !handle_item {
+                return skipped(borrow_reason.into());
+            }
 
-            // Direct tier: 1:1 types, no generics, no async, no Result wrapping.
+            // Direct tier: 1:1 types, no generics, no async, no Result wrapping. An item that
+            // involves a handle has no model-free alternative, so its rules also take generics
+            // with one obvious instantiation, another crate's trait and `where Self: …`; the
+            // type checker confirms the body (`verify`).
             let mut why = Vec::new();
-            if has_generics {
+            // a handle item may be generic in its own parameters (`impl AsRef<[u8]>`), but not in
+            // the type it is bound on: its path would need type arguments
+            if has_generics && (!handle_item || impl_generics) {
                 why.push("generic over a type with one obvious instantiation");
+            }
+            if borrowy {
+                why.push("the handle owns what the Rust value borrows");
             }
             if is_async {
                 why.push("async");
@@ -714,16 +854,31 @@ impl<'a> Walk<'a> {
                 why.push("returns Result");
             }
             // Never trust rules for another crate's trait: the body is always type-checked.
-            if owner.as_ref().is_some_and(|o| o.foreign_trait) {
+            if owner.as_ref().is_some_and(|o| o.foreign_trait) && !handle_item {
                 why.push("method of a trait from another crate");
             }
             let direct = if why.is_empty() {
-                direct_body(path, &fname, &owner, recv, recv_name.as_deref(), &params, &pnames, &ret_rt)
+                direct_body(
+                    path,
+                    &fname,
+                    &owner,
+                    recv,
+                    recv_handle.is_some().then_some("self_").or(recv_name.as_deref()),
+                    &params,
+                    &pnames,
+                    &ret_rt,
+                    &lifter,
+                    &sig,
+                )
             } else {
                 None
             };
             match direct {
-                Some(body) => Shape::Direct { sig, body },
+                Some(body) => Shape::Direct {
+                    sig,
+                    body,
+                    verify: handle_item || self_bound || owner.as_ref().is_some_and(|o| o.foreign_trait),
+                },
                 None => {
                     if why.is_empty() {
                         why.push("types do not map 1:1 onto AgentMark types");
@@ -732,13 +887,36 @@ impl<'a> Walk<'a> {
                 }
             }
         })();
-
+        (shape, heading, lifter.pending.into_inner())
+        };
+        // First as v0.2 lifted: a bound with several implementors has no obvious instantiation.
+        // An item that fails that way may still be a handle item whose type parameter has exactly
+        // one implementor in this crate (`DB: Database` with one database compiled in): try again
+        // with that rule, and keep the result only when it really involves a handle.
+        let (mut shape, mut heading, mut pending) = build(false);
+        if matches!(shape, Shape::Skipped { .. }) {
+            let (s2, h2, p2) = build(true);
+            let handle_sig = |sh: &Shape| match sh {
+                Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => {
+                    sig.params.iter().any(|p| matches!(p.ty, Ty::Handle { .. })) || matches!(sig.ret, Some(Ty::Handle { .. }))
+                }
+                Shape::Skipped { .. } => false,
+            };
+            if handle_sig(&s2) {
+                (shape, heading, pending) = (s2, h2, p2);
+            }
+        }
+        // the Rust type of a handle is recorded only for an item that is bound or goes to the model
+        if !matches!(shape, Shape::Skipped { .. }) {
+            ctx.rust_types.borrow_mut().extend(pending.clone());
+        }
         let contract = match &shape {
-            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => contract_of(sig),
+            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => contract_of(sig, &ctx.rust_types.borrow()),
             Shape::Skipped { .. } => String::new(),
         };
         Item {
             name,
+            heading,
             path: display_path,
             summary,
             docs,
@@ -787,34 +965,68 @@ fn direct_body(
     params: &[(String, RT)],
     pnames: &[String],
     ret: &RT,
+    lifter: &Lifter,
+    sig: &Sig,
 ) -> Option<String> {
+    // `sig.params` has the receiver first when the item has one that AgentMark holds
+    let skip = sig.params.len() - params.len();
+    let recv_handle = skip == 1 && matches!(&sig.params[0], Param { name, ty: Ty::Handle { .. } } if name == "self");
     let mut args = Vec::new();
-    for ((_, rt), pn) in params.iter().zip(pnames) {
-        args.push(conv_in(pn, rt)?);
+    for (i, ((_, rt), pn)) in params.iter().zip(pnames).enumerate() {
+        match &sig.params[skip + i].ty {
+            // already the Rust parameter type (`&T`, `&mut T`, `T`): passed as it is
+            Ty::Handle { .. } => args.push(pn.clone()),
+            _ => args.push(conv_in(pn, &lifter.instantiated(rt))?),
+        }
     }
-    let call = match owner {
-        None => format!("{}({})", path.join("::"), args.join(", ")),
-        Some(o) => match &o.trait_ {
-            None => match recv {
-                Recv::None => format!("{}::{}({})", o.type_path.join("::"), fname, args.join(", ")),
-                _ => format!("{}.{}({})", recv_name?, fname, args.join(", ")),
-            },
-            Some((_, tp)) => {
-                let mut all = Vec::new();
-                match recv {
-                    Recv::Value => all.push(recv_name?.to_string()),
-                    Recv::Ref => all.push(format!("&{}", recv_name?)),
-                    _ => {}
-                }
-                all.extend(args);
-                format!("<{} as {}>::{}({})", o.type_path.join("::"), tp.join("::"), fname, all.join(", "))
+    let body = |wide: bool| -> Option<String> {
+        // arguments on a line of their own when the call would not fit a binding line (SPEC 18.3)
+        let list = |a: &[String]| {
+            if wide && !a.is_empty() {
+                format!("\n{}\n", a.iter().map(|x| format!("    {x},")).collect::<Vec<_>>().join("\n"))
+            } else {
+                a.join(", ")
             }
-        },
+        };
+        let call = match owner {
+            None => format!("{}({})", path.join("::"), list(&args)),
+            Some(o) => match &o.trait_ {
+                None => match recv {
+                    Recv::None => format!("{}::{}({})", o.type_path.join("::"), fname, list(&args)),
+                    _ => format!("{}.{}({})", recv_name?, fname, list(&args)),
+                },
+                Some((_, tp)) => {
+                    let mut all = Vec::new();
+                    match recv {
+                        Recv::Value => all.push(recv_name?.to_string()),
+                        Recv::Ref if recv_handle => all.push(recv_name?.to_string()),
+                        Recv::Ref => all.push(format!("&{}", recv_name?)),
+                        Recv::MutRef => all.push(recv_name?.to_string()),
+                        _ => {}
+                    }
+                    all.extend(args.iter().cloned());
+                    format!("<{} as {}>::{}({})", o.type_path.join("::"), tp.join("::"), fname, list(&all))
+                }
+            },
+        };
+        Some(match (ret, &sig.ret) {
+            (RT::Tuple(v), _) if v.is_empty() => format!("{call};\nOk(())"),
+            // a handle comes back as the library gave it
+            (_, Some(Ty::Handle { .. })) => format!("Ok({call})"),
+            (RT::Path { full, .. }, Some(Ty::Bytes)) if matches!(last(full), "Output" | "GenericArray") => {
+                format!("Ok({call}.to_vec())")
+            }
+            _ => format!("Ok({})", conv_out(&call, ret)?),
+        })
     };
-    Some(match ret {
-        RT::Tuple(v) if v.is_empty() => format!("{call};\nOk(())"),
-        _ => format!("Ok({})", conv_out(&call, ret)?),
-    })
+    let one = body(false)?;
+    // the binding file indents the body by two
+    if one.lines().any(|l| l.chars().count() + 2 > 118) {
+        // still too long (a nested conversion): the model writes it in more lines
+        body(true).filter(|b| b.lines().all(|l| l.chars().count() + 2 <= 118))
+    } else {
+        Some(one)
+    }
 }
 
 fn render_sig(

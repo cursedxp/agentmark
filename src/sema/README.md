@@ -52,7 +52,7 @@ Helpers: `Checked::unit_effect(unit)`, `expr_type(file, span)`, `stmt_effect(fil
 
 ## Types (`sema::Type`)
 
-`Text Int Money Date DateTime Duration Bool Bytes List(T) Map(K, V) Maybe(T) Result(T) Record(name) Object(fields)`
+`Text Int Money Date DateTime Duration Bool Bytes List(T) Map(K, V) Maybe(T) Result(T) Record(name) Handle("crate.Type") Object(fields)`
 (the type of a record literal) and `Unknown` (only appears next to an already-reported error, so it never
 occurs in an `Ok` result except for tool results whose type the manifest cannot tell, e.g. `crm update … -> x`).
 Record names are unique in a project (OPEN_QUESTIONS Q31), so `Record(String)` identifies a record.
@@ -87,6 +87,23 @@ Reading `crm.invoices` is `network(crm)`.
 - Narrowing keys bare fields as `var.field` (`score` and `lead.score` are one fact); re-checking a present value is fine. `is not empty` / `is some` / `guard` unwrap `maybe` values in the rest of the block.
 - `result of T` (Q200): `return v` in such a function takes a `T`; `try do f(x) -> h` types `h` as `T`; calling it without `try`, or inside an expression, is an error. A crate import without binding is reported once on the import line (`E219` when a statement uses it, Q201), without `Unknown tool` or `Unused import` follow-ons.
 
+## Handles (`handles.rs`, SPEC 22.4, Q360 to Q369)
+
+`handle of <crate>.<Type>` (`Type::Handle("sha2.Sha256")`) is a library value AgentMark cannot look into. Where the bindings declare
+the types: `Checker.handle_types` (type -> bindings that mention it), filled before anything is typed; an unknown one is E360 with a
+did-you-mean. A binding item's `self` parameter (first, a handle) makes it a method (`BindingItemInfo::receiver()`), and each
+parameter carries a `HandleMode` (`modes`): `handle of` reads, `mut handle of` changes, `consume handle of` uses it up.
+
+- A statement whose first word is a variable of handle type is a method call: `binding_call(.., recv = Some(type))` looks the verb up
+  among the items with that receiver (`ToolResolution.on = Some(type)`, tool word = the variable). Constructors are ordinary items.
+- Ownership is `Cx.consumed` (variable -> the span that used it up): `consume` receivers and parameters, passing a handle to a function
+  (`move_out`), `set` and `return`-less moves use it up; reading it again is E361 naming that line. `if`/`else` join with "may have been"
+  (a branch that ends in `stop`/`return` contributes nothing), a handle from outside a loop cannot be used up inside it, `define` revives.
+- Default-deny reads: `path_expr` on a handle variable is E362 unless the caller set `Cx.handle_ok` (`set`, function and binding
+  arguments, `return`), so printing, interpolating, comparing, saving, sending and tracing are all refused at one place.
+- E363 (no handle in `list of`/`maybe`/a record field), E365 (`mut`/`consume` outside binding parameters, `self` misplaced, a handle
+  given twice to one call, a borrowed handle that is not a variable), E366 (`try … -> h otherwise:` whose `otherwise` does not leave).
+
 ## Layout
 
 `mod.rs` driver and result types · `scope.rs` registry and per-file scopes · `decls.rs` record fields,
@@ -100,3 +117,6 @@ A `# Import: crate x` whose `bindings/x.agent.md` (or `.agentmark/bindings/`) ex
 loader as a file of the project; its `# Binding` is typed like any declaration, so `- sha2 sha256_digest data -> h`
 checks against the bound signature, takes the binding's `- effect:` (or `unverified`, listed by
 `Checked::unverified_bindings()` and by `agentmark check`). This needed no extra code in sema.
+
+## Built-in library (step 22)
+`src/stdlib.rs` is the one table (`FUNCS`, `FILE_VERBS`, `MODULES`); `src/sema/stdlib.rs` types from it. `module.fn(args)` where `module` is `text regex number money date path json csv` and no imported function has that name is a library call: no `Resolution` is recorded (the IR recognises it by the table), the type is the table row's (`Num` = the type of the first argument; `Decoded` = `result of T` from the `as T` that the parser wraps in `ExprKind::Decode`). A call that can fail is `Type::Result(T)` and is accepted only directly after `try` (`Cx.std_ok`); `StmtKind::CallInto` defines its variable with the plain `T`. Statements: `file …` (effect `local(file)`), `read input -> t` (`local(input)`). Errors E340 (unknown function), E341 (result without `try`), E342 (`as T`), E343 (literal pattern, also looked up through a constant), E344/E345 (`file` verb / shape), E347 (`[file]` in tools.toml, raised by the manifest).

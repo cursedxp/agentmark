@@ -176,6 +176,42 @@ fn a_response_that_differs_from_expect_body_fails_the_run() {
     assert!(stderr(&bad).contains("expected body"), "{}", stderr(&bad));
 }
 
+/// Start a generated service on a free port and return it once it has said it is listening.
+/// Picking a port by binding and dropping a listener is a race: a parallel test can pick the same
+/// port, and then this test would talk to the other test's server (and get a reset when that one is
+/// killed). So the answer to trust is the child's own "listening" line; if the child could not bind
+/// (it exits), try another port.
+fn start_service(bin: &Path, before: &[&str], after: &[&str]) -> (std::process::Child, String) {
+    for _ in 0..20 {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let addr = format!("127.0.0.1:{port}");
+        let mut child = Command::new(bin)
+            .args(before)
+            .args(["--serve", &addr])
+            .args(after)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut err = child.stderr.take().unwrap();
+        let mut seen = Vec::new();
+        let mut byte = [0u8; 1];
+        while err.read(&mut byte).map(|n| n == 1).unwrap_or(false) {
+            seen.push(byte[0]);
+            if String::from_utf8_lossy(&seen).contains("listening on") {
+                // keep draining so the child never blocks on a full pipe
+                std::thread::spawn(move || {
+                    let mut sink = Vec::new();
+                    let _ = err.read_to_end(&mut sink);
+                });
+                return (child, addr);
+            }
+        }
+        let _ = child.wait();
+    }
+    panic!("no service came up on a free port");
+}
+
 fn http_get(addr: &str, path: &str) -> String {
     let mut s = std::net::TcpStream::connect(addr).unwrap();
     s.write_all(format!("GET {path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").as_bytes()).unwrap();
@@ -192,26 +228,9 @@ fn service_serves_a_real_get() {
         std::fs::create_dir_all(&fx).unwrap();
         fx.clone()
     });
-    let port = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
-    let addr = format!("127.0.0.1:{port}");
     let trace = d.join("trace.jsonl");
-    let mut child = Command::new(bin)
-        .args(["--mock", "--fixtures", s(&fx), "--serve", &addr, "--trace", s(&trace)])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
-    let mut reply = String::new();
-    for _ in 0..50 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        if std::net::TcpStream::connect(&addr).is_ok() {
-            reply = http_get(&addr, "/invoices/INV-1/net");
-            break;
-        }
-    }
+    let (mut child, addr) = start_service(&bin, &["--mock", "--fixtures", s(&fx)], &["--trace", s(&trace)]);
+    let reply = http_get(&addr, "/invoices/INV-1/net");
     child.kill().unwrap();
     child.wait().unwrap();
     assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
@@ -240,23 +259,11 @@ fn a_route_that_fails_answers_500_and_traces_the_error_before_the_http_line() {
     assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
     // build_bin asserts: builds, and without a warning (a route without effects leaves no unused ctx)
     let bin = build_bin(&out, "pay");
-    let port = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
-    let addr = format!("127.0.0.1:{port}");
     let trace = d.join("trace.jsonl");
-    let mut child = Command::new(bin).args(["--serve", &addr, "--trace", s(&trace)]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
-    let (mut bad, mut good) = (String::new(), String::new());
-    for _ in 0..50 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        if std::net::TcpStream::connect(&addr).is_ok() {
-            // EUR + USD: the currencies do not match, so the route fails
-            bad = http_post(&addr, "/total", r#"{"id":"P-1","amount":"10.00 EUR"}"#);
-            good = http_post(&addr, "/total", r#"{"id":"P-2","amount":"10.00 USD"}"#);
-            break;
-        }
-    }
+    let (mut child, addr) = start_service(&bin, &[], &["--trace", s(&trace)]);
+    // EUR + USD: the currencies do not match, so the route fails
+    let bad = http_post(&addr, "/total", r#"{"id":"P-1","amount":"10.00 EUR"}"#);
+    let good = http_post(&addr, "/total", r#"{"id":"P-2","amount":"10.00 USD"}"#);
     child.kill().unwrap();
     child.wait().unwrap();
     assert!(bad.starts_with("HTTP/1.1 500"), "{bad}");

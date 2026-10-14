@@ -99,6 +99,13 @@ pub fn render_binding(
         o.push('\n');
         o.push_str(&render_item(it, code_lang));
     }
+    for (name, rust) in &b.handle_types {
+        o.push_str(&format!("\n## Handle: {name}\n  ```{code_lang}\n"));
+        for l in wrap_type(rust, 116) {
+            o.push_str(&format!("  {l}\n"));
+        }
+        o.push_str("  ```\n");
+    }
     if !b.not_bound.is_empty() {
         o.push_str("\n## Not bound\n");
         for (name, reason) in &b.not_bound {
@@ -111,6 +118,37 @@ pub fn render_binding(
         }
     }
     o
+}
+
+/// A Rust type on lines of at most `width` characters: broken after a `, ` (Rust does not mind).
+fn wrap_type(t: &str, width: usize) -> Vec<String> {
+    // pieces end after a `, `; a piece longer than a line is cut after `::` and `<` too
+    let mut atoms: Vec<String> = Vec::new();
+    for piece in t.split_inclusive(", ") {
+        if piece.chars().count() + 4 <= width {
+            atoms.push(piece.to_string());
+            continue;
+        }
+        let mut cur = String::new();
+        for part in piece.split_inclusive(['<', ':']) {
+            if !cur.is_empty() && cur.chars().count() + part.chars().count() + 4 > width {
+                atoms.push(std::mem::take(&mut cur));
+            }
+            cur.push_str(part);
+        }
+        atoms.push(cur);
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for piece in atoms {
+        if !cur.is_empty() && cur.chars().count() + piece.chars().count() > width {
+            lines.push(cur.trim_end().to_string());
+            cur = "    ".to_string();
+        }
+        cur.push_str(&piece);
+    }
+    lines.push(cur);
+    lines
 }
 
 /// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). Nothing is
@@ -190,7 +228,7 @@ pub fn render_item(it: &BoundItem, code_lang: &str) -> String {
         doc_line(&it.summary)
     };
     o.push_str(&one_line_doc(&doc));
-    o.push_str(&format!("## {}\n", it.sig.heading(&it.name)));
+    o.push_str(&format!("## {}\n", it.sig.heading(it.heading.as_deref().unwrap_or(&it.name))));
     o.push_str(&format!("  ```{code_lang}\n"));
     for l in it.body.lines() {
         if l.is_empty() {
@@ -325,6 +363,15 @@ fn one_line_doc(doc: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_type_breaks_at_commas_and_then_at_paths_and_angle_brackets() {
+        let t = format!("a::B<'static, {}::C<{}>>", "very_long_module_name::".repeat(6), "x::y::".repeat(12));
+        let lines = wrap_type(&t, 60);
+        assert!(lines.len() > 2 && lines.iter().all(|l| l.chars().count() <= 60), "{lines:?}");
+        let joined: String = lines.iter().map(|l| l.trim()).collect::<Vec<_>>().join("");
+        assert_eq!(joined.replace(' ', ""), t.replace(' ', ""));
+    }
 
     #[test]
     fn header_round_trip() {

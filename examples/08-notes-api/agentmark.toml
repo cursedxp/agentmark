@@ -1,0 +1,9 @@
+name = "notes-api"
+version = "0.1.0"
+targets = ["rust"]
+
+[lint]
+deny = ["prompt-in-loop", "missing-doc"]
+
+[crates]
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }

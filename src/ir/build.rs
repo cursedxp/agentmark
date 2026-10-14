@@ -57,6 +57,7 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
         rust_fns: Vec::new(),
         bindings: Vec::new(),
         crates: Vec::new(),
+        handle_rust: Default::default(),
         tools: checked.manifest.tools.values().cloned().collect(),
         run: Vec::new(),
     };
@@ -70,7 +71,12 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
                 Decl::Service(s) => p.services.push(b.service(s)),
                 Decl::Command(c) => p.commands.push(b.command(c)),
                 Decl::RustBlock(r) => p.rust_fns.push(b.rust_fn(r)),
-                Decl::Binding(bi) => b.binding(bi, &mut p.bindings),
+                Decl::Binding(bi) => {
+                    b.binding(bi, &mut p.bindings);
+                    for h in &bi.handles {
+                        p.handle_rust.insert(h.name.clone(), h.rust.code.trim().to_string());
+                    }
+                }
                 Decl::Run(r) => p.run.extend(r.items.iter().map(|i| i.name.clone())),
                 Decl::Constant(_) => {} // inlined at every use
                 Decl::Agent(_) | Decl::Rule(_) => {
@@ -111,6 +117,7 @@ impl<'a> Builder<'a> {
             ast::TypeKind::Maybe(i) => Type::Maybe(Box::new(self.ty(i))),
             ast::TypeKind::Result(i) => Type::Result(Box::new(self.ty(i))),
             ast::TypeKind::Map(k, v) => Type::Map(Box::new(self.ty(k)), Box::new(self.ty(v))),
+            ast::TypeKind::Handle { name, .. } => Type::Handle(name.clone()),
         }
     }
 
@@ -406,10 +413,27 @@ impl<'a> Builder<'a> {
 
     fn binding(&mut self, b: &ast::Binding, out: &mut Vec<ir::BindingFn>) {
         for item in &b.items {
+            let on = match item.params.first() {
+                Some(p) if p.name.name == "self" => match &p.ty.kind {
+                    ast::TypeKind::Handle { name, .. } => Some(name.clone()),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let modes = item
+                .params
+                .iter()
+                .map(|p| match &p.ty.kind {
+                    ast::TypeKind::Handle { mode, .. } => *mode,
+                    _ => ir::HandleMode::Shared,
+                })
+                .collect();
             out.push(ir::BindingFn {
                 binding: b.name.name.clone(),
                 crate_name: b.crate_name.name.clone(),
                 item: item.name.name.clone(),
+                on,
+                modes,
                 doc: item.doc.clone(),
                 params: self.params(&item.params),
                 ret: item.out.as_ref().map(|t| self.ty(t)),
@@ -694,6 +718,52 @@ impl<'a> Builder<'a> {
                     }),
                 }
             }
+            K::ReadInput { into } => {
+                self.define(&into.name, Type::Text);
+                ir::StmtKind::Effect {
+                    call: ir::EffectCall::Io(ir::IoCall::ReadInput),
+                    into: Some(ir::LocalVar { name: into.name.clone(), ty: Type::Text }),
+                }
+            }
+            K::File { verb, path, arg, into } => {
+                let path = self.expr(path);
+                let arg = arg.as_ref().map(|a| match a {
+                    ast::FileArg::To(e) | ast::FileArg::Content(e) => self.expr(e),
+                });
+                let ty = match verb.name.as_str() {
+                    "read" => Some(Type::Text),
+                    "list" => Some(Type::List(Box::new(Type::Text))),
+                    "exists" => Some(Type::Bool),
+                    _ => None,
+                };
+                let into = match (into, ty) {
+                    (Some(i), Some(ty)) => {
+                        self.define(&i.name, ty.clone());
+                        Some(ir::LocalVar { name: i.name.clone(), ty })
+                    }
+                    _ => None,
+                };
+                ir::StmtKind::Effect {
+                    call: ir::EffectCall::File(ir::FileCall { verb: verb.name.clone(), path, arg }),
+                    into,
+                }
+            }
+            K::CallInto { call, into, .. } => {
+                let value = self.expr(call);
+                match value.ty.clone() {
+                    Type::Result(inner) => {
+                        self.define(&into.name, (*inner).clone());
+                        ir::StmtKind::Effect {
+                            call: ir::EffectCall::Std(value),
+                            into: Some(ir::LocalVar { name: into.name.clone(), ty: *inner }),
+                        }
+                    }
+                    ty => {
+                        self.define(&into.name, ty.clone());
+                        ir::StmtKind::Let { name: into.name.clone(), ty, value }
+                    }
+                }
+            }
             K::Append { value, list } => ir::StmtKind::Append {
                 value: self.expr(value),
                 list: self.expr(list),
@@ -813,11 +883,24 @@ impl<'a> Builder<'a> {
                         }
                     })
                     .collect();
+                let mut args = args;
+                if let Some(h) = &tr.on {
+                    // a method call: the tool word is the handle variable, passed first
+                    args.insert(
+                        0,
+                        ir::Expr {
+                            kind: ir::ExprKind::Var(tool.name.clone()),
+                            ty: Type::Handle(h.clone()),
+                            effect: EffectSet::pure(),
+                        },
+                    );
+                }
                 let ret = tr.result.clone().unwrap_or(Type::Unknown);
                 (
                     ir::EffectCall::Binding {
                         binding: tr.tool.clone(),
                         item: verb_name.unwrap_or_default(),
+                        on: tr.on.clone(),
                         args,
                     },
                     ret,
@@ -1029,6 +1112,22 @@ impl<'a> Builder<'a> {
                 self.mke(e, ir::ExprKind::Not(Box::new(x)), Type::Bool)
             }
             X::Call { func, args } => self.call(e, func, args, known),
+            X::Decode { call, ty } => {
+                let ast::ExprKind::Call { func, args } = &call.kind else { unreachable!("the parser makes Decode around a call") };
+                let decode = self.ty(ty);
+                let args: Vec<ir::Expr> = args.iter().map(|a| self.expr(a)).collect();
+                let ty = known.unwrap_or_else(|| Type::Result(Box::new(decode.clone())));
+                self.mke(
+                    e,
+                    ir::ExprKind::Std {
+                        module: func[0].name.clone(),
+                        name: func[1].name.clone(),
+                        args,
+                        decode: Some(decode),
+                    },
+                    ty,
+                )
+            }
             X::Record(fields) => {
                 let fields: Vec<(String, ir::Expr)> = fields
                     .iter()
@@ -1126,6 +1225,19 @@ impl<'a> Builder<'a> {
         } else {
             self.checked.resolutions.get(&self.nk(e.span)).cloned()
         };
+        if res.is_none() && func.len() == 2 && crate::stdlib::lookup(&func[0].name, &func[1].name).is_some() {
+            let ty = known.unwrap_or(Type::Unknown);
+            return self.mke(
+                e,
+                ir::ExprKind::Std {
+                    module: func[0].name.clone(),
+                    name: func[1].name.clone(),
+                    args,
+                    decode: None,
+                },
+                ty,
+            );
+        }
         let name = match res {
             Some(Resolution::Call { decl, .. }) => decl.clone(),
             _ => func[func.len() - 1].name.clone(),
@@ -1285,7 +1397,7 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
             add(rhs);
         }
         X::TextToBytes(x) | X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
-        X::Call { args, .. } => args.iter().for_each(&mut add),
+        X::Call { args, .. } | X::Std { args, .. } => args.iter().for_each(&mut add),
         X::Record(fields) => fields.iter().for_each(|(_, x)| add(x)),
         X::Count { source, .. } => add(source),
         X::First { source, cond, .. } => {
@@ -1359,9 +1471,16 @@ fn kids_effect(kind: &ir::StmtKind) -> EffectSet {
             ir::EffectCall::Binding { args, .. }
             | ir::EffectCall::Rust { args, .. }
             | ir::EffectCall::Fn { args, .. } => args.iter().for_each(|x| e.merge(&x.effect)),
+            ir::EffectCall::File(f) => {
+                e.merge(&f.path.effect);
+                if let Some(a) = &f.arg {
+                    e.merge(&a.effect);
+                }
+            }
+            ir::EffectCall::Std(x) => e.merge(&x.effect),
             ir::EffectCall::Io(io) => match io {
                 ir::IoCall::ReadFile { path, .. } => e.merge(&path.effect),
-                ir::IoCall::ReadBody { .. } => {}
+                ir::IoCall::ReadBody { .. } | ir::IoCall::ReadInput => {}
                 ir::IoCall::Print { message } => e.merge(&message.effect),
             },
             ir::EffectCall::Trace(ir::TraceEvent::Guard { ok, .. }) => e.merge(&ok.effect),

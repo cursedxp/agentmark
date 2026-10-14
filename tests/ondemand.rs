@@ -73,7 +73,7 @@ fn a_valid_body_is_saved_unverified_check_lists_it_and_the_build_goes_on() {
     assert!(after.contains(GOOD_BODY), "{after}");
     assert!(after.contains("Written on demand; not reviewed yet."), "{after}");
     assert!(!after.contains("- sha224_digest:"), "{after}");
-    assert!(after.contains("- sha256_new:"), "the other items stay listed");
+    assert!(after.contains("- sha256_finalize_into:"), "the other items stay listed");
     assert!(d.join("bindings/sha2.agent.md.prev").exists(), "the approved file is kept");
 
     // a second check does not ask the model again
@@ -159,7 +159,7 @@ fn check_json_reports_the_failure_as_a_diagnostic() {
 }
 
 
-const USES_SHA224_NEW: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha224_new payload -> digest\n- print: \"done\"\n";
+const USES_SHA224_FINALIZE_INTO: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha224_finalize_into payload -> digest\n- print: \"done\"\n";
 
 fn error_of(o: &Output) -> String {
     let err = stderr(o);
@@ -185,14 +185,14 @@ fn a_model_that_gives_no_answer_is_said_so() {
 #[test]
 fn a_signature_that_does_not_fit_the_statement_is_said_so() {
     let (d, model) = project("ondemand-sigfit", GOOD_BODY);
-    write(&d, "fingerprint.agent.md", USES_SHA224_NEW);
-    let wrong = "## sha224_new(a: bytes, b: bytes) -> bytes\nOk(a)";
-    std::fs::write(&model, serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_new\n","response":wrong}]}).to_string()).unwrap();
+    write(&d, "fingerprint.agent.md", USES_SHA224_FINALIZE_INTO);
+    let wrong = "## sha224_finalize_into(a: bytes, b: bytes) -> bytes\nOk(a)";
+    std::fs::write(&model, serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_finalize_into\n","response":wrong}]}).to_string()).unwrap();
     let o = run(&["check", s(&d)], &model);
     assert_eq!(o.status.code(), Some(1));
     let e = error_of(&o);
     assert!(
-        e.contains("Could not bind \"sha224_new\" of sha2 on demand: the signature the model chose does not fit your statement (1 value, 2 parameters).\n"),
+        e.contains("Could not bind \"sha224_finalize_into\" of sha2 on demand: the signature the model chose does not fit your statement (1 value, 2 parameters).\n"),
         "{e}"
     );
 }
@@ -298,27 +298,27 @@ mod library {
 
     #[test]
     fn an_item_with_no_agentmark_signature_gets_one_from_the_model() {
-        // sha224_new returns a hasher object: skipped, no signature to implement
-        let good = "## sha224_new(data: bytes) -> bytes\nOk(data)";
-        let model = serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_new\n","response":good}]}).to_string();
+        // sha224_finalize_into wants a buffer to write into: skipped, no signature to implement
+        let good = "## sha224_finalize_into(data: bytes) -> bytes\nOk(data)";
+        let model = serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_finalize_into\n","response":good}]}).to_string();
         let (d, o, _) = bound("ondemand-sig", &model, 0);
         let (_, mut sink) = lines();
-        bind_on_demand("sha2", &[use_of("sha224_new", 1)], &o, &mut sink).unwrap();
+        bind_on_demand("sha2", &[use_of("sha224_finalize_into", 1)], &o, &mut sink).unwrap();
         let text = std::fs::read_to_string(d.join("bindings/sha2.agent.md")).unwrap();
-        assert!(text.contains("## sha224_new(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```"), "{text}");
-        assert!(!text.contains("- sha224_new:"), "{text}");
+        assert!(text.contains("## sha224_finalize_into(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```"), "{text}");
+        assert!(!text.contains("- sha224_finalize_into:"), "{text}");
     }
 
     #[test]
     fn a_signature_that_does_not_fit_the_statement_fails_twice_and_writes_nothing() {
-        let wrong = "## sha224_new(a: bytes, b: bytes) -> bytes\nOk(a)";
-        let model = serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_new\n","response":wrong}]}).to_string();
+        let wrong = "## sha224_finalize_into(a: bytes, b: bytes) -> bytes\nOk(a)";
+        let model = serde_json::json!({"responses":[{"prompt_prefix":"on-demand sha2 sha224_finalize_into\n","response":wrong}]}).to_string();
         let (d, o, seen) = bound("ondemand-arity", &model, 0);
         let before = std::fs::read_to_string(d.join("bindings/sha2.agent.md")).unwrap();
         let (_, mut sink) = lines();
-        let e = bind_on_demand("sha2", &[use_of("sha224_new", 1)], &o, &mut sink).unwrap_err();
+        let e = bind_on_demand("sha2", &[use_of("sha224_finalize_into", 1)], &o, &mut sink).unwrap_err();
         let OnDemandError::Failed(f) = e else { panic!("expected a failure") };
-        assert_eq!(f.item, "sha224_new");
+        assert_eq!(f.item, "sha224_finalize_into");
         assert_eq!(f.complaints.len(), 2);
         assert!(f.complaints[0].contains("1 value but the signature has 2 parameters"), "{:?}", f.complaints);
         assert_eq!(seen.load(Ordering::SeqCst), 0, "the compiler is not asked about a body for the wrong signature");
@@ -441,6 +441,7 @@ mod library {
     fn item(name: &str) -> BoundItem {
         BoundItem {
             name: name.into(),
+            heading: None,
             path: format!("c::{name}"),
             summary: "Does it.".into(),
             sig: Sig { params: vec![], ret: Some(Ty::Int) },

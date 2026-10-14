@@ -80,6 +80,34 @@ pub enum TypeKind {
     Result(Box<TypeExpr>),
     /// `map of K to V` (SPEC 22.2)
     Map(Box<TypeExpr>, Box<TypeExpr>),
+    /// `handle of <crate>.<Type>`: a value of a library type AgentMark has no equivalent for
+    /// (SPEC 22.4). `name` is the dotted path (`sha2.Sha256`); `mode` is how a binding
+    /// parameter holds it.
+    Handle { name: String, mode: HandleMode },
+}
+
+/// How a binding item uses a handle it is given (SPEC 22.4, OPEN_QUESTIONS Q360): the word in
+/// front of `handle of` in a binding parameter. Everywhere else the mode is `Shared` and means
+/// "owned" (the handle moves).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum HandleMode {
+    /// `handle of …`: the item reads it (`&self`).
+    Shared,
+    /// `mut handle of …`: the item changes it (`&mut self`).
+    Mut,
+    /// `consume handle of …`: the item takes it (`self`); it cannot be used afterwards.
+    Consume,
+}
+
+impl HandleMode {
+    /// The word written in front of `handle of`, if any.
+    pub fn word(self) -> Option<&'static str> {
+        match self {
+            HandleMode::Shared => None,
+            HandleMode::Mut => Some("mut"),
+            HandleMode::Consume => Some("consume"),
+        }
+    }
 }
 
 // ---------------------------------------------------------------- declarations
@@ -291,7 +319,19 @@ pub struct Binding {
     pub effect: Spanned<Effect>,
     pub proposed_effect: Option<Spanned<Effect>>,
     pub items: Vec<BindingItem>,
+    /// `## Handle: <crate>.<Type>` blocks: the Rust type a handle stands for when it is not simply
+    /// `<crate>::<Type>` (a type with lifetimes or type parameters, instantiated).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub handles: Vec<BindingHandle>,
     pub not_bound: Vec<NotBound>,
+}
+
+/// `## Handle: sqlx.Query` with the Rust type in a fenced block (SPEC 22.4, Q370).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BindingHandle {
+    pub span: Span,
+    pub name: String,
+    pub rust: RustCode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -433,6 +473,25 @@ pub enum StmtKind {
         value: Expr,
         list: Expr,
     },
+    /// `read input -> text`: all of standard input (SPEC 22.3).
+    ReadInput {
+        into: Ident,
+    },
+    /// The built-in `file` tool (SPEC 22.3): `file read path -> content`, `file write path: text`,
+    /// `file rename old to new`, `file list folder -> names`.
+    File {
+        verb: Ident,
+        path: Expr,
+        arg: Option<FileArg>,
+        into: Option<Ident>,
+    },
+    /// `try csv.parse(text) as list of Sale -> sales`, `do text.trim(x) -> y`: a call of the
+    /// built-in library whose value is stored (SPEC 22.3). `via_do` is the `do` spelling.
+    CallInto {
+        call: Expr,
+        into: Ident,
+        via_do: bool,
+    },
     Print(Expr),
     Try {
         stmt: Box<Stmt>,
@@ -461,6 +520,15 @@ pub enum TraceEvent {
     /// One `guard` line: `name` is the guard's source text with constants inlined, `ok` the
     /// (already evaluated) result.
     Guard { name: String, ok: Expr },
+}
+
+/// What follows the path of a `file` statement.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum FileArg {
+    /// `file rename old to new`
+    To(Expr),
+    /// `file write path: content`
+    Content(Expr),
 }
 
 /// One word or string after a tool verb: `customer`, `invoice`, `address "x@y.z"`.
@@ -525,6 +593,11 @@ pub enum ExprKind {
     },
     /// `{ id: invoice.id, net: x }`
     Record(Vec<RecordField>),
+    /// `json.parse(t) as Note`, `csv.parse(t) as list of Sale`: the call and the type to read (SPEC 22.3).
+    Decode {
+        call: Box<Expr>,
+        ty: TypeExpr,
+    },
     /// `count of rows`, `count of open invoices in crm.invoices`
     CountOf {
         rule: Option<Ident>,

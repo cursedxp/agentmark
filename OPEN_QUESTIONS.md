@@ -605,3 +605,138 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q328 — Where the grammar is not extended (step 21)
 - Choice: the language server gets no completion or hover for the new words (it lists no statement keywords today; types of expressions come from `check`, which knows the new nodes). The `## Do`-block lookup in `nav.rs` (loop variable of the caller) is not extended to the new loops, which only matter for agents. Collection words need `parse_file` to run on a thread with a 64 MiB stack: the chumsky grammar is deeply recursive and nested words (`join (map (sort (rows where …) by …) to …) with …`) overflowed the 2 MiB of a debug-build test thread.
 - Why: the layer rule (nothing is built that no example needs) and a measured overflow, not a guess.
+
+## Q340 — `number.*` works on `int`, and on `money` where it makes sense (step 22)
+- Question: SPEC 22.3 lists `round(x, places)`, `format(x, places)`, `min`, `max`, `abs` under `number`, but v0.3 has no float type (plan: no float unless an example needs one).
+- Choice: `min`, `max`, `abs` and `round` take `int` or `money` (two arguments of one kind; money of two currencies is a run-time error). `round(x, places)`: a whole number has no decimals, so `places` of 0 or more leaves it alone and a negative `places` rounds to tens, hundreds, … (`round(1235, -1)` is 1240, half away from zero); for money `places` counts decimals of the whole unit (`round(12.35 EUR, 1)` is 12.40 EUR, `round(12.50 EUR, 0)` is 13.00 EUR). `format(x, places)` takes an `int` and writes exactly `places` decimals (`format(12, 2)` is `12.00`). `number.parse(t)` takes an optional sign and ignores white space around the number; `"1.5"` is an error.
+- Why: no example needs a float; money rounding is the useful meaning of `round` in this language, and it stays in integer minor units.
+
+## Q341 — Date patterns: strftime or a readable form (step 22)
+- Question: SPEC 22.3 names `date.parse(t, pattern)` and `date.format(d, pattern)` without a pattern language; the brief asked for a readable one, the v0.3 examples (07, `"%Y%m%d"`) use strftime.
+- Choice: both. A pattern containing a `%` is chrono's strftime, as written (`%Y-%m-%d`, `%Y%m%d`). Any other pattern is the readable form: `YYYY` `YY` `MMMM` (October) `MMM` (Oct) `MM` `DD` `dddd` (Saturday) `ddd` (Sat) `HH` `mm` `ss`; every other character stands for itself and `[text]` protects letters (`"[Day] DD"`). `date.format` also takes a `datetime` (a `date` has time 00:00); `date.parse` gives a `date` and drops a time of day it reads. A literal pattern that is not valid is compile error E343; a computed one that is not is a run-time error in `format` and an error value from `parse`. `json.encode` / `csv.encode` refuse handle-typed values and `json.parse` / `csv.parse` cannot read a handle (E342); `csv.encode` wants a list of records. `date.days_between(a, b)` is `b - a` in days.
+- Why: the examples are the contract; the readable form costs one function and suits patterns people write from memory.
+
+## Q342 — Calls that return `result of T`: `try`, `do`, `as T` (step 22)
+- Question: SPEC 22.3 writes `- try <call> -> var`, `json.parse(t) as T`, `csv.parse(t) as list of T`; the examples write `- try do csv.parse(content) as list of Sale -> sales`.
+- Choice: both `- try <call> -> var` and `- try do <call> -> var` parse (`do` is optional and the formatter keeps the spelling). `as <type>` follows the call directly and only `json.parse` and `csv.parse` take it (`csv.parse` needs `list of <record>`); without it E342 says what to write. Outside `try` a call of a `result` function is E341 ("can fail … has to be called with try"). The statement is `StmtKind::CallInto { call, into, via_do }`, the typed call `ExprKind::Decode { call, ty }`; in the IR an expression `ExprKind::Std { module, name, args, decode }` and, for the failing ones in `try`, `EffectCall::Std`. `- match <call>:` over a library `result` needs the checker flag `Cx.std_ok` set where Task 20's `Cx.match_call` is set (step 20 owns `match`; `Std` calls evaluate to a Rust `Result` there, without `?`).
+- Why: one spelling per SPEC and one per example; unknown functions and wrong uses fail at check time, never in rustc.
+
+## Q343 — `regex.*`: dialect, groups, bad patterns (step 22)
+- Choice: Rust `regex` syntax (no look-around; `$1` in `replace`; `$$` is a dollar sign), unanchored. `captures` returns the capture groups without the whole match (a group that took no part is empty text); a pattern without groups gives an empty list. A literal pattern, or a constant holding one, is compiled by the checker (E343); a pattern built at run time that does not compile is a run-time error with the regex message (these functions have `rt_err` in the table, so generated code writes `?`). Compiled patterns are cached per process.
+- Why: Q401 of step 25 fixes the dialect the examples use; a bad pattern is a programmer error, not a value.
+
+## Q344 — The `file` tool (step 22)
+- Choice: `file` is a built-in tool of effect `local`, shown as `local(file)` in `check`. The parser reads `file <verb> <path> [to <new> | : <text>] [-> name]` itself (`StmtKind::File`; the path and the other operands are full expressions, so `file rename path.join(a, b) to path.join(a, c)` works) and `file` is a reserved statement word. A `[file]` table in `tools.toml` is E347. Verbs and their shapes are rows of `stdlib::FILE_VERBS`: `read` (gives `text`, a `result`: E341 without `try`), `write` (exactly the text; replaces), `append` (the line plus `\n`; creates the file), `list` (names of files and folders, sorted by name), `rename` (a plain error when the target already exists), `exists` (file or folder), `delete` (a file or an empty folder). Paths are used as written (relative to the working directory); there is no sandbox. Every call is traced `{"kind":"file","verb":…,"path":…}` (`rename` adds `"to"`) **before** it runs, so a failing call is traced too. Failures are `RtError::Lib` with plain text (`cannot read "x": it does not exist`).
+- Why: SPEC 22.3 plus Q400; tracing the attempt shows what a program tried when it failed.
+
+## Q345 — `read input -> text` (step 22)
+- Choice: reads all of standard input as `text` (effect `local(input)`, not traced). The statement is `StmtKind::ReadInput`.
+- Why: SPEC 22.3 names it; a program that reads stdin needs no tool entry.
+
+## Q346 — `json.*` and `csv.*` decoding (step 22)
+- Choice: `json.parse(t) as T` is serde: record fields are the JSON keys, `money` is text like `"12.50 EUR"`, `date` is `"2026-10-13"`, a `maybe` field may be missing or null. `csv.parse(t) as list of T` reads the first row as field names; cells are read as the field's type (money `120.00 EUR`, date `2026-10-01`, whole numbers, `true`/`false`; an empty cell is an empty `maybe`), white space around a cell is ignored, a text field keeps `007` as written. Errors are plain: `line 3, column 2: …`, `line 2: the row has 2 cells, the header has 3`. `json.encode(v)` is compact JSON; `csv.encode(rows)` writes a header from the first row's field names then one line per row (cells: text as is, numbers, bools, money/date as their text, an empty `maybe` as empty).
+- Why: the generated records are already serde types; the csv crate's typed reading gives exact per-field behaviour without a second parser.
+
+## Q347 — Library names lose to the author's names (step 22)
+- Choice: `text.split(...)` is a library call only when no function of that name is imported (a module alias called `text` with a `split` function wins). A variable called `path` or `text` does not matter: only the call form `module.fn(` reaches the library.
+- Why: existing programs keep their meaning when the library grows.
+
+## Q348 — Generated projects without records or state build warning free (step 22)
+- Choice: `records.rs` writes its `use serde::…` line only when there is a record, and `run_command` / `run_command_file` carry `#[allow(unused_variables)]` (`mock` is unused when no command has state). Examples 07 and 09 are record-less commands.
+- Why: `build_bin` in the tests requires a warning-free build.
+
+## Q349 — New dependencies of agentmark-rt (step 22)
+- Choice: `regex` and `csv` (and its `csv-core`, fetched once from the network: the offline cache did not hold it) in `agentmark-rt`; every generated project gets them through the runtime crate. `chrono`'s `serde` feature is a dev-dependency of the runtime tests only (generated projects enable it themselves).
+- Why: SPEC 22.3 needs a regex engine and CSV reading; both are small and widely used.
+
+## Q360 — Binding-file syntax for handles and receivers (step 23)
+- Question: SPEC 22.4 shows the statement forms (`- hasher update data`, `- hasher finalize -> digest`) but not how a binding file declares a handle, a method, or how a call holds the handle.
+- Choice: the type is `handle of <crate>.<Type>` (dotted path below the crate: `reqwest.header.HeaderMap`; a crate name with `-` is written with `_`). A method is an item whose FIRST parameter is named `self` and has a handle type; the word in front of `handle of` says how the call holds it, in a binding parameter only: none = borrowed (`&T`, reads it), `mut` = `&mut T` (changes it), `consume` = `T` (uses it up). The same words apply to every other handle parameter (`other: consume handle of sha2.Sha256`). A returned `handle of …` is owned. The word is part of the type syntax (`TypeKind::Handle { name, mode }`) and sema refuses it anywhere else (E365). Example: `## update(self: mut handle of sha2.Sha256, data: bytes)`.
+- A constructor is an ordinary item and is called on the library (`- sha2 sha256_new -> hasher`, SPEC's `- sha2 sha256 new` is read as one verb, since verbs are single words, Q74). A method is called with the variable as the first word; the verb is looked up among the items whose `self` has the variable's type, so `update` can exist for Sha224 and Sha256 in one binding. In the Rust body the receiver is `self_` (`self` is a keyword; sema's naming already adds `_`).
+- Why: three borrow modes are what Rust signatures contain; spelling them in the type keeps `Sig::heading` one line and the parser's `params` rule unchanged. In user code (functions, `## Rust` blocks) a handle parameter is owned, because there is no way to say "borrow" for a user function and a move plus `return h` covers feeding a hasher in a helper. Amends Q74 for handle receivers (named `self`, not after the type).
+
+## Q361 — Ownership: what uses a handle up, and how branches and loops join (step 23)
+- Question: SPEC 22.4 says a `self`-by-value method consumes the handle and a later use is a compile error naming the consuming line.
+- Choice: a handle variable is used up by (1) a `consume` receiver or `consume` argument of a binding call, (2) being passed to a user `# Function` / `## Rust` block (`do f(h)` or `f(h)` in an expression), (3) `set other = h`. `Cx.consumed` maps the variable to the span of that line; E361 prints "`h` was used up on line N ("<that line>")". A new `->`/`set` definition of the same name revives it. After an `if`/`else` the handle is used up when ANY branch that does not end in `stop`/`return` used it up ("may have been", the message still names the line). A handle that exists before a loop and is used up inside it is E361 at that line (the next round would use it again) unless the body ends in `stop`/`return`. `try` and `parallel:` need no rule: they check in order.
+- Why: this is Rust's move rule on the straight-line subset AgentMark has, reported in AgentMark's own words; the conservative join costs a rare false positive and never a runtime failure. The generated Rust is therefore always valid: codegen moves the variable and never clones it (`val()` skips handles).
+
+## Q362 — Where a handle may be read (step 23)
+- Question: SPEC: a handle "cannot be printed, compared, put in a record that is serialized, or traced".
+- Choice: default deny at ONE place. `path_expr` on a bare handle variable is E362 unless the caller set `Cx.handle_ok`: `set` right-hand side, arguments of `do`/calls and of binding calls, `return`. So printing, `{interpolation}`, `=`/`!=`/ordering, record literals and `respond` bodies, `ask model with`, tool payloads and targets, `append`, conditions and everything a later construct adds (Task 20's `match`) are refused without listing them. A handle is a single value: `list of handle…` / `maybe handle…` (E363), as a record field (E363); `result of handle…` is allowed (a fallible constructor in a function). `try … -> h otherwise:` is E366 unless the `otherwise` branch leaves, since `default_expr` has no handle.
+- Amended (review): the check is by TYPE at every consumer, not by the shape of the expression: `expr()` refuses an expression of handle type (a call such as `mk()`) unless the caller sanctions it (`set`, arguments, `return`), and `path_expr` does the same for a bare variable. A handle cannot come from outside the program either (command argument, `read body`, `read file`: E367). When Task 20's `match` lands it needs the same consumption join as `if` (a handle used up in one arm is "may have been" used up after the match, arms that `stop`/`return` contribute nothing).
+- Why: a list of live library values or a handle in a trace line would need a defined meaning for clone/serialize that the library does not give; one deny point cannot rot when new expression forms arrive.
+
+## Q363 — Item names: unique key vs heading name (step 23)
+- Question: Q74 requires unique item names; methods of six hash types all want to be called `update`.
+- Choice: `Item.name` stays the unique, type-prefixed key (`sha256_update`, the key of `## Not bound`, placements, `.prev` merges, on-demand), and `Item.heading` (`Some("update")`) is what the `##` heading shows for a method; a heading without one shows `name`. IR: `BindingFn.on = Some("sha2.Sha256")` and `ir::binding_key(item, on)` (`sha2.Sha256::update`) name the Rust method; codegen assigns each binding item its own `impl` method name, so six `update`s become `update`, `update_2`, …
+- Why: nothing keyed by name had to change; only rendering and the sema/IR lookup know about methods. E364 ("no such method") is intentionally unused: an unknown method of a handle is E207, the code of an unknown verb of a binding, with a did-you-mean over that type's methods.
+
+## Q364 — Which Rust types become handles (step 23)
+- Question: "a Rust type that has no AgentMark equivalent" is unbounded.
+- Choice: only a public, non-generic type of the BOUND crate: a struct, enum or union reachable by a public path (the walk's `pub_paths`), or a type alias without parameters whose target is not a std type (`sha2::Sha256 = CoreWrapper<…>`). The dotted name uses the public path (`sha2.Sha256`); a signature that names the type by its canonical path (`sha2::core_api::Sha256VarCore`) is mapped to it. Types AgentMark already has (NaiveDate, DateTime<Utc>, Duration, `Url`/`Path` as text, `Output`/`GenericArray` as bytes) stay values; types of other crates, generic types and private types stay "no AgentMark type". A returned borrow of a handle, and handles inside `Vec`/`Option`/slices, are skipped with that reason. The trimmed fixtures now keep `generics` of structs and aliases (`trim.py`); a rustdoc file without them has no handles.
+- Why: the scratch crate used to type-check a body depends only on the bound crate and chrono, so a handle of any other crate could not be written there; generic types would need type arguments in every path.
+
+## Q365 — Tier rules for items with a handle (step 23)
+- Question: SPEC: "assisted/direct tier rules extended".
+- Choice: the rule writer produces the body (`Ok(self_.m(args))`, `<T as Trait>::m(self_, args)`, `Ok(T::new(args))`, parameters passed as they are, other values converted as before, `impl AsRef<[u8]>` passed as the `Vec<u8>` it stands for, a returned `Output<Self>` as `.to_vec()`), marks it `Shape::Direct { verify: true }`, and the pipeline runs the type checker on it; a rejected body lands under `## Not bound` with the compiler's reason, no model call. Allowed for such items: generics of the function itself, another crate's trait (Q73's "always assisted" is for items without a handle, which keep it), `where Self: Bound` on the type (rustc decides whether it holds: `Digest::reset` needs `Self: Reset`). Still assisted: `async`, `Result`-returning (so the error conversion is checked by the model's body), and generics of the `impl` itself (`impl<Tz> … for DateTime<Tz>`: the path would need type arguments). A body line that would pass 120 characters is laid out one argument per line; a heading over 120 characters is listed as not bound with that reason (SPEC 18.3, headings cannot wrap).
+- Why: 42 of sha2's 81 v0.2 `## Not bound` items need exactly this and no judgement; asking a model for `Ok(self_.update(data))` 42 times costs more and is less reliable than the compiler checking a rule. The brief's ratio test (at least half bound) runs against the checked-in fixtures: 42 of 81.
+
+## Q366 — Foreign trait on handle aliases; the alias line (step 23)
+- Choice: for a crate that re-exports a trait and aliases the other crate's types (sha2/Digest, Q73) the alias is a handle. ALL the trait's methods are bound on it, receivers included (before, `self` methods were one `takes self` line per method). When at least one was emitted, the `alias_<name>` line "…its methods live there" under `## Not bound` is removed (the alias is now a handle type, visible in the signatures); with no foreign rustdoc supplied the alias line stays. `&mut` buffer parameters (`finalize_into(&mut Output<Self>)`) stay skipped ("is a mutable borrow").
+
+## Q367 — Async library methods (step 23)
+- Choice: a handle method that is `async` (`reqwest::Response::text`) is an assisted item like any async function (Q70): its body is the body of the binding's `async fn`, may `.await`, and the generated call site is `bindings::Reqwest::text(resp).await?` for every binding item already, so no new rule was needed. Tested with the real compiler for `reqwest::get` and `Response::text` and end to end with a hand-written binding body that awaits (`tokio::task::yield_now().await`).
+
+## Q368 — Handles and the on-demand tier; editors (step 23)
+- Choice: an on-demand statement (`- sha2 sha224_finalize_into x`) still works for a `## Not bound` constructor or function; a method of a handle cannot be written on demand, because the statement's first word is a variable, not the library, and the CLI looks for `<library> <item>` lines. A skipped method stays listed and a `## Rust` block remains the way. The LSP does not offer methods after a handle variable (sema's per-variable types are not in `Checked`), and no longer lists methods as verbs of the binding. tree-sitter reads `[mut|consume] handle of a.b` as ONE token (`handle_type`), so `handle`, `mut` and `consume` stay plain identifiers elsewhere; the TextMate grammar scopes the words in binding headings.
+
+## Q369 — Examples and docs for handles (step 23)
+- Choice: example 05's checked-in `bindings/sha2.agent.md` is NOT regenerated: it is the v0.2 file (`1 bound, 81 not bound`) that the README and `tests/handles.rs` quote as the baseline, and 05 does not use handles. The v0.3 examples use whatever binding their authors generate. docs/reference.md describes handles inside 15.4 (the reference mirrors SPEC's section numbers and SPEC has no 15.6); `docs/libraries.md` section 4a is the tutorial. tests/docs.rs `reference_has_one_section_per_spec_section_in_order` fails on this branch before and after step 23, because SPEC 22 (step 19) has no section in the reference yet; step 26 writes it.
+
+## Q370 — Handles own lifetimes and single-instantiation generics; the `## Handle:` block (step 23, after the dev amendment of SPEC 22.4)
+- Question: SPEC 22.4 (16e592a) says a handle owns whatever its Rust value borrows, and a generic type whose parameters have one instantiation in the crate as configured (`sqlx::query` with `sqlite`, `DB = Sqlite`) is bound through the assisted tier, not skipped.
+- Choice: a public struct/enum/union may have lifetime and type parameters (const parameters: no). A lifetime is written `'static`. A type parameter is the one instantiation the signature gives after the lift: a generic with a bound resolves to the crate's only concrete implementor of that trait (`DB: Database` with a single `impl Database for Sqlite` in the rustdoc of the configured build; two implementors = no obvious instantiation, as before), and the first instantiation seen wins (a second, different one makes the item skip). Qualified paths (`<DB as Database>::Arguments<'q>`) are kept and written with `'static`. The resulting Rust type goes to `CrateItems.handle_types` and into the binding as a block, `## Handle: sqlx.query.Query` with the type in a `rust` fence (only for handles that are not plain `<crate>::<Type>`, so sha2 and chrono files do not change). Parser `Binding.handles`, sema `BindingInfo.handles` (E360 for a block no item uses), IR `Program.handle_rust`, codegen `Names.handle_rust` and the scratch crate's contract header all read it.
+- Items that have lifetimes or associated types AND a handle go to the assisted tier with "the handle owns what the Rust value borrows" (the prompt names the Rust type and says to copy, clone or leak what the call borrows); the same items without a handle are still skipped with the old reasons ("lifetimes in the public API"). If lifting fails for another reason while the item has lifetimes, the old lifetime reason is reported (it is the first thing to fix).
+- Why: the Rust type cannot be derived from the handle's name once it has parameters, and the generated project needs it in every signature; a block in the binding keeps the file the only source. Tested with a synthetic `sqlx`-shaped rustdoc (`tests/handles.rs`); the real sqlx binding is built end to end with example 08.
+
+## Q371 — `[crates]` in `agentmark.toml` (step 23)
+- Choice: `[crates] <name> = "<req>"` or `{ version = "<req>", features = [...], default-features = false }`. The binder (rustdoc build, the scratch crate that type-checks bodies, the dependency rustdoc) and the generated `Cargo.toml` use the features and `default-features`; a crate without an entry keeps its defaults, as before. `version` is accepted and kept in `Config.crates`, but the exact version still comes from the binding header (Q155), so `Cargo.toml` pins `=<header version>`. Unknown keys of an entry are an error with a suggestion; the VS Code schema knows the table. `BindOptions.crate_features` is per crate, because `bind --all` binds several crates with one option set.
+
+## Q372 — Integers wider than `int` (step 23)
+- Choice: `u64`, `usize` and `isize` parameters convert with `T::try_from(x)?` and results with `i64::try_from(x)?` in the rule-written (direct) bodies, so a value that does not fit fails the call instead of wrapping; inside `Vec`/`Option` the conversion runs in a closure that returns the error. Such items used to go to the assisted tier. `u128`/`i128` still have no AgentMark type. A rule-written body that is still over 120 characters after one-argument-per-line layout goes to the assisted tier.
+
+## Q373 — Review fixes to handles (step 23)
+- `fmt` prints `## Handle:` blocks. A handle made again with `->` inside a branch or loop is a new variable of that block (the generated code declares a new one): sema shadows it and restores the outer one's state when the block ends (a handle used up outside stays used up). Single-implementor instantiation is keyed by the trait's resolved path, tried only after the v0.2 lift fails and kept only if the item then involves a handle; the Rust type of a handle is recorded only for an item that is bound or goes to the model. `parallel:` counts a handle in any argument, not only as receiver.
+
+## Q400 — `text.pad`, `text.lines`, `file write` / `file append` (step 25)
+- Question: SPEC 22.3 names `pad(t, width)`, `lines(t)`, `file write`, `file append` without saying exactly what they do.
+- Choice used by examples 06, 09, 10: `pad` adds spaces on the right up to `width` and never cuts text that is longer; `lines` splits like Rust `str::lines` (no empty entry for a final newline, an empty line in the middle is kept); `file write path: content` writes exactly `content` (examples add `\n` themselves); `file append path: line` adds `line` plus a newline.
+- Why: the expected outputs in `fixtures/06`, `09`, `10` depend on it.
+
+## Q401 — Regex dialect inside text literals (step 25)
+- Question: SPEC 5 allows only the escapes `\"`, `\\`, `\n`, `\{`, `\}` in text, and a `{` starts an interpolation hole; regexes need `\d` and `{4}`.
+- Choice: the examples never use `\d`, `\w` or `{n}`. They write `[0-9]`, `[a-z]`, `[.]`, and `\\[` where a literal bracket is needed. `regex.captures` returns the capture groups only (not the whole match), as `maybe list of text`; `regex.replace(t, pattern, with)` replaces every match and uses `$1` for group 1 (Rust `regex` syntax); `regex.find` and `captures` take the first match.
+- Why: keeps the patterns readable and independent of an escape rule the SPEC does not state.
+
+## Q402 — `path.*` and `date.*` details (step 25)
+- Choice: `path.extension("a/b.jpg")` is `jpg` (no dot); `path.join("photos", "x.jpg")` is `photos/x.jpg`; `date.parse(t, pattern)` and `date.format(d, pattern)` use strftime patterns (chrono), so `%Y%m%d` parses `20261003` and `20261399` is an error.
+- Why: `fixtures/07` depends on it.
+
+## Q403 — Command flags and defaults (step 25)
+- Choice: `dry_run: bool = false` is passed as `--dry-run` with no value; `top: int = 3` as `--top 2`; positional arguments come first in declared order (SPEC 22.6).
+- Why: `fixtures/07/variants/dry-run/run.json` and `fixtures/10/run.json`.
+
+## Q404 — Fixture conventions for non-agent programs (step 25)
+- Decided by SPEC 22.7: variant folders inherit what they lack; `expect_status` in `requests.json`; `expected/` is the exact file set of the working directory (06 and 09 therefore list their input file as well).
+- Choice (still ours): programs that create files use paths relative to the fresh working directory (08 creates `notes.db` there); 08 has no `expected.trace.jsonl` because the trace lines of the sqlx calls are not known yet.
+
+## Q405 — Record construction and `try` on library calls (step 25)
+- Decided by SPEC 22.1 and 22.3: `Name { field: value }` builds a record; `try <call> -> var` works on built-ins that return `result` (`do` optional).
+- Choice: the examples write `try csv.parse(content) as list of Sale -> sales` and `try date.parse(digits, digit_date_format) -> day` without `do`, everywhere.
+
+## Q406 — 08 notes API: what the sqlx binding must provide (step 25)
+- Choice: see the table "Binder items 08 relies on" in `examples/V03-FEATURES.md`. Verbs follow the v0.2 naming rule (`SqlitePool::connect` becomes `sqlite_pool_connect`). Rows are never read through handles: the SQL builds JSON text (`json_object`, `json_group_array`) and the program parses it with `json.parse(...) as Note`.
+- Why: sqlx row access is generic (`row.get::<T, _>`); JSON text keeps the binding to a handful of monomorphic items.
+
+## Q407 — Example layout details (step 25)
+- Choice: the `# Enum: Block` of 09 lives in `records/` (types live with records; 18.3 allows several declarations there). The non-agent examples have no `tools.toml` (SPEC 22.5: not needed with only `file` and `# Tool`). Service 08 has no `state:` (optional).

@@ -1,8 +1,10 @@
 //! Rustdoc JSON types -> a small Rust type model (`RT`), its rendering, the lift onto AgentMark
 //! types, and the 1:1 conversions used by the direct tier.
 
-use crate::binder::core::Ty;
+use crate::binder::core::{HandleMode, Ty};
 use serde_json::Value;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RT {
@@ -16,12 +18,17 @@ pub enum RT {
     Generic(String),
     Impl(Vec<Bound>),
     Dyn(Vec<Bound>),
+    /// `<S as Trait>::Name<'a>`: kept so a handle's type can be written out (`lifetimes` is the
+    /// number of lifetime arguments of the associated type).
+    Qual { self_ty: Box<RT>, trait_path: Option<Vec<String>>, name: String, lifetimes: usize },
     Other(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bound {
     pub name: String,
+    /// The trait's path (`digest::Digest`) as far as rustdoc says; `name` is its last segment.
+    pub full: Vec<String>,
     pub args: Vec<RT>,
     /// `Output = T` of `Future<Output = T>`.
     pub output: Option<Box<RT>>,
@@ -42,6 +49,9 @@ const MARKERS: &[&str] = &[
 const INTS: &[&str] = &["i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize"];
 /// Integers that always fit an AgentMark `int` (i64): the direct tier allows only these.
 const SMALL_INTS: &[&str] = &["i8", "i16", "i32", "i64", "u8", "u16", "u32"];
+/// Integers that can be wider than `int`: converted with a checked conversion that fails the call
+/// on overflow (SPEC 22.4).
+const WIDE_INTS: &[&str] = &["u64", "usize", "isize"];
 
 pub struct TypeParser<'a> {
     pub doc: &'a Value,
@@ -56,6 +66,10 @@ impl<'a> TypeParser<'a> {
             hz: Hazards::default(),
             self_ty,
         }
+    }
+
+    pub fn full_path_of(&self, id: Option<u64>, fallback: &str) -> Vec<String> {
+        self.full_path(id, fallback)
     }
 
     fn full_path(&self, id: Option<u64>, fallback: &str) -> Vec<String> {
@@ -122,7 +136,21 @@ impl<'a> TypeParser<'a> {
             }
             "qualified_path" => {
                 self.hz.assoc = true;
-                RT::Other("<qualified path>".into())
+                let tr = &body["trait"];
+                let trait_path = if tr.is_null() {
+                    None
+                } else {
+                    Some(self.full_path(tr["id"].as_u64(), tr["path"].as_str().unwrap_or("?")))
+                };
+                let lifetimes = body["args"]["angle_bracketed"]["args"]
+                    .as_array()
+                    .map_or(0, |a| a.iter().filter(|x| x.get("lifetime").is_some()).count());
+                RT::Qual {
+                    self_ty: Box::new(self.parse(&body["self_type"])),
+                    trait_path,
+                    name: body["name"].as_str().unwrap_or("?").to_string(),
+                    lifetimes,
+                }
             }
             "function_pointer" => {
                 self.hz.closure = true;
@@ -183,8 +211,10 @@ impl<'a> TypeParser<'a> {
                 self.hz.closure = true;
             }
             let marker = MARKERS.contains(&name.as_str()) || tb["modifier"] == "maybe";
+            let full = self.full_path(t["id"].as_u64(), t["path"].as_str().unwrap_or("?"));
             out.push(Bound {
                 name,
+                full,
                 args,
                 output,
                 marker,
@@ -247,7 +277,47 @@ pub fn render(t: &RT) -> String {
         RT::Generic(n) => n.clone(),
         RT::Impl(b) => format!("impl {}", render_bounds(b)),
         RT::Dyn(b) => format!("dyn {}", render_bounds(b)),
+        RT::Qual { self_ty, trait_path, name, lifetimes } => {
+            let lt = if *lifetimes == 0 { String::new() } else { format!("<{}>", vec!["'static"; *lifetimes].join(", ")) };
+            match trait_path {
+                Some(t) => format!("<{} as {}>::{name}{lt}", render(self_ty), t.join("::")),
+                None => format!("<{}>::{name}{lt}", render(self_ty)),
+            }
+        }
         RT::Other(s) => s.clone(),
+    }
+}
+
+/// `t` with every path replaced by the public one (`pubmap`: canonical path -> public path).
+fn publicize(t: &RT, pubmap: &HashMap<Vec<String>, Vec<String>>) -> RT {
+    let p = |x: &RT| publicize(x, pubmap);
+    match t {
+        RT::Path { full, args } => RT::Path {
+            full: pubmap.get(full).cloned().unwrap_or_else(|| full.clone()),
+            args: args.iter().map(p).collect(),
+        },
+        RT::Slice(i) => RT::Slice(Box::new(p(i))),
+        RT::Array(i) => RT::Array(Box::new(p(i))),
+        RT::Tuple(v) => RT::Tuple(v.iter().map(p).collect()),
+        RT::Ref { inner, mutable } => RT::Ref { inner: Box::new(p(inner)), mutable: *mutable },
+        RT::Qual { self_ty, trait_path, name, lifetimes } => RT::Qual {
+            self_ty: Box::new(p(self_ty)),
+            trait_path: trait_path.as_ref().map(|t| pubmap.get(t).cloned().unwrap_or_else(|| t.clone())),
+            name: name.clone(),
+            lifetimes: *lifetimes,
+        },
+        other => other.clone(),
+    }
+}
+
+fn has_generic(t: &RT) -> bool {
+    match t {
+        RT::Generic(_) | RT::Impl(_) => true,
+        RT::Path { args, .. } => args.iter().any(has_generic),
+        RT::Slice(i) | RT::Array(i) | RT::Ref { inner: i, .. } => has_generic(i),
+        RT::Tuple(v) => v.iter().any(has_generic),
+        RT::Qual { self_ty, .. } => has_generic(self_ty),
+        _ => false,
     }
 }
 
@@ -270,9 +340,42 @@ pub fn render_bounds(b: &[Bound]) -> String {
 
 // ---------------------------------------------------------------------------- lift
 
+/// A public type of the bound crate that becomes a handle (SPEC 22.4).
+#[derive(Debug, Clone)]
+pub struct HandleDef {
+    /// `sha2.Sha256`: the dotted name below the crate.
+    pub name: String,
+    /// Its public Rust path, `sha2::Sha256`.
+    pub rust_path: String,
+    /// Lifetime parameters: written `'static` (the handle owns what it borrows).
+    pub lifetimes: usize,
+    /// It has type parameters: written with the single instantiation the signatures give.
+    pub generic: bool,
+}
+
+/// What the lift needs to know about the whole crate.
+#[derive(Default)]
+pub struct LiftCtx {
+    /// Public types that become handles, by every path a signature can name them by.
+    pub handles: HashMap<Vec<String>, HandleDef>,
+    /// Trait (last name) -> the concrete types of the crate that implement it: a bound with exactly one
+    /// of them has one obvious instantiation (`DB: Database` with one database compiled in).
+    pub implementors: HashMap<String, Vec<RT>>,
+    /// Canonical path -> public path of the crate's own types.
+    pub pubmap: HashMap<Vec<String>, Vec<String>>,
+    /// Handle name -> its Rust type, for the generic / lifetime ones as the signatures instantiate them.
+    pub rust_types: RefCell<BTreeMap<String, String>>,
+}
+
 pub struct Lifter<'a> {
     /// Generic parameter name -> its bounds (fn and impl level).
     pub bounds: &'a [(String, Vec<Bound>)],
+    pub ctx: &'a LiftCtx,
+    /// Also instantiate a bound by the crate's only implementor of the trait (used for items that
+    /// turn out to involve a handle; other generics keep their v0.2 treatment).
+    pub catchall: bool,
+    /// Rust types of handles met while lifting this item; the caller keeps them only if the item is bound.
+    pub pending: RefCell<BTreeMap<String, String>>,
 }
 
 fn utc() -> RT {
@@ -298,11 +401,15 @@ impl Lifter<'_> {
                     RT::Path { full, args } if last(full) == "Vec" && args.first().is_some_and(is_u8) => {
                         std_path("Vec", args.clone())
                     }
-                    _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(&[b.clone()]))),
+                    _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
                 },
                 ("ToString" | "Display" | "IntoUrl", _) => std_path("String", vec![]),
                 ("TimeZone", _) => utc(),
-                _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(&[b.clone()]))),
+                _ if self.catchall => match self.ctx.implementors.get(&b.full.join("::")).map(Vec::as_slice) {
+                    Some([only]) => only.clone(),
+                    _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
+                },
+                _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
             };
             match &found {
                 Some(f) if *f != one => {
@@ -347,9 +454,12 @@ impl Lifter<'_> {
                 Err("floats have no AgentMark type (money must be integer minor units)".into())
             }
             RT::Ref { mutable: true, .. } => Err(format!("`{}` is a mutable borrow", render(rt))),
+            RT::Ref { inner, .. } if self.handle_of(inner).is_some() => {
+                Err(format!("`{}` borrows a handle, and a borrow cannot be returned or stored", render(rt)))
+            }
             RT::Ref { inner, .. } => self.value(inner),
             RT::Slice(i) if is_u8(i) => Ok(Ty::Bytes),
-            RT::Slice(i) => Ok(Ty::List(Box::new(self.value(i)?))),
+            RT::Slice(i) => Ok(Ty::List(Box::new(self.not_handle(self.value(i)?, "a list")?))),
             RT::Path { full, args } => {
                 let args: Vec<RT> = args.iter().map(|a| self.resolve(a)).collect();
                 let args = args.as_slice();
@@ -358,8 +468,8 @@ impl Lifter<'_> {
                     match (n, args) {
                         ("String", _) => return Ok(Ty::Text),
                         ("Vec", [a]) if is_u8(a) => return Ok(Ty::Bytes),
-                        ("Vec", [a]) => return Ok(Ty::List(Box::new(self.value(a)?))),
-                        ("Option", [a]) => return Ok(Ty::Maybe(Box::new(self.value(a)?))),
+                        ("Vec", [a]) => return Ok(Ty::List(Box::new(self.not_handle(self.value(a)?, "a list")?))),
+                        ("Option", [a]) => return Ok(Ty::Maybe(Box::new(self.not_handle(self.value(a)?, "a maybe")?))),
                         ("Box", [a]) => return self.value(a),
                         ("Cow", [a]) => return self.value(a),
                         _ => {}
@@ -377,12 +487,83 @@ impl Lifter<'_> {
                 match n {
                     "Url" | "Uri" | "PathBuf" | "Path" => Ok(Ty::Text),
                     "GenericArray" | "Output" => Ok(Ty::Bytes),
-                    _ => no(),
+                    _ => match self.raw_handle(rt) {
+                        Some(h) => Ok(Ty::handle(h, HandleMode::Shared)),
+                        None => no(),
+                    },
                 }
             }
             RT::Generic(g) => self.value(&self.generic(g)?),
             RT::Impl(b) => self.value(&self.instantiate(b)?),
             _ => no(),
+        }
+    }
+
+    /// The handle name of a public type of the bound crate, by its path alone. A type with
+    /// lifetimes or type parameters is written out with `'static` and the one instantiation the
+    /// signatures give; a second, different one is not a handle.
+    fn raw_handle(&self, rt: &RT) -> Option<String> {
+        let RT::Path { full, args } = rt else { return None };
+        let def = self.ctx.handles.get(full)?;
+        if !def.generic && def.lifetimes == 0 {
+            return args.is_empty().then(|| def.name.clone());
+        }
+        let mut parts: Vec<String> = vec!["'static".to_string(); def.lifetimes];
+        for a in args {
+            let r = self.resolve(a);
+            if has_generic(&r) {
+                return None;
+            }
+            parts.push(render(&publicize(&r, &self.ctx.pubmap)));
+        }
+        let ty = if parts.is_empty() { def.rust_path.clone() } else { format!("{}<{}>", def.rust_path, parts.join(", ")) };
+        let mut pending = self.pending.borrow_mut();
+        match self.ctx.rust_types.borrow().get(&def.name).or_else(|| pending.get(&def.name)) {
+            Some(prev) if *prev != ty => None,
+            _ => {
+                pending.insert(def.name.clone(), ty);
+                Some(def.name.clone())
+            }
+        }
+    }
+
+    /// The handle name when AgentMark holds `rt` as a handle: a type with a built-in AgentMark
+    /// type (`NaiveDate`, `Url`, ...) is a value, not a handle.
+    pub fn handle_of(&self, rt: &RT) -> Option<String> {
+        self.raw_handle(rt)?;
+        match self.value(rt) {
+            Ok(Ty::Handle { name, .. }) => Some(name),
+            _ => None,
+        }
+    }
+
+    fn not_handle(&self, t: Ty, what: &str) -> Result<Ty, String> {
+        match t {
+            Ty::Handle { name, .. } => Err(format!("`handle of {name}` cannot be in {what}")),
+            t => Ok(t),
+        }
+    }
+
+    /// A parameter: a handle is lent (`&T`), lent mutably (`&mut T`) or handed over (`T`).
+    pub fn param(&self, rt: &RT) -> Result<Ty, String> {
+        if let RT::Ref { inner, mutable } = rt {
+            if let Some(h) = self.handle_of(inner) {
+                return Ok(Ty::handle(h, if *mutable { HandleMode::Mut } else { HandleMode::Shared }));
+            }
+        }
+        match self.value(rt)? {
+            Ty::Handle { name, .. } => Ok(Ty::handle(name, HandleMode::Consume)),
+            t => Ok(t),
+        }
+    }
+
+    /// The type a generic parameter or `impl Trait` stands for (`impl AsRef<[u8]>` -> `Vec<u8>`);
+    /// anything else as it is.
+    pub fn instantiated(&self, rt: &RT) -> RT {
+        match rt {
+            RT::Generic(g) => self.generic(g).unwrap_or_else(|_| rt.clone()),
+            RT::Impl(b) => self.instantiate(b).unwrap_or_else(|_| rt.clone()),
+            _ => rt.clone(),
         }
     }
 
@@ -429,7 +610,9 @@ fn is_chrono_value(full: &[String], args: &[RT]) -> bool {
 pub fn conv_in(e: &str, rt: &RT) -> Option<String> {
     match rt {
         RT::Prim(p) if p == "i64" || p == "bool" => Some(e.to_string()),
-        RT::Prim(p) if SMALL_INTS.contains(&p.as_str()) => Some(format!("{p}::try_from({e})?")),
+        RT::Prim(p) if SMALL_INTS.contains(&p.as_str()) || WIDE_INTS.contains(&p.as_str()) => {
+            Some(format!("{p}::try_from({e})?"))
+        }
         RT::Ref { inner, mutable: false } => match &**inner {
             RT::Prim(p) if p == "str" => Some(format!("&{e}")),
             RT::Slice(i) if is_u8(i) => Some(format!("&{e}")),
@@ -478,6 +661,7 @@ pub fn conv_out(e: &str, rt: &RT) -> Option<String> {
     match rt {
         RT::Prim(p) if p == "i64" || p == "bool" => Some(e.to_string()),
         RT::Prim(p) if SMALL_INTS.contains(&p.as_str()) => Some(format!("i64::from({e})")),
+        RT::Prim(p) if WIDE_INTS.contains(&p.as_str()) => Some(format!("i64::try_from({e})?")),
         RT::Ref { inner, mutable: false } => match &**inner {
             RT::Prim(p) if p == "str" => Some(format!("{e}.to_string()")),
             RT::Slice(i) if is_u8(i) => Some(format!("{e}.to_vec()")),
@@ -497,6 +681,8 @@ pub fn conv_out(e: &str, rt: &RT) -> Option<String> {
                 let inner = conv_out("v", a)?;
                 Some(if inner == "v" {
                     e.to_string()
+                } else if inner.contains('?') {
+                    format!("{e}.into_iter().map(|v| {BOXERR} {{ Ok({inner}) }}).collect::<Result<Vec<_>, _>>()?")
                 } else {
                     format!("{e}.into_iter().map(|v| {inner}).collect::<Vec<_>>()")
                 })
@@ -505,6 +691,8 @@ pub fn conv_out(e: &str, rt: &RT) -> Option<String> {
                 let inner = conv_out("v", a)?;
                 Some(if inner == "v" {
                     e.to_string()
+                } else if inner.contains('?') {
+                    format!("{e}.map(|v| {BOXERR} {{ Ok({inner}) }}).transpose()?")
                 } else {
                     format!("{e}.map(|v| {inner})")
                 })
@@ -528,7 +716,10 @@ mod tests {
     fn small_ints_convert_with_try_from_and_wide_ones_are_not_direct() {
         assert_eq!(conv_in("x", &p("i64")).unwrap(), "x");
         assert_eq!(conv_in("x", &p("u32")).unwrap(), "u32::try_from(x)?");
-        assert!(conv_in("x", &p("u64")).is_none());
+        // wider than `int`: a checked conversion that fails the call on overflow
+        assert_eq!(conv_in("x", &p("u64")).unwrap(), "u64::try_from(x)?");
+        assert_eq!(conv_out("y", &p("usize")).unwrap(), "i64::try_from(y)?");
+        assert!(conv_in("x", &p("f64")).is_none());
         assert_eq!(conv_out("y", &p("i32")).unwrap(), "i64::from(y)");
     }
 
@@ -546,9 +737,10 @@ mod tests {
     fn generic_with_asref_str_has_one_obvious_instantiation() {
         let bounds = vec![(
             "S".to_string(),
-            vec![Bound { name: "AsRef".into(), args: vec![p("str")], output: None, marker: false }],
+            vec![Bound { name: "AsRef".into(), full: vec![], args: vec![p("str")], output: None, marker: false }],
         )];
-        let l = Lifter { bounds: &bounds };
+        let ctx = LiftCtx::default();
+        let l = Lifter { bounds: &bounds, ctx: &ctx, catchall: false, pending: Default::default() };
         assert_eq!(l.value(&RT::Generic("S".into())), Ok(Ty::Text));
         assert!(l.value(&RT::Generic("T".into())).is_err());
     }

@@ -118,8 +118,18 @@ impl Checker<'_> {
     }
 
     pub fn expr(&mut self, cx: &mut Cx, e: &Expr) -> Type {
+        // a handle may be the value of this expression only where the caller says so (Q362); a
+        // bare variable is judged in `path_expr`, everything else (a call) by its type here
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
+        let is_path = matches!(e.kind, ExprKind::Path(_));
+        cx.handle_ok = handle_ok && is_path;
         let outer = std::mem::take(&mut cx.acc);
-        let ty = self.expr_inner(cx, e);
+        let mut ty = self.expr_inner(cx, e);
+        cx.handle_ok = false;
+        if ty.is_handle() && !handle_ok && !is_path {
+            self.handle_value_misuse(cx, e.span, &ty);
+            ty = Type::Unknown;
+        }
         let eff = std::mem::replace(&mut cx.acc, outer);
         cx.acc.merge(&eff);
         let key = NodeKey::new(cx.file, e.span);
@@ -203,6 +213,7 @@ impl Checker<'_> {
             }
             ExprKind::Call { func, args } => self.call(cx, e, func, args),
             ExprKind::Coll(c) => self.coll_expr(cx, c),
+            ExprKind::Decode { call, ty } => self.std_decode(cx, e, call, ty),
             ExprKind::Record(fields) => {
                 let mut out = Vec::new();
                 for f in fields {
@@ -384,6 +395,7 @@ impl Checker<'_> {
     pub(super) fn path_expr(&mut self, cx: &mut Cx, segs: &[Ident], key: NodeKey) -> Type {
         let first = &segs[0];
         // a variable (loop variable, `set`/`->` result, parameter, route parameter, `state`)
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
         if let Some(t) = cx.var(&first.name).cloned() {
             self.resolutions.insert(
                 key,
@@ -392,6 +404,13 @@ impl Checker<'_> {
                     def: cx.def_of(&first.name),
                 },
             );
+            if t.is_handle() {
+                self.check_not_consumed(cx, first);
+                if segs.len() == 1 && !handle_ok {
+                    self.handle_misuse(cx, first, &t);
+                    return Type::Unknown;
+                }
+            }
             return self.chain(cx, t, segs, 1, first.name.clone());
         }
         // a bare field of the record in front of us
@@ -744,10 +763,23 @@ impl Checker<'_> {
             .map(|i| i.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        let arg_types: Vec<Type> = args.iter().map(|a| self.expr(cx, a)).collect();
+        let arg_types: Vec<Type> = args
+            .iter()
+            .map(|a| {
+                let t = self.expr_handle_ok(cx, a);
+                self.move_out(cx, a);
+                t
+            })
+            .collect();
         let Some((kind, decl)) = self.lookup(cx.file, &name, &[Kind::Function, Kind::RustBlock])
         else {
+            if func.len() == 2 && crate::stdlib::is_module(&func[0].name) {
+                let ok = cx.std_ok == Some(e.span);
+                return self.std_call(cx, &super::stdlib::StdCall { e, func, args, types: &arg_types }, None, ok);
+            }
             let mut cands = self.scopes[cx.file].names_of(&[Kind::Function, Kind::RustBlock]);
+            // `txt.split(...)`: the built-in library's `module.function` names are candidates too
+            cands.extend(crate::stdlib::FUNCS.iter().map(|f| format!("{}.{}", f.module, f.name)));
             cands.sort();
             let span = func[0].span.to(func[func.len() - 1].span);
             let d = Diagnostic::error(

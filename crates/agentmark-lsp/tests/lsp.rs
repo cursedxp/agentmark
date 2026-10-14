@@ -196,6 +196,35 @@ fn completion_offers_the_items_of_a_binding_and_the_sources_of_a_tool() {
     c.shutdown();
 }
 
+#[test]
+fn completion_offers_the_built_in_library_and_the_file_tool() {
+    let (_dir, root) = example("01-invoice-chaser");
+    let file = root.join("agents/invoice-chaser.agent.md");
+    let good = read(&file);
+    let mut c = Client::start(None);
+    c.open(&file, &good, 1);
+
+    // `text.` lists the functions of the module, with the same names as the language table
+    let t = good.replace("- email send customer:", "- set shout = text.");
+    c.change(&file, &t, 2);
+    let labels = complete(&mut c, &file, at(&t, "= text.", 0, 14));
+    assert!(labels.contains(&"split".to_string()) && labels.contains(&"starts_with".to_string()), "{labels:?}");
+    assert_eq!(labels.len(), agentmark::stdlib::functions_of("text").count());
+    let t = good.replace("- email send customer:", "- set shout = text.tr");
+    c.change(&file, &t, 3);
+    assert_eq!(complete(&mut c, &file, at(&t, "= text.tr", 0, 16)), vec!["trim"]);
+
+    // `file ` lists its verbs; a statement start offers the tool itself
+    let t = good.replace("- email send customer:", "- file ");
+    c.change(&file, &t, 4);
+    let labels = complete(&mut c, &file, at(&t, "- file ", 0, 7));
+    assert_eq!(labels, ["read", "write", "append", "list", "rename", "exists", "delete"]);
+    let t = good.replace("- crm update invoice: status = \"reminded\"", "- fi");
+    c.change(&file, &t, 5);
+    assert!(complete(&mut c, &file, at(&t, "- fi", 0, 4)).contains(&"file".to_string()));
+    c.shutdown();
+}
+
 // ---------------------------------------------------------------------------------- definition
 
 #[test]
