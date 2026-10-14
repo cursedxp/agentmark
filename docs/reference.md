@@ -1,28 +1,54 @@
 # AgentMark language reference
 
-This is the whole language in one file, written so that a person, an editor plugin or an AI assistant
-can read it once and then write correct AgentMark. It follows `SPEC.md` section by section and in the
-same order, so section numbers here are the specification's numbers (the specification has no
-section 12). Where the specification left a question open, the choice that was made is stated in the
-text and listed in `OPEN_QUESTIONS.md` as a `Q` number.
+**In short**
+- This page lists every form of the AgentMark language, section by section, in the order of `SPEC.md`.
+- It is for people, editor plugins and AI assistants that write AgentMark.
+- After reading it you can write a correct statement for any task and look up its error.
 
-Every section starts with an example. Code blocks marked as programs are complete and are checked by
-the test-suite (`tests/docs.rs`); pieces are shown without a heading line and are parsed there.
-Whatever this file shows as output is the real output of the tools.
+**Jump to:** [Cheat sheet](#cheat-sheet) · [Statements](#4-statements) · [Expressions](#5-expressions) · [Functions, commands, services](#13-core-language-functions-and-modules-layer-2) · [Errors](#14-errors) · [Collections, library, tools](#22-v03-a-general-purpose-markdown-language) · [Statement index](#appendix-a-statement-index)
 
-Rules that hold everywhere, so they are not repeated below:
+## Cheat sheet
 
-* One statement is one line, at most 120 characters. The text between the quotes of a string does not
-  count (Q35).
-* Indentation is exactly 2 spaces per level. A tab is an error.
-* A file ends in `.agent.md`. Names are case-sensitive, headings are not.
+The 20 statement forms you will write most. Appendix A lists all of them.
+
+| form | what it does | read |
+|---|---|---|
+| `set total = total + 1` | creates or changes a variable | [4.5](#45-assignment) |
+| `for each invoice in crm.invoices:` | repeats the body for every item | [4.1](#41-control) |
+| `if amount > 1000 EUR:` then `else:` | picks a branch | [4.1](#41-control) |
+| `match shape:` | takes an enum, a `maybe` or a `result` apart | [22.1](#221-user-defined-types) |
+| `stop` | ends the current block | [4.1](#41-control) |
+| `do remind` or `do f(x) -> y` | calls a `## Do` block or a function | [4.1](#41-control), [13.1](#131-function) |
+| `return x * 2` | gives back the value of a function | [13.1](#131-function) |
+| `guard: reply is not empty` | checks a condition and stops when it fails | [4.4](#44-guards) |
+| `ask model: "Name a color." -> answer` | asks a model | [4.2](#42-model) |
+| `crm update invoice: status = "paid"` | calls a tool | [4.3](#43-tool-calls) |
+| `try http get "https://x.example" -> r` | runs a call that can fail, with `otherwise:` as the fallback | [14](#14-errors) |
+| `print: "Total {total}"` | writes a line to standard output | [13.3](#133-service-and-command) |
+| `read file path as list of Row -> rows` | reads a file into a typed value | [13.3](#133-service-and-command) |
+| `file write "out.txt": body` | writes, appends, lists or renames files | [22.3](#223-the-built-in-library) |
+| `append row to rows` | adds to the end of a list | [22.2](#222-collection-words) |
+| `set top = sort rows by amount descending` | sorts, groups, sums and filters lists | [22.2](#222-collection-words) |
+| `text.trim(name)` | calls the built-in library | [22.3](#223-the-built-in-library) |
+| `pdf render title -> bytes` | calls a bound Rust library | [15](#15-library-access-automatic-bindings) |
+| `respond 404` | ends a service route with a status | [13.3](#133-service-and-command) |
+| `parallel:` | runs the indented statements at the same time | [16](#16-concurrency) |
+
+## How to read this page
+
+This is the whole language in one file. It follows `SPEC.md` section by section, so the section numbers here are the specification's numbers. The specification has no section 12.
+
+Every section opens with a small complete example, then a list of rules, then the details. Code blocks marked as programs are checked by `tests/docs.rs`, and pieces without a heading line are parsed there. Output shown here is the real output of the tools.
+
+Where the specification left a question open, the text states the choice and `OPEN_QUESTIONS.md` lists it as a `Q` number. Appendix B groups the numbers by topic.
+
+**Rules that hold everywhere**
+- One statement is one line, at most 120 characters. The text between the quotes of a string does not count, per Q35.
+- Indentation is exactly 2 spaces per level. A tab is an error.
+- A file ends in `.agent.md`.
+- Names are case-sensitive. Headings are not.
 
 ## Language at a glance
-
-AgentMark is a general-purpose programming language written as Markdown. A program is made of declarations (`# Record`,
-`# Enum`, `# Function`, `# Command`, `# Service`, `# Tool`, `# Constant`) written as headings with `-` lines under them, and
-`agentmark build` turns the project into one standalone binary. This is a complete program that uses no agent, no tool and no
-library from outside; it needs only the built-in ones:
 
 ```agentmark
 # Enum: Shape
@@ -58,23 +84,25 @@ library from outside; it needs only the built-in ones:
 - areas
 ```
 
-Where each part of the language is described:
+**Rules**
+- AgentMark is a general-purpose programming language written as Markdown. `agentmark build` turns a project into one standalone binary.
+- A program is made of declarations: `# Record`, `# Enum`, `# Function`, `# Command`, `# Service`, `# Tool` and `# Constant`. Each is a heading with `-` lines under it.
+- The program above uses no agent, no tool and no outside library. It needs only the built-in ones.
+- Agents are one feature, not the center. Before anything is generated, every agent construct is rewritten into functions and entries, as section 0 shows.
+- The agent sections keep the places the specification gives them. If you never write an agent, read sections 2.1, 4.1, 4.3, 4.5, 5 to 8 and 13 to 18 first.
+
+**Where each part is described**
 
 | you want | read |
 |---|---|
-| records, rules, constants, files and imports | 2.1, 2.2, 1, 18 |
-| functions, commands, services | 13 |
-| enums, `match`, collection words (`group`, `sort`, `sum of`), the built-in library, the `file` tool, user-defined tools, default commands | 22 |
-| `try`, `maybe`, errors | 14 |
-| Rust libraries (`# Import: crate …`, handles) and `## Rust` blocks | 15, 17 |
-| types and units (money, date, duration) | 6 |
-| what a block can touch (`pure`, `local`, `network`, `model`) | 8 |
-| agents: `# Agent`, triggers, `ask model`, `guard`, model providers | 2.3, 3, 4.2, 4.4, 19 |
-
-Agents are one feature of the language, not its center. They are sugar over the core: before anything is generated, every
-agent construct is rewritten into functions and entries (section 0). Their sections keep the places the specification gives
-them, so the numbers here are the specification's; read sections 2.1, 4.1, 4.3, 4.5, 5 to 8 and 13 to 18 first and the agent
-sections afterwards if you never write an agent.
+| records, rules, constants, files and imports | [2.1](#21-record), [2.2](#22-rule), [1](#1-file-structure), [18](#18-code-organization-and-readability) |
+| functions, commands, services | [13](#13-core-language-functions-and-modules-layer-2) |
+| enums, `match`, collection words, the built-in library, the `file` tool, user-defined tools, default commands | [22](#22-v03-a-general-purpose-markdown-language) |
+| `try`, `maybe`, errors | [14](#14-errors) |
+| Rust libraries and `## Rust` blocks | [15](#15-library-access-automatic-bindings), [17](#17-escape-hatch--rust-blocks-layer-1) |
+| types and units such as money, date and duration | [6](#6-types) |
+| what a block can touch: `pure`, `local`, `network`, `model` | [8](#8-effects) |
+| agents: `# Agent`, triggers, `ask model`, `guard`, model providers | [2.3](#23-agent), [3](#3-blocks-triggers), [4.2](#42-model), [4.4](#44-guards), [19](#19-model-providers) |
 
 ## 0. Architecture: three layers
 
@@ -2072,6 +2100,7 @@ shapes.agent.md:10
 
 **JSON.** An enum value is an object whose `kind` field names the variant, followed by the variant's fields:
 `{"kind":"Circle","radius":3}`, `{"kind":"Empty"}` (Q301). That is what `read file`, `read body` and `respond` read and write.
+
 ### 22.2 Collection words
 
 Lists are `list of T`, maps are `map of K to V` (keys: `text`, `int`, `date`, `datetime` or `bool`). The words below are
