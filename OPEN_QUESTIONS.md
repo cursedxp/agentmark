@@ -382,3 +382,18 @@ Q110 split a single word that does not fit on a line and the parser joined the p
 
 ## Q203 — `--allow-unverified` assumes the proposed effect (step 10; the controller's decision, written down as Q190 on the dev branch, see Q190)
 **Choice:** with `--allow-unverified` (check, build, run, trace) an unverified binding counts as its `- proposed-effect:` for effect checking, so a `pure` function calling a binding proposed `pure` passes; each such binding gets one warning (W008): "its effect is assumed to be X from the proposal", help "approve it before a release build". Without the flag nothing changes (the binding is `unverified`, the build is refused). The advice when a function exceeds its effect because of an unverified call no longer says "change the function to `- effect: unverified`" (not a legal function effect, SPEC 13.1) but to approve the binding's `- effect:` line. `Checked.bindings` still reports the binding as unverified.
+
+## Q220 — How the README is kept true (step 11)
+PROMPT step 11 asks for a README whose commands work; nothing said how to keep them working.
+**Choice:** `tests/readme.rs` runs the README. A ```` ```console ```` block is `$ agentmark …` lines (leading `NAME=value` env allowed, `$PWD` = repository root) followed by output fragments that must appear in stdout+stderr (a trailing `…` cuts a line, `…` alone is skipped); `# exit N` sets the expected exit code, `# in FILE: replace "A" with "B"` is the edit the reader makes by hand (used for approving the sha2 binding). The words `app` and `out` are scratch folders (```` ```console app ```` = example 05 without its sha2 binding); temp paths are scrubbed from the output before matching. Every ```` ```agentmark ```` block must `check` clean as a file next to example 01's `tools.toml`. The ```` ```rust file=rust/connect.rs ```` block is dropped into a copy of example 01 and `run` (no `--mock`, no key) must compile it and stop at "ANTHROPIC_API_KEY is not set", which proves the in-memory CRM answered `list`. Offline bind uses `tests/binder/*` through the documented `AGENTMARK_MODEL`/`AGENTMARK_RUSTDOC_JSON(_DIR)` variables.
+**Why:** the real binary, mock model, no network, nothing written into the repository.
+
+## Q221 — A real run cannot use a mock model (step 11)
+`run`/`trace` without `--mock` use `AnthropicModel` only (`AGENTMARK_MODEL` is read by the binder, not by generated programs), so a real run with `connect.rs` cannot be shown with canned model answers.
+**Choice:** the README shows the connect.rs run in prose, and the test stops at the model call (Q220). Not changed in the compiler.
+**Why:** a mock/real mix would be new behavior; the README must describe v0.1 as it is.
+
+## Q222 — Generated projects are tied to the compiler checkout, and have no extra dependencies (step 11)
+`agentmark-rt` is a path dependency on the checkout the compiler was built from (`env!("CARGO_MANIFEST_DIR")`), and the generated `Cargo.toml` is rewritten on every build with a fixed dependency list plus the imported crates; `rust/connect.rs` therefore cannot add a client crate such as `reqwest`.
+**Choice:** the README says so (keep the checkout; connect.rs uses the dependencies of the generated project). Not changed in the compiler.
+**Why:** adding a dependency hook is a feature, not documentation; a candidate for v0.2 (a `[dependencies]` table in `agentmark.toml`).
