@@ -81,6 +81,23 @@
         }
       }
     },
+    "crates": {
+      "type": "object",
+      "description": "Version and features of an imported crate (SPEC 22.4): the binder and the generated Cargo.toml both use them.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "properties": {
+              "version": { "type": "string" },
+              "features": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
     "models": {
       "type": "object",
       "description": "Maps an environment name to a model driver string (SPEC 19). Any environment name is allowed; production, test and dev are the usual ones.",
