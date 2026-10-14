@@ -728,7 +728,10 @@ impl Checker<'_> {
         if let Some(params) = &item_params {
             if params.len() == args.len() {
                 for (p, (t, span)) in params.iter().zip(&args) {
-                    if !self.is_assignable(t, &p.ty) {
+                    if *t == Type::Text && p.ty == Type::Bytes {
+                        // Q151: text is read as its UTF-8 bytes where a binding takes bytes
+                        self.text_to_bytes.insert(super::NodeKey::new(cx.file, *span));
+                    } else if !self.is_assignable(t, &p.ty) {
                         let d = Diagnostic::error(
                             E_TYPE,
                             self.path(cx.file),

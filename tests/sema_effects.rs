@@ -434,3 +434,34 @@ fn parallel_conflicts_through_nested_statements_and_set() {
     let e = first_error(&src);
     assert!(e.contains("both write \"total\""), "{e}");
 }
+
+// ------------------------------------------------------------ text -> bytes for binding arguments (Q151)
+
+const HASH_BINDING: &str = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```\n";
+
+fn hash_call(param: &str, arg: &str) -> Result<sema::Checked, String> {
+    let main = format!(
+        "# Import: crate hashing\n\n# Function: make\n- in: {param}\n- out: bytes\n- effect: pure\n  - hashing digest {arg} -> b\n  - return b\n"
+    );
+    let p = Project::from_memory(
+        "app/main.agent.md",
+        vec![("app/main.agent.md", main.as_str()), ("app/bindings/hashing.agent.md", HASH_BINDING)],
+    );
+    sema::check(&p).map_err(|d| p.render(&d))
+}
+
+#[test]
+fn a_binding_taking_bytes_accepts_text() {
+    let c = hash_call("t: text", "t").unwrap();
+    assert_eq!(c.text_to_bytes.len(), 1);
+    let c = hash_call("t: text", "\"{t}!\"").unwrap();
+    assert_eq!(c.text_to_bytes.len(), 1);
+}
+
+#[test]
+fn a_binding_taking_bytes_still_rejects_other_types() {
+    let e = hash_call("m: money", "m").unwrap_err();
+    assert!(e.contains("must be bytes, but this is money"), "{e}");
+    let e = hash_call("n: int", "n").unwrap_err();
+    assert!(e.contains("must be bytes"), "{e}");
+}

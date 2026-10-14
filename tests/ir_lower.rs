@@ -398,3 +398,22 @@ fn sema_rejects_a_do_call_without_the_record() {
     let err = sema::check(&project).expect_err("must be an error");
     assert!(err.iter().any(|d| d.message.contains("works on")), "{}", project.render(&err));
 }
+
+#[test]
+fn a_text_argument_to_a_bytes_binding_becomes_text_to_bytes() {
+    let binding = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```\n";
+    let main = "# Import: crate hashing\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: pure\n  - hashing digest t -> b\n  - return b\n";
+    let p = Project::from_memory(
+        "app/main.agent.md",
+        vec![("app/main.agent.md", main), ("app/bindings/hashing.agent.md", binding)],
+    );
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    let l = agent_lower(&p, &c);
+    let prog = ir::build::build(&p, &c, &l);
+    let json = serde_json::to_string(&prog.functions).unwrap();
+    assert!(json.contains("\"TextToBytes\""), "{json}");
+    let first = &prog.functions[0].body[0].kind;
+    let IS::Effect { call: EffectCall::Binding { args, .. }, .. } = first else { panic!("{first:?}") };
+    assert!(matches!(args[0].kind, IX::TextToBytes(_)));
+    assert_eq!(args[0].ty.to_string(), "bytes");
+}

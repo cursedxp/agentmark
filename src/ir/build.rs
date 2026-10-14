@@ -776,9 +776,17 @@ impl<'a> Builder<'a> {
             ToolKind::Binding => {
                 let args: Vec<ir::Expr> = target
                     .iter()
-                    .map(|t| match t {
-                        TargetPart::Word(w) => self.word_expr(w),
-                        TargetPart::Value(e) => self.expr(e),
+                    .map(|t| {
+                        let (span, x) = match t {
+                            TargetPart::Word(w) => (w.span, self.word_expr(w)),
+                            TargetPart::Value(e) => (e.span, self.expr(e)),
+                        };
+                        if self.checked.text_to_bytes.contains(&self.nk(span)) {
+                            let effect = x.effect.clone();
+                            ir::Expr { kind: ir::ExprKind::TextToBytes(Box::new(x)), ty: Type::Bytes, effect }
+                        } else {
+                            x
+                        }
                     })
                     .collect();
                 let ret = tr.result.clone().unwrap_or(Type::Unknown);
@@ -1251,7 +1259,7 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
             add(lhs);
             add(rhs);
         }
-        X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
+        X::TextToBytes(x) | X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
         X::Call { args, .. } => args.iter().for_each(&mut add),
         X::Record(fields) => fields.iter().for_each(|(_, x)| add(x)),
         X::Count { source, .. } => add(source),
