@@ -66,6 +66,9 @@ pub struct Cx {
     pub unit: String,
     /// Segments unwrapped (known non-empty) while resolving the last path.
     pub unwrap_log: Vec<usize>,
+    /// The statement about to be checked is the one directly after `try` (a `result of` function
+    /// may only be called there).
+    pub in_try: bool,
 }
 
 impl Cx {
@@ -81,6 +84,7 @@ impl Cx {
             lenient: false,
             unit: String::new(),
             unwrap_log: Vec::new(),
+            in_try: false,
         }
     }
 

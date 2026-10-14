@@ -66,6 +66,7 @@ impl Checker<'_> {
     }
 
     fn stmt_inner(&mut self, cx: &mut Cx, s: &Stmt) {
+        let in_try = std::mem::take(&mut cx.in_try);
         match &s.kind {
             StmtKind::ForEach {
                 filter_rule,
@@ -168,7 +169,7 @@ impl Checker<'_> {
                     self.diags.push(d);
                 }
             }
-            StmtKind::Do { name, args, into } => self.do_stmt(cx, s, name, args, into),
+            StmtKind::Do { name, args, into } => self.do_stmt(cx, s, name, args, into, in_try),
             StmtKind::AskModel {
                 with,
                 prompt,
@@ -352,7 +353,9 @@ impl Checker<'_> {
                 self.check_limit(cx, s);
             }
             StmtKind::Try { stmt, otherwise } => {
+                cx.in_try = true;
                 self.stmt(cx, stmt);
+                cx.in_try = false;
                 if let Some(o) = otherwise {
                     cx.push();
                     self.stmts(cx, o);
@@ -383,7 +386,11 @@ impl Checker<'_> {
             self.diags.push(d);
             return;
         };
-        let Some(out) = f.out.clone() else {
+        let Some(out) = f.out.clone().map(|o| match o {
+            // `return v` in a `result of T` function wraps `v` in Ok (Q200)
+            Type::Result(t) => *t,
+            o => o,
+        }) else {
             let d = Diagnostic::error(
                 E_STMT,
                 self.path(cx.file),
@@ -439,6 +446,7 @@ impl Checker<'_> {
         name: &crate::syntax::ast::Ident,
         args: &[crate::syntax::ast::Expr],
         into: &Option<crate::syntax::ast::Ident>,
+        in_try: bool,
     ) {
         let p = self.p;
         // a `## Do` block of the same agent?
@@ -567,8 +575,27 @@ impl Checker<'_> {
         );
         if let Some(sig) = self.sigs.get(&(kind, decl.clone())).cloned() {
             self.check_args(cx, s.span, &name.name, &sig, args, &arg_types);
+            let fallible = matches!(sig.out, Some(Type::Result(_)));
+            if fallible && !in_try {
+                let d = Diagnostic::error(
+                    E_CALL,
+                    self.path(cx.file),
+                    s.span,
+                    format!(
+                        "The function \"{}\" can fail (it returns \"{}\"), so it has to be called with \"try\".",
+                        name.name,
+                        sig.out.as_ref().map(|t| t.to_string()).unwrap_or_default()
+                    ),
+                )
+                .with_help(format!(
+                    "Write \"- try do {}(...) -> value\", optionally with an \"otherwise:\" branch.",
+                    name.name
+                ));
+                self.diags.push(d);
+            }
             if let Some(i) = into {
                 match &sig.out {
+                    Some(Type::Result(t)) => cx.define(&i.name, (**t).clone(), i.span),
                     Some(t) => cx.define(&i.name, t.clone(), i.span),
                     None => {
                         let d = Diagnostic::error(

@@ -608,3 +608,40 @@ fn a_failing_command_leaves_an_error_line_in_the_trace() {
     assert_eq!(t[0]["agent"], "slurp");
     assert_eq!(t[0]["block"], "Run");
 }
+
+// ---------------------------------------------------------------------------------- result of T
+
+const RESULT_FN: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n# Command: check\n- args: path: text\n\n## Run\n- try do read_count(path) -> n\n  otherwise:\n    - print: \"unreadable\"\n    - stop\n- print: \"count {n}\"\n";
+
+#[test]
+fn a_result_function_returns_ok_and_its_failure_reaches_the_caller() {
+    let (d, file) = single("resultfn", "count.agent.md", RESULT_FN);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    write(&d, "n.json", "41");
+    let run = |path: &str| {
+        write(&fx, "command.json", &json!({"command": "check", "args": {"path": path}}).to_string());
+        let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+        assert!(o.status.success(), "{}", stderr(&o));
+        format!("{}{}", stdout(&o), stderr(&o))
+    };
+    // success: the caller sees a plain int
+    assert!(run(s(&d.join("n.json"))).contains("count 41"));
+    // the `try` inside the function has no otherwise: the error leaves the function, the caller's
+    // otherwise branch takes it
+    let e = run(s(&d.join("missing.json")));
+    assert!(e.contains("unreadable") && !e.contains("count"), "{e}");
+}
+
+#[test]
+fn a_result_functions_failure_without_otherwise_is_traced_once_by_the_caller() {
+    let src = RESULT_FN.replace("  otherwise:\n    - print: \"unreadable\"\n    - stop\n", "");
+    let (d, file) = single("resultfn2", "count2.agent.md", &src);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    write(&fx, "command.json", &json!({"command": "check", "args": {"path": s(&d.join("missing.json"))}}).to_string());
+    let o = agentmark(&["trace", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let t = parse_lines(&stdout(&o));
+    assert_eq!(t.len(), 1, "{t:#?}");
+    assert_eq!(t[0]["kind"], "error");
+}

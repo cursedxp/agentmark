@@ -358,3 +358,8 @@ Written into `fixtures/05-invoice-service/`: (a) the `http` line's `path` is the
 
 ## Q158 — Boundary of `overdue` (04)
 `today > due + grace_period` is strict, so an invoice due exactly 14 days ago (`INV-6`, due 2026-09-28, today 2026-10-12) is open but not overdue: counts 5 open, 2 overdue.
+
+## Q200 — `result of T`: how a function fails, how it is called (step 10)
+SPEC 14 says a function with `- out: result of <T>` returns `Result<T, AgentError>` and callers use `try`, but gives no way to write the failure.
+**Choice:** no new statement (`fail "…"` is not in the SPEC). Inside a `result of T` function, `return v` takes a plain `T` (wrapped in `Ok`), and a `try` without `otherwise` that fails does not trace-and-stop as everywhere else: the error is returned to the caller (`return Err(err)`), untraced. The caller's `try do f(x) -> h` then decides: `otherwise:` runs, or (no `otherwise`) the error is traced once and the block stops. After the `try`, `h` is a plain `T` (also when `otherwise` assigns it). A call without `try`, or inside an expression (`f(x)`), is an error. The call form is `try do f(x) -> h` (`do` is part of the statement grammar; `try f(x) -> h` is not).
+**Why:** the one failure source the language has is a failing `try`; reusing it keeps `result of` writable without extending the grammar.

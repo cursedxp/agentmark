@@ -751,7 +751,11 @@ impl<'a> Builder<'a> {
             }
         };
         let args: Vec<ir::Expr> = args.iter().map(|a| self.expr(a)).collect();
-        let ret = self.fns.get(&fname).and_then(|f| f.ret.clone());
+        // `result of T`: the value after `try` is a `T`
+        let ret = self.fns.get(&fname).and_then(|f| f.ret.clone()).map(|t| match t {
+            Type::Result(i) => *i,
+            t => t,
+        });
         let into = into.as_ref().map(|i| {
             let ty = ret.unwrap_or(Type::Unknown);
             self.define(&i.name, ty.clone());
