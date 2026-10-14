@@ -5,3 +5,6 @@ Cargo.lock.bak
 .superpowers/
 .DS_Store
 *.agent.md.prev
+
+tools/docs-site/node_modules/
+tools/docs-site/dist/
