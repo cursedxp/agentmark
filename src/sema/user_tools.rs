@@ -14,7 +14,7 @@ use super::body::{BodyKey, Cx, FnCx};
 use super::effects::{effect_name, rank, EffectSet};
 use super::scope::Kind;
 use super::types::Type;
-use super::{BlockInfo, BlockKind, Checker, NodeKey, ParamInfo, Resolution, Sig, ToolKind, ToolResolution};
+use super::{BlockInfo, BlockKind, Checker, NodeKey, ParamInfo, Resolution, RustInfo, Sig, ToolKind, ToolResolution};
 
 /// A tool's name clashes with a tool of `tools.toml`, the built-in `file` tool or a binding.
 pub const E_TOOL_NAME: &str = "E380";
@@ -30,6 +30,13 @@ pub const E_TOOL_SHAPE: &str = "E384";
 pub const E_TOOL_NO_VALUE: &str = "E385";
 /// A verb says it returns a value but its body never does.
 pub const E_TOOL_NO_RETURN: &str = "E386";
+/// The program's default command has an argument named like a flag of every generated program.
+pub const E_ARG_RESERVED: &str = "E387";
+/// A tool is named like a library module (`text`, `json`, ...).
+pub const W_TOOL_MODULE: &str = "W380";
+
+/// Flags every generated program has (`--once`, ...); a default command cannot use them as argument names.
+pub const RESERVED_FLAGS: [&str; 8] = ["once", "schedule", "mock", "fixtures", "trace", "serve", "help", "version"];
 
 /// The function the IR makes of a verb: unique, and not a name an author can write.
 pub fn fn_name(tool: &str, verb: &str) -> String {
@@ -93,9 +100,57 @@ impl<'a> Checker<'a> {
                         span: v.name.span,
                     };
                     let name = fn_name(&t.name.name, &v.name.name);
+                    if matches!(v.body, ToolBody::Rust(_)) {
+                        // Layer 1: `check` lists it with the other trusted code
+                        self.rust_blocks.push(RustInfo {
+                            name: format!("{}.{}", t.name.name, v.name.name),
+                            file: fi,
+                            span: v.name.span,
+                            parent: Some(t.name.name.clone()),
+                            sig: sig.clone(),
+                        });
+                    }
                     self.sigs.insert((Kind::Tool, name.clone()), sig);
                     self.tool_verbs.insert(name, VerbRef { file: fi, decl: di, verb: vi });
                 }
+            }
+        }
+    }
+
+    /// The command that becomes the program's default (SPEC 22.6) cannot name an argument like one of
+    /// the flags every program has (Q388).
+    pub(super) fn check_default_command(&mut self) {
+        let p = self.p;
+        let mut runs = Vec::new();
+        let mut commands = Vec::new();
+        for (fi, f) in p.files.iter().enumerate() {
+            for d in &f.ast.decls {
+                match d {
+                    Decl::Run(r) => runs.extend(r.items.iter().map(|i| i.name.clone())),
+                    Decl::Command(c) => commands.push((fi, c)),
+                    Decl::Agent(_) | Decl::Service(_) => return,
+                    _ => {}
+                }
+            }
+        }
+        let ([(fi, c)], [only]) = (commands.as_slice(), runs.as_slice()) else { return };
+        if &c.name.name != only {
+            return;
+        }
+        for a in &c.args {
+            let flag = a.name.name.replace('_', "-");
+            if RESERVED_FLAGS.contains(&flag.as_str()) {
+                let d = Diagnostic::error(
+                    E_ARG_RESERVED,
+                    self.path(*fi),
+                    a.name.span,
+                    format!(
+                        "The argument \"{}\" would be the flag \"--{flag}\", which every program already has, and this command is the program's default.",
+                        a.name.name
+                    ),
+                )
+                .with_help(format!("Rename the argument (for example \"{}_value\"); the flags {} are taken.", a.name.name, RESERVED_FLAGS.join(", ")));
+                self.diags.push(d);
             }
         }
     }
@@ -104,17 +159,27 @@ impl<'a> Checker<'a> {
     /// tool, or of a binding (they are all spelled the same way in a statement).
     fn tool_name_clash(&mut self, fi: usize, t: &Tool) {
         let name = &t.name.name;
-        let binding = self
-            .reg
-            .get(Kind::Binding, name)
-            .map(|b| format!("the binding \"{name}\" ({}:{})", self.path(b.file), b.span.line));
+        let declared = |this: &Self, kind: Kind| {
+            this.reg
+                .get(kind, name)
+                .map(|e| format!("the {} \"{name}\" ({}:{})", kind.noun(), this.path(e.file), e.span.line))
+        };
         let other = if name == "file" {
             Some("the built-in file tool".to_string())
         } else if self.p.manifest.tool(name).is_some() {
             Some(format!("the tool \"{name}\" of tools.toml"))
         } else {
-            binding
+            [Kind::Binding, Kind::Agent, Kind::Command, Kind::Service].into_iter().find_map(|k| declared(self, k))
         };
+        if crate::stdlib::is_module(name) {
+            self.warn(
+                W_TOOL_MODULE,
+                fi,
+                t.name.span,
+                format!("The tool \"{name}\" has the name of a library module, so \"{name}.something(...)\" is easy to misread."),
+            );
+            self.diags.last_mut().unwrap().help = Some(format!("A call \"{name}.f(...)\" means this tool only when it has the verb \"f\"; consider another name."));
+        }
         if let Some(other) = other {
             let d = Diagnostic::error(
                 E_TOOL_NAME,

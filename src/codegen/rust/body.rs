@@ -640,10 +640,11 @@ impl<'a> Body<'a> {
             Some(h) => format!("{}::{}", h.module, h.ident),
             None => value_ident(name),
         };
-        if a.is_empty() {
-            format!("{path}(ctx).await?")
+        let call = if a.is_empty() { format!("{path}(ctx)") } else { format!("{path}(ctx, {a})") };
+        if self.n.recursive.contains(name) {
+            format!("Box::pin({call}).await?")
         } else {
-            format!("{path}(ctx, {a}).await?")
+            format!("{call}.await?")
         }
     }
 

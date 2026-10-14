@@ -133,3 +133,52 @@ fn a_verb_that_can_fail_is_called_with_try() {
         [tool("conv", "double", json!({"word": "abc"})), json!({"kind": "print", "message": "not a number: abc"})]
     );
 }
+
+#[test]
+fn positional_and_named_values_mix_and_wrong_ones_are_usage_errors() {
+    let (_src, _out, bin) = build_shop();
+    // a named argument leaves the positional values to the others, in declared order
+    let work = temp("shop-mix");
+    assert!(run_in(&bin, &work, &["--title", "Named First", "4"]).status.success());
+    assert_eq!(std::fs::read_to_string(work.join("ledger.txt")).unwrap(), "NAMED-FIRST x4\nnamed-first\nagain named-first\n");
+    let work = temp("shop-mix");
+    assert!(run_in(&bin, &work, &["Hello", "--count", "7"]).status.success());
+    assert!(std::fs::read_to_string(work.join("ledger.txt")).unwrap().starts_with("HELLO x7\n"));
+
+    // too many values, or one that is given by name and by position: a usage error, nothing runs
+    for args in [&["a", "2", "3"][..], &["Hello", "2", "--count", "3"], &["--title", "Other", "2", "x"]] {
+        let work = temp("shop-bad");
+        let o = run_in(&bin, &work, args);
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+        assert!(stderr(&o).contains("unexpected value"), "{args:?}: {}", stderr(&o));
+        assert!(stderr(&o).contains("Usage:"), "{}", stderr(&o));
+        assert!(!work.join("ledger.txt").exists(), "{args:?}");
+    }
+    // a value of the wrong type
+    let work = temp("shop-bad");
+    let o = run_in(&bin, &work, &["Hello", "many"]);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(stderr(&o).contains("\"many\" is not a valid value for <COUNT>"), "{}", stderr(&o));
+}
+
+#[test]
+fn a_default_command_without_required_arguments_recursion_and_aliased_tools_build_warning_free() {
+    let src = temp("calc-src");
+    copy_dir(Path::new(&format!("{ROOT}/tests/user_tools/calc")), &src);
+    let out = temp("calc-out");
+    let o = agentmark(&["build", s(&src), "--target", "rust", "-o", s(&out)]).output_locked();
+    assert!(o.status.success(), "agentmark build failed:\n{}", stderr(&o));
+    let bin = build_bin(&out, "calc"); // asserts: no warning, so no unused `missing_argument`
+    let work = temp("calc-work");
+    let o = run_in(&bin, &work, &[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let prints: Vec<String> = parse_lines(&stdout(&o)).iter().filter(|l| l["kind"] == "print").map(|l| l["message"].as_str().unwrap().to_string()).collect();
+    assert_eq!(prints, ["n! = 120", "120"]);
+    let o = run_in(&bin, &work, &["6", "six"]);
+    let prints: Vec<String> = parse_lines(&stdout(&o)).iter().filter(|l| l["kind"] == "print").map(|l| l["message"].as_str().unwrap().to_string()).collect();
+    assert_eq!(prints, ["six! = 720", "720"]);
+    // the recursive verb is traced at every level
+    let trace = parse_lines(&stdout(&run_in(&bin, &work, &["3"])));
+    let calls: Vec<&Value> = trace.iter().filter(|l| l["kind"] == "tool" && l["tool"] == "maths").collect();
+    assert_eq!(calls.iter().map(|l| l["args"]["n"].as_i64().unwrap()).collect::<Vec<_>>(), [3, 2, 1]);
+}

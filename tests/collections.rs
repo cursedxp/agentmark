@@ -65,8 +65,9 @@ fn the_project_is_canonical_and_checks_clean() {
     }
 }
 
+/// `command` is empty for a program whose one command is its default (SPEC 22.6: no subcommand name).
 fn run_bin(bin: &Path, fx: &Path, command: &str) -> std::process::Output {
-    Command::new(bin).args(["--mock", "--fixtures", s(fx), "--trace", "-", command]).output().unwrap()
+    Command::new(bin).args(["--mock", "--fixtures", s(fx), "--trace", "-"]).args(Some(command).filter(|c| !c.is_empty())).output().unwrap()
 }
 
 fn built() -> (Tmp, PathBuf) {
@@ -546,7 +547,7 @@ fn unused_loop_variables_and_element_names_build_warning_free() {
     let bin = build_bin(&d.join("out"), "quiet");
     let fx = d.join("fx");
     write(&fx, "model.json", r#"{"today":"2026-10-14","responses":[]}"#);
-    let o = run_bin(&bin, &fx, "quiet");
+    let o = run_bin(&bin, &fx, "");
     assert!(o.status.success(), "{}", stderr(&o));
     let lines: Vec<String> = parse_lines(&stdout(&o)).iter().map(|t| t["message"].as_str().unwrap().to_string()).collect();
     assert_eq!(

@@ -510,6 +510,7 @@ impl<'a> Checker<'a> {
         self.check_constants();
         self.check_all_bodies();
         self.check_runs();
+        self.check_default_command();
         limits::check(self);
         unused::check(self);
     }

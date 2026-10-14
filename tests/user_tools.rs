@@ -328,3 +328,105 @@ fn every_verb_is_a_function_of_the_ir_and_shows_in_the_effect_summary() {
             if tool == "ledger" && verb == "add"
     ));
 }
+
+// ------------------------------------------------------------------ review fixes
+
+#[test]
+fn e387_the_default_command_cannot_have_an_argument_named_like_a_program_flag() {
+    let one = "# Command: c\n- args: mock: bool = false, fixtures: text\n\n## Run\n- print: \"x\"\n\n# Run\n- c\n";
+    expect(one, "E387", &["The argument \"mock\" would be the flag \"--mock\"", "Rename the argument"]);
+    assert_eq!(codes(one), ["E387", "E387"]);
+    // not the default (two commands): the names are subcommand arguments
+    let two = "# Command: c\n- args: mock: bool = false\n\n## Run\n- print: \"x\"\n\n# Command: d\n\n## Run\n- print: \"y\"\n\n# Run\n- c\n- d\n";
+    ok(two);
+}
+
+#[test]
+fn check_lists_a_rust_verb_with_the_trusted_code() {
+    let c = ok(&format!("{SLUGGER}\n# Tool: caps\n- effect: pure\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n"));
+    let r = c.rust_blocks.iter().find(|r| r.name == "caps.shout").expect("listed");
+    assert_eq!(r.parent.as_deref(), Some("caps"));
+    assert_eq!(r.sig.effect, agentmark::syntax::ast::Effect::Pure);
+}
+
+#[test]
+fn a_tool_of_an_aliased_import_is_called_with_its_module_in_a_statement() {
+    let files = vec![
+        ("app/main.agent.md", "# Import: ./tools as tools\n\n# Command: c\n- args: title: text\n\n## Run\n- tools.ledger add title\n- tools.ledger size title -> n\n- print: \"{n}\"\n"),
+        ("app/tools/ledger.agent.md", LEDGER),
+    ];
+    let p = Project::from_memory("app/main.agent.md", files.clone());
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    assert_eq!(c.unit_effect("c").to_string(), "local(file, ledger, print)");
+    // a typo in the module part is an unknown tool, with a suggestion
+    let bad = files[0].1.replace("tools.ledger add", "tools.ledgr add");
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", bad.as_str()), files[1]]);
+    let d = sema::check(&p).unwrap_err();
+    let text = p.render(&d);
+    assert!(text.contains("Unknown tool \"tools.ledgr\"") && text.contains("Did you mean \"tools.ledger\"?"), "{text}");
+    // and it formats as written
+    let src = "# Command: c\n- args: title: text\n\n## Run\n- tools.ledger add title\n";
+    assert_eq!(format_source(src, "t.agent.md").unwrap(), src);
+}
+
+#[test]
+fn a_tool_cannot_share_its_name_with_an_agent_command_or_service() {
+    for (kind, decl) in [
+        ("agent", "# Agent: ledger\n- model: claude\n\n## On start\n- stop\n"),
+        ("command", "# Command: ledger\n\n## Run\n- stop\n"),
+        ("service", "# Service: ledger\n- listen: 0.0.0.0:80\n\n## GET /x\n- respond 200\n"),
+    ] {
+        let src = format!("{LEDGER}\n{decl}");
+        expect(&src, "E380", &[&format!("The tool \"ledger\" has the same name as the {kind} \"ledger\"")]);
+    }
+}
+
+#[test]
+fn a_tool_named_like_a_library_module_gets_a_warning() {
+    let w = warnings("# Tool: json\n- effect: pure\n\n## shout(word: text) -> text\n- return text.upper(word)\n\n# Command: c\n- args: w: text\n\n## Run\n- print: \"{json.shout(w)}\"\n");
+    assert!(w.contains("The tool \"json\" has the name of a library module"), "{w}");
+}
+
+const MINI_HASH: &str = "# Binding: sha2
+- crate: sha2
+- effect: pure
+
+## sha256_new() -> handle of sha2.Sha256
+  ```rust
+  Ok(<sha2::Sha256 as sha2::Digest>::new())
+  ```
+
+## finalize(self: consume handle of sha2.Sha256) -> bytes
+  ```rust
+  Ok(<sha2::Sha256 as sha2::Digest>::finalize(self_).to_vec())
+  ```
+";
+
+#[test]
+fn a_verb_may_take_a_handle_it_uses_up_and_the_trace_leaves_it_out() {
+    let tool = "# Import: crate sha2\n\n# Tool: hashing\n- effect: pure\n\n## drain(hasher: handle of sha2.Sha256, label: text) -> bytes\n- hasher finalize -> digest\n- return digest\n\n";
+    let cmd = |body: &str| format!("{tool}# Command: c\n- args: w: text\n\n## Run\n{body}");
+    let load = |src: &str| {
+        Project::from_memory(
+            "app/main.agent.md",
+            vec![("app/main.agent.md", src), ("app/bindings/sha2.agent.md", MINI_HASH), ("app/tools.toml", "")],
+        )
+    };
+    let good = cmd("- sha2 sha256_new -> h\n- hashing drain h w -> d\n- print: \"done\"\n");
+    let p = load(&good);
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    let prog = agentmark::ir::lower(&p, &c);
+    let f = prog.functions.iter().find(|f| f.name == "hashing__drain").unwrap();
+    match &f.body[0].kind {
+        agentmark::ir::StmtKind::Effect { call: agentmark::ir::EffectCall::Trace(agentmark::ir::TraceEvent::ToolCall { args, .. }), .. } => {
+            assert_eq!(args.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["label"], "a handle is not traced");
+        }
+        other => panic!("{other:?}"),
+    }
+    // passing the handle to the verb used it up
+    let bad = cmd("- sha2 sha256_new -> h\n- hashing drain h w -> d\n- hashing drain h w -> e\n");
+    let p = load(&bad);
+    let d = sema::check(&p).unwrap_err();
+    let text = p.render(&d);
+    assert!(text.contains("\"h\" was used up on line"), "{text}");
+}

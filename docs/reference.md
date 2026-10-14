@@ -2118,7 +2118,7 @@ How a call is written:
 | form | when |
 |---|---|
 | `- tool verb a b -> result` | any tool. The words and values after the verb are the arguments, in the order of the parameters; `-> result` is optional. One more value may follow a colon (`- notes save "a.txt": body`). |
-| `tool.verb(a, b)` | an expression, only for a `pure` tool whose verb returns a value. A tool of an imported folder is written with its module name (`tools.slugger.slug(title)`); the statement form needs the tool imported without a module name. |
+| `tool.verb(a, b)` | an expression, only for a `pure` tool whose verb returns a value. A tool of an imported folder is written with its module name (`tools.slugger.slug(title)`); the statement form takes the module too (`- tools.ledger add title`). |
 
 The declared effect is checked against the body exactly like a `# Function`: a verb may not do more than its tool says, and
 a call has the effect of what the body does, at least the effect the tool declares. `check` lists one line per verb
@@ -2187,14 +2187,14 @@ greeter.agent.md:6
 
 Error codes: E380 a tool named like a tool of `tools.toml`, like `file` or like a binding, E381 a verb twice in one tool, E382
 an expression call of a tool that is not `pure`, E383 an unknown verb (or none), E384 `field = value` after a tool
-statement, E385 the result of a verb that returns nothing, E386 a verb that says it returns a value and never does. The
+statement, E385 the result of a verb that returns nothing, E386 a verb that says it returns a value and never does, E387 an argument of the default command named like a flag every program has (`--once`, `--mock`, …). A tool named like a library module is warned about (W380); a tool also cannot be named like an agent, command, service or binding (E380). The
 effect error is E206, as for functions.
 
 ### 22.6 Programs
 
 A project whose `# Run` lists a single `# Command` (and no agent or service) makes that command the binary's default:
 `my-tool <args>` runs it without a subcommand name. Each argument is positional, in the order it is declared, or
-`--name value`; a `bool` argument is the flag `--name`. A name written with underscores also takes dashes (`--dry-run`,
+`--name value`, and the two mix: the positional values go, in declared order, to the arguments not given by name. A `bool` argument is the flag `--name`. Too many values (including one for an argument already given by name) is a usage error. A name written with underscores also takes dashes (`--dry-run`,
 `--dry_run`). An argument with a default may be left out:
 
 ```agentmark

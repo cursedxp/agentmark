@@ -21,38 +21,36 @@ fn is_flag(a: &Param) -> bool {
     a.ty == Type::Bool && !matches!(a.default.as_ref().map(|d| &d.kind), Some(ExprKind::Bool(true)))
 }
 
-/// `struct CmdArgs`: the command's arguments, flattened into the program's command line.
+/// `struct CmdArgs`: the command's arguments, flattened into the program's command line. A value
+/// argument is `--name value` or one of the trailing positional values, which are handed to the
+/// arguments not given by name in declared order (`run_default` does that and checks them).
 pub fn args_struct(c: &Ctxt, cmd: &Command) -> String {
     let mut s = String::from("/// The arguments of the program's one command (`-h` lists them): positional, or `--name value`.\n#[derive(clap::Args)]\nstruct CmdArgs {\n");
-    let mut index = 0;
     for a in &cmd.args {
         let id = c.n.local(&a.name);
         let flag = a.name.replace('_', "-");
         let alias = if flag == a.name { String::new() } else { format!(", alias = {}", lit(&a.name)) };
-        let ty = rust_type(&a.ty, c.n);
         if is_flag(a) {
             s.push_str(&format!("    #[arg(long = {}{alias})]\n    {id}: bool,\n", lit(&flag)));
         } else if a.ty == Type::Bool {
             s.push_str(&format!("    #[arg(long = {}{alias}, action = clap::ArgAction::Set, default_value_t = true)]\n    {id}: bool,\n", lit(&flag)));
         } else {
-            index += 1;
             let hyphen = if a.ty == Type::Int { ", allow_negative_numbers = true" } else { "" };
-            s.push_str(&format!(
-                "    #[arg(index = {index}, value_name = {}{hyphen})]\n    {id}_pos: Option<{ty}>,\n    #[arg(long = {}{alias}, value_name = {}{hyphen})]\n    {id}_opt: Option<{ty}>,\n",
-                lit(&a.name.to_uppercase()),
-                lit(&flag),
-                lit(&a.name.to_uppercase()),
-            ));
+            s.push_str(&format!("    #[arg(long = {}{alias}, value_name = {}{hyphen})]\n    {id}: Option<String>,\n", lit(&flag), lit(&a.name.to_uppercase())));
         }
     }
-    s.push_str("}\n\n");
+    let names: Vec<String> = cmd.args.iter().filter(|a| a.ty != Type::Bool).map(|a| a.name.to_uppercase()).collect();
+    s.push_str(&format!(
+        "    /// {}\n    #[arg(value_name = \"VALUE\", allow_negative_numbers = true)]\n    rest: Vec<String>,\n}}\n\n",
+        if names.is_empty() { "No positional values".to_string() } else { format!("Values in the order {}, for the ones not given by name", names.join(" ")) }
+    ));
     s
 }
 
-/// `run_default`: pick each argument (named, else positional, else its default) and run the command.
+/// `run_default`: pick each argument (named, else the next positional value, else its default) and run the command.
 pub fn run_default(c: &Ctxt, cmd: &Command, state_init: &str) -> String {
     let p = c.p;
-    let mut s = String::from("/// Run the program's one command from the command line.\n#[allow(unused_variables)]\nasync fn run_default(ctx: &Ctx, a: CmdArgs) -> Result<usize, AgentError> {\n");
+    let mut s = String::from("/// Run the program's one command from the command line.\n#[allow(unused_variables)]\nasync fn run_default(ctx: &Ctx, a: CmdArgs) -> Result<usize, AgentError> {\n    let mut rest = a.rest.into_iter();\n");
     let mut names: Vec<String> = Vec::new();
     for arg in &cmd.args {
         let id = c.n.local(&arg.name);
@@ -62,29 +60,38 @@ pub fn run_default(c: &Ctxt, cmd: &Command, state_init: &str) -> String {
         } else {
             let b = Body::new(p, c.n, &c.o.root, "main", Kind::Unit, None);
             let fallback = match &arg.default {
-                Some(d) => format!(".unwrap_or_else(|| {})", b.val(d)),
-                None => format!(".unwrap_or_else(|| missing_argument({}))", lit(&arg.name)),
+                Some(d) => b.val(d).to_string(),
+                None => format!("usage_error(\"the argument <{}> is required (give it as a value or as --{})\")", arg.name.to_uppercase(), arg.name.replace('_', "-")),
             };
-            s.push_str(&format!("    let {id}: {ty} = a.{id}_opt.or(a.{id}_pos){fallback};\n"));
+            // the text of the command line, read as the argument's type
+            let conv = match &arg.ty {
+                Type::Text => "Some(t.clone())",
+                Type::Bytes => "Some(t.clone().into_bytes())",
+                Type::Int | Type::Money | Type::Date | Type::DateTime => "t.parse().ok()",
+                _ => "serde_json::from_str(&t).ok()",
+            };
+            s.push_str(&format!(
+                "    let {id}: {ty} = match a.{id}.or_else(|| rest.next()) {{\n        Some(t) => ({conv}).unwrap_or_else(|| usage_error(&format!(\"{{t:?}} is not a valid value for <{}>\"))),\n        None => {fallback},\n    }};\n",
+                arg.name.to_uppercase()
+            ));
         }
         names.push(id);
     }
+    s.push_str("    if let Some(extra) = rest.next() {\n        usage_error(&format!(\"unexpected value {extra:?}: every argument is already given (an argument given by name does not take a positional value too)\"));\n    }\n");
     let args = if names.is_empty() { String::new() } else { format!(", {}", names.join(", ")) };
     s.push_str(&format!(
         "    {}::run(ctx{args}{state_init}).await.map_err(|e| command_failed(ctx, {}, e))?;\n    Ok(0)\n}}\n\n",
         c.n.commands[0],
         lit(&cmd.name)
     ));
-    s.push_str(MISSING);
+    s.push_str(USAGE_ERROR);
     s
 }
 
-const MISSING: &str = r#"/// A command argument that was not given: the usage message of the command line, then exit.
-fn missing_argument(name: &str) -> ! {
+const USAGE_ERROR: &str = r#"/// A command line the command cannot use: the usage message of the command line, then exit.
+fn usage_error(message: &str) -> ! {
     use clap::CommandFactory;
-    Cli::command()
-        .error(clap::error::ErrorKind::MissingRequiredArgument, format!("the argument <{}> is required (give it as a value or as --{})", name.to_uppercase(), name.replace('_', "-")))
-        .exit()
+    Cli::command().error(clap::error::ErrorKind::InvalidValue, message).exit()
 }
 
 "#;
