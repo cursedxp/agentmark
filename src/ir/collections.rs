@@ -102,6 +102,7 @@ impl CollOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum CollStmt {
     /// `put v at k in m`; `map` is a path to the map.
     Put { value: Expr, key: Expr, map: Expr },
