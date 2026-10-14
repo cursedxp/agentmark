@@ -601,6 +601,48 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q307 — Recursive enums, record literals, `try f(x)` (step 20)
 - Choice: an enum that would hold itself inline (directly, in a `maybe`, or through a record or another enum) is E315, with the hint to use `list of`; the generated Rust could not store it, and boxing would leak into every field access. A branch name used as a whole value is E316. Per the controller's note on SPEC 22: `Sale { region: "EU", amount: 120.00 EUR }` builds a record the way a variant is built (a bare name that is no variant but a record; every non-`maybe` field required, same field errors); `- try f(x) -> v` (and `try module.f(x) -> v`) is the `do`-less spelling of `try do f(x) -> v` (the formatter keeps the author's spelling); `if <expr> is some x:` already accepts any `maybe` expression, calls included. `match f(x):` with `ok`/`error` stays as in Q300. `try f(x) -> v` is the canonical spelling of Q200's `try do f(x) -> v`; messages suggest it. `none` whose type nothing decides (`set d = none`, a plain record field) is E317.
 - Why: SPEC 22.1/22.3 as amended; one construction syntax for records and variants.
+## Q340 — `number.*` works on `int`, and on `money` where it makes sense (step 22)
+- Question: SPEC 22.3 lists `round(x, places)`, `format(x, places)`, `min`, `max`, `abs` under `number`, but v0.3 has no float type (plan: no float unless an example needs one).
+- Choice: `min`, `max`, `abs` and `round` take `int` or `money` (two arguments of one kind; money of two currencies is a run-time error). `round(x, places)`: a whole number has no decimals, so `places` of 0 or more leaves it alone and a negative `places` rounds to tens, hundreds, … (`round(1235, -1)` is 1240, half away from zero); for money `places` counts decimals of the whole unit (`round(12.35 EUR, 1)` is 12.40 EUR, `round(12.50 EUR, 0)` is 13.00 EUR). `format(x, places)` takes an `int` and writes exactly `places` decimals (`format(12, 2)` is `12.00`). `number.parse(t)` takes an optional sign and ignores white space around the number; `"1.5"` is an error.
+- Why: no example needs a float; money rounding is the useful meaning of `round` in this language, and it stays in integer minor units.
+
+## Q341 — Date patterns: strftime or a readable form (step 22)
+- Question: SPEC 22.3 names `date.parse(t, pattern)` and `date.format(d, pattern)` without a pattern language; the brief asked for a readable one, the v0.3 examples (07, `"%Y%m%d"`) use strftime.
+- Choice: both. A pattern containing a `%` is chrono's strftime, as written (`%Y-%m-%d`, `%Y%m%d`). Any other pattern is the readable form: `YYYY` `YY` `MMMM` (October) `MMM` (Oct) `MM` `DD` `dddd` (Saturday) `ddd` (Sat) `HH` `mm` `ss`; every other character stands for itself and `[text]` protects letters (`"[Day] DD"`). `date.format` also takes a `datetime` (a `date` has time 00:00); `date.parse` gives a `date` and drops a time of day it reads. A literal pattern that is not valid is compile error E343; a computed one that is not is a run-time error in `format` and an error value from `parse`. `json.encode` / `csv.encode` refuse handle-typed values and `json.parse` / `csv.parse` cannot read a handle (E342); `csv.encode` wants a list of records. `date.days_between(a, b)` is `b - a` in days.
+- Why: the examples are the contract; the readable form costs one function and suits patterns people write from memory.
+
+## Q342 — Calls that return `result of T`: `try`, `do`, `as T` (step 22)
+- Question: SPEC 22.3 writes `- try <call> -> var`, `json.parse(t) as T`, `csv.parse(t) as list of T`; the examples write `- try do csv.parse(content) as list of Sale -> sales`.
+- Choice: both `- try <call> -> var` and `- try do <call> -> var` parse (`do` is optional and the formatter keeps the spelling). `as <type>` follows the call directly and only `json.parse` and `csv.parse` take it (`csv.parse` needs `list of <record>`); without it E342 says what to write. Outside `try` a call of a `result` function is E341 ("can fail … has to be called with try"). The statement is `StmtKind::CallInto { call, into, via_do }`, the typed call `ExprKind::Decode { call, ty }`; in the IR an expression `ExprKind::Std { module, name, args, decode }` and, for the failing ones in `try`, `EffectCall::Std`. `- match <call>:` over a library `result` needs the checker flag `Cx.std_ok` set where Task 20's `Cx.match_call` is set (step 20 owns `match`; `Std` calls evaluate to a Rust `Result` there, without `?`).
+- Why: one spelling per SPEC and one per example; unknown functions and wrong uses fail at check time, never in rustc.
+
+## Q343 — `regex.*`: dialect, groups, bad patterns (step 22)
+- Choice: Rust `regex` syntax (no look-around; `$1` in `replace`; `$$` is a dollar sign), unanchored. `captures` returns the capture groups without the whole match (a group that took no part is empty text); a pattern without groups gives an empty list. A literal pattern, or a constant holding one, is compiled by the checker (E343); a pattern built at run time that does not compile is a run-time error with the regex message (these functions have `rt_err` in the table, so generated code writes `?`). Compiled patterns are cached per process.
+- Why: Q401 of step 25 fixes the dialect the examples use; a bad pattern is a programmer error, not a value.
+
+## Q344 — The `file` tool (step 22)
+- Choice: `file` is a built-in tool of effect `local`, shown as `local(file)` in `check`. The parser reads `file <verb> <path> [to <new> | : <text>] [-> name]` itself (`StmtKind::File`; the path and the other operands are full expressions, so `file rename path.join(a, b) to path.join(a, c)` works) and `file` is a reserved statement word. A `[file]` table in `tools.toml` is E347. Verbs and their shapes are rows of `stdlib::FILE_VERBS`: `read` (gives `text`, a `result`: E341 without `try`), `write` (exactly the text; replaces), `append` (the line plus `\n`; creates the file), `list` (names of files and folders, sorted by name), `rename` (a plain error when the target already exists), `exists` (file or folder), `delete` (a file or an empty folder). Paths are used as written (relative to the working directory); there is no sandbox. Every call is traced `{"kind":"file","verb":…,"path":…}` (`rename` adds `"to"`) **before** it runs, so a failing call is traced too. Failures are `RtError::Lib` with plain text (`cannot read "x": it does not exist`).
+- Why: SPEC 22.3 plus Q400; tracing the attempt shows what a program tried when it failed.
+
+## Q345 — `read input -> text` (step 22)
+- Choice: reads all of standard input as `text` (effect `local(input)`, not traced). The statement is `StmtKind::ReadInput`.
+- Why: SPEC 22.3 names it; a program that reads stdin needs no tool entry.
+
+## Q346 — `json.*` and `csv.*` decoding (step 22)
+- Choice: `json.parse(t) as T` is serde: record fields are the JSON keys, `money` is text like `"12.50 EUR"`, `date` is `"2026-10-13"`, a `maybe` field may be missing or null. `csv.parse(t) as list of T` reads the first row as field names; cells are read as the field's type (money `120.00 EUR`, date `2026-10-01`, whole numbers, `true`/`false`; an empty cell is an empty `maybe`), white space around a cell is ignored, a text field keeps `007` as written. Errors are plain: `line 3, column 2: …`, `line 2: the row has 2 cells, the header has 3`. `json.encode(v)` is compact JSON; `csv.encode(rows)` writes a header from the first row's field names then one line per row (cells: text as is, numbers, bools, money/date as their text, an empty `maybe` as empty).
+- Why: the generated records are already serde types; the csv crate's typed reading gives exact per-field behaviour without a second parser.
+
+## Q347 — Library names lose to the author's names (step 22)
+- Choice: `text.split(...)` is a library call only when no function of that name is imported (a module alias called `text` with a `split` function wins). A variable called `path` or `text` does not matter: only the call form `module.fn(` reaches the library.
+- Why: existing programs keep their meaning when the library grows.
+
+## Q348 — Generated projects without records or state build warning free (step 22)
+- Choice: `records.rs` writes its `use serde::…` line only when there is a record, and `run_command` / `run_command_file` carry `#[allow(unused_variables)]` (`mock` is unused when no command has state). Examples 07 and 09 are record-less commands.
+- Why: `build_bin` in the tests requires a warning-free build.
+
+## Q349 — New dependencies of agentmark-rt (step 22)
+- Choice: `regex` and `csv` (and its `csv-core`, fetched once from the network: the offline cache did not hold it) in `agentmark-rt`; every generated project gets them through the runtime crate. `chrono`'s `serde` feature is a dev-dependency of the runtime tests only (generated projects enable it themselves).
+- Why: SPEC 22.3 needs a regex engine and CSV reading; both are small and widely used.
 
 ## Q360 — Binding-file syntax for handles and receivers (step 23)
 - Question: SPEC 22.4 shows the statement forms (`- hasher update data`, `- hasher finalize -> digest`) but not how a binding file declares a handle, a method, or how a call holds the handle.

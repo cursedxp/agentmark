@@ -12,6 +12,7 @@ mod body;
 mod files;
 mod main_rs;
 pub mod names;
+mod stdlib;
 mod ty;
 
 use files::Ctxt;

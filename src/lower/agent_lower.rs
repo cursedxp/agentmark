@@ -76,6 +76,7 @@ pub fn walk_expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
         ExprKind::Some(x) => walk_expr_mut(x, f),
         ExprKind::None => {}
         ExprKind::Call { args, .. } => args.iter_mut().for_each(|a| walk_expr_mut(a, f)),
+        ExprKind::Decode { call, .. } => walk_expr_mut(call, f),
         ExprKind::Record(fields) | ExprKind::Variant { fields, .. } => {
             fields.iter_mut().for_each(|r| walk_expr_mut(&mut r.value, f))
         }
@@ -660,6 +661,21 @@ impl Lw<'_> {
             StmtKind::Append { value, list } => StmtKind::Append {
                 value: self.expr(value),
                 list: self.expr(list),
+            },
+            StmtKind::ReadInput { into } => StmtKind::ReadInput { into: into.clone() },
+            StmtKind::File { verb, path, arg, into } => StmtKind::File {
+                verb: verb.clone(),
+                path: self.expr(path),
+                arg: arg.as_ref().map(|a| match a {
+                    FileArg::To(e) => FileArg::To(self.expr(e)),
+                    FileArg::Content(e) => FileArg::Content(self.expr(e)),
+                }),
+                into: into.clone(),
+            },
+            StmtKind::CallInto { call, into, via_do } => StmtKind::CallInto {
+                call: self.expr(call),
+                into: into.clone(),
+                via_do: *via_do,
             },
             StmtKind::Print(e) => StmtKind::Print(self.expr(e)),
             StmtKind::Try { stmt, otherwise } => StmtKind::Try {

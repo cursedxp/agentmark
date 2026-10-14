@@ -245,6 +245,14 @@
     "expression": {
       "patterns": [
         { "include": "#string" },
+        {
+          "match": "\\b(text|regex|number|money|date|path|json|csv)(\\.)([a-z_]+)(?=\\()",
+          "captures": {
+            "1": { "name": "support.class.builtin-module.agentmark" },
+            "2": { "name": "punctuation.accessor.agentmark" },
+            "3": { "name": "support.function.builtin.agentmark" }
+          }
+        },
         { "match": "\\b\\d{4}-\\d{2}-\\d{2}\\b", "name": "constant.numeric.date.agentmark" },
         { "match": "\\b\\d+(?:\\.\\d+)?\\s*(?:[A-Z]{3})\\b", "name": "constant.numeric.money.agentmark" },
         { "match": "\\b\\d+\\s*(?:second|minute|hour|day|week|month|year)s?\\b", "name": "constant.numeric.duration.agentmark" },

@@ -75,6 +75,8 @@ pub struct Cx {
     /// The call expression directly after `match`: a `result of T` function may be called there
     /// without `try`.
     pub match_call: Option<crate::diag::Span>,
+    /// The built-in library call (by span) that may be a `result`: the one directly after `try`.
+    pub std_ok: Option<crate::diag::Span>,
     /// Handles (SPEC 22.4) that were used up (`self` methods, passing them on): variable ->
     /// the span of the line that used it up.
     pub consumed: HashMap<String, crate::diag::Span>,
@@ -98,6 +100,7 @@ impl Cx {
             unwrap_log: Vec::new(),
             in_try: false,
             match_call: None,
+            std_ok: None,
             consumed: HashMap::new(),
             handle_ok: false,
         }

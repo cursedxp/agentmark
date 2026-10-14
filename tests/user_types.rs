@@ -352,7 +352,7 @@ fn a_command_without_arguments_runs() {
 
 #[test]
 fn a_record_named_like_a_rust_type_still_builds_warning_free() {
-    let src = "# Record: Box\n- tree: text\n\n# Enum: Tree\n- Leaf\n- Node: inner: Box\n\n> Serves a box.\n# Service: boxes\n- listen: 127.0.0.1:8098\n\n## GET /box\n- respond 200 { node: Node { inner: Box { tree: \"oak\" } } }\n";
+    let src = "# Record: Box\n- tree: text\n\n# Function: word_of\n- in: s: Tree\n- out: text\n- effect: pure\n  - set word = \"angular\"\n  - match s:\n    - Leaf:\n      - set word = \"leaf\"\n    - otherwise:\n      - set word = \"node\"\n  - return word\n\n# Enum: Tree\n- Leaf\n- Node: inner: Box\n\n> Serves a box.\n# Service: boxes\n- listen: 127.0.0.1:8098\n\n## GET /box\n- respond 200 { node: Node { inner: Box { tree: \"oak\" } }, word: word_of(Leaf) }\n";
     let d = temp("boxed");
     write(&d, "boxes.agent.md", src);
     let out = d.join("out");
@@ -691,4 +691,20 @@ fn the_documentation_page_lists_enums_and_types() {
     assert!(text.contains("- Circle: radius: int"), "{text}");
     assert!(text.contains("- Empty\n"), "{text}");
     assert!(text.contains("## Types\n\n### Entries\n\nAnother name for `list of Entry`."), "{text}");
+}
+
+const NOTES: &str = "# Record: Note\n- id: int\n- title: text\n\n> Parses notes from JSON and says what happened.\n# Command: demo\n- args: body: text\n\n## Run\n- set parsed = json.parse(body) as list of Note\n- match parsed:\n  - ok notes:\n    - print: \"{count of notes} notes\"\n  - error problem:\n    - print: \"bad json\"\n- match number.parse(body):\n  - ok n:\n    - print: \"number {n}\"\n  - error:\n    - print: \"not a number\"\n";
+
+#[test]
+fn library_results_are_stored_and_matched_like_function_results() {
+    let c = common::ok(NOTES);
+    assert!(c.expr_types.values().any(|t| matches!(t, Type::Result(_))));
+    assert!(is_canonical(NOTES, "t.agent.md").unwrap());
+    let (out, _) = run_command("notes-ok", NOTES, &[], json!({"body": "[{\"id\":1,\"title\":\"a\"},{\"id\":2,\"title\":\"b\"}]"}));
+    assert_eq!(out, "2 notes\nnot a number\n");
+    let (out, _) = run_command("notes-bad", NOTES, &[], json!({"body": "12"}));
+    assert_eq!(out, "bad json\nnumber 12\n");
+    // the stored result can only be matched
+    let e = sema_errors(&NOTES.replace("- match parsed:", "- set copy = parsed\n- match parsed:"));
+    assert!(e.contains("\"parsed\" holds a result, which can only be matched."), "{e}");
 }

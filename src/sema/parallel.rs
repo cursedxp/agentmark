@@ -14,7 +14,10 @@ pub fn writes(s: &Stmt, out: &mut Vec<(String, Span)>) {
         | StmtKind::AskModel { into: i, .. }
         | StmtKind::ToolCall { into: Some(i), .. }
         | StmtKind::ReadBody { into: i, .. }
-        | StmtKind::ReadFile { into: i, .. } => out.push((i.name.clone(), s.span)),
+        | StmtKind::ReadFile { into: i, .. }
+        | StmtKind::ReadInput { into: i }
+        | StmtKind::CallInto { into: i, .. }
+        | StmtKind::File { into: Some(i), .. } => out.push((i.name.clone(), s.span)),
         StmtKind::Set { var, .. } => out.push((var.name.clone(), s.span)),
         StmtKind::Append { list, .. } => {
             if let ExprKind::Path(segs) = &list.kind {

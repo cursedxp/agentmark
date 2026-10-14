@@ -236,7 +236,12 @@ impl<'a> Body<'a> {
                     Some(raw) => raw,
                     None => self.conv(value, ty),
                 };
-                self.line(&format!("let {m}{} = {v};", self.n.local(name)));
+                if m.is_empty() {
+                    self.line(&format!("let {} = {v};", self.n.local(name)));
+                } else {
+                    // a value every branch of a `match` or `if` overwrites is not an error
+                    self.line(&format!("#[allow(unused_assignments)] let {m}{} = {v};", self.n.local(name)));
+                }
             }
             StmtKind::Assign { name, ty, value } => {
                 let v = match self.stored_result(value) {
@@ -589,6 +594,7 @@ impl<'a> Body<'a> {
                 let m = if self.assigned.contains(&d.name) { "mut " } else { "" };
                 self.allow_unused_mut(m, &d.ty);
                 let f = fut(self, ind);
+                self.line("#[allow(unused_variables)]");
                 self.line(&format!("let {m}{name} = match {f} {{"));
                 self.line("    Ok(answer) => answer,");
                 self.line("    Err(err) => {");
@@ -605,8 +611,11 @@ impl<'a> Body<'a> {
             (Some(d), Some(other)) => {
                 let name = self.n.local(&d.name);
                 let ty = self.rty(&d.ty);
+                // the value may never be read after the `try` (it only had to parse)
+                self.line("#[allow(unused_variables, unused_assignments)]");
                 self.line(&format!("let {name}: {ty};"));
                 let f = fut(self, ind);
+                self.line("#[allow(unused_assignments)]");
                 self.line(&format!("match {f} {{"));
                 self.line(&format!("    Ok(answer) => {name} = answer,"));
                 self.line("    Err(_) => {");
@@ -683,7 +692,21 @@ impl<'a> Body<'a> {
                 Eff::value(format!("bindings::{f}({a})"))
             }
             EffectCall::Fn { name, args } => Eff::value(self.fn_call(name, args)),
+            EffectCall::File(fc) => {
+                let path = self.txt(&fc.path);
+                let more = fc.arg.as_ref().map(|a| format!(", {}", self.txt(a))).unwrap_or_default();
+                let code = format!("agentmark_rt::stdlib::file::{}(ctx, {path}{more})?", fc.verb);
+                match fc.verb.as_str() {
+                    "read" | "list" | "exists" => Eff::value(code),
+                    _ => Eff::lines(vec![format!("{code};")]),
+                }
+            }
+            EffectCall::Std(x) => match &x.kind {
+                ExprKind::Std { module, name, args, decode } => Eff::value(self.std_call(module, name, args, decode.as_ref(), true)),
+                _ => Eff::value(self.val(x)),
+            },
             EffectCall::Io(io) => match io {
+                IoCall::ReadInput => Eff::value("agentmark_rt::stdlib::read_input()?".to_string()),
                 IoCall::ReadFile { path, ty } => {
                     let p = self.txt(path);
                     let v = match ty {
@@ -705,6 +728,33 @@ impl<'a> Body<'a> {
                 Eff::lines(vec![format!("ctx.trace_guard({}, {})?;", lit(name), self.ex(ok).s)])
             }
         }
+    }
+
+    /// A call of the built-in library (SPEC 22.3). `question`: turn a `result` into its value.
+    fn std_call(&self, module: &str, name: &str, args: &[Expr], decode: Option<&Type>, question: bool) -> String {
+        use super::stdlib::Pass;
+        let Some(f) = crate::stdlib::lookup(module, name) else {
+            panic!("internal compiler error: {module}.{name} is not in the library table");
+        };
+        let rendered: Vec<String> = f
+            .params
+            .iter()
+            .zip(args)
+            .map(|((_, want), a)| match super::stdlib::pass(*want) {
+                Pass::Text => self.txt(a),
+                Pass::Ref => format!("&{}", paren(self.ex(a), P_UNARY)),
+                Pass::Value => self.val(a),
+            })
+            .collect();
+        let num = args
+            .first()
+            .filter(|_| f.params.iter().any(|p| p.1 == crate::stdlib::Ty::Num))
+            .map(|a| self.rty(&a.ty));
+        let dec = decode.map(|t| match (module, t) {
+            ("csv", Type::List(item)) => self.rty(item),
+            _ => self.rty(t),
+        });
+        super::stdlib::call(f, &rendered, num.as_deref(), dec.as_deref(), question)
     }
 
     fn fn_call(&self, name: &str, args: &[Expr]) -> String {
@@ -1064,6 +1114,7 @@ impl<'a> Body<'a> {
             ExprKind::Some(x) => atom(format!("Some({})", self.val(x))),
             ExprKind::None => atom("None"),
             ExprKind::Struct { record, fields } => atom(self.struct_expr(record, fields)),
+            ExprKind::Std { module, name, args, decode } => atom(self.std_call(module, name, args, decode.as_ref(), false)),
             ExprKind::Record(fields) => {
                 let inner = fields
                     .iter()
@@ -1265,6 +1316,7 @@ fn cheap(e: &Expr) -> bool {
 fn has_await(e: &Expr) -> bool {
     match &e.kind {
         ExprKind::Call { .. } | ExprKind::Source { .. } => true,
+        ExprKind::Std { args, .. } => args.iter().any(has_await),
         ExprKind::Count { filter, source } => filter.is_some() || has_await(source),
         ExprKind::Field { base, .. } => has_await(base),
         ExprKind::Unwrap { inner, .. } => has_await(inner),
@@ -1291,7 +1343,7 @@ fn uses_bare(e: &Expr, var: &str) -> bool {
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if uses_bare(e, var))),
         ExprKind::Binary { lhs, rhs, .. } => uses_bare(lhs, var) || uses_bare(rhs, var),
         ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => uses_bare(x, var),
-        ExprKind::Call { args, .. } => args.iter().any(|a| uses_bare(a, var)),
+        ExprKind::Call { args, .. } | ExprKind::Std { args, .. } => args.iter().any(|a| uses_bare(a, var)),
         ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().any(|(_, v)| uses_bare(v, var)),
         ExprKind::Count { source, .. } => uses_bare(source, var),
         ExprKind::First { source, cond, .. } => uses_bare(source, var) || uses_bare(cond, var),
@@ -1429,7 +1481,9 @@ fn call_exprs(call: &EffectCall) -> Vec<&Expr> {
         EffectCall::Binding { args, .. } | EffectCall::Rust { args, .. } | EffectCall::Fn { args, .. } => args.iter().collect(),
         EffectCall::Io(IoCall::ReadFile { path, .. }) => vec![path],
         EffectCall::Io(IoCall::Print { message }) => vec![message],
-        EffectCall::Io(IoCall::ReadBody { .. }) => vec![],
+        EffectCall::Io(IoCall::ReadBody { .. } | IoCall::ReadInput) => vec![],
+        EffectCall::File(f) => std::iter::once(&f.path).chain(f.arg.iter()).collect(),
+        EffectCall::Std(x) => vec![x],
         EffectCall::Trace(TraceEvent::Guard { ok, .. }) => vec![ok],
     }
 }
@@ -1460,7 +1514,7 @@ fn count_unwraps(e: &Expr, out: &mut Vec<(String, String, usize)>) {
             count_unwraps(rhs, out);
         }
         ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => count_unwraps(x, out),
-        ExprKind::Call { args, .. } => args.iter().for_each(|a| count_unwraps(a, out)),
+        ExprKind::Call { args, .. } | ExprKind::Std { args, .. } => args.iter().for_each(|a| count_unwraps(a, out)),
         ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().for_each(|(_, v)| count_unwraps(v, out)),
         ExprKind::Count { source, .. } => count_unwraps(source, out),
         ExprKind::Matches { expr, .. } => count_unwraps(expr, out),

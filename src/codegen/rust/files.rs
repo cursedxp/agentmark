@@ -39,8 +39,36 @@ fn use_line(path: &str, items: &[&str]) -> String {
     }
 }
 
+/// `body` with the text of its string literals blanked out: a word inside a string (`"log.txt"`) is
+/// not a use of the item of that name.
+fn without_strings(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut in_str = false;
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        match (in_str, c) {
+            (true, '\\') => {
+                chars.next();
+                out.push(' ');
+            }
+            (true, '"') => {
+                in_str = false;
+                out.push('"');
+            }
+            (true, _) => out.push(' '),
+            (false, '"') => {
+                in_str = true;
+                out.push('"');
+            }
+            (false, _) => out.push(c),
+        }
+    }
+    out
+}
+
 fn pick<'a>(body: &str, names: &[&'a str]) -> Vec<&'a str> {
-    names.iter().copied().filter(|w| has_word(body, w)).collect()
+    let code = without_strings(body);
+    names.iter().copied().filter(|w| has_word(&code, w)).collect()
 }
 
 /// `use` lines for exactly what `body` mentions (generated code stays warning free).
@@ -584,8 +612,9 @@ pub fn records_rs(c: &Ctxt) -> String {
             first.unwrap_or_else(|| "unreachable!(\"an enum has a variant\")".into())
         ));
     }
+    let serde_use = if body.is_empty() { "" } else { "use serde::{Deserialize, Serialize};\n" };
     format!(
-        "//! Records.\n#![allow(dead_code)]\n\nuse serde::{{Deserialize, Serialize}};\n{}\n{}",
+        "//! Records.\n#![allow(dead_code)]\n\n{serde_use}{}\n{}",
         imports_with(&body, c, false),
         body.trim_end()
     ) + "\n"

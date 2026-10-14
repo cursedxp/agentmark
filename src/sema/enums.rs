@@ -1008,7 +1008,7 @@ fn join(segs: &[Ident]) -> String {
 /// A call, or a plain name (a stored result).
 fn is_call_or_name(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Call { .. } => true,
+        ExprKind::Call { .. } | ExprKind::Decode { .. } => true,
         ExprKind::Path(p) => p.len() == 1,
         _ => false,
     }

@@ -50,7 +50,9 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Payload::Assign(fields)` — `status = "x"` (trace `set` = these); `Payload::Value(e)` — text, record literal or record value.
 - `Model(ModelCall{prompt, context, schema, model})` — `ask model`: interpolated prompt; `context` = the `with` value (trace `{"id": v.id}`); `schema` = `as Record` (parse + validate); `model` = agent driver string (`claude:haiku`), None outside agents.
 - `Binding{binding,item,on,args}` — call of a `# Binding` item (`pdf render doc`); for a method call on a handle (`- hasher update data`) `on` is the handle type and `args[0]` is the handle variable (codegen lends it as `&h` / `&mut h` or moves it, by the item's `modes`); `Rust{name,args}` — `## Rust` block call; `Fn{name,args}` — function call statement (`do f(x) -> y`, former `do <action>`).
-- `Io(ReadFile{path,ty} | ReadBody{ty} | Print{message})`.
+- `Io(ReadFile{path,ty} | ReadBody{ty} | ReadInput | Print{message})` — `ReadInput`: all of standard input as `text`.
+- `File(FileCall{verb, path, arg})` — the built-in `file` tool (SPEC 22.3, Q344): `verb` is `read | write | append | list | rename | exists | delete`, `arg` the new path of `rename` or the content of `write`/`append`; `into` types: `read` text, `list` list of text, `exists` bool. Codegen emits `agentmark_rt::stdlib::file::<verb>(ctx, …)`, which traces `{"kind":"file",…}`.
+- `Std(expr)` — a failing library call (`number.parse`, `csv.parse … as …`) whose value is stored by a `try`: `expr` is an `ExprKind::Std` whose `ty` is `Result(T)`; the statement's `into` has the plain `T`.
 - `Trace(Guard{name, ok})` — one `guard` trace line; `name` is the guard source with constants inlined (`reminder length < 800`), `ok` a `bool` expression. Every guard, in agents, services, commands and functions alike, is `Let guard_ok_<line> = cond; Effect(Trace); If(not tmp){else | Stop}` (Q90).
 
 ## Expressions (`ExprKind`, each with `ty` and `effect`)
@@ -59,6 +61,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Unwrap{inner,what}` — `inner` is `maybe T` known present (narrowing from `Checked.unwraps`); codegen emits `inner.expect("<what> is not empty here")` (no bare `.unwrap()`); the node's `ty` is `T`.
 - `Interp(parts)`, `Binary{op,lhs,rhs}`, `Not`, `Record(fields)` (ty is `Object`).
 - `Variant{enum_name, variant, fields}` — an enum value (`Circle { radius: 3 }`, `Empty`); fields a `maybe` variant field leaves out are not listed. `ty` is `Type::Enum`.
+- `Std{module, name, args, decode}` — a call of the built-in library (SPEC 22.3; the one table is `crate::stdlib`). `ty` is the type of the whole call (`Result(T)` for `number.parse`, `money.parse`, `date.parse`, `json.parse`, `csv.parse`); `decode` is `T` of `json.parse(t) as T` / `list of T` of `csv.parse`. Pure; codegen writes `agentmark_rt::stdlib::<module>::<name>(…)`.
 - `Call{callee: Fn|Rust, name, args}`; `Source{tool,source,record}` (read `crm.invoices`, effect network).
 - `Count{source, filter}` — `filter` is the name of a pure `Fn(rec) -> bool`; `First{var,source,cond}` -> `maybe T`.
 - `IsEmpty`, `IsNotEmpty`, `Length`, `Matches{expr,record}`.

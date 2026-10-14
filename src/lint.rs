@@ -228,6 +228,7 @@ fn expr_children(e: &Expr) -> Vec<&Expr> {
         | ExprKind::NoAmountsChanged(x) => vec![x],
         ExprKind::Matches { expr, .. } | ExprKind::Some(expr) => vec![expr],
         ExprKind::Call { args, .. } => args.iter().collect(),
+        ExprKind::Decode { call, .. } => vec![call],
         ExprKind::Record(fields) | ExprKind::Variant { fields, .. } => {
             fields.iter().map(|f| &f.value).collect()
         }
@@ -274,9 +275,18 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         StmtKind::Return(e) | StmtKind::Print(e) => vec![e],
         StmtKind::Respond { body, .. } => body.iter().collect(),
         StmtKind::ReadFile { path, .. } => vec![path],
+        StmtKind::File { path, arg, .. } => {
+            let mut v = vec![path];
+            if let Some(FileArg::To(e) | FileArg::Content(e)) = arg {
+                v.push(e);
+            }
+            v
+        }
+        StmtKind::CallInto { call, .. } => vec![call],
         StmtKind::Append { value, list } => vec![value, list],
         StmtKind::Stop
         | StmtKind::ReadBody { .. }
+        | StmtKind::ReadInput { .. }
         | StmtKind::Try { .. }
         | StmtKind::Parallel(_)
         | StmtKind::ModelCall { .. }
@@ -710,7 +720,10 @@ fn vague_name(ctx: &mut Ctx, file: &File) {
                     }
                     StmtKind::AskModel { into, .. }
                     | StmtKind::ReadBody { into, .. }
-                    | StmtKind::ReadFile { into, .. } => add(&mut names, into),
+                    | StmtKind::ReadFile { into, .. }
+                    | StmtKind::ReadInput { into }
+                    | StmtKind::CallInto { into, .. } => add(&mut names, into),
+                    StmtKind::File { into: Some(i), .. } => add(&mut names, i),
                     StmtKind::Do { into: Some(i), .. } | StmtKind::ToolCall { into: Some(i), .. } => {
                         add(&mut names, i)
                     }

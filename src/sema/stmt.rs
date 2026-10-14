@@ -252,7 +252,7 @@ impl Checker<'_> {
                 // a call of a `result of T` function may be stored: the variable is then a
                 // result that can only be matched (Q300)
                 let saved = cx.match_call.take();
-                if matches!(expr.kind, ExprKind::Call { .. }) {
+                if matches!(expr.kind, ExprKind::Call { .. } | ExprKind::Decode { .. }) {
                     cx.match_call = Some(expr.span);
                 }
                 let t = self.expr_handle_ok(cx, expr);
@@ -373,6 +373,18 @@ impl Checker<'_> {
                         cx.acc.add(Effect::Local, "state");
                     }
                 }
+                self.check_limit(cx, s);
+            }
+            StmtKind::ReadInput { into } => {
+                self.read_input_stmt(cx, into);
+                self.check_limit(cx, s);
+            }
+            StmtKind::File { verb, path, arg, into } => {
+                self.file_stmt(cx, &super::stdlib::FileStmt { s, verb, path, arg, into }, in_try);
+                self.check_limit(cx, s);
+            }
+            StmtKind::CallInto { call, into, .. } => {
+                self.call_into_stmt(cx, s, call, into, in_try);
                 self.check_limit(cx, s);
             }
             StmtKind::Print(e) => {

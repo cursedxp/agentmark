@@ -779,6 +779,52 @@ impl<'a> Builder<'a> {
                     }),
                 }
             }
+            K::ReadInput { into } => {
+                self.define(&into.name, Type::Text);
+                ir::StmtKind::Effect {
+                    call: ir::EffectCall::Io(ir::IoCall::ReadInput),
+                    into: Some(ir::LocalVar { name: into.name.clone(), ty: Type::Text }),
+                }
+            }
+            K::File { verb, path, arg, into } => {
+                let path = self.expr(path);
+                let arg = arg.as_ref().map(|a| match a {
+                    ast::FileArg::To(e) | ast::FileArg::Content(e) => self.expr(e),
+                });
+                let ty = match verb.name.as_str() {
+                    "read" => Some(Type::Text),
+                    "list" => Some(Type::List(Box::new(Type::Text))),
+                    "exists" => Some(Type::Bool),
+                    _ => None,
+                };
+                let into = match (into, ty) {
+                    (Some(i), Some(ty)) => {
+                        self.define(&i.name, ty.clone());
+                        Some(ir::LocalVar { name: i.name.clone(), ty })
+                    }
+                    _ => None,
+                };
+                ir::StmtKind::Effect {
+                    call: ir::EffectCall::File(ir::FileCall { verb: verb.name.clone(), path, arg }),
+                    into,
+                }
+            }
+            K::CallInto { call, into, .. } => {
+                let value = self.expr(call);
+                match value.ty.clone() {
+                    Type::Result(inner) => {
+                        self.define(&into.name, (*inner).clone());
+                        ir::StmtKind::Effect {
+                            call: ir::EffectCall::Std(value),
+                            into: Some(ir::LocalVar { name: into.name.clone(), ty: *inner }),
+                        }
+                    }
+                    ty => {
+                        self.define(&into.name, ty.clone());
+                        ir::StmtKind::Let { name: into.name.clone(), ty, value }
+                    }
+                }
+            }
             K::Append { value, list } => ir::StmtKind::Append {
                 value: self.expr(value),
                 list: self.expr(list),
@@ -1198,6 +1244,22 @@ impl<'a> Builder<'a> {
                     ty,
                 )
             }
+            X::Decode { call, ty } => {
+                let ast::ExprKind::Call { func, args } = &call.kind else { unreachable!("the parser makes Decode around a call") };
+                let decode = self.ty(ty);
+                let args: Vec<ir::Expr> = args.iter().map(|a| self.expr(a)).collect();
+                let ty = known.unwrap_or_else(|| Type::Result(Box::new(decode.clone())));
+                self.mke(
+                    e,
+                    ir::ExprKind::Std {
+                        module: func[0].name.clone(),
+                        name: func[1].name.clone(),
+                        args,
+                        decode: Some(decode),
+                    },
+                    ty,
+                )
+            }
             X::Record(fields) => {
                 let fields: Vec<(String, ir::Expr)> = fields
                     .iter()
@@ -1294,6 +1356,19 @@ impl<'a> Builder<'a> {
         } else {
             self.checked.resolutions.get(&self.nk(e.span)).cloned()
         };
+        if res.is_none() && func.len() == 2 && crate::stdlib::lookup(&func[0].name, &func[1].name).is_some() {
+            let ty = known.unwrap_or(Type::Unknown);
+            return self.mke(
+                e,
+                ir::ExprKind::Std {
+                    module: func[0].name.clone(),
+                    name: func[1].name.clone(),
+                    args,
+                    decode: None,
+                },
+                ty,
+            );
+        }
         let name = match res {
             Some(Resolution::Call { decl, .. }) => decl.clone(),
             _ => func[func.len() - 1].name.clone(),
@@ -1465,7 +1540,7 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
             add(rhs);
         }
         X::Some(x) | X::TextToBytes(x) | X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
-        X::Call { args, .. } => args.iter().for_each(&mut add),
+        X::Call { args, .. } | X::Std { args, .. } => args.iter().for_each(&mut add),
         X::Record(fields) | X::Variant { fields, .. } | X::Struct { fields, .. } => fields.iter().for_each(|(_, x)| add(x)),
         X::Count { source, .. } => add(source),
         X::First { source, cond, .. } => {
@@ -1539,9 +1614,16 @@ fn kids_effect(kind: &ir::StmtKind) -> EffectSet {
             ir::EffectCall::Binding { args, .. }
             | ir::EffectCall::Rust { args, .. }
             | ir::EffectCall::Fn { args, .. } => args.iter().for_each(|x| e.merge(&x.effect)),
+            ir::EffectCall::File(f) => {
+                e.merge(&f.path.effect);
+                if let Some(a) = &f.arg {
+                    e.merge(&a.effect);
+                }
+            }
+            ir::EffectCall::Std(x) => e.merge(&x.effect),
             ir::EffectCall::Io(io) => match io {
                 ir::IoCall::ReadFile { path, .. } => e.merge(&path.effect),
-                ir::IoCall::ReadBody { .. } => {}
+                ir::IoCall::ReadBody { .. } | ir::IoCall::ReadInput => {}
                 ir::IoCall::Print { message } => e.merge(&message.effect),
             },
             ir::EffectCall::Trace(ir::TraceEvent::Guard { ok, .. }) => e.merge(&ok.effect),

@@ -53,6 +53,7 @@ const STATEMENT_WORDS: &[&str] = &[
     "print",
     "otherwise",
     "match",
+    "file",
 ];
 
 fn stmt_at<'a>(kind: StmtKind, e: &mut chumsky::input::MapExtra<'a, '_, &'a str, Ex<'a>>) -> Stmt {
@@ -226,6 +227,58 @@ pub fn head<'a>() -> P<'a, Head> {
                 .map_with(|((path, ty), into), e| {
                     stmt_at(StmtKind::ReadFile { path, ty, into }, e)
                 });
+            let read_input = kw("read")
+                .ignore_then(sp1())
+                .ignore_then(kw("input"))
+                .ignore_then(into.clone())
+                .map_with(|into, e| stmt_at(StmtKind::ReadInput { into }, e));
+            // file <verb> <path> [to <expr> | : <expr>] [-> var]
+            let file_arg = choice((
+                sp1()
+                    .ignore_then(kw("to"))
+                    .ignore_then(sp1())
+                    .ignore_then(expr.clone())
+                    .map(FileArg::To),
+                colon()
+                    .ignore_then(sp())
+                    .ignore_then(expr.clone())
+                    .map(FileArg::Content),
+            ));
+            let file = kw("file")
+                .ignore_then(sp1())
+                .ignore_then(ident())
+                .then_ignore(sp1())
+                .then(expr.clone())
+                .then(file_arg.or_not())
+                .then(into.clone().or_not())
+                .map_with(|(((verb, path), arg), into), e| {
+                    stmt_at(StmtKind::File { verb, path, arg, into }, e)
+                });
+            // [do] <library call> -> var
+            let call_into = kw("do")
+                .ignore_then(sp1())
+                .or_not()
+                .then(expr.clone().try_map(|x: Expr, span| {
+                    let call = match &x.kind {
+                        ExprKind::Decode { call, .. } => &**call,
+                        _ => &x,
+                    };
+                    match &call.kind {
+                        ExprKind::Call { func, .. }
+                            if func.len() == 2 && crate::stdlib::is_module(&func[0].name) =>
+                        {
+                            Ok(x)
+                        }
+                        _ => Err(Rich::custom(span, "not a call of the built-in library")),
+                    }
+                }))
+                .then(into.clone())
+                .map_with(|((via_do, call), into), e| {
+                    stmt_at(
+                        StmtKind::CallInto { call, into, via_do: via_do.is_some() },
+                        e,
+                    )
+                });
             let append = kw("append")
                 .ignore_then(sp1())
                 .ignore_then(expr.clone())
@@ -260,8 +313,8 @@ pub fn head<'a>() -> P<'a, Head> {
                     });
 
             choice((
-                stop, do_stmt, ask, guard, set, ret, respond, read_body, read_file, append, print,
-                tool_call,
+                stop, call_into, do_stmt, ask, guard, set, ret, respond, read_input, read_body,
+                read_file, file, append, print, tool_call,
             ))
             .labelled("a statement")
         },
@@ -324,6 +377,14 @@ pub fn head<'a>() -> P<'a, Head> {
         .separated_by(just('.'))
         .at_least(1)
         .collect::<Vec<_>>()
+        // the built-in library's calls (`number.parse(t) -> n`, `csv.parse(t) as T -> v`) are statements of their own
+        .try_map(|path: Vec<Ident>, span| {
+            if path.len() == 2 && crate::stdlib::is_module(&path[0].name) {
+                Err(Rich::custom(span, "a library call"))
+            } else {
+                Ok(path)
+            }
+        })
         .then(
             expr.clone()
                 .padded_by(sp())

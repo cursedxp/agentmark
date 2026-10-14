@@ -108,6 +108,7 @@ effects of their children instead of looking them up.
 | 19 | model providers | `crates/agentmark-rt/src/model.rs` | `crates/agentmark-rt/tests/anthropic.rs` |
 | 20.3 | language server | `crates/agentmark-lsp/src/` (section 9 below) | `crates/agentmark-lsp/tests/` |
 | 22.1 | enums, type aliases, `match` | `src/syntax/parser.rs` (`enum_decl`, `match_arms`), `src/sema/enums.rs`, `src/ir/build.rs` (`Match`, `Variant`), `src/codegen/rust/body.rs`, `src/codegen/rust/files.rs` (`records_rs`) | `tests/user_types.rs`, `tests/user_types/shapes.agent.md` |
+| 22.3 | built-in library, the `file` tool, `read input` | the table `src/stdlib.rs`, checker `src/sema/stdlib.rs`, Rust spelling `src/codegen/rust/stdlib.rs`, runtime `crates/agentmark-rt/src/stdlib/` | `tests/sema_stdlib.rs`, `tests/stdlib_syntax.rs`, `tests/stdlib_e2e.rs`, `crates/agentmark-rt/src/stdlib/` (unit tests) |
 
 The documentation is tested too: `tests/docs.rs` runs every sample in `docs/*.md`. Its header comment states which
 fenced blocks are complete programs and which are fragments, and the wrapper a fragment is parsed in.

@@ -2003,6 +2003,145 @@ shapes.agent.md:10
 
 **JSON.** An enum value is an object whose `kind` field names the variant, followed by the variant's fields:
 `{"kind":"Circle","radius":3}`, `{"kind":"Empty"}` (Q301). That is what `read file`, `read body` and `respond` read and write.
+### 22.3 The built-in library
+
+The library is part of the language, not a binding. Its functions are written `module.name(arguments)`, are all
+`pure`, and need no `# Import`. Eight modules:
+
+| module | functions |
+|---|---|
+| `text` | `split(t, sep)`, `lines(t)`, `trim(t)`, `lower(t)`, `upper(t)`, `replace(t, from, to)`, `contains(t, part)`, `starts_with(t, p)`, `ends_with(t, p)`, `length(t)`, `pad(t, width)`, `repeat(t, n)` |
+| `regex` | `matches(t, pattern)`, `find(t, pattern)`, `captures(t, pattern)`, `replace(t, pattern, with)` |
+| `number` | `round(x, places)`, `parse(t)`, `min(a, b)`, `max(a, b)`, `abs(x)`, `format(x, places)` |
+| `money` | `parse(t)`, `format(m)` |
+| `date` | `parse(t, pattern)`, `format(d, pattern)`, `days_between(a, b)` |
+| `path` | `join(a, b)`, `name(p)`, `stem(p)`, `extension(p)`, `parent(p)` |
+| `json` | `parse(t) as T`, `encode(v)` |
+| `csv` | `parse(t) as list of T`, `encode(rows)` |
+
+`agentmark check` lists the same table (a wrong name says which functions the module has), and an editor completes
+it after `text.`. What each function gives:
+
+* `text`: `split` the pieces between `sep`; `lines` like Rust `str::lines` (no empty entry for a final newline);
+  `replace` every occurrence; `length` counts characters; `pad` adds spaces on the right up to `width` characters and
+  never cuts longer text; `repeat` writes `t` `n` times.
+* `regex` uses the Rust `regex` syntax and finds a match anywhere in the text. `matches` is a `bool`; `find` is
+  `maybe text`; `captures` is `maybe list of text`: the capture groups of the first match, without the whole match
+  (a group that took no part is empty text); `replace` replaces every match, `$1` standing for group 1. A literal
+  pattern that does not compile is an error when you check the program.
+* `number` works on `int` (and `min`, `max`, `abs` and `round` also on `money` of one currency). `round(x, places)`
+  rounds half away from zero: for money to `places` decimals (`round(12.35 EUR, 1)` is `12.40 EUR`), for a whole
+  number only a negative `places` changes it (`round(1235, -1)` is `1240`). `format(x, places)` writes `places`
+  decimals (`format(12, 2)` is `12.00`).
+* `money.format(m)` writes the amount like a literal (`12.50 EUR`); `money.parse` reads one.
+* `date.format(d, pattern)` and `date.parse(t, pattern)`: a pattern that contains a `%` is strftime
+  (`%Y-%m-%d`, `%Y%m%d`); any other pattern is written with `YYYY` `YY` `MMMM` `MMM` `MM` `DD` `dddd` `ddd` `HH` `mm`
+  `ss`, other characters stand for themselves and `[text]` protects letters (`DD.MM.YYYY HH:mm`). `format` also takes a
+  `datetime`. `days_between(a, b)` is the number of days from `a` to `b`, negative when `b` is earlier.
+* `path` works on text only: `extension("a/b.jpg")` is `jpg` (no dot, empty when there is none), `parent("a/b.jpg")` is `a`.
+* `json.parse(t) as T` reads JSON into a record, a list or any type (field names are the JSON keys; money is text like
+  `"12.50 EUR"`, a date `"2026-10-13"`). `csv.parse(t) as list of T` reads one record per row, the first row naming the
+  fields. `encode` writes the other way: compact JSON, or CSV with a header row.
+
+A function that can fail returns `result of T` (`number.parse`, `money.parse`, `date.parse`, `json.parse`, `csv.parse`).
+Call it with `try`, which takes the call directly (a leading `do` is allowed), or with `match` (section 22.1); calling
+it any other way is error E341. After `try` the variable has the plain `T`:
+
+```agentmark
+> A shipping label: street padded, price as money, deadline as a date.
+# Function: label_line
+- in: street: text, price: money, deadline: date
+- out: text
+- effect: pure
+  - return "{text.pad(street, 16)}{money.format(price)}  by {date.format(deadline, "DD.MM.YYYY")}"
+
+> Reads a whole number and says how many days remain until a date.
+# Command: remaining
+- args: answer: text, deadline: text
+
+## Run
+- try number.parse(answer) -> days
+  otherwise:
+    - print: "{answer} is not a number"
+    - stop
+- try date.parse(deadline, "YYYY-MM-DD") -> due
+  otherwise:
+    - print: "{deadline} is not a date like 2026-10-31"
+    - stop
+- print: "{label_line("Main street 1", 12.50 EUR, due)}"
+- print: "{date.days_between(today, due) - days} days to spare"
+```
+
+The error for a result used as a plain value:
+
+```agentmark invalid
+> A result must be handled with try.
+# Command: wrong
+- args: answer: text
+
+## Run
+- set days = number.parse(answer)
+- print: "{days}"
+```
+
+```text
+wrong.agent.md:6
+  - set days = number.parse(answer)
+               ^^^^^^^^^^^^^^^^^^^^
+  "number.parse" can fail (it returns "result of int"), so it has to be called with "try".
+  Write "- try number.parse(...) -> value", optionally with an "otherwise:" branch.
+```
+
+#### Files and standard input
+
+Files are the built-in tool `file`, with effect `local` (shown as `local(file)` by `check`). It needs no entry in
+`tools.toml` (a `[file]` table there is error E347). Paths are used as written, so a relative path starts at the working directory.
+
+| statement | does |
+|---|---|
+| `file read <path> -> content` | the file as `text`; it can fail, so use `try` |
+| `file write <path>: <text>` | writes exactly the text (replaces the file) |
+| `file append <path>: <line>` | adds the line and a newline (creates the file) |
+| `file list <folder> -> names` | `list of text`, sorted |
+| `file rename <old> to <new>` | moves or renames; an error when `<new>` exists |
+| `file exists <path> -> present` | `bool`, for a file or a folder |
+| `file delete <path>` | a file or an empty folder |
+
+`- read input -> text` reads all of standard input (effect `local(input)`). Every `file` call is written to the trace
+before it runs, so a test sees what a program touched even when it failed:
+
+```json
+{"kind":"file","verb":"write","path":"report.txt"}
+{"kind":"file","verb":"rename","path":"report.txt","to":"archive/report-1.txt"}
+```
+
+```agentmark
+> Reads a sales CSV (region, product, amount) and writes the rows back as JSON.
+# Record: Sale
+- region: text
+- product: text
+- amount: money
+
+# Command: sales-to-json
+- args: source: text
+
+## Run
+- try file read source -> content
+  otherwise:
+    - print: "Could not read {source}"
+    - stop
+- try csv.parse(content) as list of Sale -> sales
+  otherwise:
+    - print: "{source} is not a sales file"
+    - stop
+- file write path.join(path.parent(source), "sales.json"): json.encode(sales)
+- print: "Wrote {count of sales} sales"
+```
+
+Library errors have plain messages that name the value (`"4x" is not a whole number`, `line 3, column 2: …`
+for a CSV cell, `cannot read "x.txt": it does not exist`). Error codes: E340 unknown function, E341 result without
+`try`, E342 `json.parse` / `csv.parse` without a usable `as` type, E343 a literal pattern that cannot work, E344 unknown
+`file` verb, E345 a `file` statement with a missing or extra part, E347 `[file]` in `tools.toml`.
 
 ## Appendix A. Statement index
 
@@ -2025,6 +2164,9 @@ Every statement form of the language, with where it is explained:
 | `read body as <Type> -> var` | 13.3 |
 | `read file <path> as <Type> -> var` | 13.3 |
 | `append <value> to <list>` | 13.3 |
+| `read input -> var` | 22.3 |
+| `file <verb> <path>[ to <new>\|: <text>][ -> var]` | 22.3 |
+| `try [do] <module.function>(args)[ as <Type>] -> var` | 22.3 |
 | `print: "<text>"` | 13.3 |
 | `<binding> <item> <arguments>[ -> var]` (a library call) | 15 |
 | `try <statement>` + `otherwise:` | 14 |
@@ -2049,3 +2191,4 @@ The choices made while implementing, by topic. Each is written out in `OPEN_QUES
 | lowering and the IR | Q90 to Q95 |
 | command line | Q113 to Q115 |
 | fixtures | Q150 to Q158 |
+| the built-in library and the `file` tool | Q340 to Q349 |
