@@ -1,0 +1,64 @@
+# ir: what codegen reads
+
+```rust
+let l2  = agentmark::lower::agent_lower(&project, &checked);   // L3 -> L2 AST (Lowered)
+let prog = agentmark::ir::build::build(&project, &checked, &l2); // or: agentmark::ir::lower(&project, &checked)
+agentmark::ir::effect_summary(&prog)  // [(unit, label, EffectSet)], Display = SPEC 8 string
+```
+
+The IR has no agent, rule, trigger, `ask model` or guard node. Constants are inlined. Every `Stmt` and
+`Expr` has an `effect: EffectSet` (from `Checked`; unioned from the children for nodes lowering made up).
+Types are `sema::Type`; `Type::Unknown` means "untyped JSON value" (e.g. `http post … -> x`).
+`SourceRef { file, line }` on every statement is for the `// <file>.agent.md:<line>` comments.
+Names of functions are Rust-safe (`-` -> `_`); record/service/command names are as declared (codegen maps `-`).
+
+## Runtime context (not in the IR)
+`Entry.unit`/`label` are the trace labels. Codegen calls `ctx.enter(unit, label)` once at the start of an
+entry (route: service name + `Route.label`; command: name + `"Run"`); every `Fn` it calls runs under that
+context, so a former `## Do` block reports the *entry's* label. `Trace`/model/tool lines read it from `ctx`.
+
+## Program
+- `Program` — everything: package, records, functions, entries, services, commands, rust_fns, bindings, crates, tools, run.
+- `Package` — `agentmark.toml` name/version.
+- `Record` / `RecordField` — a record with resolved (inferred) field types.
+- `Fn` — `name, doc, params, ret, effect, body, source`; former `# Rule` (`Fn(rec) -> bool`, pure) and `## Do` (`<agent>__<block>`, takes the caller's record) are plain Fns.
+- `Param` / `LocalVar` — parameter (with optional default) / variable a statement introduces.
+- `Entry` — `unit, label, trigger, param, timeout, memory_file, body, effect`; stop = return from the body.
+- `Trigger` — `Every(Duration) | DailyAt | Weekly | Event{tool,event} | Start`; `Duration {amount, unit}`.
+- `Service` / `Route` — `name, listen, state record`; route has `method, path, path_params (text vars), label ("GET /x"), body`. `state` is a variable of the state record.
+- `Command` — `name, args (with defaults), state (Q9: the project's service state record, variable `state`), body`.
+- `RustFn` — `## Rust` block: verbatim `code`, `code_line`, declared `effect`; `BindingFn` — one binding item, verbatim `code`, `effect` (`Unverified` until approved).
+- `CrateImport` — `# Import: crate x` (`binding` = binding name if a binding file exists; versions live in the binding header).
+- `ToolDef` (re-export of `manifest::ToolDef`) — `tools.toml` entry, for one trait per tool.
+- `run` — names under `# Run`, in order.
+
+## Statements (`StmtKind`)
+- `Let{name,ty,value}` declares; `Assign{name,ty,value}` changes an existing variable (`ty` = its declared type, wrap `T` into `maybe T` when `value.ty` differs).
+- `If{cond,then,else_}`, `IfSome{expr,bind,then,else_}` (bind has the inner `T`), `ForEach{var,source,body}`.
+- `Return(e)`; `Stop` = leave the enclosing Fn/entry/route/command (SPEC 4.1).
+- `Effect{call, into}` — an effect; `into` declares a fresh variable (shadows) for its result.
+- `Respond{status,body}`, `Append{value,list}` (list = path to a list, e.g. `state.invoices`), `Parallel(stmts)`.
+- `Try{stmt, otherwise, defines}` — `defines` is the variable `stmt` introduces; it is visible after the try and `otherwise` may assign it (declare it before, assign in both arms). No `otherwise`: on failure `ctx.trace_error` and stop. If `otherwise` falls through without assigning/stopping, codegen uses the type's default (Q94).
+
+## Effect calls (`EffectCall`)
+- `Tool(ToolCall{tool, verb, target, payload})` — manifest tool; nothing left to resolve.
+- `Target::Field{word,var,field,value}` — `email send customer`: address = `var.field` (`customer_email` else `customer`); trace `target` = `word`.
+- `Target::Source{word,source,record,id,id_from}` — `crm update invoice`: `source` is the plural (`invoices`), `id` the record id as an expression, `id_from` = `(var, field)` when it is a field of an in-scope record.
+- `Target::Literal{word,value}` — `email send address "x"` (word `address`) and the URL of `http post "…"` (word None).
+- `Payload::Assign(fields)` — `status = "x"` (trace `set` = these); `Payload::Value(e)` — text, record literal or record value.
+- `Model(ModelCall{prompt, context, schema, model})` — `ask model`: interpolated prompt; `context` = the `with` value (trace `{"id": v.id}`); `schema` = `as Record` (parse + validate); `model` = agent driver string (`claude:haiku`), None outside agents.
+- `Binding{binding,item,args}` — call of a `# Binding` item (`pdf render doc`); `Rust{name,args}` — `## Rust` block call; `Fn{name,args}` — function call statement (`do f(x) -> y`, former `do <action>`).
+- `Io(ReadFile{path,ty} | ReadBody{ty} | Print{message})`.
+- `Trace(Guard{name, ok})` — one `guard` trace line; `name` is the guard source with constants inlined (`reminder length < 800`), `ok` a `bool` expression. Guards in agents are `Let tmp = cond; Effect(Trace); If(not tmp){else | Stop}`; outside agents they are just `If(not cond){else | Stop}` with no trace (Q90).
+
+## Expressions (`ExprKind`, each with `ty` and `effect`)
+- Literals `Str Int Money{minor,currency} Duration Date Bool Today Now`; `Var(name)`; `Field{base,field}`.
+- `Unwrap{inner,what}` — `inner` is `maybe T` known present (narrowing from `Checked.unwraps`); codegen emits `inner.expect("<what> is not empty here")` (no bare `.unwrap()`); the node's `ty` is `T`.
+- `Interp(parts)`, `Binary{op,lhs,rhs}`, `Not`, `Record(fields)` (ty is `Object`).
+- `Call{callee: Fn|Rust, name, args}`; `Source{tool,source,record}` (read `crm.invoices`, effect network).
+- `Count{source, filter}` — `filter` is the name of a pure `Fn(rec) -> bool`; `First{var,source,cond}` -> `maybe T`.
+- `IsEmpty`, `IsNotEmpty`, `Length`, `Matches{expr,record}`.
+- `NoAmountsChanged{output,input}` — `input` = the `with` value (else prompt) of the model call that wrote `output`; re-evaluated at the guard (Q93).
+
+## Functions
+`build::build`, `ir::lower`, `ir::effect_summary` (entries, routes, commands, functions), `ir::union_effects`.
