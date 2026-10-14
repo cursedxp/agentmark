@@ -365,6 +365,18 @@ impl Checker<'_> {
                 }
                 self.check_limit(cx, s);
             }
+            StmtKind::ReadInput { into } => {
+                self.read_input_stmt(cx, into);
+                self.check_limit(cx, s);
+            }
+            StmtKind::File { verb, path, arg, into } => {
+                self.file_stmt(cx, &super::stdlib::FileStmt { s, verb, path, arg, into }, in_try);
+                self.check_limit(cx, s);
+            }
+            StmtKind::CallInto { call, into, .. } => {
+                self.call_into_stmt(cx, s, call, into, in_try);
+                self.check_limit(cx, s);
+            }
             StmtKind::Print(e) => {
                 self.expr(cx, e);
                 cx.acc.add(Effect::Local, "print");

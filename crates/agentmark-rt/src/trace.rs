@@ -136,6 +136,15 @@ impl Trace {
         self.record(&obj("http", vec![("method", json!(method)), ("path", json!(path)), ("status", json!(status))]))
     }
 
+    /// Trace a `file` tool call (`to` only for `rename`).
+    pub fn file(&self, verb: &str, path: &str, to: Option<&str>) -> Result<(), RtError> {
+        let mut f = vec![("verb", json!(verb)), ("path", json!(path))];
+        if let Some(t) = to {
+            f.push(("to", json!(t)));
+        }
+        self.record(&obj("file", f))
+    }
+
     /// Trace a `print` statement.
     pub fn print(&self, message: &str) -> Result<(), RtError> {
         self.record(&obj("print", vec![("message", json!(message))]))

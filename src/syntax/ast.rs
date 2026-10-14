@@ -471,6 +471,25 @@ pub enum StmtKind {
         value: Expr,
         list: Expr,
     },
+    /// `read input -> text`: all of standard input (SPEC 22.3).
+    ReadInput {
+        into: Ident,
+    },
+    /// The built-in `file` tool (SPEC 22.3): `file read path -> content`, `file write path: text`,
+    /// `file rename old to new`, `file list folder -> names`.
+    File {
+        verb: Ident,
+        path: Expr,
+        arg: Option<FileArg>,
+        into: Option<Ident>,
+    },
+    /// `try csv.parse(text) as list of Sale -> sales`, `do text.trim(x) -> y`: a call of the
+    /// built-in library whose value is stored (SPEC 22.3). `via_do` is the `do` spelling.
+    CallInto {
+        call: Expr,
+        into: Ident,
+        via_do: bool,
+    },
     Print(Expr),
     Try {
         stmt: Box<Stmt>,
@@ -497,6 +516,15 @@ pub enum TraceEvent {
     /// One `guard` line: `name` is the guard's source text with constants inlined, `ok` the
     /// (already evaluated) result.
     Guard { name: String, ok: Expr },
+}
+
+/// What follows the path of a `file` statement.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum FileArg {
+    /// `file rename old to new`
+    To(Expr),
+    /// `file write path: content`
+    Content(Expr),
 }
 
 /// One word or string after a tool verb: `customer`, `invoice`, `address "x@y.z"`.
@@ -561,6 +589,11 @@ pub enum ExprKind {
     },
     /// `{ id: invoice.id, net: x }`
     Record(Vec<RecordField>),
+    /// `json.parse(t) as Note`, `csv.parse(t) as list of Sale`: the call and the type to read (SPEC 22.3).
+    Decode {
+        call: Box<Expr>,
+        ty: TypeExpr,
+    },
     /// `count of rows`, `count of open invoices in crm.invoices`
     CountOf {
         rule: Option<Ident>,

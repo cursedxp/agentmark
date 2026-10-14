@@ -877,6 +877,22 @@ fn simple_text(s: &Stmt) -> String {
         StmtKind::Append { value, list } => {
             format!("append {} to {}", expr_text(value), expr_text(list))
         }
+        StmtKind::ReadInput { into } => format!("read input -> {}", into.name),
+        StmtKind::File { verb, path, arg, into } => {
+            let mut t = format!("file {} {}", verb.name, expr_text(path));
+            match arg {
+                Some(FileArg::To(e)) => t.push_str(&format!(" to {}", expr_text(e))),
+                Some(FileArg::Content(e)) => t.push_str(&format!(": {}", expr_text(e))),
+                None => {}
+            }
+            if let Some(i) = into {
+                t.push_str(&format!(" -> {}", i.name));
+            }
+            t
+        }
+        StmtKind::CallInto { call, into, via_do } => {
+            format!("{}{} -> {}", if *via_do { "do " } else { "" }, expr_text(call), into.name)
+        }
         StmtKind::Print(e) => format!("print: {}", expr_text(e)),
         // Statements with a body never reach here from the parser; print the head if they do.
         StmtKind::ForEach { .. }
@@ -985,6 +1001,7 @@ fn raw_expr(e: &Expr) -> String {
         }
         ExprKind::Not(x) => format!("not {}", at_least(x, 3)),
         ExprKind::Call { func, args } => format!("{}({})", path_text(func), exprs_text(args)),
+        ExprKind::Decode { call, ty } => format!("{} as {}", raw_expr(call), type_text(ty)),
         ExprKind::Record(fields) => {
             if fields.is_empty() {
                 "{}".to_string()

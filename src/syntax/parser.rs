@@ -46,6 +46,7 @@ const STATEMENT_WORDS: &[&str] = &[
     "append",
     "print",
     "otherwise",
+    "file",
 ];
 
 // Diagnostic codes owned by the parser (the lexer owns E001-E004).

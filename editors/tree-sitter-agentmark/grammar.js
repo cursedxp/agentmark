@@ -37,6 +37,8 @@ module.exports = grammar({
 
   extras: () => [/[ \t\r]/],
 
+  conflicts: ($) => [[$._atom, $.decode_expression]],
+
   rules: {
     // Statement lines and blocks may appear before the first declaration so
     // that fragments (as shown in docs) still highlight.
@@ -363,6 +365,7 @@ module.exports = grammar({
         $.append_statement,
         $.respond_statement,
         $.print_statement,
+        $.call_statement,
         $.tool_call,
       ),
 
@@ -419,12 +422,26 @@ module.exports = grammar({
       seq(
         'do',
         repeat1($._atom),
+        optional(seq('as', field('type', $.type))),
         optional(seq(':', commaSep1($._expression))),
         optional($.bind),
       ),
 
+    // `read file p as T -> x`, `read body as T -> x`, `read input -> x`
     read_statement: ($) =>
-      seq('read', repeat1($._atom), 'as', field('type', $.type), optional($.bind)),
+      seq(
+        'read',
+        repeat1($._atom),
+        optional(seq('as', field('type', $.type))),
+        optional($.bind),
+      ),
+
+    // `csv.parse(content) as list of Sale -> sales` (after `try` or `do`, SPEC 22.3)
+    call_statement: ($) =>
+      seq(
+        choice($.module_call, $.decode_expression),
+        $.bind,
+      ),
 
     append_statement: ($) =>
       seq('append', $._expression, 'to', field('target', $._expression)),
@@ -438,6 +455,7 @@ module.exports = grammar({
       seq(
         field('tool', $.identifier),
         optional(seq(field('verb', $.identifier), repeat($._atom))),
+        optional(seq('to', field('destination', $._atom))),
         optional(seq(':', field('payload', commaSep1($._expression)))),
         optional($.bind),
       ),
@@ -461,6 +479,7 @@ module.exports = grammar({
         $.builtin,
         $.field_expression,
         $.call_expression,
+        $.module_call,
         $.record_literal,
       ),
 
@@ -472,6 +491,7 @@ module.exports = grammar({
         $.unary_expression,
         $.predicate,
         $.length_expression,
+        $.decode_expression,
         $.count_expression,
         $.first_expression,
         $.no_amounts_changed,
@@ -566,6 +586,21 @@ module.exports = grammar({
         optional(commaSep1($._expression)),
         ')',
       ),
+
+    // `text.split(t, ",")`: a function of the built-in library (SPEC 22.3)
+    module_call: ($) =>
+      seq(
+        field('module', $.identifier),
+        '.',
+        field('function', $.identifier),
+        '(',
+        optional(commaSep1($._expression)),
+        ')',
+      ),
+
+    // `json.parse(t) as Note`, `csv.parse(t) as list of Sale`
+    decode_expression: ($) =>
+      prec.dynamic(1, seq($.module_call, 'as', field('type', $.type))),
 
     record_literal: ($) =>
       seq('{', optional(commaSep1($.record_pair)), '}'),

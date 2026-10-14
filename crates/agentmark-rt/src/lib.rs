@@ -11,6 +11,7 @@ mod guard;
 mod model;
 mod money;
 mod schedule;
+pub mod stdlib;
 mod support;
 mod tools;
 mod trace;

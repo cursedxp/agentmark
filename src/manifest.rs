@@ -16,6 +16,10 @@ const E_NO_EFFECT: &str = "E102";
 const E_BAD_EFFECT: &str = "E103";
 const E_BAD_LIST: &str = "E104";
 const E_NOT_TABLE: &str = "E105";
+/// A tool named like a built-in one (`file`, SPEC 22.3).
+const E_BUILTIN_TOOL: &str = "E347";
+/// Tools the language provides itself; `tools.toml` cannot declare them.
+pub const BUILTIN_TOOLS: &[&str] = &["file"];
 
 /// Keys a tool table accepts.
 pub const TOOL_KEYS: [&str; 5] = ["verbs", "targets", "sources", "events", "effect"];
@@ -110,6 +114,18 @@ impl Manifest {
         let mut tools = BTreeMap::new();
         for (name, value) in &table {
             let head_line = find_section(text, name).unwrap_or(1);
+            if BUILTIN_TOOLS.contains(&name.as_str()) {
+                diags.push(
+                    Diagnostic::error(
+                        E_BUILTIN_TOOL,
+                        path,
+                        key_span(text, head_line, name),
+                        format!("\"{name}\" is a built-in tool, so it cannot be declared in tools.toml."),
+                    )
+                    .with_help(format!("Remove the [{name}] table: the language already has \"{name}\" (read, write, append, list, rename, exists, delete) and it needs no entry.")),
+                );
+                continue;
+            }
             let Some(t) = value.as_table() else {
                 diags.push(
                     Diagnostic::error(
@@ -329,6 +345,12 @@ effect = "local"
             Ok(_) => panic!("expected errors"),
             Err(d) => crate::diag::render_all(&d, text),
         }
+    }
+
+    #[test]
+    fn the_builtin_file_tool_cannot_be_declared() {
+        let out = render("[file]\nverbs = [\"read\"]\neffect = \"local\"\n");
+        assert!(out.contains("built-in tool"), "{out}");
     }
 
     #[test]

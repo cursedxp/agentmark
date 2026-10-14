@@ -92,6 +92,21 @@ test("blocks, statements, guards and strings", async () => {
   assert.ok(has(t[6], "customer", "entity.name.tag.target"));
 });
 
+test("built-in library calls: module, function, and the file tool", async () => {
+  const g = await loadGrammar();
+  const t = tokens(g, [
+    "- set parts = text.split(line, \",\")",
+    "- try do csv.parse(content) as list of Sale -> sales",
+    "- file rename path.join(a, b) to path.join(a, c)",
+  ].join("\n"));
+  assert.ok(has(t[0], "text", "support.class.builtin-module"));
+  assert.ok(has(t[0], "split", "support.function.builtin"));
+  assert.ok(has(t[1], "csv", "support.class.builtin-module"));
+  assert.ok(has(t[1], "parse", "support.function.builtin"));
+  assert.ok(has(t[2], "path", "support.class.builtin-module"));
+  assert.ok(has(t[2], "join", "support.function.builtin"));
+});
+
 test("a rust fence is handed to the rust grammar", async () => {
   const g = await loadGrammar();
   const t = tokens(g, "## Rust: h -> text\n- effect: pure\n  ```rust\n  let x = 1;\n  ```\n- after: 1");

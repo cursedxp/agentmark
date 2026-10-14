@@ -72,6 +72,8 @@ pub struct Cx {
     /// The statement about to be checked is the one directly after `try` (a `result of` function
     /// may only be called there).
     pub in_try: bool,
+    /// The built-in library call (by span) that may be a `result`: the one directly after `try`.
+    pub std_ok: Option<crate::diag::Span>,
     /// Handles (SPEC 22.4) that were used up (`self` methods, passing them on): variable ->
     /// the span of the line that used it up.
     pub consumed: HashMap<String, crate::diag::Span>,
@@ -94,6 +96,7 @@ impl Cx {
             unit: String::new(),
             unwrap_log: Vec::new(),
             in_try: false,
+            std_ok: None,
             consumed: HashMap::new(),
             handle_ok: false,
         }

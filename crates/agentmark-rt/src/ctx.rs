@@ -157,6 +157,11 @@ impl Ctx {
         self.trace.http(method, path, status)
     }
 
+    /// Trace a `file` tool call (`to` only for `rename`).
+    pub fn trace_file(&self, verb: &str, path: &str, to: Option<&str>) -> Result<(), RtError> {
+        self.trace.file(verb, path, to)
+    }
+
     /// Trace a `print` statement.
     pub fn trace_print(&self, message: &str) -> Result<(), RtError> {
         self.trace.print(message)
