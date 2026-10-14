@@ -69,6 +69,37 @@
         }
       }
     },
+    "crates": {
+      "type": "object",
+      "description": "How a library is built, for the binder and the generated Cargo.toml: features and default-features. A binding header pins the exact version.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "A version requirement."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "default-features": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      }
+    },
     "lsp": {
       "type": "object",
       "additionalProperties": false,
@@ -79,23 +110,6 @@
           "default": false,
           "description": "Enable the optional model-backed code actions (explain this block, suggest a guard). Off by default."
         }
-      }
-    },
-    "crates": {
-      "type": "object",
-      "description": "Version and features of an imported crate (SPEC 22.4): the binder and the generated Cargo.toml both use them.",
-      "additionalProperties": {
-        "oneOf": [
-          { "type": "string" },
-          {
-            "type": "object",
-            "properties": {
-              "version": { "type": "string" },
-              "features": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          }
-        ]
       }
     },
     "models": {

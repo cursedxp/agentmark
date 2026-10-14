@@ -114,8 +114,18 @@ impl Checker<'_> {
     }
 
     pub fn expr(&mut self, cx: &mut Cx, e: &Expr) -> Type {
+        // a handle may be the value of this expression only where the caller says so (Q362); a
+        // bare variable is judged in `path_expr`, everything else (a call) by its type here
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
+        let is_path = matches!(e.kind, ExprKind::Path(_));
+        cx.handle_ok = handle_ok && is_path;
         let outer = std::mem::take(&mut cx.acc);
-        let ty = self.expr_inner(cx, e);
+        let mut ty = self.expr_inner(cx, e);
+        cx.handle_ok = false;
+        if ty.is_handle() && !handle_ok && !is_path {
+            self.handle_value_misuse(cx, e.span, &ty);
+            ty = Type::Unknown;
+        }
         let eff = std::mem::replace(&mut cx.acc, outer);
         cx.acc.merge(&eff);
         let key = NodeKey::new(cx.file, e.span);
@@ -187,6 +197,7 @@ impl Checker<'_> {
                 cx.unwrap_log.clear();
                 let t = self.path_expr(cx, segs, NodeKey::new(cx.file, e.span));
                 let t = self.payload_as_value(cx, segs, &t);
+                let t = self.result_outside_match(cx, e.span, segs, &t);
                 if !cx.unwrap_log.is_empty() {
                     let log = std::mem::take(&mut cx.unwrap_log);
                     self.unwraps.insert(NodeKey::new(cx.file, e.span), log);
@@ -217,6 +228,7 @@ impl Checker<'_> {
                 let mut out = Vec::new();
                 for f in fields {
                     let t = self.expr(cx, &f.value);
+                    self.untyped_none(cx, f.value.span, &t);
                     out.push((f.name.name.clone(), t));
                 }
                 Type::Object(out)
@@ -394,6 +406,7 @@ impl Checker<'_> {
     pub(super) fn path_expr(&mut self, cx: &mut Cx, segs: &[Ident], key: NodeKey) -> Type {
         let first = &segs[0];
         // a variable (loop variable, `set`/`->` result, parameter, route parameter, `state`)
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
         if let Some(t) = cx.var(&first.name).cloned() {
             self.resolutions.insert(
                 key,
@@ -402,6 +415,16 @@ impl Checker<'_> {
                     def: cx.def_of(&first.name),
                 },
             );
+            if matches!(t, Type::Result(_)) {
+                self.check_not_consumed(cx, first);
+            }
+            if t.is_handle() {
+                self.check_not_consumed(cx, first);
+                if segs.len() == 1 && !handle_ok {
+                    self.handle_misuse(cx, first, &t);
+                    return Type::Unknown;
+                }
+            }
             return self.chain(cx, t, segs, 1, first.name.clone());
         }
         // a bare field of the record in front of us
@@ -788,7 +811,14 @@ impl Checker<'_> {
             .map(|i| i.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        let arg_types: Vec<Type> = args.iter().map(|a| self.expr(cx, a)).collect();
+        let arg_types: Vec<Type> = args
+            .iter()
+            .map(|a| {
+                let t = self.expr_handle_ok(cx, a);
+                self.move_out(cx, a);
+                t
+            })
+            .collect();
         let Some((kind, decl)) = self.lookup(cx.file, &name, &[Kind::Function, Kind::RustBlock])
         else {
             let mut cands = self.scopes[cx.file].names_of(&[Kind::Function, Kind::RustBlock]);
@@ -830,7 +860,7 @@ impl Checker<'_> {
                             e.span,
                             format!("The function \"{name}\" can fail (it returns \"result of {t}\"), so it cannot be used inside an expression."),
                         )
-                        .with_help(format!("Call it as a statement: \"- try do {name}(...) -> value\"."));
+                        .with_help(format!("Call it as a statement: \"- try {name}(...) -> value\"."));
                         self.diags.push(d);
                         (**t).clone()
                     }

@@ -114,6 +114,7 @@ impl<'a> Body<'a> {
     /// Write a function body (top level: the last statement becomes the tail expression).
     pub fn function_body(&mut self, stmts: &[Stmt]) {
         collect_assigned(stmts, &mut self.assigned);
+        collect_mut_handles(self.p, stmts, &mut self.assigned);
         collect_matches(stmts, &mut self.lenient);
         self.block(stmts, true);
     }
@@ -158,6 +159,14 @@ impl<'a> Body<'a> {
 
     fn rty(&self, t: &Type) -> String {
         rust_type(t, self.n)
+    }
+
+    /// A handle variable is `mut` when any variable of that name is lent mutably; one that
+    /// is only handed on (or made again later) would warn, so the line says it is fine.
+    fn allow_unused_mut(&mut self, m: &str, ty: &Type) {
+        if !m.is_empty() && matches!(ty, Type::Handle(_)) {
+            self.line("#[allow(unused_mut)]");
+        }
     }
 
     fn stop_value(&self) -> String {
@@ -222,11 +231,18 @@ impl<'a> Body<'a> {
         match &s.kind {
             StmtKind::Let { name, ty, value } => {
                 let m = if self.assigned.contains(name) { "mut " } else { "" };
-                let v = self.conv(value, ty);
+                self.allow_unused_mut(m, ty);
+                let v = match self.stored_result(value) {
+                    Some(raw) => raw,
+                    None => self.conv(value, ty),
+                };
                 self.line(&format!("let {m}{} = {v};", self.n.local(name)));
             }
             StmtKind::Assign { name, ty, value } => {
-                let v = self.conv(value, ty);
+                let v = match self.stored_result(value) {
+                    Some(raw) => raw,
+                    None => self.conv(value, ty),
+                };
                 self.line(&format!("{} = {v};", self.n.local(name)));
             }
             StmtKind::If { cond, then, else_ } => {
@@ -315,10 +331,9 @@ impl<'a> Body<'a> {
     fn match_stmt(&mut self, scrutinee: &Expr, arms: &[MatchArm], otherwise: Option<&[Stmt]>, tail: bool) -> bool {
         let subject = match (&scrutinee.kind, &scrutinee.ty) {
             // the `result of T` a function returns is looked at, not unwrapped with `?` (Q300)
-            (ExprKind::Call { callee: Callee::Fn, name, args }, Type::Result(_)) => {
-                let call = self.fn_call(name, args);
-                call.strip_suffix('?').unwrap_or(&call).to_string()
-            }
+            (ExprKind::Call { .. }, Type::Result(_)) => self.stored_result(scrutinee).unwrap_or_else(|| self.val(scrutinee)),
+            // a stored result is moved into the match (it has no copy)
+            (ExprKind::Var(_), Type::Result(_)) => self.ex(scrutinee).s,
             _ => self.val(scrutinee),
         };
         self.line(&format!("match {subject} {{"));
@@ -338,6 +353,17 @@ impl<'a> Body<'a> {
         self.indent -= 1;
         self.line("}");
         tail
+    }
+
+    /// A call of a `result of T` function whose result is looked at, not unwrapped with `?`.
+    fn stored_result(&self, e: &Expr) -> Option<String> {
+        match (&e.kind, &e.ty) {
+            (ExprKind::Call { callee: Callee::Fn, name, args }, Type::Result(_)) => {
+                let call = self.fn_call(name, args);
+                Some(call.strip_suffix('?').unwrap_or(&call).to_string())
+            }
+            _ => None,
+        }
     }
 
     fn arm_body(&mut self, pre: Option<String>, body: &[Stmt], tail: bool) {
@@ -494,6 +520,7 @@ impl<'a> Body<'a> {
         match into {
             Some(v) => {
                 let m = if self.assigned.contains(&v.name) { "mut " } else { "" };
+                self.allow_unused_mut(m, &v.ty);
                 let name = self.n.local(&v.name);
                 let value = eff.value.unwrap_or_else(|| "()".into());
                 if eff.temps.is_empty() && eff.lines.is_empty() {
@@ -559,8 +586,10 @@ impl<'a> Body<'a> {
         match (defines, otherwise) {
             (Some(d), None) => {
                 let name = self.n.local(&d.name);
+                let m = if self.assigned.contains(&d.name) { "mut " } else { "" };
+                self.allow_unused_mut(m, &d.ty);
                 let f = fut(self, ind);
-                self.line(&format!("let {name} = match {f} {{"));
+                self.line(&format!("let {m}{name} = match {f} {{"));
                 self.line("    Ok(answer) => answer,");
                 self.line("    Err(err) => {");
                 self.failure_exit("        ");
@@ -639,11 +668,12 @@ impl<'a> Body<'a> {
                 }
             }
             EffectCall::Tool(t) => self.tool_call(t, into),
-            EffectCall::Binding { binding, item, args } => {
+            EffectCall::Binding { binding, item, on, args } => {
                 let bs = self.n.bindings.get(binding).cloned().unwrap_or_else(|| binding.clone());
-                let m = self.n.binding_items.get(&(binding.clone(), item.clone())).cloned().unwrap_or_else(|| value_ident(item));
-                let params = self.p.bindings.iter().find(|b| &b.binding == binding && &b.item == item).map(|b| b.params.clone());
-                let a = self.args(args, params.as_deref());
+                let key = binding_key(item, on.as_deref());
+                let m = self.n.binding_items.get(&(binding.clone(), key)).cloned().unwrap_or_else(|| value_ident(item));
+                let bf = self.p.bindings.iter().find(|b| &b.binding == binding && &b.item == item && &b.on == on);
+                let a = self.binding_args(args, bf);
                 Eff::value(format!("bindings::{bs}::{m}({a}).await?"))
             }
             EffectCall::Rust { name, args } => {
@@ -691,6 +721,28 @@ impl<'a> Body<'a> {
         } else {
             format!("{path}(ctx, {a}).await?")
         }
+    }
+
+    /// Arguments of a binding call: handles are lent (`&h`, `&mut h`) or handed over (`h`)
+    /// as the item's parameter says; everything else is a value.
+    fn binding_args(&self, args: &[Expr], item: Option<&BindingFn>) -> String {
+        args.iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let p = item.and_then(|b| b.params.get(i));
+                let mode = item.and_then(|b| b.modes.get(i)).copied().unwrap_or(HandleMode::Shared);
+                match (p, &a.ty) {
+                    (Some(_), Type::Handle(_)) => match mode {
+                        HandleMode::Shared => format!("&{}", paren(self.ex(a), P_ATOM)),
+                        HandleMode::Mut => format!("&mut {}", paren(self.ex(a), P_ATOM)),
+                        HandleMode::Consume => self.val(a),
+                    },
+                    (Some(p), _) => self.conv(a, &p.ty),
+                    (None, _) => self.val(a),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn args(&self, args: &[Expr], params: Option<&[Param]>) -> String {
@@ -884,7 +936,8 @@ impl<'a> Body<'a> {
     /// An expression to be used by value: places of non-`Copy` types are cloned.
     pub fn val(&self, e: &Expr) -> String {
         let x = self.ex(e);
-        if is_place(e) && !is_copy(&e.ty) {
+        // a handle moves; it is never cloned
+        if is_place(e) && !is_copy(&e.ty) && !matches!(e.ty, Type::Handle(_)) {
             format!("{}.clone()", paren(x, P_ATOM))
         } else {
             x.s
@@ -1288,6 +1341,22 @@ pub fn visit_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Stmt)) {
             _ => {}
         }
     }
+}
+
+/// Handle variables a binding call borrows mutably (`mut handle of …`): they need `let mut`.
+fn collect_mut_handles(p: &Program, stmts: &[Stmt], out: &mut HashSet<String>) {
+    visit_stmts(stmts, &mut |s| {
+        if let StmtKind::Effect { call: EffectCall::Binding { binding, item, on, args }, .. } = &s.kind {
+            let Some(bf) = p.bindings.iter().find(|b| &b.binding == binding && &b.item == item && &b.on == on) else {
+                return;
+            };
+            for (m, a) in bf.modes.iter().zip(args) {
+                if let (HandleMode::Mut, ExprKind::Var(v)) = (m, &a.kind) {
+                    out.insert(v.clone());
+                }
+            }
+        }
+    });
 }
 
 fn collect_assigned(stmts: &[Stmt], out: &mut HashSet<String>) {

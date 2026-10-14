@@ -146,6 +146,7 @@ fn auto_bind(name: &str, project: &Project) -> Result<(), String> {
     let dir = Path::new(&project.root).join("bindings");
     let mut opts = BindOptions::new(&dir, model, mock_today.unwrap_or_else(bind::system_today));
     opts.offline = is_offline();
+    bind::apply_crate_config(&mut opts, project);
     run_binder(name, &opts).map(|_| ()).map_err(|e| e.to_string())
 }
 
@@ -177,6 +178,7 @@ fn options(p: &Prepared, path: &str) -> Result<cg::Options, String> {
         extra_dependencies: p.project.config.rust_dependencies.clone(),
         models: p.project.config.models.clone(),
         local_base_url: p.project.config.local_base_url.clone(),
+        crate_features: p.project.config.crates.iter().map(|c| (c.name.clone(), (c.default_features, c.features.clone()))).collect(),
     };
     if let Some(name) = cg::dependency_clash(&p.program, &o) {
         return Err(format!(

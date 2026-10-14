@@ -1246,10 +1246,30 @@ impl<'l> Builder<'l> {
         let proposed_effect = eff(self, "proposed-effect");
 
         let mut items = Vec::new();
+        let mut handles = Vec::new();
         let mut not_bound = Vec::new();
         for (h2, lines) in blocks {
             let mut pos = 0;
             let nodes = self.build(&lines, &mut pos, 0);
+            if let Some(hname) = h2.text.strip_prefix("Handle:").filter(|_| !h2.text.contains('(')) {
+                let hname = hname.trim().to_string();
+                let ok = !hname.is_empty()
+                    && hname.split('.').all(|seg| {
+                        !seg.is_empty() && seg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                    });
+                if !ok {
+                    self.error(
+                        E_STRUCTURE,
+                        line_span(h2),
+                        "A handle block is written \"## Handle: <crate>.<Type>\", for example \"## Handle: sqlx.Query\".",
+                    );
+                    continue;
+                }
+                if let Some(rust) = self.fence_in(&nodes, h2, &hname) {
+                    handles.push(BindingHandle { span: line_span(h2), name: hname, rust });
+                }
+                continue;
+            }
             if self.parse_ok(|g| &g.not_bound, h2) {
                 for n in &nodes {
                     if n.line.kind != LineKind::Item {
@@ -1318,6 +1338,7 @@ impl<'l> Builder<'l> {
             effect: effect?,
             proposed_effect,
             items,
+            handles,
             not_bound,
         }))
     }

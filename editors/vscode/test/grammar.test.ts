@@ -113,6 +113,11 @@ test("enums, type aliases and match branches", async () => {
     "    - stop",
     "- set s = Circle { radius: 3 }",
     "- set e = Shape.Rect { width: 1, height: 2 }",
+    "- match parsed:",
+    "  - ok:",
+    "    - return some 3",
+    "  - error:",
+    "    - set d = none",
   ].join("\n");
   const t = tokens(g, src);
   assert.ok(has(t[0], "Enum", "keyword.declaration"));
@@ -130,6 +135,10 @@ test("enums, type aliases and match branches", async () => {
   assert.ok(has(t[16], "Circle", "entity.name.type.variant"));
   assert.ok(has(t[17], "Shape", "entity.name.type.variant"));
   assert.ok(has(t[17], "Rect", "entity.name.type.variant"));
+  assert.ok(has(t[19], "ok", "keyword.control.pattern"), "a branch without a name");
+  assert.ok(has(t[20], "some", "keyword.control.pattern"));
+  assert.ok(has(t[21], "error", "keyword.control.pattern"));
+  assert.ok(has(t[22], "none", "constant.language"));
 });
 
 test("a rust fence is handed to the rust grammar", async () => {
@@ -163,4 +172,17 @@ test("every example file tokenizes, and every heading gets a specific scope", as
       }
     });
   }
+});
+
+test("handle types in a binding heading", async () => {
+  const g = await loadGrammar();
+  const t = tokens(g, "## update(self: mut handle of sha2.Sha256, data: bytes)\n## sha256_new() -> handle of sha2.Sha256");
+  assert.ok(has(t[0], "update", "entity.name.function"));
+  assert.ok(has(t[0], "self", "variable.parameter"));
+  assert.ok(has(t[0], "mut", "storage.modifier.handle-mode"));
+  assert.ok(has(t[0], "handle", "support.type"));
+  assert.ok(has(t[0], "sha2.Sha256", "support.type.handle"));
+  assert.ok(has(t[0], "data", "variable.parameter"));
+  assert.ok(has(t[0], "bytes", "support.type"));
+  assert.ok(has(t[1], "handle of sha2.Sha256", "support.type"));
 });

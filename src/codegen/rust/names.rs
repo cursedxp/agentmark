@@ -122,6 +122,20 @@ impl Namespace {
     }
 }
 
+impl Namespace {
+    /// Like [`Namespace::take`] for a type name: a clash adds a digit (`Box2`), which keeps the
+    /// name CamelCase.
+    pub fn take_type(&mut self, base: &str) -> String {
+        let mut cand = base.to_string();
+        let mut n = 2;
+        while !self.used.insert(cand.clone()) {
+            cand = format!("{base}{n}");
+            n += 1;
+        }
+        cand
+    }
+}
+
 /// Where a function lives and what it is called there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnName {
@@ -163,23 +177,25 @@ pub struct Names {
     pub counters: HashMap<String, String>,
     /// Every value-level identifier that names an item; locals must not reuse them.
     pub item_idents: HashSet<String>,
+    /// Handle name -> its Rust type when that is not `<crate>::<Type>`.
+    pub handle_rust: HashMap<String, String>,
 }
 
 impl Names {
     pub fn build(p: &Program) -> Names {
-        let mut n = Names::default();
+        let mut n = Names { handle_rust: p.handle_rust.iter().map(|(k, v)| (k.clone(), v.clone())).collect(), ..Names::default() };
 
         let mut types = Namespace::with(RESERVED_TYPES);
         for r in &p.records {
-            n.records.insert(r.name.clone(), types.take(&camel(&r.name)));
+            n.records.insert(r.name.clone(), types.take_type(&camel(&r.name)));
         }
         for e in &p.enums {
-            let en = types.take(&camel(&e.name));
+            let en = types.take_type(&camel(&e.name));
             let mut idents = Namespace::default();
             for v in &e.variants {
                 n.variant_idents.insert((e.name.clone(), v.name.clone()), idents.take(&camel(&v.name)));
                 if !v.fields.is_empty() {
-                    let st = types.take(&format!("{en}{}", camel(&v.name)));
+                    let st = types.take_type(&format!("{en}{}", camel(&v.name)));
                     n.variant_structs.insert((e.name.clone(), v.name.clone()), st);
                 }
             }
@@ -255,7 +271,7 @@ impl Names {
         let mut item_ns: HashMap<String, Namespace> = HashMap::new();
         for b in &p.bindings {
             let ns = item_ns.entry(b.binding.clone()).or_default();
-            n.binding_items.insert((b.binding.clone(), b.item.clone()), ns.take(&ident_chars(&b.item)));
+            n.binding_items.insert((b.binding.clone(), crate::ir::binding_key(&b.item, b.on.as_deref())), ns.take(&ident_chars(&b.item)));
         }
 
         let mut tools_ns = Namespace::with(RESERVED_TYPES);

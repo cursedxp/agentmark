@@ -21,8 +21,16 @@ pub fn rust_type(t: &Type, n: &Names) -> String {
         Type::Record(r) => n.record(r),
         Type::Enum(e) => n.enum_name(e),
         Type::Variant(e, v) => n.variant_struct(e, v),
+        Type::Handle(h) => n.handle_rust.get(h).cloned().unwrap_or_else(|| handle_path(h)),
         Type::Object(_) | Type::Unknown => "serde_json::Value".into(),
     }
+}
+
+/// The Rust path of a handle type: `sha2.Sha256` -> `sha2::Sha256`, `my-crate.a.B` -> `my_crate::a::B`.
+pub fn handle_path(h: &str) -> String {
+    let mut parts = h.split('.');
+    let krate = parts.next().unwrap_or("").replace('-', "_");
+    std::iter::once(krate).chain(parts.map(String::from)).collect::<Vec<_>>().join("::")
 }
 
 /// Is the Rust value `Copy`? (Then a place expression is used by value without `.clone()`.)
@@ -51,6 +59,8 @@ pub fn default_expr(t: &Type, n: &Names) -> String {
         Type::Record(r) => format!("{}::empty()", n.record(r)),
         Type::Enum(e) => format!("{}::empty()", n.enum_name(e)),
         Type::Variant(e, v) => format!("{}::empty()", n.variant_struct(e, v)),
+        // sema stops every path that would need one (E366)
+        Type::Handle(_) => "unreachable!(\"a handle has no default\")".into(),
         Type::Object(_) | Type::Unknown => "serde_json::Value::Null".into(),
     }
 }
@@ -71,6 +81,7 @@ pub fn schema_word(t: &Type) -> String {
         Type::Result(i) => schema_word(i),
         Type::Record(r) | Type::Enum(r) => r.clone(),
         Type::Variant(e, v) => format!("{e}.{v}"),
+        Type::Handle(h) => format!("handle of {h}"),
         Type::Object(_) | Type::Unknown => "any".into(),
     }
 }

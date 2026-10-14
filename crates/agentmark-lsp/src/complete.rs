@@ -186,8 +186,15 @@ fn type_items(a: &Analysis, path: &str, before: &str) -> Vec<CompletionItem> {
     let last = before.rsplit(|c: char| c.is_whitespace()).next().unwrap_or("");
     let mut out: Vec<CompletionItem> = visible(a, path)
         .iter()
-        .filter(|v| v.kind == Kind::Record)
-        .map(|v| item(v.name.clone(), CompletionItemKind::STRUCT, Some("record".to_string()), v.doc.as_ref()))
+        .filter(|v| matches!(v.kind, Kind::Record | Kind::Enum | Kind::TypeAlias))
+        .map(|v| {
+            let kind = match v.kind {
+                Kind::Enum => CompletionItemKind::ENUM,
+                Kind::TypeAlias => CompletionItemKind::TYPE_PARAMETER,
+                _ => CompletionItemKind::STRUCT,
+            };
+            item(v.name.clone(), kind, Some(v.kind.noun().to_string()), v.doc.as_ref())
+        })
         .collect();
     if !matches!(last, "as" | "matches" | "for:") {
         for t in BUILTIN_TYPES {
@@ -205,7 +212,9 @@ fn binding_names(a: &Analysis) -> Vec<(String, Vec<String>)> {
     for f in &a.project.files {
         for d in &f.ast.decls {
             if let Decl::Binding(b) = d {
-                v.push((b.name.name.clone(), b.items.iter().map(|i| i.name.name.clone()).collect()));
+                // methods of a handle are called on a variable (`- hasher update data`), not on the binding
+                let is_method = |i: &agentmark::syntax::ast::BindingItem| i.params.first().is_some_and(|p| p.name.name == "self");
+                v.push((b.name.name.clone(), b.items.iter().filter(|i| !is_method(i)).map(|i| i.name.name.clone()).collect()));
             }
         }
     }
@@ -311,7 +320,7 @@ fn expr_context(before: &str, depth: Option<usize>) -> bool {
         }
     }
     let last = before.rsplit(|c: char| c.is_whitespace()).next().unwrap_or("");
-    matches!(last, "and" | "or" | "not" | "if" | "in" | "where" | "-")
+    matches!(last, "and" | "or" | "not" | "if" | "in" | "where" | "-" | "=" | "return" | "some" | "match")
 }
 
 fn expression_items(a: &Analysis, path: &str, line: usize) -> Vec<CompletionItem> {
@@ -334,8 +343,26 @@ fn expression_items(a: &Analysis, path: &str, line: usize) -> Vec<CompletionItem
             out.push(item(var, CompletionItemKind::VARIABLE, Some(rec), None));
         }
     }
-    for w in ["today", "now"] {
+    for w in ["today", "now", "none"] {
         out.push(item(w, CompletionItemKind::KEYWORD, None, None));
+    }
+    out.extend(variant_items(a, path));
+    out
+}
+
+/// The variants of the enums the file can see: values (`Circle { radius: 3 }`) and `match` branches.
+/// They come from the last good check, so they are there while the line being typed does not parse.
+fn variant_items(a: &Analysis, path: &str) -> Vec<CompletionItem> {
+    let mut out = Vec::new();
+    let Some(ck) = a.any_facts() else { return out };
+    for v in visible(a, path).iter().filter(|v| v.kind == Kind::Enum) {
+        let base = v.name.rsplit('.').next().unwrap_or(&v.name);
+        let Some(e) = ck.enums.get(base) else { continue };
+        for var in &e.variants {
+            let fields: Vec<&str> = var.fields.iter().map(|x| x.name.as_str()).collect();
+            let detail = if fields.is_empty() { v.name.clone() } else { format!("{} ({})", v.name, fields.join(", ")) };
+            out.push(item(var.name.clone(), CompletionItemKind::ENUM_MEMBER, Some(detail), None));
+        }
     }
     out
 }
@@ -457,6 +484,10 @@ fn type_text(t: &agentmark::syntax::ast::TypeExpr) -> String {
         TypeKind::List(i) => format!("list of {}", type_text(i)),
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
+        TypeKind::Handle { name, mode } => match mode.word() {
+            Some(w) => format!("{w} handle of {name}"),
+            None => format!("handle of {name}"),
+        },
     }
 }
 

@@ -69,7 +69,7 @@ pub fn prompt(ci: &CrateItems, req: &Request<'_>, known: Option<&Sig>, previous:
         Some(sig) => format!(
             "AgentMark signature to implement:\n{}\n\nThe body is placed inside:\n{}\n\n\
              Reply with only the {} body (no fences, no explanation).",
-            sig.heading(&req.item),
+            sig.heading(req.item),
             item.map(|i| i.contract.as_str()).unwrap_or(""),
             ci.language
         ),
@@ -120,6 +120,7 @@ fn ty_of(t: &TypeExpr) -> Result<Ty, String> {
         TypeKind::List(i) => Ok(Ty::List(Box::new(ty_of(i)?))),
         TypeKind::Maybe(i) => Ok(Ty::Maybe(Box::new(ty_of(i)?))),
         TypeKind::Result(_) => Err("a signature cannot say \"result of\"; failures are already handled".into()),
+        TypeKind::Handle { name, mode } => Ok(Ty::Handle { name: name.clone(), mode: *mode }),
     }
 }
 
@@ -174,6 +175,7 @@ pub async fn write_item(
                 };
                 return Ok(BoundItem {
                     name: req.item.to_string(),
+                    heading: None,
                     path: item.map(|i| i.path.clone()).unwrap_or_default(),
                     summary: format!("{base} Written on demand; not reviewed yet."),
                     sig,

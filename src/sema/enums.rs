@@ -20,6 +20,7 @@
 //! | E313 | a `result` that is matched somewhere other than at the call that makes it |
 //! | E314 | an enum value written into text as a whole |
 //! | E315 | an enum that would contain itself without end (no `list of` in between) |
+//! | E317 | `none` whose type nothing decides |
 //! | E316 | the name of a `match` branch used as a value instead of through one of its fields |
 //! | W300 | an `otherwise:` that nothing can reach |
 
@@ -49,6 +50,7 @@ pub const E_RESULT_MATCH: &str = "E313";
 pub const E_WHOLE_ENUM: &str = "E314";
 pub const E_RECURSIVE: &str = "E315";
 pub const E_PAYLOAD_VALUE: &str = "E316";
+pub const E_UNTYPED_NONE: &str = "E317";
 pub const W_UNREACHABLE: &str = "W300";
 
 /// The JSON tag of an enum value (`{"kind":"Circle","radius":3}`); a variant field cannot use it.
@@ -559,6 +561,39 @@ impl Checker<'_> {
         }
     }
 
+    /// A stored `result` read anywhere but as the subject of a `match` (E313).
+    pub(super) fn result_outside_match(&mut self, cx: &Cx, span: Span, segs: &[Ident], t: &Type) -> Type {
+        if !matches!(t, Type::Result(_)) || cx.match_call == Some(span) {
+            return t.clone();
+        }
+        let d = Diagnostic::error(
+            E_RESULT_MATCH,
+            self.path(cx.file),
+            segs[0].span,
+            format!("\"{}\" holds a result, which can only be matched.", segs[0].name),
+        )
+        .with_help(format!(
+            "Write \"- match {}:\" with the branches \"ok value\" and \"error problem\".",
+            segs[0].name
+        ));
+        self.diags.push(d);
+        Type::Unknown
+    }
+
+    /// `none` whose type nothing decides (`set d = none`) would not compile.
+    pub(super) fn untyped_none(&mut self, cx: &Cx, span: Span, t: &Type) {
+        if matches!(t, Type::Maybe(i) if i.is_unknown()) {
+            let d = Diagnostic::error(
+                E_UNTYPED_NONE,
+                self.path(cx.file),
+                span,
+                "This \"none\" does not say what it is a \"none\" of.",
+            )
+            .with_help("Use \"none\" where a \"maybe\" value is expected, for example \"return none\" in a function that returns \"maybe int\".");
+            self.diags.push(d);
+        }
+    }
+
     /// An enum value written into text as a whole.
     pub(super) fn whole_enum_in_text(&mut self, cx: &Cx, span: Span, t: &Type) {
         let Type::Enum(n) = t else { return };
@@ -669,7 +704,7 @@ impl Checker<'_> {
         // a `result of T` function is called right here, without `try`: the match looks at both
         // outcomes (OPEN_QUESTIONS Q300)
         let saved = cx.match_call.take();
-        if matches!(scrutinee.kind, ExprKind::Call { .. }) {
+        if is_call_or_name(scrutinee) {
             cx.match_call = Some(scrutinee.span);
         }
         let t = self.expr(cx, scrutinee);
@@ -680,16 +715,16 @@ impl Checker<'_> {
             Type::Enum(e) => Subject::Enum(e.clone()),
             Type::Maybe(i) => Subject::Maybe((**i).clone()),
             Type::Result(i) => {
-                if matches!(scrutinee.kind, ExprKind::Call { .. }) {
+                if is_call_or_name(scrutinee) {
                     Subject::Result((**i).clone())
                 } else {
                     let d = Diagnostic::error(
                         E_RESULT_MATCH,
                         self.path(cx.file),
                         scrutinee.span,
-                        "A result can only be matched where it is made: write the call itself after \"match\".",
+                        "A result can only be matched: it cannot be read like other values.",
                     )
-                    .with_help("For example \"- match parse_age(text):\" with the branches \"ok value\" and \"error problem\".");
+                    .with_help("Write the call or the variable that holds it after \"match\", with the branches \"ok value\" and \"error problem\".");
                     self.diags.push(d);
                     Subject::Unknown
                 }
@@ -713,7 +748,12 @@ impl Checker<'_> {
 
         let mut handled: Vec<String> = Vec::new(); // variants / patterns seen, by name
         let mut had_unknown = false;
+        // what a branch used up (handles, a matched result) is used up afterwards when that
+        // branch goes on; a branch that leaves contributes nothing (Q362)
+        let before = cx.consumed.clone();
+        let mut merged = before.clone();
         for arm in arms {
+            cx.consumed = before.clone();
             let (pattern, bind_ty) = self.arm_pattern(cx, arm, &kind, &mut handled, &mut had_unknown);
             if let Some(p) = pattern {
                 self.patterns.insert(NodeKey::new(cx.file, arm.span), p);
@@ -725,11 +765,29 @@ impl Checker<'_> {
             }
             self.stmts(cx, &arm.body);
             cx.pop();
+            if !super::stmt::terminates(&arm.body) {
+                for (k, v) in cx.consumed.clone() {
+                    merged.entry(k).or_insert(v);
+                }
+            }
         }
         if let Some(o) = otherwise {
+            cx.consumed = before.clone();
             cx.push();
             self.stmts(cx, &o.body);
             cx.pop();
+            if !super::stmt::terminates(&o.body) {
+                for (k, v) in cx.consumed.clone() {
+                    merged.entry(k).or_insert(v);
+                }
+            }
+        }
+        cx.consumed = merged;
+        // a stored result is moved into the match: it cannot be matched or read again
+        if let (Type::Result(_), ExprKind::Path(segs)) = (&t, &scrutinee.kind) {
+            if segs.len() == 1 {
+                cx.consumed.entry(segs[0].name.clone()).or_insert(scrutinee.span);
+            }
         }
 
         // every case must be handled, or `otherwise:` must say what happens to the rest
@@ -894,16 +952,6 @@ impl Checker<'_> {
         }
         // naming the value
         match (&arm.bind, takes_value) {
-            (None, true) if matches!(pattern, Pattern::Some) => {
-                let d = Diagnostic::error(
-                    E_BINDER,
-                    self.path(cx.file),
-                    arm.pattern.span,
-                    format!("\"{key}\" carries a value, so the branch must name it."),
-                )
-                .with_help(format!("Write \"- {key} value:\" and use \"value\" below. (\"ok\", \"error\" and the variants may leave the name out.)"));
-                self.diags.push(d);
-            }
             (Some(b), false) => {
                 let d = Diagnostic::error(
                     E_BINDER,
@@ -955,4 +1003,13 @@ enum Subject {
 
 fn join(segs: &[Ident]) -> String {
     segs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(".")
+}
+
+/// A call, or a plain name (a stored result).
+fn is_call_or_name(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Call { .. } => true,
+        ExprKind::Path(p) => p.len() == 1,
+        _ => false,
+    }
 }

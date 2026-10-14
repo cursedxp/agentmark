@@ -110,7 +110,7 @@
           }
         },
         {
-          "match": "^(##)\\s+([A-Za-z_][\\w]*)(\\()([^)]*)(\\))\\s*(->)?\\s*(\\w+)?",
+          "match": "^(##)\\s+([A-Za-z_][\\w]*)(\\()([^)]*)(\\))\\s*(->)?\\s*(handle\\s+of\\s+[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*|\\w+)?",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },
             "2": { "name": "entity.name.function.agentmark" },
@@ -131,12 +131,27 @@
       ]
     },
     "typed-names": {
-      "match": "([A-Za-z_][\\w]*)\\s*(:)\\s*([A-Za-z_][\\w]*)",
-      "captures": {
-        "1": { "name": "variable.parameter.agentmark" },
-        "2": { "name": "punctuation.separator.agentmark" },
-        "3": { "name": "support.type.agentmark" }
-      }
+      "patterns": [
+        {
+          "match": "([A-Za-z_][\\w]*)\\s*(:)\\s*(?:(mut|consume)\\s+)?(handle)\\s+(of)\\s+([A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*)",
+          "captures": {
+            "1": { "name": "variable.parameter.agentmark" },
+            "2": { "name": "punctuation.separator.agentmark" },
+            "3": { "name": "storage.modifier.handle-mode.agentmark" },
+            "4": { "name": "support.type.agentmark" },
+            "5": { "name": "keyword.other.of.agentmark" },
+            "6": { "name": "support.type.handle.agentmark" }
+          }
+        },
+        {
+          "match": "([A-Za-z_][\\w]*)\\s*(:)\\s*([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "variable.parameter.agentmark" },
+            "2": { "name": "punctuation.separator.agentmark" },
+            "3": { "name": "support.type.agentmark" }
+          }
+        }
+      ]
     },
     "duration-and-time": {
       "patterns": [
@@ -163,7 +178,7 @@
           }
         },
         {
-          "match": "^(\\s*)(-)\\s+(some|ok|error)\\s+([A-Za-z_]\\w*)\\s*(:)\\s*$",
+          "match": "^(\\s*)(-)\\s+(some|ok|error)(?:\\s+([A-Za-z_]\\w*))?\\s*(:)\\s*$",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "keyword.control.pattern.agentmark" },
@@ -234,7 +249,8 @@
         { "match": "\\b\\d+(?:\\.\\d+)?\\s*(?:[A-Z]{3})\\b", "name": "constant.numeric.money.agentmark" },
         { "match": "\\b\\d+\\s*(?:second|minute|hour|day|week|month|year)s?\\b", "name": "constant.numeric.duration.agentmark" },
         { "match": "\\b\\d+(?:\\.\\d+)?\\b", "name": "constant.numeric.agentmark" },
-        { "match": "\\b(true|false|today|now|count of)\\b", "name": "constant.language.agentmark" },
+        { "match": "\\b(true|false|today|now|none|count of)\\b", "name": "constant.language.agentmark" },
+        { "match": "\\bsome\\b", "name": "keyword.control.pattern.agentmark" },
         {
           "match": "\\b([A-Z][\\w-]*)(?:(\\.)([A-Z][\\w-]*))?(?=\\s*\\{)",
           "captures": {

@@ -348,10 +348,17 @@ fn variants_and_enums_have_definitions_hovers_and_diagnostics() {
     let l = definition(&mut c, &file, at(text, "c.radius", 0, 0));
     assert_eq!(l[0].range.start.line, line_of(text, "- Circle c:"));
 
+    // statements offer the variants (values and branches) and `none`
+    let typing = text.replace("- print: \"{area(Circle { radius: 3 })}\"\n", "- set s = \n");
+    c.change(&file, &typing, 2);
+    let names = complete(&mut c, &file, at(&typing, "- set s = \n", 0, 10));
+    c.change(&file, text, 3);
+    assert!(names.iter().any(|n| n == "Circle") && names.iter().any(|n| n == "Empty"), "{names:?}");
+
     // a match that misses a variant is reported with the compiler's message, on the match line
     let bad = text.replace("    - Empty:\n      - return 0\n", "");
-    c.change(&file, &bad, 2);
-    let d = c.diagnostics(&file, Some(2));
+    c.change(&file, &bad, 4);
+    let d = c.diagnostics(&file, Some(4));
     assert_eq!(d.len(), 1, "{d:?}");
     assert!(d[0].message.contains("does not handle the variant \"Empty\" of Shape."), "{}", d[0].message);
     assert_eq!(d[0].range.start.line, line_of(&bad, "- match shape:"));

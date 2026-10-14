@@ -147,6 +147,7 @@ pub(crate) fn resolve(project: &Project) -> Result<bool, Failure> {
         let dir = Path::new(&project.files[f.binding_file].path).parent().map(Path::to_path_buf).unwrap_or_default();
         let mut opts = BindOptions::new(&dir, model.clone(), mock_today.unwrap_or_else(bind::system_today));
         opts.offline = offline;
+        bind::apply_crate_config(&mut opts, project);
         let mut log = |l: &str| eprintln!("{l}");
         match produce_on_demand(&f.crate_name, &uses, &opts, &mut log) {
             Ok(p) => produced.extend(p),

@@ -105,6 +105,10 @@
 (match_arm pattern: (field_expression object: (identifier) @type field: (identifier) @constructor))
 (match_arm binding: (identifier) @variable)
 (some_expression "some" @keyword)
+((identifier) @constant.builtin
+  (#eq? @constant.builtin "none"))
+((match_arm pattern: (identifier) @keyword)
+  (#any-of? @keyword "some" "none" "ok" "error"))
 
 ; ---- expressions ------------------------------------------------------------
 (string) @string
@@ -135,3 +139,6 @@
   (#set! priority 110))
 (binary_expression operator: ["and" "or"] @keyword.operator
   (#set! priority 110))
+
+; handle types (SPEC 22.4): `mut handle of sha2.Sha256`
+(handle_type) @type

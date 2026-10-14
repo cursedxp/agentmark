@@ -382,7 +382,7 @@ pub fn main_rs(c: &Ctxt) -> String {
         for (i, cmd) in p.commands.iter().enumerate() {
             let variant = super::names::camel(&cmd.name);
             let names: Vec<String> = cmd.args.iter().map(|a| c.n.local(&a.name)).collect();
-            let pat = if names.is_empty() { String::new() } else { format!(" {{ {} }}", names.join(", ")) };
+            let pat = if names.is_empty() { " { .. }".to_string() } else { format!(" {{ {} }}", names.join(", ")) };
             let args = if names.is_empty() { String::new() } else { format!(", {}", names.join(", ")) };
             s.push_str(&format!(
                 "        Cmd::{variant}{pat} => {{\n            {}::run(ctx{args}{}).await.map_err(|e| command_failed(ctx, {}, e))?;\n        }}\n",

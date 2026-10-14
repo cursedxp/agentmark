@@ -1,11 +1,12 @@
 //! Type-checking assisted bodies with a real `cargo check` in a scratch crate.
 
 use crate::binder::core::{CheckRequest, Sig, Ty, TypeChecker};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-fn rust_ty(t: &Ty) -> String {
+fn rust_ty(t: &Ty, h: &BTreeMap<String, String>) -> String {
     match t {
         Ty::Text => "String".into(),
         Ty::Int => "i64".into(),
@@ -14,20 +15,43 @@ fn rust_ty(t: &Ty) -> String {
         Ty::Date => "chrono::NaiveDate".into(),
         Ty::DateTime => "chrono::DateTime<chrono::Utc>".into(),
         Ty::Duration => "chrono::Duration".into(),
-        Ty::List(i) => format!("Vec<{}>", rust_ty(i)),
-        Ty::Maybe(i) => format!("Option<{}>", rust_ty(i)),
+        Ty::List(i) => format!("Vec<{}>", rust_ty(i, h)),
+        Ty::Maybe(i) => format!("Option<{}>", rust_ty(i, h)),
+        Ty::Handle { name, .. } => h.get(name).cloned().unwrap_or_else(|| handle_path(name)),
+    }
+}
+
+/// `sha2.Sha256` -> `sha2::Sha256`.
+pub fn handle_path(name: &str) -> String {
+    let mut parts = name.split('.');
+    let krate = parts.next().unwrap_or("").replace('-', "_");
+    std::iter::once(krate).chain(parts.map(String::from)).collect::<Vec<_>>().join("::")
+}
+
+/// The Rust spelling of a parameter: a handle is borrowed, borrowed mutably or taken by value.
+fn rust_param_ty(t: &Ty, h: &BTreeMap<String, String>) -> String {
+    match t {
+        Ty::Handle { mode: crate::binder::core::HandleMode::Shared, .. } => format!("&{}", rust_ty(t, h)),
+        Ty::Handle { mode: crate::binder::core::HandleMode::Mut, .. } => format!("&mut {}", rust_ty(t, h)),
+        _ => rust_ty(t, h),
     }
 }
 
 /// `pub async fn name(a: String) -> Result<i64, Box<dyn std::error::Error + Send + Sync>>`:
 /// the function a binding body is the body of (OPEN_QUESTIONS Q70).
 pub fn rust_fn_header(name: &str, sig: &Sig) -> String {
+    rust_fn_header_with(name, sig, &BTreeMap::new())
+}
+
+/// [`rust_fn_header`] where `handles` says the Rust type of the handles that are not simply
+/// `<crate>::<Type>` (`## Handle:` blocks).
+pub fn rust_fn_header_with(name: &str, sig: &Sig, handles: &BTreeMap<String, String>) -> String {
     let ps: Vec<String> = sig
         .params
         .iter()
-        .map(|p| format!("{}: {}", p.name, rust_ty(&p.ty)))
+        .map(|p| format!("{}: {}", if p.name == "self" { "self_" } else { p.name.as_str() }, rust_param_ty(&p.ty, handles)))
         .collect();
-    let ret = sig.ret.as_ref().map(rust_ty).unwrap_or_else(|| "()".into());
+    let ret = sig.ret.as_ref().map(|t| rust_ty(t, handles)).unwrap_or_else(|| "()".into());
     format!(
         "pub async fn {name}({}) -> Result<{ret}, Box<dyn std::error::Error + Send + Sync>>",
         ps.join(", ")
@@ -43,6 +67,8 @@ pub struct CargoChecker {
     /// that was bound.
     pub default_features: bool,
     pub features: Vec<String>,
+    /// Rust type of handles that are not `<crate>::<Type>`.
+    pub handle_types: BTreeMap<String, String>,
     dir: PathBuf,
 }
 
@@ -52,7 +78,7 @@ impl CargoChecker {
     pub fn new(offline: bool) -> CargoChecker {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir().join(format!("agentmark-bind-check-{}-{n}", std::process::id()));
-        CargoChecker { offline, default_features: true, features: vec![], dir }
+        CargoChecker { offline, default_features: true, features: vec![], handle_types: BTreeMap::new(), dir }
     }
 
     /// Same dependency features (and offline-ness) as a rustdoc fetch.
@@ -61,6 +87,11 @@ impl CargoChecker {
         c.default_features = spec.default_features;
         c.features = spec.features.clone();
         c
+    }
+
+    pub fn with_handle_types(mut self, handles: BTreeMap<String, String>) -> CargoChecker {
+        self.handle_types = handles;
+        self
     }
 
     pub fn with_features(mut self, default_features: bool, features: &[&str]) -> CargoChecker {
@@ -213,7 +244,7 @@ impl CargoChecker {
         for r in reqs {
             balanced(r.body).map_err(|e| format!("body is not one balanced block: {e}"))?;
             // The body is an inner block, so it is the function's value and nothing else.
-            src.push_str(&format!("{} {{\n{{\n{}\n}}\n}}\n", rust_fn_header(r.name, r.sig), r.body));
+            src.push_str(&format!("{} {{\n{{\n{}\n}}\n}}\n", rust_fn_header_with(r.name, r.sig, &self.handle_types), r.body));
         }
         std::fs::write(self.dir.join("src/lib.rs"), src).map_err(|e| e.to_string())?;
         self.cargo_check()

@@ -48,9 +48,23 @@ Other entry points: `rust::fetch_rustdoc_json(crate, version)` (builds rustdoc J
 
 | tier | rule (Rust target) | who writes the body |
 |---|---|---|
-| direct | non-generic, non-async, non-`Result`, every type maps 1:1 (ints up to `u32`/`i64`, bool, text, bytes, `NaiveDate`, `DateTime<Utc>`, `Duration`, `Vec`/`Option` of those), `self`/`&self` only | rules (`rust/types.rs` conversions), no model |
+| direct | non-generic, non-async, non-`Result`, every type maps 1:1 (ints up to `i64`, wider ones (`u64`, `usize`) with a checked conversion, bool, text, bytes, `NaiveDate`, `DateTime<Utc>`, `Duration`, `Vec`/`Option` of those), `self`/`&self` only | rules (`rust/types.rs` conversions), no model |
 | assisted | everything else whose parameters and return can still be declared in AgentMark types: generics with one obvious instantiation, `Result`, `async` | `ModelClient`, then `cargo check` of the body against the declared signature (scratch crate, one attempt) |
-| skipped | unsafe, lifetimes, associated types, closures, `&mut`, a type with no AgentMark type, a rejected or missing model body | listed under `## Not bound` with the reason |
+| skipped | unsafe, lifetimes, associated types, closures, `&mut` of a type that is not a handle, a type with no AgentMark type, a rejected or missing model body, a heading over 120 characters | listed under `## Not bound` with the reason |
+
+## Handles (SPEC 22.4)
+
+A public, non-generic type of the bound crate (struct, enum, union, or a type alias such as `sha2::Sha256`) that has no AgentMark type is a
+**handle**, `handle of <crate>.<path>` (`Ty::Handle`). Items that hold one are bound too: a constructor (`sha256_new() -> handle of sha2.Sha256`),
+and methods with a receiver, whose first parameter is `self` and whose heading carries the method name (`## update(self: mut handle of sha2.Sha256, data: bytes)`;
+`BoundItem.heading` vs the unique `name`, which stays the key of `## Not bound`). `&self` is `handle of`, `&mut self` is `mut handle of`,
+`self` is `consume handle of`; other parameters take the same words (`&T`, `&mut T`, `T`); a returned handle is owned, a returned borrow, and handles inside
+`Vec`/`Option`, are skipped. In the Rust body the receiver is `self_`.
+
+Tier: an item with a handle is written by rules (`Shape::Direct { verify: true }`: generics with one obvious instantiation, another crate's trait and
+`where Self: Trait` are allowed) and the type checker has the last word; `async` and `Result`-returning ones, and generics of the `impl` itself, go to the
+assisted tier. A foreign trait re-exported by the crate (`sha2::Digest`) gets all its methods on the crate's handle aliases (the alias's `## Not bound` line goes).
+Decisions: OPEN_QUESTIONS Q360-Q369.
 
 Nothing is dropped: every item is bound or listed. Decisions behind the edge cases are in
 OPEN_QUESTIONS Q70-Q82.
@@ -86,5 +100,7 @@ cargo cache; runs `trim.py`). `tests/binder/model.json` holds the canned assiste
 `MockModel`. `cargo test --test binder` uses a fake type checker except for three tests that run
 the real `cargo check --offline` (a sha2 body accepted/rejected, every direct chrono body compiles,
 rustdoc build of sha2).
+
+`tests/handles.rs` covers handles end to end: the sha2 ratio (at least half of v0.2's 81 `## Not bound` items are bound, 42 of them), the real `cargo check` of every handle body, sema's ownership errors and an incremental hash that builds and prints the SHA-256 of "hello world". `trim.py` keeps `generics` of structs and aliases, which tells a handle (no type parameters) from a generic type.
 
 Moving to a newer nightly: re-run `regen.sh`, check `SUPPORTED_FORMAT` in `rust/rustdoc.rs` (Q71).

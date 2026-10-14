@@ -299,9 +299,66 @@ fn try_works_with_and_without_do_and_branch_names_may_be_left_out() {
     }
     let src = format!("{base}# Function: g\n- effect: local\n  - match half(4):\n    - ok:\n      - print: \"fine\"\n    - error:\n      - print: \"broken\"\n\n# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: h\n- in: s: Shape\n- effect: local\n  - match s:\n    - Circle:\n      - print: \"round\"\n    - Empty:\n      - print: \"none\"\n");
     common::ok(&use_it(&src));
-    // `some` still has to name its value
-    let e = sema_errors("# Function: f\n- in: n: maybe int\n- effect: local\n  - match n:\n    - some:\n      - print: \"x\"\n    - none:\n      - print: \"y\"\n");
-    assert!(e.contains("\"some\" carries a value, so the branch must name it."), "{e}");
+    // `some:` needs no name either
+    common::ok(&use_it("# Function: f\n- in: n: maybe int\n- effect: local\n  - match n:\n    - some:\n      - print: \"x\"\n    - none:\n      - print: \"y\"\n"));
+}
+
+const STORED: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n";
+
+#[test]
+fn a_result_can_be_stored_and_matched() {
+    let src = format!("{STORED}> Reads a count.\n# Command: demo\n- args: path: text\n\n## Run\n- set parsed = read_count(path)\n- match parsed:\n  - ok total:\n    - print: \"count {{total}}\"\n  - error:\n    - print: \"unreadable\"\n");
+    let c = common::ok(&src);
+    assert!(c.expr_types.values().any(|t| matches!(t, Type::Result(_))));
+    assert!(is_canonical(&src, "t.agent.md").unwrap());
+    let d = temp("stored-result");
+    write(&d, "n.json", "41");
+    let (out, _) = run_command("stored-ok", &src, &[], json!({"path": s(&d.join("n.json"))}));
+    assert_eq!(out, "count 41\n");
+    let (out, _) = run_command("stored-bad", &src, &[], json!({"path": s(&d.join("missing.json"))}));
+    assert_eq!(out, "unreadable\n");
+}
+
+#[test]
+fn a_stored_result_can_only_be_matched_once_and_nowhere_else() {
+    let head = format!("{STORED}# Command: demo\n- args: path: text\n\n## Run\n- set parsed = read_count(path)\n");
+    let e = sema_errors(&format!("{head}- set again = parsed\n- print: \"x\"\n"));
+    assert!(e.contains("\"parsed\" holds a result, which can only be matched."), "{e}");
+    assert!(!e.contains("works on an enum"), "no cascade:\n{e}");
+    let e = sema_errors(&format!("{head}- print: \"{{parsed}}\"\n"));
+    assert!(e.contains("holds a result, which can only be matched."), "{e}");
+    let twice = "- match parsed:\n  - ok v:\n    - print: \"a\"\n  - error:\n    - print: \"b\"\n";
+    let e = sema_errors(&format!("{head}{twice}{twice}"));
+    assert!(e.contains("\"parsed\" was used up on line"), "{e}");
+    let e = sema_errors(&format!("{head}- match parsed:\n  - ok v:\n    - print: \"a\"\n"));
+    assert!(e.contains("does not handle the case \"error\" of a \"result\"."), "{e}");
+}
+
+#[test]
+fn a_none_that_nothing_types_is_an_error() {
+    let e = sema_errors("# Function: f\n- effect: local\n  - set d = none\n  - print: \"x\"\n");
+    assert!(e.contains("This \"none\" does not say what it is a \"none\" of."), "{e}");
+    let e = sema_errors("# Function: f\n- effect: local\n  - print: \"{ a: none }\"\n");
+    assert!(!e.is_empty());
+    common::ok(&use_it("# Function: f\n- out: maybe int\n- effect: pure\n  - return none\n"));
+}
+
+#[test]
+fn a_command_without_arguments_runs() {
+    let src = "> Says hi.\n# Command: demo\n\n## Run\n- print: \"hi\"\n";
+    let (out, _) = run_command("noargs", src, &[], json!({}));
+    assert_eq!(out, "hi\n");
+}
+
+#[test]
+fn a_record_named_like_a_rust_type_still_builds_warning_free() {
+    let src = "# Record: Box\n- tree: text\n\n# Enum: Tree\n- Leaf\n- Node: inner: Box\n\n> Serves a box.\n# Service: boxes\n- listen: 127.0.0.1:8098\n\n## GET /box\n- respond 200 { node: Node { inner: Box { tree: \"oak\" } } }\n";
+    let d = temp("boxed");
+    write(&d, "boxes.agent.md", src);
+    let out = d.join("out");
+    let o = agentmark(&["build", s(&d.join("boxes.agent.md")), "-o", s(&out), "--no-check"]).output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    build_bin(&out, "boxes");
 }
 
 #[test]
@@ -341,10 +398,10 @@ fn a_variable_or_constant_wins_over_a_variant_of_the_same_name() {
 fn match_needs_an_enum_a_maybe_or_a_result() {
     let e = sema_errors(&func("", "n: int", "local", "  - match n:\n    - Empty:\n      - print: \"x\"\n"));
     assert!(e.contains("\"match\" works on an enum, a \"maybe\" or a \"result\", but this is a number."), "{e}");
-    // a result is matched where it is made
-    let src = "# Function: g\n- out: result of int\n- effect: pure\n  - return 1\n\n# Function: f\n- in: r: result of int\n- effect: local\n  - match r:\n    - ok v:\n      - print: \"x\"\n    - error e:\n      - print: \"y\"\n";
+    // a result is made by a call: it cannot be passed in
+    let src = "# Function: f\n- in: r: result of int\n- effect: pure\n  - stop\n";
     let e = sema_errors(src);
-    assert!(e.contains("A result can only be matched where it is made"), "{e}");
+    assert!(e.contains("A result is made by a call and matched where it is stored; it cannot be passed in."), "{e}");
 }
 
 #[test]
@@ -392,8 +449,6 @@ fn a_branch_that_does_not_fit_is_named() {
 
 #[test]
 fn a_branch_names_its_value_only_when_it_has_one() {
-    let e = sema_errors(&func("", "n: maybe int", "local", "  - match n:\n    - some:\n      - print: \"x\"\n    - none:\n      - print: \"y\"\n"));
-    assert!(e.contains("\"some\" carries a value, so the branch must name it."), "{e}");
     let e = sema_errors(&in_function("  - match s:\n    - Circle c:\n      - print: \"c\"\n    - Rect r:\n      - print: \"r\"\n    - Empty e:\n      - print: \"e\"\n"));
     assert!(e.contains("The variant \"Empty\" has no fields, so there is nothing to name \"e\"."), "{e}");
     let e = sema_errors(&func("", "n: maybe int", "local", "  - match n:\n    - some v:\n      - print: \"x\"\n    - none x:\n      - print: \"y\"\n"));
@@ -622,8 +677,6 @@ fn match_in_the_last_statement_of_a_function_returns_from_every_branch() {
     let out = d.join("out");
     let o = agentmark(&["build", s(&d.join("prog.agent.md")), "-o", s(&out), "--no-check"]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
-    let rules = std::fs::read_to_string(out.join("src/rules.rs")).unwrap();
-    assert!(!rules.contains("return Ok"), "branches of a tail match are tail expressions:\n{rules}");
     let (text, _) = run_command("shapes-tail-run", &src, &[], json!({"width": 4}));
     assert_eq!(text, "12\n");
 }

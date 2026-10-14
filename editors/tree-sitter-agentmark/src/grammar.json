@@ -1916,8 +1916,19 @@
               "name": "type"
             }
           ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "handle_type"
         }
       ]
+    },
+    "handle_type": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "((mut|consume)[ \\t]+)?handle[ \\t]+of[ \\t]+[A-Za-z_][A-Za-z0-9_-]*(\\.[A-Za-z_][A-Za-z0-9_-]*)*"
+      }
     },
     "statement_line": {
       "type": "SEQ",

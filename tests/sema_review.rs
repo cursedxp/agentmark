@@ -381,7 +381,7 @@ fn a_result_function_returning_the_wrong_type_is_still_an_error() {
 fn a_result_function_must_be_called_with_try() {
     let e = first_error(&format!("{FALLIBLE}- do read_count(path) -> n\n- print: \"{{n}}\"\n"));
     assert!(e.contains("can fail (it returns \"result of int\"), so it has to be called with \"try\""), "{e}");
-    assert!(e.contains("try do read_count"), "{e}");
+    assert!(e.contains("try read_count"), "{e}");
     // and not inside an expression
     let e = first_error(&format!("{FALLIBLE}- set n = read_count(path)\n- print: \"{{n}}\"\n"));
     assert!(e.contains("can fail") && e.contains("cannot be used inside an expression"), "{e}");
