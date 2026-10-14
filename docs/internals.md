@@ -106,6 +106,7 @@ effects of their children instead of looking them up.
 | 18.6 | formatter | `src/fmt.rs` | `tests/fmt.rs`, `tests/fmt/messy.agent.md` |
 | 18.7 | documentation page | `src/cli/docgen.rs` | `tests/cli.rs` |
 | 19 | model providers | `crates/agentmark-rt/src/model.rs` | `crates/agentmark-rt/tests/anthropic.rs` |
+| 20.3 | language server | `crates/agentmark-lsp/src/` (section 9 below) | `crates/agentmark-lsp/tests/` |
 
 The documentation is tested too: `tests/docs.rs` runs every sample in `docs/*.md`. Its header comment states which
 fenced blocks are complete programs and which are fragments, and the wrapper a fragment is parsed in.
@@ -245,6 +246,7 @@ looks like must keep older connect files compiling or say how to migrate them.
 | `tests/codegen.rs`, `tests/examples_e2e.rs`, `tests/support/mod.rs` | the generated programs are built with cargo and judged by their traces (every example against `fixtures/*/expected.trace.jsonl`) |
 | `tests/docs.rs` | the documentation: every sample, the guide's vocabulary, the paths on this page |
 | `crates/agentmark-rt/tests/` | runtime: money rounding, scheduler, trace lines, fixtures |
+| `crates/agentmark-lsp/tests/` | the language server driven over the protocol in-process: one test per capability, every code action, model actions off and on, the binary over stdio |
 
 Conventions: tests compare behaviour (traces), not generated source text; a bug that took two tries gets a
 regression test; test output stays free of warnings; shared helpers for the semantic tests are in
@@ -257,3 +259,27 @@ grouped by the step that made them: Q1 to Q11 setup, Q12 to Q15 runtime, Q16 to 
 check, Q50 to Q56 formatter and lint, Q70 to Q82 binder, Q90 to Q95 lowering and IR, Q110 to Q117 command line, Q130 to Q140 code generation, Q150
 to Q158 examples and fixtures, Q170 to Q175 documentation, Q190 and up review fixes and library trust. `docs/reference.md` cites the entries that change what a
 user sees. When you face a new ambiguity: write the entry, apply the choice, continue.
+
+## 9. The language server
+
+`crates/agentmark-lsp/` is the workspace member that builds `agentmark-lsp`, a Language Server Protocol server on
+stdio (`lsp-server` for the transport, `lsp-types` for the messages; synchronous, one thread). It uses the compiler
+only as a library: `Project::load_with` through an overlay of the open buffers, `sema::check`, `lint`, `fmt`.
+Nothing in `src/` knows about it except `project::Config.lsp_model_actions` (Q250).
+
+| file | what it does |
+|---|---|
+| `crates/agentmark-lsp/src/server.rs` | the message loop, one handler per method, the per-project analysis cache, diagnostics publishing |
+| `crates/agentmark-lsp/src/workspace.rs` | open buffers over the disk (`OverlayFs`), the project of a document, `Analysis` (load, check, lint, the last good check) |
+| `crates/agentmark-lsp/src/diagnostics.rs` | `Diagnostic` to LSP: the SPEC 10 message, range, code, source |
+| `crates/agentmark-lsp/src/complete.rs` | completion: context from the text left of the cursor, names from the ASTs, types from the checker |
+| `crates/agentmark-lsp/src/nav.rs` | go-to-definition (through `Checked.resolutions` and `declarations`, then by name) and hover (effect summary of a block, types) |
+| `crates/agentmark-lsp/src/actions.rs` | quick fixes of the lint rules and of "Did you mean", and the model actions |
+| `crates/agentmark-lsp/src/index.rs`, `crates/agentmark-lsp/src/text.rs`, `crates/agentmark-lsp/src/uri.rs` | declarations visible from a file and the word under the cursor; character and UTF-16 positions; `file://` URIs |
+
+Three things to know before changing it. The checker returns nothing when there is any error, which is the normal
+state while typing, so every feature has a plan for that (Q252); keep it when you add a feature. Positions are
+characters in the compiler and UTF-16 units in the protocol: always go through `crates/agentmark-lsp/src/text.rs`. A new lint rule that has a
+mechanical fix gets an arm in `lint_fix` in `crates/agentmark-lsp/src/actions.rs` and a test in `crates/agentmark-lsp/tests/actions.rs` that
+applies the edit and checks that the finding is gone and the project still checks (Q255). The decisions behind all of
+it are Q250 to Q258.
