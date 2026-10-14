@@ -3,6 +3,8 @@
 
 use std::fmt;
 
+pub use crate::syntax::ast::HandleMode;
+
 /// An AgentMark type a binding can mention (SPEC 6 plus `bytes`, OPEN_QUESTIONS Q8).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ty {
@@ -15,6 +17,16 @@ pub enum Ty {
     Duration,
     List(Box<Ty>),
     Maybe(Box<Ty>),
+    /// `handle of sha2.Sha256` (SPEC 22.4): a library type with no AgentMark equivalent. `name`
+    /// is the dotted path from the crate; `mode` is how a parameter holds it (a return value is
+    /// always owned, mode `Shared` there means "not borrowed").
+    Handle { name: String, mode: HandleMode },
+}
+
+impl Ty {
+    pub fn handle(name: impl Into<String>, mode: HandleMode) -> Ty {
+        Ty::Handle { name: name.into(), mode }
+    }
 }
 
 impl fmt::Display for Ty {
@@ -29,6 +41,10 @@ impl fmt::Display for Ty {
             Ty::Duration => f.write_str("duration"),
             Ty::List(t) => write!(f, "list of {t}"),
             Ty::Maybe(t) => write!(f, "maybe {t}"),
+            Ty::Handle { name, mode } => match mode.word() {
+                Some(w) => write!(f, "{w} handle of {name}"),
+                None => write!(f, "handle of {name}"),
+            },
         }
     }
 }
@@ -64,8 +80,10 @@ impl Sig {
 /// How the target classified an item, before any model is involved (SPEC 15.2 table).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Shape {
-    /// Every type maps 1:1: the target already wrote the body by rules.
-    Direct { sig: Sig, body: String },
+    /// Every type maps 1:1: the target already wrote the body by rules. `verify`: the rules
+    /// cannot see everything (a handle, another crate's trait), so the type checker has the
+    /// last word.
+    Direct { sig: Sig, body: String, verify: bool },
     /// Needs the model to write the body for the declared `sig`. `why` says what kept it from
     /// being direct (shown to the model).
     Assisted { sig: Sig, why: String },
@@ -75,8 +93,11 @@ pub enum Shape {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
-    /// Unique AgentMark item name (the heading name).
+    /// Unique AgentMark item name (the heading name, and the key of `## Not bound`).
     pub name: String,
+    /// The name the `##` heading carries when it is not `name`: a method of a handle is written
+    /// with its method name (`update`), since the handle type tells methods apart (SPEC 22.4).
+    pub heading: Option<String>,
     /// Where the item lives in the library, for messages and prompts (`chrono::NaiveDate::year`).
     pub path: String,
     /// First sentence of the item's documentation, or empty when there is none.

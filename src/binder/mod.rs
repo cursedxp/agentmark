@@ -553,17 +553,28 @@ pub fn doc_cheatsheet(binding_file: &Path) -> Result<String, BindError> {
         }
     }
     o.push_str("\n\nUse in a statement as `<binding> <item> args`; items:\n");
-    for it in &b.items {
-        let params: Vec<String> = it
-            .params
-            .iter()
-            .map(|p| format!("{}: {}", p.name.name, type_text(&p.ty)))
-            .collect();
-        let ret = it.out.as_ref().map(|t| format!(" -> {}", type_text(t))).unwrap_or_default();
-        o.push_str(&format!("  {}.{}({}){}\n", b.name.name, it.name.name, params.join(", "), ret));
-        if let Some(d) = &it.doc {
-            o.push_str(&format!("      {d}\n"));
+    let is_method = |it: &crate::syntax::ast::BindingItem| it.params.first().is_some_and(|p| p.name.name == "self");
+    let mut methods = false;
+    for it in b.items.iter().filter(|it| !is_method(it)) {
+        o.push_str(&item_line(&format!("{}.", b.name.name), it, 0));
+    }
+    for it in b.items.iter().filter(|it| is_method(it)) {
+        if !methods {
+            o.push_str("\nMethods, called on a variable that holds the handle: `<variable> <method> args`:\n");
+            methods = true;
         }
+        let recv = match &it.params[0].ty.kind {
+            crate::syntax::ast::TypeKind::Handle { name, mode } => {
+                let how = match mode {
+                    crate::syntax::ast::HandleMode::Shared => "reads it",
+                    crate::syntax::ast::HandleMode::Mut => "changes it",
+                    crate::syntax::ast::HandleMode::Consume => "uses it up",
+                };
+                format!("<handle of {name}> ({how}) ")
+            }
+            _ => String::new(),
+        };
+        o.push_str(&item_line(&recv, it, 1));
     }
     if b.items.is_empty() {
         o.push_str("  (nothing bound)\n");
@@ -580,6 +591,22 @@ pub fn doc_cheatsheet(binding_file: &Path) -> Result<String, BindError> {
     Ok(o)
 }
 
+/// `  sha2.sha256_new() -> handle of sha2.Sha256` plus its doc line; `skip` leaves out `self`.
+fn item_line(lead: &str, it: &crate::syntax::ast::BindingItem, skip: usize) -> String {
+    let params: Vec<String> = it
+        .params
+        .iter()
+        .skip(skip)
+        .map(|p| format!("{}: {}", p.name.name, type_text(&p.ty)))
+        .collect();
+    let ret = it.out.as_ref().map(|t| format!(" -> {}", type_text(t))).unwrap_or_default();
+    let mut o = format!("  {lead}{}({}){ret}\n", it.name.name, params.join(", "));
+    if let Some(d) = &it.doc {
+        o.push_str(&format!("      {d}\n"));
+    }
+    o
+}
+
 fn type_text(t: &crate::syntax::ast::TypeExpr) -> String {
     use crate::syntax::ast::TypeKind;
     match &t.kind {
@@ -587,5 +614,9 @@ fn type_text(t: &crate::syntax::ast::TypeExpr) -> String {
         TypeKind::List(i) => format!("list of {}", type_text(i)),
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
+        TypeKind::Handle { name, mode } => match mode.word() {
+            Some(w) => format!("{w} handle of {name}"),
+            None => format!("handle of {name}"),
+        },
     }
 }

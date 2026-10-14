@@ -95,8 +95,10 @@ impl Checker<'_> {
                         record: r.clone(),
                     });
                 }
+                let before = cx.consumed.clone();
                 self.stmts(cx, body);
                 cx.pop();
+                self.loop_consumption(cx, &before, body);
             }
             StmtKind::If { cond, then, else_ } => {
                 let t = self.expr(cx, cond);
@@ -106,16 +108,19 @@ impl Checker<'_> {
                     self.norm_facts(cx, facts(cond)),
                     self.norm_facts(cx, neg_facts(cond)),
                 );
+                let before = cx.consumed.clone();
                 cx.push();
                 cx.narrow(&pos);
                 self.stmts(cx, then);
                 cx.pop();
+                let after_then = std::mem::replace(&mut cx.consumed, before.clone());
                 if !else_.is_empty() {
                     cx.push();
                     cx.narrow(&neg);
                     self.stmts(cx, else_);
                     cx.pop();
                 }
+                self.join_consumption(cx, before, after_then, terminates(then), terminates(else_));
                 if terminates(then) {
                     cx.narrow(&neg);
                 } else if !else_.is_empty() && terminates(else_) {
@@ -148,6 +153,7 @@ impl Checker<'_> {
                     }
                 };
                 self.check_limit(cx, s);
+                let before = cx.consumed.clone();
                 cx.push();
                 cx.top().vars.insert(bind.name.clone(), inner);
                 cx.top().defs.insert(bind.name.clone(), bind.span);
@@ -157,11 +163,13 @@ impl Checker<'_> {
                 }
                 self.stmts(cx, then);
                 cx.pop();
+                let after_then = std::mem::replace(&mut cx.consumed, before.clone());
                 if !else_.is_empty() {
                     cx.push();
                     self.stmts(cx, else_);
                     cx.pop();
                 }
+                self.join_consumption(cx, before, after_then, terminates(then), terminates(else_));
             }
             StmtKind::Stop => {
                 if cx.func.is_some() {
@@ -241,7 +249,9 @@ impl Checker<'_> {
                 self.check_limit(cx, s);
             }
             StmtKind::Set { var, expr } => {
-                let t = self.expr(cx, expr);
+                let t = self.expr_handle_ok(cx, expr);
+                self.move_out(cx, expr);
+                cx.consumed.remove(&var.name);
                 match cx.var(&var.name).cloned() {
                     Some(old) => {
                         if !self.is_assignable(&t, &old) {
@@ -363,6 +373,11 @@ impl Checker<'_> {
                 self.stmt(cx, stmt);
                 cx.in_try = false;
                 if let Some(o) = otherwise {
+                    let into = match &stmt.kind {
+                        StmtKind::ToolCall { into, .. } | StmtKind::Do { into, .. } => into.as_ref(),
+                        _ => None,
+                    };
+                    self.check_try_handle(cx, into, terminates(o));
                     cx.push();
                     self.stmts(cx, o);
                     cx.pop();
@@ -372,6 +387,7 @@ impl Checker<'_> {
                 self.stmts(cx, body);
                 let diags = parallel::conflicts(self.path(cx.file), body);
                 self.diags.extend(diags);
+                self.parallel_handles(cx, body);
             }
             StmtKind::ModelCall { .. } | StmtKind::Trace(_) => {
                 unreachable!("L2-only node in sema")
@@ -379,8 +395,92 @@ impl Checker<'_> {
         }
     }
 
+    /// Two statements of a `parallel:` block that call methods on one handle would hold it twice at
+    /// once (SPEC 22.4).
+    fn parallel_handles(&mut self, cx: &Cx, body: &[Stmt]) {
+        let mut first: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+        for s in body {
+            let StmtKind::ToolCall { tool, .. } = &s.kind else { continue };
+            let is_method = self
+                .tool_calls
+                .get(&super::NodeKey::new(cx.file, s.span))
+                .is_some_and(|t| t.on.is_some());
+            if !is_method {
+                continue;
+            }
+            match first.get(tool.name.as_str()) {
+                Some(line) => {
+                    let d = Diagnostic::error(
+                        parallel::E_PARALLEL,
+                        self.path(cx.file),
+                        s.span,
+                        format!(
+                            "Two statements of this \"parallel\" block both use the handle \"{}\" (the first is on line {line}).",
+                            tool.name
+                        ),
+                    )
+                    .with_help("A handle can only be used by one thing at a time: run these one after the other.");
+                    self.diags.push(d);
+                }
+                None => {
+                    first.insert(tool.name.as_str(), s.span.line);
+                }
+            }
+        }
+    }
+
+    /// After an `if`: a handle used up on a path that goes on is used up afterwards ("may have
+    /// been"); a branch that leaves (`stop`, `return`) contributes nothing.
+    fn join_consumption(
+        &mut self,
+        cx: &mut Cx,
+        before: std::collections::HashMap<String, crate::diag::Span>,
+        after_then: std::collections::HashMap<String, crate::diag::Span>,
+        then_leaves: bool,
+        else_leaves: bool,
+    ) {
+        let after_else = std::mem::take(&mut cx.consumed);
+        let mut merged = before;
+        for (k, v) in after_then.into_iter().filter(|_| !then_leaves).chain(after_else.into_iter().filter(|_| !else_leaves)) {
+            merged.entry(k).or_insert(v);
+        }
+        cx.consumed = merged;
+    }
+
+    /// A handle that lives outside a loop and is used up inside it would be used again in the
+    /// next round.
+    fn loop_consumption(
+        &mut self,
+        cx: &mut Cx,
+        before: &std::collections::HashMap<String, crate::diag::Span>,
+        body: &[Stmt],
+    ) {
+        if terminates(body) {
+            return;
+        }
+        let mut new: Vec<(String, crate::diag::Span)> = cx
+            .consumed
+            .iter()
+            .filter(|(k, _)| !before.contains_key(*k) && cx.var(k).is_some())
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        new.sort_by_key(|(_, sp)| (sp.line, sp.col));
+        for (name, at) in new {
+            let d = Diagnostic::error(
+                super::handles::E_CONSUMED,
+                self.path(cx.file),
+                at,
+                format!("\"{name}\" is used up here, but this line is inside a loop and runs again with the same \"{name}\"."),
+            )
+            .with_help(format!(
+                "Make a new handle inside the loop (the line that made \"{name}\"), or use \"{name}\" up after the loop."
+            ));
+            self.diags.push(d);
+        }
+    }
+
     fn return_stmt(&mut self, cx: &mut Cx, s: &Stmt, e: &crate::syntax::ast::Expr) {
-        let t = self.expr(cx, e);
+        let t = self.expr_handle_ok(cx, e);
         let Some(f) = &cx.func else {
             let d = Diagnostic::error(
                 E_STMT,
@@ -545,7 +645,14 @@ impl Checker<'_> {
             return;
         }
         // a function or Rust block
-        let arg_types: Vec<Type> = args.iter().map(|a| self.expr(cx, a)).collect();
+        let arg_types: Vec<Type> = args
+            .iter()
+            .map(|a| {
+                let t = self.expr_handle_ok(cx, a);
+                self.move_out(cx, a);
+                t
+            })
+            .collect();
         let Some((kind, decl)) =
             self.lookup(cx.file, &name.name, &[Kind::Function, Kind::RustBlock])
         else {

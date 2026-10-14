@@ -410,7 +410,7 @@ fn bind_generates_then_serves_from_cache() {
     let first = bind(&d, &[]);
     assert_eq!(code(&first), 0, "{}{}", out(&first), err(&first));
     assert!(out(&first).contains("sha2 0.10.9: generated"), "{}", out(&first));
-    assert!(out(&first).contains("0 direct, 1 assisted, "), "{}", out(&first));
+    assert!(out(&first).contains("42 direct, 1 assisted, "), "{}", out(&first));
     assert!(out(&first).contains("change the line \"- effect: unverified\" to \"- effect: pure\""), "{}", out(&first));
     let file = d.join("bindings/sha2.agent.md");
     let text = std::fs::read_to_string(&file).unwrap();

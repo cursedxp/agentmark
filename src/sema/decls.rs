@@ -78,8 +78,15 @@ impl Checker<'_> {
                 self.diags.push(d);
                 Type::Unknown
             }
-            TypeKind::List(t) => Type::List(Box::new(self.resolve_type(file, t))),
-            TypeKind::Maybe(t) => Type::Maybe(Box::new(self.resolve_type(file, t))),
+            TypeKind::Handle { name, mode } => self.resolve_handle_type(file, te, name, *mode),
+            TypeKind::List(t) => {
+                let inner = self.resolve_type(file, t);
+                self.nest_check(file, te, inner).list()
+            }
+            TypeKind::Maybe(t) => {
+                let inner = self.resolve_type(file, t);
+                self.nest_check(file, te, inner).maybe()
+            }
             TypeKind::Result(t) => Type::Result(Box::new(self.resolve_type(file, t))),
         }
     }
@@ -95,7 +102,20 @@ impl Checker<'_> {
                 let mut fields: Vec<FieldInfo> = Vec::new();
                 for fld in &r.fields {
                     let (ty, inferred) = match &fld.ty {
-                        Some(te) => (self.resolve_type(fi, te), false),
+                        Some(te) => {
+                            let t = self.resolve_type(fi, te);
+                            if t.is_handle() {
+                                self.error(
+                                    super::handles::E_HANDLE_NEST,
+                                    fi,
+                                    te.span,
+                                    format!("A record is saved and sent as JSON, so it cannot have a field of {t}."),
+                                );
+                                (Type::Unknown, false)
+                            } else {
+                                (t, false)
+                            }
+                        }
                         None => {
                             let (t, matched) = infer_field_type(&fld.name.name);
                             self.inferred_fields.push(super::InferredField {
@@ -229,8 +249,17 @@ impl Checker<'_> {
                     Decl::Binding(x) => {
                         let mut items = Vec::new();
                         for it in &x.items {
+                            let (ptys, modes): (Vec<Type>, Vec<_>) =
+                                it.params.iter().map(|p| self.resolve_binding_param(fi, &p.ty)).unzip();
+                            self.check_self_params(fi, it, &ptys);
+                            let params: Vec<ParamInfo> = it
+                                .params
+                                .iter()
+                                .zip(ptys)
+                                .map(|(p, ty)| ParamInfo { name: p.name.name.clone(), ty, has_default: p.default.is_some() })
+                                .collect();
                             let sig = Sig {
-                                params: self.params(fi, &it.params),
+                                params,
                                 out: it.out.as_ref().map(|t| self.resolve_type(fi, t)),
                                 effect: match (x.effect.value, &x.proposed_effect) {
                                     (Effect::Unverified, Some(pe)) if self.p.assume_proposed => pe.value,
@@ -242,6 +271,7 @@ impl Checker<'_> {
                             items.push(BindingItemInfo {
                                 name: it.name.name.clone(),
                                 sig,
+                                modes,
                             });
                         }
                         if let (Effect::Unverified, Some(pe), true) = (x.effect.value, &x.proposed_effect, self.p.assume_proposed) {

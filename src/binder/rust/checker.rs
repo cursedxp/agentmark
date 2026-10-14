@@ -16,6 +16,23 @@ fn rust_ty(t: &Ty) -> String {
         Ty::Duration => "chrono::Duration".into(),
         Ty::List(i) => format!("Vec<{}>", rust_ty(i)),
         Ty::Maybe(i) => format!("Option<{}>", rust_ty(i)),
+        Ty::Handle { name, .. } => handle_path(name),
+    }
+}
+
+/// `sha2.Sha256` -> `sha2::Sha256`.
+pub fn handle_path(name: &str) -> String {
+    let mut parts = name.split('.');
+    let krate = parts.next().unwrap_or("").replace('-', "_");
+    std::iter::once(krate).chain(parts.map(String::from)).collect::<Vec<_>>().join("::")
+}
+
+/// The Rust spelling of a parameter: a handle is borrowed, borrowed mutably or taken by value.
+fn rust_param_ty(t: &Ty) -> String {
+    match t {
+        Ty::Handle { mode: crate::binder::core::HandleMode::Shared, .. } => format!("&{}", rust_ty(t)),
+        Ty::Handle { mode: crate::binder::core::HandleMode::Mut, .. } => format!("&mut {}", rust_ty(t)),
+        _ => rust_ty(t),
     }
 }
 
@@ -25,7 +42,7 @@ pub fn rust_fn_header(name: &str, sig: &Sig) -> String {
     let ps: Vec<String> = sig
         .params
         .iter()
-        .map(|p| format!("{}: {}", p.name, rust_ty(&p.ty)))
+        .map(|p| format!("{}: {}", if p.name == "self" { "self_" } else { p.name.as_str() }, rust_param_ty(&p.ty)))
         .collect();
     let ret = sig.ret.as_ref().map(rust_ty).unwrap_or_else(|| "()".into());
     format!(

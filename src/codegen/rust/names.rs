@@ -236,7 +236,7 @@ impl Names {
         let mut item_ns: HashMap<String, Namespace> = HashMap::new();
         for b in &p.bindings {
             let ns = item_ns.entry(b.binding.clone()).or_default();
-            n.binding_items.insert((b.binding.clone(), b.item.clone()), ns.take(&ident_chars(&b.item)));
+            n.binding_items.insert((b.binding.clone(), crate::ir::binding_key(&b.item, b.on.as_deref())), ns.take(&ident_chars(&b.item)));
         }
 
         let mut tools_ns = Namespace::with(RESERVED_TYPES);

@@ -69,6 +69,12 @@ pub struct Cx {
     /// The statement about to be checked is the one directly after `try` (a `result of` function
     /// may only be called there).
     pub in_try: bool,
+    /// Handles (SPEC 22.4) that were used up (`self` methods, passing them on): variable ->
+    /// the span of the line that used it up.
+    pub consumed: HashMap<String, crate::diag::Span>,
+    /// The path read next may be a handle: the caller moves or borrows it (`set`, call
+    /// arguments, `return`). Anywhere else a handle read is an error (E362).
+    pub handle_ok: bool,
 }
 
 impl Cx {
@@ -85,6 +91,8 @@ impl Cx {
             unit: String::new(),
             unwrap_log: Vec::new(),
             in_try: false,
+            consumed: HashMap::new(),
+            handle_ok: false,
         }
     }
 
@@ -99,7 +107,11 @@ impl Cx {
     }
 
     pub fn pop(&mut self) {
-        self.frames.pop();
+        if let Some(f) = self.frames.pop() {
+            for v in f.vars.keys() {
+                self.consumed.remove(v);
+            }
+        }
     }
 
     pub fn top(&mut self) -> &mut Frame {
@@ -122,6 +134,7 @@ impl Cx {
 
     pub fn define(&mut self, name: &str, ty: Type, span: crate::diag::Span) {
         self.forget(name);
+        self.consumed.remove(name);
         for f in self.frames.iter_mut().rev() {
             if let Some(slot) = f.vars.get_mut(name) {
                 *slot = ty;

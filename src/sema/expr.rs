@@ -379,6 +379,7 @@ impl Checker<'_> {
     pub(super) fn path_expr(&mut self, cx: &mut Cx, segs: &[Ident], key: NodeKey) -> Type {
         let first = &segs[0];
         // a variable (loop variable, `set`/`->` result, parameter, route parameter, `state`)
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
         if let Some(t) = cx.var(&first.name).cloned() {
             self.resolutions.insert(
                 key,
@@ -387,6 +388,13 @@ impl Checker<'_> {
                     def: cx.def_of(&first.name),
                 },
             );
+            if t.is_handle() {
+                self.check_not_consumed(cx, first);
+                if segs.len() == 1 && !handle_ok {
+                    self.handle_misuse(cx, first, &t);
+                    return Type::Unknown;
+                }
+            }
             return self.chain(cx, t, segs, 1, first.name.clone());
         }
         // a bare field of the record in front of us
@@ -739,7 +747,14 @@ impl Checker<'_> {
             .map(|i| i.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        let arg_types: Vec<Type> = args.iter().map(|a| self.expr(cx, a)).collect();
+        let arg_types: Vec<Type> = args
+            .iter()
+            .map(|a| {
+                let t = self.expr_handle_ok(cx, a);
+                self.move_out(cx, a);
+                t
+            })
+            .collect();
         let Some((kind, decl)) = self.lookup(cx.file, &name, &[Kind::Function, Kind::RustBlock])
         else {
             let mut cands = self.scopes[cx.file].names_of(&[Kind::Function, Kind::RustBlock]);

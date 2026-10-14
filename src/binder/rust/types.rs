@@ -1,8 +1,9 @@
 //! Rustdoc JSON types -> a small Rust type model (`RT`), its rendering, the lift onto AgentMark
 //! types, and the 1:1 conversions used by the direct tier.
 
-use crate::binder::core::Ty;
+use crate::binder::core::{HandleMode, Ty};
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RT {
@@ -273,6 +274,9 @@ pub fn render_bounds(b: &[Bound]) -> String {
 pub struct Lifter<'a> {
     /// Generic parameter name -> its bounds (fn and impl level).
     pub bounds: &'a [(String, Vec<Bound>)],
+    /// Public types of the bound crate that become `handle of <crate>.<Type>` (SPEC 22.4): the
+    /// path a signature names them by (canonical and public) -> the handle's dotted name.
+    pub handles: &'a HashMap<Vec<String>, String>,
 }
 
 fn utc() -> RT {
@@ -298,11 +302,11 @@ impl Lifter<'_> {
                     RT::Path { full, args } if last(full) == "Vec" && args.first().is_some_and(is_u8) => {
                         std_path("Vec", args.clone())
                     }
-                    _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(&[b.clone()]))),
+                    _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
                 },
                 ("ToString" | "Display" | "IntoUrl", _) => std_path("String", vec![]),
                 ("TimeZone", _) => utc(),
-                _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(&[b.clone()]))),
+                _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
             };
             match &found {
                 Some(f) if *f != one => {
@@ -347,9 +351,12 @@ impl Lifter<'_> {
                 Err("floats have no AgentMark type (money must be integer minor units)".into())
             }
             RT::Ref { mutable: true, .. } => Err(format!("`{}` is a mutable borrow", render(rt))),
+            RT::Ref { inner, .. } if self.handle_of(inner).is_some() => {
+                Err(format!("`{}` borrows a handle, and a borrow cannot be returned or stored", render(rt)))
+            }
             RT::Ref { inner, .. } => self.value(inner),
             RT::Slice(i) if is_u8(i) => Ok(Ty::Bytes),
-            RT::Slice(i) => Ok(Ty::List(Box::new(self.value(i)?))),
+            RT::Slice(i) => Ok(Ty::List(Box::new(self.not_handle(self.value(i)?, "a list")?))),
             RT::Path { full, args } => {
                 let args: Vec<RT> = args.iter().map(|a| self.resolve(a)).collect();
                 let args = args.as_slice();
@@ -358,8 +365,8 @@ impl Lifter<'_> {
                     match (n, args) {
                         ("String", _) => return Ok(Ty::Text),
                         ("Vec", [a]) if is_u8(a) => return Ok(Ty::Bytes),
-                        ("Vec", [a]) => return Ok(Ty::List(Box::new(self.value(a)?))),
-                        ("Option", [a]) => return Ok(Ty::Maybe(Box::new(self.value(a)?))),
+                        ("Vec", [a]) => return Ok(Ty::List(Box::new(self.not_handle(self.value(a)?, "a list")?))),
+                        ("Option", [a]) => return Ok(Ty::Maybe(Box::new(self.not_handle(self.value(a)?, "a maybe")?))),
                         ("Box", [a]) => return self.value(a),
                         ("Cow", [a]) => return self.value(a),
                         _ => {}
@@ -377,12 +384,63 @@ impl Lifter<'_> {
                 match n {
                     "Url" | "Uri" | "PathBuf" | "Path" => Ok(Ty::Text),
                     "GenericArray" | "Output" => Ok(Ty::Bytes),
-                    _ => no(),
+                    _ => match self.raw_handle(rt) {
+                        Some(h) => Ok(Ty::handle(h, HandleMode::Shared)),
+                        None => no(),
+                    },
                 }
             }
             RT::Generic(g) => self.value(&self.generic(g)?),
             RT::Impl(b) => self.value(&self.instantiate(b)?),
             _ => no(),
+        }
+    }
+
+    /// The handle name of a plain (non-generic) public type of the bound crate, by its path alone.
+    fn raw_handle(&self, rt: &RT) -> Option<String> {
+        match rt {
+            RT::Path { full, args } if args.is_empty() => self.handles.get(full).cloned(),
+            _ => None,
+        }
+    }
+
+    /// The handle name when AgentMark holds `rt` as a handle: a type with a built-in AgentMark
+    /// type (`NaiveDate`, `Url`, ...) is a value, not a handle.
+    pub fn handle_of(&self, rt: &RT) -> Option<String> {
+        self.raw_handle(rt)?;
+        match self.value(rt) {
+            Ok(Ty::Handle { name, .. }) => Some(name),
+            _ => None,
+        }
+    }
+
+    fn not_handle(&self, t: Ty, what: &str) -> Result<Ty, String> {
+        match t {
+            Ty::Handle { name, .. } => Err(format!("`handle of {name}` cannot be in {what}")),
+            t => Ok(t),
+        }
+    }
+
+    /// A parameter: a handle is lent (`&T`), lent mutably (`&mut T`) or handed over (`T`).
+    pub fn param(&self, rt: &RT) -> Result<Ty, String> {
+        if let RT::Ref { inner, mutable } = rt {
+            if let Some(h) = self.handle_of(inner) {
+                return Ok(Ty::handle(h, if *mutable { HandleMode::Mut } else { HandleMode::Shared }));
+            }
+        }
+        match self.value(rt)? {
+            Ty::Handle { name, .. } => Ok(Ty::handle(name, HandleMode::Consume)),
+            t => Ok(t),
+        }
+    }
+
+    /// The type a generic parameter or `impl Trait` stands for (`impl AsRef<[u8]>` -> `Vec<u8>`);
+    /// anything else as it is.
+    pub fn instantiated(&self, rt: &RT) -> RT {
+        match rt {
+            RT::Generic(g) => self.generic(g).unwrap_or_else(|_| rt.clone()),
+            RT::Impl(b) => self.instantiate(b).unwrap_or_else(|_| rt.clone()),
+            _ => rt.clone(),
         }
     }
 
@@ -548,7 +606,8 @@ mod tests {
             "S".to_string(),
             vec![Bound { name: "AsRef".into(), args: vec![p("str")], output: None, marker: false }],
         )];
-        let l = Lifter { bounds: &bounds };
+        let none = HashMap::new();
+        let l = Lifter { bounds: &bounds, handles: &none };
         assert_eq!(l.value(&RT::Generic("S".into())), Ok(Ty::Text));
         assert!(l.value(&RT::Generic("T".into())).is_err());
     }

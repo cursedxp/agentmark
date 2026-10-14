@@ -16,6 +16,8 @@ pub enum Tier {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundItem {
     pub name: String,
+    /// See [`Item::heading`].
+    pub heading: Option<String>,
     pub path: String,
     pub summary: String,
     pub sig: Sig,
@@ -65,10 +67,41 @@ pub async fn run_tiers(
         counts: Counts::default(),
     };
     for item in &ci.items {
+        let too_long = match &item.shape {
+            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => heading_too_long(item, sig),
+            Shape::Skipped { .. } => None,
+        };
+        if let Some(reason) = too_long {
+            out.not_bound.push((item.name.clone(), with_path(item, &reason)));
+            out.counts.skipped += 1;
+            out.placements.push((item.name.clone(), Tier::Skipped));
+            continue;
+        }
         let tier = match &item.shape {
-            Shape::Direct { sig, body } => {
-                push_bound(&mut out, item, sig, body.clone(), Tier::Direct);
-                Tier::Direct
+            Shape::Direct { sig, body, verify } => {
+                let checked = if *verify {
+                    checker
+                        .check(&CheckRequest {
+                            crate_name: &ci.name,
+                            version: &ci.version,
+                            name: &item.name,
+                            sig,
+                            body,
+                        })
+                        .map_err(|e| format!("rule-written body failed type-check: {}", one_line(&e)))
+                } else {
+                    Ok(())
+                };
+                match checked {
+                    Ok(()) => {
+                        push_bound(&mut out, item, sig, body.clone(), Tier::Direct);
+                        Tier::Direct
+                    }
+                    Err(reason) => {
+                        out.not_bound.push((item.name.clone(), with_path(item, &reason)));
+                        Tier::Skipped
+                    }
+                }
             }
             Shape::Assisted { sig, why } => {
                 match assist(ci, item, sig, why, model, checker).await {
@@ -102,9 +135,20 @@ pub async fn run_tiers(
     out
 }
 
+/// SPEC 18.3: no line over 120 characters; a heading cannot be wrapped (Q110).
+const MAX_HEADING: usize = 120;
+
+/// The reason an item cannot be written as a binding heading, if its heading is too long.
+fn heading_too_long(item: &Item, sig: &Sig) -> Option<String> {
+    let h = sig.heading(item.heading.as_deref().unwrap_or(&item.name));
+    let n = "## ".len() + h.chars().count();
+    (n > MAX_HEADING).then(|| format!("its signature is {n} characters, over the 120 a line may have (SPEC 18.3)"))
+}
+
 fn push_bound(out: &mut BoundCrate, item: &Item, sig: &Sig, body: String, tier: Tier) {
     out.items.push(BoundItem {
         name: item.name.clone(),
+        heading: item.heading.clone(),
         path: item.path.clone(),
         summary: item.summary.clone(),
         sig: sig.clone(),
@@ -144,13 +188,20 @@ pub fn assist_prompt(ci: &CrateItems, item: &Item, sig: &Sig, why: &str) -> Stri
     } else {
         item.docs.trim()
     };
+    let heading = sig.heading(item.heading.as_deref().unwrap_or(&item.name));
+    let handles = if heading.contains("handle of") {
+        "\n\nA `handle of <crate>.<Type>` is a value of the library's own type that AgentMark cannot look \
+         into: it is only passed on, returned, or used for the call itself."
+    } else {
+        ""
+    };
     format!(
         "bind {path}\n\
          You are the AgentMark binder. Write the {lang} body of one binding item for the crate \
          `{krate}` {version}.\n\n\
          {lang} signature of the library item:\n{src}\n\n\
          AgentMark signature to implement (types: text, int, bool, bytes, date, datetime, \
-         duration, list of T, maybe T):\n{heading}\n\n\
+         duration, list of T, maybe T, handle of <crate>.<Type>):\n{heading}{handles}\n\n\
          Why this needs hand-written glue: {why}\n\n\
          The body is placed inside:\n{contract}\n\n\
          Documentation of the item:\n{docs}\n\n\
@@ -161,7 +212,6 @@ pub fn assist_prompt(ci: &CrateItems, item: &Item, sig: &Sig, why: &str) -> Stri
         krate = ci.name,
         version = ci.version,
         src = item.source_sig,
-        heading = sig.heading(&item.name),
         contract = item.contract,
         style = ci.style_guide,
     )

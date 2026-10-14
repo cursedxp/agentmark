@@ -257,6 +257,31 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
             });
         let list = wrap("list", TypeKind::List);
         let result = wrap("result", TypeKind::Result);
+        // `[mut|consume] handle of sha2.Sha256` (SPEC 22.4)
+        let handle = choice((
+            kw("mut").to(HandleMode::Mut),
+            kw("consume").to(HandleMode::Consume),
+        ))
+        .then_ignore(sp1())
+        .or_not()
+        .then_ignore(kw("handle"))
+        .then_ignore(sp1())
+        .then_ignore(kw("of"))
+        .then_ignore(sp1())
+        .then(
+            name()
+                .map(|id| id.name)
+                .separated_by(just('.'))
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .map_with(|(mode, path), e| TypeExpr {
+            kind: TypeKind::Handle {
+                name: path.join("."),
+                mode: mode.unwrap_or(HandleMode::Shared),
+            },
+            span: at(e),
+        });
         // `lst of int`, `mayb int`: a word that is nearly a type constructor, followed by more type
         let typo = name()
             .filter(|id: &Ident| did_you_mean(&id.name, ["maybe", "list", "result"]).is_some())
@@ -276,7 +301,7 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
             span: id.span,
             kind: TypeKind::Named(id.name),
         });
-        choice((maybe, list, result, typo, named)).labelled("a type")
+        choice((handle, maybe, list, result, typo, named)).labelled("a type")
     })
     .boxed()
 }

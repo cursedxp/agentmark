@@ -108,6 +108,7 @@ impl<'a> Builder<'a> {
             ast::TypeKind::List(i) => Type::List(Box::new(self.ty(i))),
             ast::TypeKind::Maybe(i) => Type::Maybe(Box::new(self.ty(i))),
             ast::TypeKind::Result(i) => Type::Result(Box::new(self.ty(i))),
+            ast::TypeKind::Handle { name, .. } => Type::Handle(name.clone()),
         }
     }
 
@@ -403,10 +404,27 @@ impl<'a> Builder<'a> {
 
     fn binding(&mut self, b: &ast::Binding, out: &mut Vec<ir::BindingFn>) {
         for item in &b.items {
+            let on = match item.params.first() {
+                Some(p) if p.name.name == "self" => match &p.ty.kind {
+                    ast::TypeKind::Handle { name, .. } => Some(name.clone()),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let modes = item
+                .params
+                .iter()
+                .map(|p| match &p.ty.kind {
+                    ast::TypeKind::Handle { mode, .. } => *mode,
+                    _ => ir::HandleMode::Shared,
+                })
+                .collect();
             out.push(ir::BindingFn {
                 binding: b.name.name.clone(),
                 crate_name: b.crate_name.name.clone(),
                 item: item.name.name.clone(),
+                on,
+                modes,
                 doc: item.doc.clone(),
                 params: self.params(&item.params),
                 ret: item.out.as_ref().map(|t| self.ty(t)),
@@ -809,11 +827,24 @@ impl<'a> Builder<'a> {
                         }
                     })
                     .collect();
+                let mut args = args;
+                if let Some(h) = &tr.on {
+                    // a method call: the tool word is the handle variable, passed first
+                    args.insert(
+                        0,
+                        ir::Expr {
+                            kind: ir::ExprKind::Var(tool.name.clone()),
+                            ty: Type::Handle(h.clone()),
+                            effect: EffectSet::pure(),
+                        },
+                    );
+                }
                 let ret = tr.result.clone().unwrap_or(Type::Unknown);
                 (
                     ir::EffectCall::Binding {
                         binding: tr.tool.clone(),
                         item: verb_name.unwrap_or_default(),
+                        on: tr.on.clone(),
                         args,
                     },
                     ret,

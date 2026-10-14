@@ -190,7 +190,7 @@ pub fn render_item(it: &BoundItem, code_lang: &str) -> String {
         doc_line(&it.summary)
     };
     o.push_str(&one_line_doc(&doc));
-    o.push_str(&format!("## {}\n", it.sig.heading(&it.name)));
+    o.push_str(&format!("## {}\n", it.sig.heading(it.heading.as_deref().unwrap_or(&it.name))));
     o.push_str(&format!("  ```{code_lang}\n"));
     for l in it.body.lines() {
         if l.is_empty() {

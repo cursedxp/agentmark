@@ -56,6 +56,14 @@ impl Checker<'_> {
         }
         let mut cands: Vec<String> = self.p.manifest.tool_names().map(str::to_string).collect();
         cands.extend(self.scopes[cx.file].names_of(&[Kind::Binding]));
+        // a typo in the name of a handle variable (`- hashr update data`)
+        cands.extend(
+            cx.frames
+                .iter()
+                .flat_map(|f| f.vars.iter())
+                .filter(|(_, t)| t.is_handle())
+                .map(|(n, _)| n.clone()),
+        );
         let d = Diagnostic::error(
             E_MANIFEST,
             self.path(cx.file),
@@ -222,8 +230,12 @@ impl Checker<'_> {
             self.manifest_call(cx, sk, &def, tool, verb, target, payload, into);
             return;
         }
+        if let Some(Type::Handle(h)) = cx.var(&tool.name).cloned() {
+            self.handle_call(cx, sk, &h, tool, verb, target, payload, into);
+            return;
+        }
         if let Some((_, bname)) = self.lookup(cx.file, &tool.name, &[Kind::Binding]) {
-            self.binding_call(cx, sk, &bname, tool, verb, target, payload, into);
+            self.binding_call(cx, sk, &bname, tool, verb, target, payload, into, None);
             return;
         }
         self.unknown_tool(cx, tool);
@@ -443,6 +455,7 @@ impl Checker<'_> {
             ToolResolution {
                 tool: def.name.clone(),
                 kind: ToolKind::Manifest,
+                on: None,
                 verb: verb.as_ref().map(|v| v.name.clone()),
                 target_word: target_word.map(|w| w.name.clone()),
                 record,
@@ -635,8 +648,10 @@ impl Checker<'_> {
         }
     }
 
+    /// `recv` is the handle type when the statement is a method call on a handle variable
+    /// (`- hasher update data`, SPEC 22.4): the tool word is the variable, not the binding.
     #[allow(clippy::too_many_arguments)]
-    fn binding_call(
+    pub(super) fn binding_call(
         &mut self,
         cx: &mut Cx,
         sk: super::NodeKey,
@@ -646,10 +661,14 @@ impl Checker<'_> {
         target: &[TargetPart],
         payload: &Option<Payload>,
         into: &Option<Ident>,
+        recv: Option<&str>,
     ) {
         let info = self.bindings.get(bname).cloned();
         let mut out = Type::Unknown;
         let mut item_params: Option<Vec<super::ParamInfo>> = None;
+        let mut item_modes: Vec<crate::syntax::ast::HandleMode> = Vec::new();
+        let mut recv_mode = crate::syntax::ast::HandleMode::Shared;
+        let skip = usize::from(recv.is_some());
         if let Some(info) = &info {
             match verb {
                 None => {
@@ -663,33 +682,44 @@ impl Checker<'_> {
                         "Bound functions: {}.",
                         info.items
                             .iter()
+                            .filter(|i| i.receiver().is_none())
                             .map(|i| i.name.as_str())
                             .collect::<Vec<_>>()
                             .join(", ")
                     ));
                     self.diags.push(d);
                 }
-                Some(v) => match info.items.iter().find(|i| i.name == v.name) {
+                Some(v) => match info.items.iter().find(|i| i.name == v.name && i.receiver() == recv) {
                     None => {
                         let d = Diagnostic::error(
                             E_MANIFEST,
                             self.path(cx.file),
                             v.span,
-                            format!("Unknown verb \"{}\" for binding {bname}.", v.name),
+                            match recv {
+                                Some(h) => format!("The handle \"{}\" ({h}) has no method \"{}\".", tool.name, v.name),
+                                None => format!("Unknown verb \"{}\" for binding {bname}.", v.name),
+                            },
                         )
-                        .suggesting(&v.name, info.items.iter().map(|i| i.name.as_str()));
+                        .suggesting(
+                            &v.name,
+                            info.items.iter().filter(|i| i.receiver() == recv).map(|i| i.name.as_str()),
+                        );
                         self.diags.push(d);
                     }
                     Some(item) => {
                         out = item.sig.out.clone().unwrap_or(Type::Unknown);
-                        item_params = Some(item.sig.params.clone());
+                        item_params = Some(item.sig.params[skip..].to_vec());
+                        item_modes = item.modes[skip..].to_vec();
+                        if skip == 1 {
+                            recv_mode = item.modes[0];
+                        }
                         let words = target
                             .iter()
                             .filter(|t| matches!(t, TargetPart::Word(_) | TargetPart::Value(_)))
                             .count();
-                        if words != item.sig.params.len() {
+                        if words != item.sig.params.len() - skip {
                             let names: Vec<&str> =
-                                item.sig.params.iter().map(|p| p.name.as_str()).collect();
+                                item.sig.params[skip..].iter().map(|p| p.name.as_str()).collect();
                             let d = Diagnostic::error(
                                 E_MANIFEST,
                                 self.path(cx.file),
@@ -712,19 +742,33 @@ impl Checker<'_> {
         }
         // the values written after the verb, checked against the bound function's parameters
         let mut args: Vec<(Type, crate::diag::Span)> = Vec::new();
-        for t in target {
+        let mut arg_vars: Vec<Option<String>> = Vec::new();
+        for (i, t) in target.iter().enumerate() {
+            let wants_handle = item_params
+                .as_ref()
+                .and_then(|ps| ps.get(i))
+                .is_some_and(|p| p.ty.is_handle());
             match t {
                 TargetPart::Word(w) => {
+                    cx.handle_ok = wants_handle;
                     let ty = self.path_expr(
                         cx,
                         std::slice::from_ref(w),
                         super::NodeKey::new(cx.file, w.span),
                     );
+                    cx.handle_ok = false;
                     args.push((ty, w.span));
+                    arg_vars.push(Some(w.name.clone()));
                 }
                 TargetPart::Value(e) => {
+                    cx.handle_ok = wants_handle && matches!(e.kind, crate::syntax::ast::ExprKind::Path(_));
                     let ty = self.expr(cx, e);
+                    cx.handle_ok = false;
                     args.push((ty, e.span));
+                    arg_vars.push(match &e.kind {
+                        crate::syntax::ast::ExprKind::Path(segs) if segs.len() == 1 => Some(segs[0].name.clone()),
+                        _ => None,
+                    });
                 }
             }
         }
@@ -751,6 +795,7 @@ impl Checker<'_> {
                         self.diags.push(d);
                     }
                 }
+                self.handle_args(cx, sk, tool, recv_mode, params, &item_modes, &args, &arg_vars);
             }
         }
         if let Some(Payload::Value(e)) = payload {
@@ -773,6 +818,7 @@ impl Checker<'_> {
             ToolResolution {
                 tool: bname.to_string(),
                 kind: ToolKind::Binding,
+                on: recv.map(str::to_string),
                 verb: verb.as_ref().map(|v| v.name.clone()),
                 target_word: None,
                 record: None,
