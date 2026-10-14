@@ -24,6 +24,8 @@ pub enum PureKind {
     Rule,
     Guard,
     Constant,
+    /// The expression of a collection word, run once per element (SPEC 22.2).
+    Element,
 }
 
 #[derive(Debug, Default)]
@@ -223,6 +225,7 @@ pub fn contains_return(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| match &s.kind {
         StmtKind::Return(_) => true,
         StmtKind::ForEach { body, .. } => contains_return(body),
+        StmtKind::Coll(c) => c.body().is_some_and(|b| contains_return(b)),
         StmtKind::If { then, else_, .. } | StmtKind::IfSome { then, else_, .. } => {
             contains_return(then) || contains_return(else_)
         }

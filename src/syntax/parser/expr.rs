@@ -132,7 +132,7 @@ pub fn sp1<'a>() -> impl Parser<'a, &'a str, (), Ex<'a>> + Copy {
     text::inline_whitespace().at_least(1)
 }
 
-fn wrong_word<'a>(word: &'static str, found: &str, span: SimpleSpan) -> Rich<'a, char> {
+pub(super) fn wrong_word<'a>(word: &'static str, found: &str, span: SimpleSpan) -> Rich<'a, char> {
     <Rich<'a, char> as LabelError<'a, &'a str, RichPattern<'a, char>>>::expected_found(
         [RichPattern::Label(std::borrow::Cow::Borrowed(word))],
         found.chars().next().map(MaybeRef::Val),
@@ -257,12 +257,26 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
             });
         let list = wrap("list", TypeKind::List);
         let result = wrap("result", TypeKind::Result);
+        // `map of K to V` (SPEC 22.2)
+        let map = kw("map")
+            .ignore_then(sp1())
+            .ignore_then(kw("of"))
+            .ignore_then(sp1())
+            .ignore_then(ty.clone())
+            .then_ignore(sp1())
+            .then_ignore(kw("to"))
+            .then_ignore(sp1())
+            .then(ty.clone())
+            .map_with(|(k, v): (TypeExpr, TypeExpr), e| TypeExpr {
+                kind: TypeKind::Map(Box::new(k), Box::new(v)),
+                span: at(e),
+            });
         // `lst of int`, `mayb int`: a word that is nearly a type constructor, followed by more type
         let typo = name()
-            .filter(|id: &Ident| did_you_mean(&id.name, ["maybe", "list", "result"]).is_some())
+            .filter(|id: &Ident| did_you_mean(&id.name, ["maybe", "list", "result", "map"]).is_some())
             .then_ignore(sp1().then(ident().rewind()))
             .map_with(|id, e| {
-                let dym = did_you_mean(&id.name, ["maybe", "list", "result"]);
+                let dym = did_you_mean(&id.name, ["maybe", "list", "result", "map"]);
                 let r = e.span();
                 let word = SimpleSpan::from(r.start..r.start + id.name.len());
                 e.state()
@@ -276,7 +290,7 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
             span: id.span,
             kind: TypeKind::Named(id.name),
         });
-        choice((maybe, list, result, typo, named)).labelled("a type")
+        choice((maybe, list, result, map, typo, named)).labelled("a type")
     })
     .boxed()
 }
@@ -545,6 +559,15 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .map_with(|fields, e| mk(ExprKind::Record(fields), e))
                 .labelled("a record like { id: invoice.id }");
 
+            let paren = expr
+                .clone()
+                .padded_by(sp())
+                .delimited_by(just('('), just(')'));
+            // what a collection word is applied to (SPEC 22.2)
+            let source = super::collections::source(
+                choice((path_or_call.clone(), paren.clone())).boxed(),
+            );
+
             // ---- built-in forms
             let count_of = kw("count")
                 .ignore_then(sp1())
@@ -559,7 +582,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
                         .then_ignore(sp1())
                         .then(path_only.clone())
                         .map(|((rule, noun), src)| (Some(rule), Some(noun), src)),
-                    path_only.clone().map(|src| (None, None, src)),
+                    source.clone().map(|src| (None, None, src)),
                 )))
                 .map_with(|(rule, noun, src), e| {
                     mk(
@@ -612,14 +635,29 @@ pub fn expr<'a>() -> P<'a, Expr> {
             .map_with(|k, e| mk(k, e));
             let date = date_lit().map_with(|d, e| mk(ExprKind::Date(d), e));
             let number = number_lit().map_with(|k, e| mk(k, e));
-            let paren = expr
-                .clone()
-                .padded_by(sp())
-                .delimited_by(just('('), just(')'));
+
+            // collection words (SPEC 22.2): the words first, then names and parentheses with the
+            // `where` / `at` tails that hang off a source
+            let operand = choice((
+                string.clone(),
+                paren.clone(),
+                number.clone(),
+                path_or_call.clone(),
+            ))
+            .boxed();
+            let coll = super::collections::forms(
+                expr.clone().boxed(),
+                source,
+                operand.clone(),
+                type_expr(),
+            );
+            let path_or_call =
+                super::collections::postfix(path_or_call.boxed(), expr.clone().boxed(), operand);
 
             let atom = choice((
                 string,
                 record,
+                coll,
                 paren,
                 date,
                 number,

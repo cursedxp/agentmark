@@ -81,6 +81,11 @@ impl Checker<'_> {
             TypeKind::List(t) => Type::List(Box::new(self.resolve_type(file, t))),
             TypeKind::Maybe(t) => Type::Maybe(Box::new(self.resolve_type(file, t))),
             TypeKind::Result(t) => Type::Result(Box::new(self.resolve_type(file, t))),
+            TypeKind::Map(k, v) => {
+                let key = self.resolve_type(file, k);
+                self.check_map_key(file, k.span, &key);
+                Type::Map(Box::new(key), Box::new(self.resolve_type(file, v)))
+            }
         }
     }
 

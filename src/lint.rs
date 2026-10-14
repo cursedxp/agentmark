@@ -10,6 +10,7 @@ use std::collections::{BTreeSet, HashMap};
 use crate::diag::{did_you_mean, Diagnostic, Span};
 use crate::fmt::expr_text;
 use crate::syntax::ast::*;
+use crate::syntax::collections::CollStmt;
 use crate::syntax::parser::parse_file;
 
 /// Every rule id, in the order SPEC 18.4 lists them.
@@ -231,6 +232,7 @@ fn expr_children(e: &Expr) -> Vec<&Expr> {
         ExprKind::Record(fields) => fields.iter().map(|f| &f.value).collect(),
         ExprKind::CountOf { source, .. } => vec![source],
         ExprKind::FirstIn { source, cond, .. } => vec![source, cond],
+        ExprKind::Coll(c) => c.parts().into_iter().map(|(e, _)| e).collect(),
         _ => Vec::new(),
     }
 }
@@ -272,6 +274,7 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         StmtKind::Respond { body, .. } => body.iter().collect(),
         StmtKind::ReadFile { path, .. } => vec![path],
         StmtKind::Append { value, list } => vec![value, list],
+        StmtKind::Coll(c) => c.exprs(),
         StmtKind::Stop
         | StmtKind::ReadBody { .. }
         | StmtKind::Try { .. }
@@ -285,6 +288,7 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
 fn stmt_children(s: &Stmt) -> Vec<&[Stmt]> {
     match &s.kind {
         StmtKind::ForEach { body, .. } => vec![body],
+        StmtKind::Coll(c) => c.body().map(|b| vec![b.as_slice()]).unwrap_or_default(),
         StmtKind::If { then, else_, .. } | StmtKind::IfSome { then, else_, .. } => {
             vec![then, else_]
         }
@@ -549,12 +553,21 @@ fn duplicate_rule(units: &[(&File, Option<usize>)], cfg: &LintConfig) -> Vec<Vec
 fn flat<'a>(body: &'a [Stmt], out: &mut Vec<&'a Stmt>) {
     for s in body {
         out.push(s);
-        if matches!(s.kind, StmtKind::ForEach { .. }) {
+        if loop_body(s).is_some() {
             continue;
         }
         for c in stmt_children(s) {
             flat(c, out);
         }
+    }
+}
+
+/// The body of a `for each` loop of any kind.
+fn loop_body(s: &Stmt) -> Option<&[Stmt]> {
+    match &s.kind {
+        StmtKind::ForEach { body, .. } => Some(body),
+        StmtKind::Coll(c) => c.body().map(|b| b.as_slice()),
+        _ => None,
     }
 }
 
@@ -572,7 +585,7 @@ fn prompt_in_loop(ctx: &mut Ctx, file: &File) {
     for d in &file.decls {
         for body in decl_bodies(d) {
             each_stmt(body, &mut |s| {
-                let StmtKind::ForEach { body, .. } = &s.kind else {
+                let Some(body) = loop_body(s) else {
                     return;
                 };
                 let mut stmts = Vec::new();
@@ -674,6 +687,14 @@ fn vague_name(ctx: &mut Ctx, file: &File) {
                 match &s.kind {
                     StmtKind::Set { var, .. } | StmtKind::ForEach { var, .. } => add(&mut names, var),
                     StmtKind::IfSome { bind, .. } => add(&mut names, bind),
+                    StmtKind::Coll(CollStmt::ForEachIndex { var, index, .. }) => {
+                        add(&mut names, var);
+                        add(&mut names, index);
+                    }
+                    StmtKind::Coll(CollStmt::ForEachEntry { key, value, .. }) => {
+                        add(&mut names, key);
+                        add(&mut names, value);
+                    }
                     StmtKind::AskModel { into, .. }
                     | StmtKind::ReadBody { into, .. }
                     | StmtKind::ReadFile { into, .. } => add(&mut names, into),

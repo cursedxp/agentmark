@@ -120,6 +120,7 @@ fn ty_of(t: &TypeExpr) -> Result<Ty, String> {
         TypeKind::List(i) => Ok(Ty::List(Box::new(ty_of(i)?))),
         TypeKind::Maybe(i) => Ok(Ty::Maybe(Box::new(ty_of(i)?))),
         TypeKind::Result(_) => Err("a signature cannot say \"result of\"; failures are already handled".into()),
+        TypeKind::Map(..) => Err("a binding signature cannot use a map".into()),
     }
 }
 

@@ -66,6 +66,13 @@
 ["for" "each" "in" "if" "else" "otherwise" "parallel" "try" "return"
  "set" "guard" "do" "read" "append" "to" "respond" "print" "with" "as" "where"
  "first" "count" "of"] @keyword
+; collection words and statements (SPEC 22.2)
+(collection_expression
+  ["list" "map" "empty" "sort" "group" "sum" "min" "max" "last" "take" "skip" "unique" "join"
+   "keys" "values" "by" "descending" "at" "from" "in" "to" "of" "where" "with"] @keyword)
+(put_statement ["put" "at" "in"] @keyword)
+(remove_statement ["remove" "from"] @keyword)
+(for_each ["with" "index"] @keyword)
 (ask_statement ["ask" "model"] @keyword)
 (no_amounts_changed ["no" "amounts" "changed" "in"] @keyword)
 (predicate ["is" "not" "empty" "some" "matches"] @keyword.operator)
@@ -84,6 +91,8 @@
 (call_expression function: (identifier) @function.call)
 (for_each rule: (identifier) @function)
 (for_each variable: (identifier) @variable)
+(for_each value: (identifier) @variable)
+(for_each index: (identifier) @variable)
 (count_expression rule: (identifier) @function)
 (first_expression item: (identifier) @variable)
 (bind variable: (identifier) @variable)
@@ -118,7 +127,7 @@
 
 ; ---- specific overrides (after the generic lists above, priority raised so
 ; Neovim (last wins) and Helix (first wins) agree) ----------------------------
-(type_phrase ["list" "maybe" "result" "of"] @type.builtin
+(type_phrase ["list" "maybe" "result" "of" "map" "to"] @type.builtin
   (#set! priority 110))
 (binary_expression operator: ["and" "or"] @keyword.operator
   (#set! priority 110))

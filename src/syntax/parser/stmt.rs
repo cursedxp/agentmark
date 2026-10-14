@@ -28,6 +28,8 @@ pub enum Head {
     Simple(Stmt),
     /// `try <statement>`; an `otherwise:` child line may follow.
     Try(Stmt),
+    /// `for each row in rows with index i:` / `for each k, v in map:` (SPEC 22.2).
+    Loop(super::collections::LoopHead),
 }
 
 /// Words that start a statement; they can never be a tool name.
@@ -46,6 +48,8 @@ const STATEMENT_WORDS: &[&str] = &[
     "try",
     "parallel",
     "append",
+    "put",
+    "remove",
     "print",
     "otherwise",
 ];
@@ -253,15 +257,20 @@ pub fn head<'a>() -> P<'a, Head> {
                         )
                     });
 
+            let coll = super::collections::statements(expr.clone());
+
             choice((
-                stop, do_stmt, ask, guard, set, ret, respond, read_body, read_file, append, print,
-                tool_call,
+                stop, do_stmt, ask, guard, set, ret, respond, read_body, read_file, append, coll,
+                print, tool_call,
             ))
             .labelled("a statement")
         },
     );
 
     // ------------------------------------------------------------ statements with bodies
+    let loops = super::collections::loops(ident_word(), expr.clone())
+        .then_ignore(colon())
+        .map(Head::Loop);
     let for_each = kw("for")
         .ignore_then(sp1())
         .ignore_then(kw("each"))
@@ -314,6 +323,7 @@ pub fn head<'a>() -> P<'a, Head> {
         .map(Head::Try);
 
     choice((
+        loops,
         for_each,
         if_head,
         else_head,

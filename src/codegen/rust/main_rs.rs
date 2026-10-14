@@ -378,11 +378,11 @@ pub fn main_rs(c: &Ctxt) -> String {
 
     // commands
     if has_commands {
-        s.push_str("/// Run a command given on the command line.\nasync fn run_command(ctx: &Ctx, cmd: Cmd, mock: bool) -> Result<usize, AgentError> {\n    match cmd {\n");
+        s.push_str("/// Run a command given on the command line.\n#[allow(unused_variables)]\nasync fn run_command(ctx: &Ctx, cmd: Cmd, mock: bool) -> Result<usize, AgentError> {\n    match cmd {\n");
         for (i, cmd) in p.commands.iter().enumerate() {
             let variant = super::names::camel(&cmd.name);
             let names: Vec<String> = cmd.args.iter().map(|a| c.n.local(&a.name)).collect();
-            let pat = if names.is_empty() { String::new() } else { format!(" {{ {} }}", names.join(", ")) };
+            let pat = if names.is_empty() { " {}".to_string() } else { format!(" {{ {} }}", names.join(", ")) };
             let args = if names.is_empty() { String::new() } else { format!(", {}", names.join(", ")) };
             s.push_str(&format!(
                 "        Cmd::{variant}{pat} => {{\n            {}::run(ctx{args}{}).await.map_err(|e| command_failed(ctx, {}, e))?;\n        }}\n",
@@ -392,7 +392,7 @@ pub fn main_rs(c: &Ctxt) -> String {
             ));
         }
         s.push_str("    }\n    Ok(0)\n}\n\n");
-        s.push_str("/// Mock runs: the command of `command.json` (`{\"command\": \"name\", \"args\": {...}}`).\nasync fn run_command_file(ctx: &Ctx, mock: bool) -> Result<usize, AgentError> {\n    let file: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(\"command.json\")?)?;\n    let args = file.get(\"args\").cloned().unwrap_or_else(|| serde_json::json!({}));\n    match file[\"command\"].as_str().unwrap_or_default() {\n");
+        s.push_str("/// Mock runs: the command of `command.json` (`{\"command\": \"name\", \"args\": {...}}`).\n#[allow(unused_variables)]\nasync fn run_command_file(ctx: &Ctx, mock: bool) -> Result<usize, AgentError> {\n    let file: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(\"command.json\")?)?;\n    let args = file.get(\"args\").cloned().unwrap_or_else(|| serde_json::json!({}));\n    match file[\"command\"].as_str().unwrap_or_default() {\n");
         for (i, cmd) in p.commands.iter().enumerate() {
             let mut lets = String::new();
             let mut names: Vec<String> = Vec::new();
@@ -572,6 +572,7 @@ const START_HEAD: &str = r#"    let fixtures = match &cli.fixtures {
 "#;
 
 const COMMAND_ARG: &str = r#"/// One argument of `command.json`: by name (`dry_run` or `dry-run`), else its default.
+#[allow(dead_code)]
 fn command_arg<T: serde::de::DeserializeOwned>(args: &serde_json::Value, name: &str, default: Option<T>) -> Result<T, AgentError> {
     match args.get(name).or_else(|| args.get(name.replace('_', "-"))) {
         Some(v) => Ok(serde_json::from_value(v.clone())?),

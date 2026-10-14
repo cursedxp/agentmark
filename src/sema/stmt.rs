@@ -43,7 +43,7 @@ impl Checker<'_> {
 
     /// A function body must not exceed its declared effect (SPEC 13.1). Called when the effect of
     /// the statement itself (not of its children) is known, so the error lands on the right line.
-    fn check_limit(&mut self, cx: &mut Cx, s: &Stmt) {
+    pub(super) fn check_limit(&mut self, cx: &mut Cx, s: &Stmt) {
         let Some(f) = &mut cx.func else { return };
         if f.reported || !cx.acc.exceeds(f.declared) {
             return;
@@ -353,6 +353,7 @@ impl Checker<'_> {
                 }
                 self.check_limit(cx, s);
             }
+            StmtKind::Coll(c) => self.coll_stmt(cx, s, c),
             StmtKind::Print(e) => {
                 self.expr(cx, e);
                 cx.acc.add(Effect::Local, "print");

@@ -4,6 +4,7 @@
 //! the [`Schedule`] runners, and the [`no_amounts_changed`] guard helper.
 #![deny(missing_docs)]
 
+pub mod collections;
 mod ctx;
 mod driver;
 mod error;

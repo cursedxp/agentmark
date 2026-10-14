@@ -80,6 +80,7 @@ pub fn walk_expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
             walk_expr_mut(source, f);
             walk_expr_mut(cond, f);
         }
+        ExprKind::Coll(c) => c.parts_mut().into_iter().for_each(|x| walk_expr_mut(x, f)),
     }
     f(e);
 }
@@ -638,6 +639,19 @@ impl Lw<'_> {
                 list: self.expr(list),
             },
             StmtKind::Print(e) => StmtKind::Print(self.expr(e)),
+            StmtKind::Coll(c) => {
+                let mut c = c.clone();
+                for x in c.exprs_mut() {
+                    *x = self.expr(x);
+                }
+                if let Some(b) = c.body_mut() {
+                    self.bare.push(None);
+                    let inner = self.stmts(b);
+                    self.bare.pop();
+                    *b = inner;
+                }
+                StmtKind::Coll(c)
+            }
             StmtKind::Try { stmt, otherwise } => StmtKind::Try {
                 stmt: Box::new(self.stmt_one(stmt)),
                 otherwise: otherwise.as_ref().map(|o| self.stmts(o)),

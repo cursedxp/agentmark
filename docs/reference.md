@@ -1767,6 +1767,121 @@ Section 22 of the specification turns the core (Layer 2) into a general-purpose 
 collection words, a built-in library, opaque library handles and user-defined tools. Each subsection below is added as the
 construct lands in the compiler, with checked samples like every other section.
 
+### 22.2 Collection words
+
+Lists are `list of T`, maps are `map of K to V` (keys: `text`, `int`, `date`, `datetime` or `bool`). The words below are
+expressions unless marked as statements. They are pure: they build a new value and never change their input.
+
+```agentmark
+# Record: Sale
+- region: text
+- amount: money
+- qty: int
+
+# Function: eu_total
+- in: sales: list of Sale
+- out: money
+- effect: pure
+  - set eu = sales where region = "EU"
+  - return sum of amount in eu
+```
+
+Inside the expression after `where`, `by`, `to` and `of … in`, the current element is called `item`, and when it is a record its
+fields are in scope by their bare names, as in a `for each` over a record. `rows where region = "EU"` and
+`rows where item.region = "EU"` mean the same. For a list of text or numbers only `item` exists:
+`names where item != "a"`.
+
+| form | result |
+|---|---|
+| `list of 1, 2, 3` · `empty list of text` | a list |
+| `map of "EU" to 1, "US" to 2` · `empty map of text to int` | a map |
+| `rows where region = "EU"` | the elements for which the condition holds |
+| `map rows to amount` | a list of the expression's values |
+| `sort rows by amount` · `sort rows by amount descending` | the list in order (stable: equal keys keep their order) |
+| `group rows by region` | `map of K to list of T`, in key order |
+| `sum of amount in rows` · `sum of numbers` | a number, or money of one currency; an empty list adds up to 0 |
+| `count of rows` · `count of rows where amount > 5 EUR` | an `int` |
+| `min of amount in rows` · `max of …` | `maybe` of the value: empty for an empty list |
+| `first of rows` · `last of rows` | `maybe` of the element |
+| `take 10 from rows` · `skip 2 from rows` | the list without its tail or head |
+| `unique rows` · `unique region in rows` | every value once, in order of first occurrence |
+| `join names with ", "` | text; the list must be a list of text |
+| `totals at "EU"` | `maybe` of the value: empty when the key is absent |
+| `keys of totals` · `values of totals` | a list, keys in order |
+
+Statements:
+
+| statement | meaning |
+|---|---|
+| `append x to rows` | add to the end of a list |
+| `put v at k in m` | set the entry of key `k` (replaces an existing one) |
+| `remove k from m` | delete the entry of key `k`; nothing happens when it is absent |
+| `for each row in rows with index i:` | `i` counts the position from 1 |
+| `for each region, total in totals:` | the entries of a map, in key order |
+
+```agentmark
+# Record: Sale
+- region: text
+- amount: money
+
+# Function: region_lines
+- in: sales: list of Sale
+- out: list of text
+- effect: pure
+  - set lines = empty list of text
+  - set by_region = group sales by region
+  - for each region, rows in by_region:
+    - append "{region}: {count of rows} sales, {sum of amount in rows}" to lines
+  - return lines
+
+# Function: biggest_first
+- in: sales: list of Sale
+- out: list of Sale
+- effect: pure
+  - return take 3 from (sort sales by amount descending)
+
+# Function: ages_after_birthday
+- out: map of text to int
+- effect: pure
+  - set ages = map of "ann" to 31, "bob" to 25
+  - put 32 at "ann" in ages
+  - remove "bob" from ages
+  - return ages
+```
+
+Results that can be empty are `maybe` values, so they are opened with `is some` before they are used:
+
+```agentmark fragment
+- if max of qty in sales is some most:
+  - print: "largest quantity {most}"
+- if totals at "EU" is empty:
+  - print: "nothing sold in the EU"
+```
+
+How the words read, in the places where a reader could hesitate:
+
+* **A source is a name, a call or a parenthesis.** `sort (rows where amount > 5 EUR) by amount` needs the parentheses; `rows
+  where …` and `totals at key` hang off a name or a call. `keys of` and `values of` also stand where a source is expected:
+  `sum of values of totals`.
+* **A literal takes every comma after it.** `f(list of 1, 2, 3)` passes one list; write `f((list of 1, 2), 3)` for two
+  arguments. `list of Sale` after `as` or `-> ` is a type, not a literal; the position decides.
+* **`where` runs to the end of the expression**, so `rows where a = 1 and b = 2` filters on both.
+* **Money.** `sum of`, `sort` and `min`/`max` over money need one currency: two currencies are a run-time error
+  (`currency mismatch: EUR vs USD`), never a guess. The sum of an empty list of money is `0 EUR`.
+* **Maps** iterate, print and serialise in key order; as JSON a map is an object (`{"DE": 1, "EU": 2}`).
+* **Purity.** The expression that runs per element may read values and call pure functions, nothing else.
+  `names where shout(item) = "a"` is an error when `shout` prints; use a `for each` loop for that.
+* **Names.** Inside a word, `item` is the innermost element: `nested where (count of item where item > 1) > 1` counts the
+  inner `item` in the second one. A parameter or loop variable that is appended to is a copy; the caller keeps its list.
+
+```agentmark invalid
+# Function: f
+- effect: pure
+  - set mixed = list of 1, "two"
+```
+
+Decisions behind these rules are `Q320` to `Q328` in `OPEN_QUESTIONS.md`; the errors are `E320` to `E326`.
+
 ## Appendix A. Statement index
 
 Every statement form of the language, with where it is explained:

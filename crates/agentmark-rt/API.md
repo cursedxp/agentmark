@@ -44,3 +44,9 @@ All items are re-exported at the crate root (`use agentmark_rt::*;`). Every fall
 - `parse_model_json::<T>(text) -> Result<T, RtError>` - parse a model answer as JSON (tolerates a ```json fence or prose around the object); `RtError::Model` when it does not fit `T`.
 - `read_data::<T>(path) -> Result<T, RtError>` - `read file p as T`: `.csv` (header row = field names; cells are text, numbers/booleans only if the type refuses text) or JSON.
 - `ctx.with_model(id) -> Ctx` - copy that asks `id` (sent as `ModelRequest.model`); `Ctx.model_id` holds it. `MockModel` responses in model.json may carry an optional `"model"`: such a response only answers requests made for exactly that model id (a way to assert which agent used which model).
+
+## Collection words (step 21, `agentmark_rt::collections`)
+- `sorted(Vec<(K, T)>, descending) -> Result<Vec<T>, RtError>` - stable sort by key; equal keys keep their order in both directions. `K: SortKey` (`i64`, `String`, `bool`, `NaiveDate`, `DateTime<Utc>`, `Duration`, `Money`).
+- `extreme(Vec<K>, max) -> Result<Option<K>, RtError>` - smallest or largest, the first of equals; `None` when empty.
+- `sum_money(Vec<Money>) -> Result<Money, RtError>` - one currency; two currencies are `RtError::Money(CurrencyMismatch)`; an empty list is `0 EUR`. Money keys of different currencies also make `sorted` and `extreme` fail instead of guessing.
+- `unique(Vec<T: PartialEq>) -> Vec<T>` - first occurrence kept.

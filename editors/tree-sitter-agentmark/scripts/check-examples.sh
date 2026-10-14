@@ -81,6 +81,15 @@ grep -q 'capture' "$WORK/query-highlights.out" || { echo "check-examples: FAILED
 grep -q 'injection.content' "$WORK/query-injections.out" || { echo "check-examples: FAILED, the rust fence is not injected" >&2; exit 1; }
 echo "check-examples: highlight and injection queries compile"
 
+# 3b. The collection words (SPEC 22.2) are highlighted as keywords.
+printf '# Function: f\n- effect: local\n  - set ranked = sort rows by amount descending\n  - put 1 at "EU" in totals\n  - for each row in ranked with index i:\n    - stop\n' > "$WORK/collections.agent.md"
+"${TS[@]}" query queries/highlights.scm "$WORK/collections.agent.md" > "$WORK/query-collections.out" 2>&1 || true
+for w in sort by descending put at index; do
+  grep -qE "capture: [0-9]+ - keyword, .*text: .$w." "$WORK/query-collections.out" \
+    || { echo "check-examples: FAILED, \"$w\" is not highlighted as a keyword" >&2; exit 1; }
+done
+echo "check-examples: collection words are highlighted"
+
 # 4. The grammar's own corpus.
 "${TS[@]}" test 2>&1 | grep -vE 'parser directories|init-config|configuration file|language grammars|^$'
 echo "check-examples: ok"

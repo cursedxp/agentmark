@@ -275,6 +275,7 @@ impl Fix {
 fn children(s: &Stmt) -> Vec<&[Stmt]> {
     match &s.kind {
         StmtKind::ForEach { body, .. } => vec![body],
+        StmtKind::Coll(c) => c.body().map(|b| vec![b.as_slice()]).unwrap_or_default(),
         StmtKind::If { then, else_, .. } | StmtKind::IfSome { then, else_, .. } => {
             vec![then, else_]
         }
@@ -295,6 +296,8 @@ fn children(s: &Stmt) -> Vec<&[Stmt]> {
 fn is_compound(s: &Stmt) -> bool {
     match &s.kind {
         StmtKind::ForEach { .. }
+        | StmtKind::Coll(crate::syntax::collections::CollStmt::ForEachIndex { .. })
+        | StmtKind::Coll(crate::syntax::collections::CollStmt::ForEachEntry { .. })
         | StmtKind::If { .. }
         | StmtKind::IfSome { .. }
         | StmtKind::Parallel(_) => true,

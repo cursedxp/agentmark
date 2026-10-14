@@ -455,6 +455,7 @@ fn type_text(t: &agentmark::syntax::ast::TypeExpr) -> String {
         TypeKind::List(i) => format!("list of {}", type_text(i)),
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
+        TypeKind::Map(k, v) => format!("map of {} to {}", type_text(k), type_text(v)),
     }
 }
 

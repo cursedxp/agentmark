@@ -14,6 +14,7 @@ use crate::diag::{did_you_mean, Diagnostic, Span};
 use crate::syntax::ast::*;
 use crate::syntax::lexer::{lex, Line, LineKind};
 
+pub mod collections;
 pub mod expr;
 pub mod heading;
 pub mod stmt;
@@ -44,6 +45,8 @@ const STATEMENT_WORDS: &[&str] = &[
     "try",
     "parallel",
     "append",
+    "put",
+    "remove",
     "print",
     "otherwise",
 ];
@@ -59,8 +62,27 @@ const E_STRUCTURE: &str = "E032";
 const E_SYNTAX: &str = "E040";
 const E_IMPORT: &str = "E050";
 
+/// Stack of the thread that parses (virtual memory: only what the parser touches is committed).
+/// The grammar is recursive and its frames are large in a debug build: nested collection words
+/// (`join (map (sort (rows where …) by …) to …) with …`) need more than the 2 MiB of a test thread.
+const PARSE_STACK: usize = 64 * 1024 * 1024;
+
 /// Parse one `.agent.md` file. `path` is the name shown in diagnostics.
 pub fn parse_file(path: &str, src: &str) -> Result<File, Vec<Diagnostic>> {
+    std::thread::scope(|scope| {
+        let job = std::thread::Builder::new()
+            .name("agentmark-parse".into())
+            .stack_size(PARSE_STACK)
+            .spawn_scoped(scope, || parse_file_here(path, src));
+        match job {
+            Ok(handle) => handle.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+            // no thread to be had: parse on this one
+            Err(_) => parse_file_here(path, src),
+        }
+    })
+}
+
+fn parse_file_here(path: &str, src: &str) -> Result<File, Vec<Diagnostic>> {
     let (lines, diags) = lex(path, src);
     if !diags.is_empty() {
         // Lines were dropped by the lexer, so the structure cannot be trusted any further.
@@ -1431,6 +1453,23 @@ impl<'l> Builder<'l> {
                         kind: StmtKind::Parallel(body),
                     });
                 }
+                Head::Loop(l) => {
+                    use crate::syntax::collections::CollStmt;
+                    let body = self.stmts(&node.kids);
+                    let kind = match l.clone() {
+                        collections::LoopHead::Index { var, index, source } => {
+                            CollStmt::ForEachIndex { var, index, source, body }
+                        }
+                        collections::LoopHead::Entry { key, value, source } => {
+                            CollStmt::ForEachEntry { key, value, source, body }
+                        }
+                    };
+                    out.push(Stmt {
+                        span,
+                        comments: Vec::new(),
+                        kind: StmtKind::Coll(kind),
+                    });
+                }
                 Head::Simple(s) => {
                     if let Some(k) = node.kids.first() {
                         self.kid_error(k.line, "Nothing can be indented under this statement.");
@@ -1594,7 +1633,7 @@ fn missing_colon(file: &str, ctx: &LineCtx) -> Diagnostic {
 /// Words and symbols that only ever continue an expression; listing them as "expected" is noise.
 const NOISE_WORDS: &[&str] = &[
     "and", "or", "not", "is", "matches", "length", "else", "in", "as", "where", "to", "of", "with",
-    "some", "empty",
+    "some", "empty", "at…", "where…", "descending…", "with…",
 ];
 
 /// Put a word in quotes (backticks when it already contains a quote).

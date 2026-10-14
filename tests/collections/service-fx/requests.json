@@ -1,0 +1,9 @@
+[
+  {"method":"POST","path":"/count/zoe","expect_status":200,"expect_body":{"zoe":1}},
+  {"method":"POST","path":"/count/adam","expect_status":200,"expect_body":{"adam":1,"zoe":1}},
+  {"method":"POST","path":"/count/zoe","expect_status":200,"expect_body":{"adam":1,"zoe":2}},
+  {"method":"GET","path":"/summary","expect_status":200,"expect_body":{"names":["adam","zoe"],"total":3,"calls":3}},
+  {"method":"POST","path":"/forget/adam","expect_status":200,"expect_body":{"zoe":2}},
+  {"method":"POST","path":"/forget/nobody","expect_status":200,"expect_body":{"zoe":2}},
+  {"method":"GET","path":"/summary","expect_status":200,"expect_body":{"names":["zoe"],"total":2,"calls":3}}
+]

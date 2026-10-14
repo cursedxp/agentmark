@@ -564,3 +564,44 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q291 — Templates carry no copy of the reference (step 18)
 **Choice:** `templates/CLAUDE.md` and `templates/.cursorrules` tell the assistant to read `docs/reference.md` and, for a project outside the checkout, to keep a copy of it (suggested name `docs/agentmark-reference.md`). The templates themselves do not embed the reference, so there is one file to keep current (SPEC 20.6).
 **Why:** a pasted copy in two templates would drift; the test-suite pins that both templates name `docs/reference.md` and only show commands `agentmark --help` lists.
+
+## Q320 — `list of` and `map of` are literals in an expression and types in a type position (step 21)
+- Question: `list of 1, 2, 3` (a literal) and `list of Sale` (a type) start with the same words; a literal also takes commas, which separate call arguments and record fields.
+- Choice: the position decides, as the grammar never asks for a type where a value can stand: `read file p as list of Sale -> rows` (type) and `set xs = list of 1, 2, 3` (literal) do not meet. A literal takes every comma after it: `f(list of 1, 2, 3)` is one list argument, `f((list of 1, 2), 3)` is two arguments; the same for `map of k to v, …` and for record fields (`{ a: (list of 1, 2), b: 3 }`). `empty list of T` / `empty map of K to V` take a type; `map of` also opens the type `map of K to V`.
+- Why: no new punctuation, and the greedy comma is the same rule a reader applies; a parenthesis ends it.
+
+## Q321 — What a collection word is applied to, and the two tails (step 21)
+- Question: `sort rows by amount` needs a clear end for `rows`; `rows where cond` and `totals at "EU"` are written after the thing they work on.
+- Choice: the **source** of a word is a name or path (`rows`, `report.rows`), a call, a parenthesised expression, or `keys of …` / `values of …` of another source (`sum of values of totals`, `join keys of m with ", "`). Another collection word as a source needs parentheses: `sort (rows where amount > 5) by amount`. `source where cond` and `source at key` are tails of a name, call or parenthesis; `cond` runs to the end of the expression (so it is weaker than `and`), `key` is a literal, a name, a call or a parenthesis. `source at key` is not read when ` in` follows it, so `put total at "EU" in m` keeps its own `at`. `count of rows`, `count of open invoices in …` and `first x in … where …` keep their v0.2 meaning; `count of <source>` now takes any source (`count of (take 2 from rows)`).
+- Why: a bounded source keeps the language readable without precedence rules for words; `keys of` / `values of` end where their source ends, so they cost nothing.
+
+## Q322 — The element of a word: `item`, bare fields, nesting (step 21)
+- Question: what is in scope in the expression a word runs per element, and what when words nest?
+- Choice: the element is the variable `item`; when it is a record, its fields are also in scope by their bare names (`rows where region = "EU"`, `sum of amount in rows`), exactly like a `for each` over a record. The innermost word wins: in `rows where (count of item.lines where item.ok) > 1` the second `item` is the line. When the element is not a record, the bare fields of an enclosing loop stay visible (nothing hides them). `item` outside such an expression is an ordinary "Unknown name". Only the expressions after `where`, `to`, `by`, `of … in` and `unique … in` run per element; sources, counts and separators are evaluated once.
+- Why: SPEC 22.2 says so for fields and `item`; shadowing is the one rule that is stable under nesting.
+
+## Q323 — The expression of a word must be pure (step 21)
+- Question: may `names where shout(item) = "a"` call something with an effect?
+- Choice: no. A per-element expression may read values and call pure functions (also built-ins); anything with an effect is the plain error "An expression inside a collection word must be pure, but "shout" has the effect local." with the help to use a `for each` loop (E205, the code every purity error shares). The statements `append`, `put`, `remove` and the loops keep the effect of what they contain; `append`/`put`/`remove` on `state.…` are `local(state)` (Q39).
+- Why: SPEC 22.2: "Collection words are pure"; one effect per element would also make the order of effects depend on the word's implementation.
+
+## Q324 — Money in sums, orders and the empty case (step 21)
+- Question: "money of one currency; empty → 0": what is the currency of the empty sum, and what happens with two currencies?
+- Choice: `sum of` returns `int` for numbers and `money` for money. Two currencies in one sum, in one `sort … by`, or in one `min`/`max` is a **run-time error** (the same `currency mismatch` error as `+` on two currencies, traced as `error`), never a silent guess or an order by number. The empty sum of money is `0 EUR` (an empty list has no currency, so the default currency is used; it is the same default a failed `try` leaves behind, Q94). `sum of` accepts only `int` and `money` elements; `min`/`max`/`sort` accept text, numbers, money, dates, datetimes and durations.
+- Why: the type checker cannot see currencies (they are values); a run-time error with the usual message matches how every other money operation behaves. A compile-time currency type would change section 6.
+
+## Q325 — Result types of the words (step 21)
+- Choice: `rows where c` and `sort`, `take`, `skip`: the source's list type. `map rows to e`: `list of` the type of `e`. `group rows by k`: `map of K to list of T` (K is the type of `k`, T the element). `min`/`max of e in rows`: `maybe` of the type of `e` (`maybe` of the element for `min of rows`); `first of`/`last of`: `maybe T`. `unique rows`: the source type; `unique e in rows`: `list of` the type of `e` (the distinct values, not the rows). `join`: `text`, the list must be `list of text` (a list of numbers is an error with the help to `map` it to text first). `m at k`: `maybe V`. `keys of m`/`values of m`: `list of K` / `list of V`, keys in order. A per-element expression of type `maybe T` is an error (the value can be empty); check it with `is some` first.
+- Why: SPEC 22.2 table, completed where it is silent (`min`/`max`, `unique … in`).
+
+## Q326 — Maps: key types, order, JSON, and the loops (step 21)
+- Choice: a map is a Rust `BTreeMap`, so iteration (`for each k, v in m`, `keys of`, `values of`) and printing follow the key order (text by bytes, numbers numerically, dates by calendar). Keys may be `text`, `int`, `date`, `datetime` or `bool`; any other key type is an error (E321). As JSON a map is an object whose keys are the keys written as strings (`{"DE": 1, "EU": 2}`; an `int` key becomes `"3"`); maps may be record fields (they default to empty like lists). `put v at k in m` replaces an existing entry; `remove k from m` of an absent key does nothing; `m at k` of an absent key is `none`. `for each row in rows with index i:` counts `i` from **1** (the position a reader says: row 1, row 2). The loop variable and the index are fresh variables per iteration. `x is empty` and `x length` also work on maps.
+- Why: SPEC 22.2 says "keys sorted" and "map entries in key order"; 1-based follows how a report reads and how `take 3 from` counts.
+
+## Q327 — Changing a list or map in place (step 21)
+- Choice: `append x to list` (v0.2) and the new `put`/`remove` change the variable they name (or `state.…`), also a function parameter or a loop variable: those are copies, so the caller's list is unchanged (values, no references, as everywhere in AgentMark). `put`/`remove` work on maps only; `append` on lists only.
+- Why: no aliasing means no ownership rules in the language; the generated Rust marks the binding `mut`.
+
+## Q328 — Where the grammar is not extended (step 21)
+- Choice: the language server gets no completion or hover for the new words (it lists no statement keywords today; types of expressions come from `check`, which knows the new nodes). The `## Do`-block lookup in `nav.rs` (loop variable of the caller) is not extended to the new loops, which only matter for agents. Collection words need `parse_file` to run on a thread with a 64 MiB stack: the chumsky grammar is deeply recursive and nested words (`join (map (sort (rows where …) by …) to …) with …`) overflowed the 2 MiB of a debug-build test thread.
+- Why: the layer rule (nothing is built that no example needs) and a measured overflow, not a guess.
