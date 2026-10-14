@@ -1865,6 +1865,45 @@ name, `Empty`. `match` takes a value apart: one branch per variant, and inside a
 
 * On a `maybe`, the branches are `some x` and `none`. On a `result`, they are `ok x` and `error e`; `e` is the failure's
   message as text. A `result` is matched where it is made: write the call itself after `match`, as above (Q300).
+A `maybe` value is written `some x` or `none`. In a branch the name after the variant (or after `ok` / `error`) is optional when the
+value is not used: `- error:`. A function that returns `result of T` is also used with `try`, without `do` (`try do f(x) -> v` means
+the same), and `if ... is some x:` works on any `maybe`
+expression, including a call. A record is built the same way as a variant, with every field that is not `maybe` given:
+
+```agentmark
+# Record: Sale
+- region: text
+- amount: money
+
+# Function: parse_sale
+- in: path: text
+- out: result of Sale
+- effect: local
+  - try read file path as Sale -> sale
+  - return sale
+
+# Function: find_sale
+- in: sales: list of Sale, region: text
+- out: maybe Sale
+- effect: pure
+  - return first sale in sales where sale.region = region
+
+> Reads a sale, builds another and looks one up.
+# Command: sales
+- args: path: text, list_path: text
+
+## Run
+- try parse_sale(path) -> sale
+  otherwise:
+    - set sale = Sale { region: "none", amount: 0 EUR }
+- print: "{sale.region} {sale.amount}"
+- try read file list_path as list of Sale -> sales
+  otherwise:
+    - stop
+- if find_sale(sales, "EU") is some eu:
+  - print: "EU {eu.amount}"
+```
+
 * Every case must be handled, or an `- otherwise:` branch must say what happens to the rest. `otherwise:` is the last
   branch; one that can never run is a warning. The error names what is missing:
 

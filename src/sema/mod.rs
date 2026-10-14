@@ -78,6 +78,8 @@ pub enum Resolution {
     /// An enum variant: `Empty`, `Shape.Empty` (a path) or `Circle { radius: 3 }`. Both names
     /// are the declared ones.
     Variant { enum_name: String, variant: String },
+    /// A record built with `Sale { region: "EU", … }`.
+    Record { record: String },
 }
 
 /// What one branch of a `match` stands for (`Checked::patterns`, keyed by the branch line).

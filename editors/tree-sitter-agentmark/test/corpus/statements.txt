@@ -810,3 +810,57 @@ Enum values
       (set_statement
         (identifier)
         (identifier)))))
+
+====================
+Maybe values, try without do, branches without names
+====================
+
+## Run
+- try parse_sale(path) -> sale
+  otherwise:
+    - set sale = none
+- return some 3
+- match parse_sale(path):
+  - ok:
+    - stop
+  - error:
+    - stop
+
+--------------------
+
+(source_file
+  (trigger_block
+    (run_heading)
+    (statement_line
+      (try_statement
+        (bare_call
+          (call_expression
+            (identifier)
+            (identifier))
+          (bind
+            (identifier)))))
+    (statement_line
+      (otherwise_statement))
+    (statement_line
+      (set_statement
+        (identifier)
+        (identifier)))
+    (statement_line
+      (return_statement
+        (some_expression
+          (number))))
+    (statement_line
+      (match_statement
+        (call_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (match_arm
+        (identifier)))
+    (statement_line
+      (stop_statement))
+    (statement_line
+      (match_arm
+        (identifier)))
+    (statement_line
+      (stop_statement))))

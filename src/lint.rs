@@ -226,7 +226,7 @@ fn expr_children(e: &Expr) -> Vec<&Expr> {
         | ExprKind::IsNotEmpty(x)
         | ExprKind::Length(x)
         | ExprKind::NoAmountsChanged(x) => vec![x],
-        ExprKind::Matches { expr, .. } => vec![expr],
+        ExprKind::Matches { expr, .. } | ExprKind::Some(expr) => vec![expr],
         ExprKind::Call { args, .. } => args.iter().collect(),
         ExprKind::Record(fields) | ExprKind::Variant { fields, .. } => {
             fields.iter().map(|f| &f.value).collect()

@@ -200,6 +200,14 @@ impl Checker<'_> {
                 Type::Bool
             }
             ExprKind::Call { func, args } => self.call(cx, e, func, args),
+            ExprKind::Some(x) => {
+                let t = self.expr(cx, x);
+                if t.is_maybe() {
+                    self.maybe_error(cx, x.span, "wrapped in \"some\" again", &t);
+                }
+                Type::Maybe(Box::new(t))
+            }
+            ExprKind::None => Type::Maybe(Box::new(Type::Unknown)),
             ExprKind::Variant {
                 qualifier,
                 name,

@@ -417,7 +417,10 @@ module.exports = grammar({
         ':',
       ),
 
-    try_statement: ($) => seq('try', $._simple),
+    try_statement: ($) => seq('try', choice($._simple, $.bare_call)),
+
+    // `try f(x) -> v`: a call of a function that can fail, without `do`
+    bare_call: ($) => seq($.call_expression, optional($.bind)),
 
     stop_statement: () => 'stop',
 
@@ -492,6 +495,7 @@ module.exports = grammar({
         $.field_expression,
         $.call_expression,
         $.variant_expression,
+        $.some_expression,
         $.record_literal,
       ),
 
@@ -597,6 +601,8 @@ module.exports = grammar({
         optional(commaSep1($._expression)),
         ')',
       ),
+
+    some_expression: ($) => prec.right(seq('some', $._atom)),
 
     // `Circle { radius: 3 }`
     variant_expression: ($) =>

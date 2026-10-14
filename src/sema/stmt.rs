@@ -175,7 +175,7 @@ impl Checker<'_> {
                     self.diags.push(d);
                 }
             }
-            StmtKind::Do { name, args, into } => self.do_stmt(cx, s, name, args, into, in_try),
+            StmtKind::Do { name, args, into, .. } => self.do_stmt(cx, s, name, args, into, in_try),
             StmtKind::AskModel {
                 with,
                 prompt,

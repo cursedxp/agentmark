@@ -439,6 +439,16 @@ pub enum ExprKind {
     },
     /// A record literal `{ id: x }` (its `ty` is `Type::Object`).
     Record(Vec<(String, Expr)>),
+    /// `some x`: a present `maybe`.
+    Some(Box<Expr>),
+    /// `none`: an absent `maybe` (its `ty` is the `maybe T` the context asks for, or `maybe ?`).
+    None,
+    /// A record built field by field: `Sale { region: "EU", amount: 120.00 EUR }`. Fields a
+    /// `maybe` record field leaves out are not listed. `ty` is `Type::Record`.
+    Struct {
+        record: String,
+        fields: Vec<(String, Expr)>,
+    },
     /// An enum value: `Circle { radius: 3 }`, `Empty`. Fields a `maybe` variant field leaves out
     /// are not listed.
     Variant {

@@ -405,6 +405,11 @@ impl Checker<'_> {
         let found = match self.find_variant(cx.file, q.as_deref(), &name.name, span) {
             Ok(Some(f)) => f,
             Ok(None) => {
+                if q.is_none() {
+                    if let Some(t) = self.record_value(cx, e, name, &given) {
+                        return t;
+                    }
+                }
                 self.unknown_variant(cx.file, q.as_deref(), name);
                 return Type::Unknown;
             }
@@ -412,9 +417,31 @@ impl Checker<'_> {
         };
         let enum_name = found.enum_name.clone();
         let v = self.enums[&enum_name].variants[found.variant].clone();
+        let what = format!("variant \"{}\"", v.name);
+        self.check_fields(cx, e, &what, &v.name, &v.fields, &given);
+        self.resolutions.insert(
+            NodeKey::new(cx.file, e.span),
+            Resolution::Variant {
+                enum_name: enum_name.clone(),
+                variant: v.name.clone(),
+            },
+        );
+        Type::Enum(enum_name)
+    }
+
+    /// The fields given in `Name { … }` against the declared ones (a variant or a record).
+    pub(super) fn check_fields(
+        &mut self,
+        cx: &Cx,
+        e: &Expr,
+        what: &str,
+        owner: &str,
+        decl: &[FieldInfo],
+        given: &[(&RecordField, Type)],
+    ) {
         let mut seen: HashSet<&str> = HashSet::new();
         let mut misspelled = false;
-        for (f, t) in &given {
+        for (f, t) in given {
             if !seen.insert(f.name.name.as_str()) {
                 self.error(
                     E_VARIANT_VALUE,
@@ -424,20 +451,20 @@ impl Checker<'_> {
                 );
                 continue;
             }
-            match v.fields.iter().find(|x| x.name == f.name.name) {
+            match decl.iter().find(|x| x.name == f.name.name) {
                 None => {
                     misspelled = true;
                     let d = Diagnostic::error(
                         E_VARIANT_VALUE,
                         self.path(cx.file),
                         f.name.span,
-                        if v.fields.is_empty() {
-                            format!("The variant \"{}\" has no fields.", v.name)
+                        if decl.is_empty() {
+                            format!("The {what} has no fields.")
                         } else {
-                            format!("The variant \"{}\" has no field \"{}\".", v.name, f.name.name)
+                            format!("The {what} has no field \"{}\".", f.name.name)
                         },
                     )
-                    .suggesting(&f.name.name, v.fields.iter().map(|x| x.name.as_str()));
+                    .suggesting(&f.name.name, decl.iter().map(|x| x.name.as_str()));
                     self.diags.push(d);
                 }
                 Some(want) => {
@@ -447,9 +474,8 @@ impl Checker<'_> {
                             self.path(cx.file),
                             f.value.span,
                             format!(
-                                "The field \"{}\" of {} is {}, but this is {}.{}",
+                                "The field \"{}\" of {owner} is {}, but this is {}.{}",
                                 f.name.name,
-                                v.name,
                                 want.ty,
                                 t.with_article(),
                                 self.note(t, &want.ty)
@@ -460,8 +486,7 @@ impl Checker<'_> {
                 }
             }
         }
-        let missing: Vec<String> = v
-            .fields
+        let missing: Vec<String> = decl
             .iter()
             .filter(|x| !x.ty.is_maybe() && !given.iter().any(|(f, _)| f.name.name == x.name))
             .map(|x| x.name.clone())
@@ -473,22 +498,23 @@ impl Checker<'_> {
                 self.path(cx.file),
                 e.span,
                 format!(
-                    "The variant \"{}\" needs {}: {}.",
-                    v.name,
+                    "The {what} needs {}: {}.",
                     if missing.len() == 1 { "a value for" } else { "values for" },
                     quoted_list(&missing)
                 ),
             );
             self.diags.push(d);
         }
-        self.resolutions.insert(
-            NodeKey::new(cx.file, e.span),
-            Resolution::Variant {
-                enum_name: enum_name.clone(),
-                variant: v.name.clone(),
-            },
-        );
-        Type::Enum(enum_name)
+    }
+
+    /// `Sale { region: "EU", … }`: a record built field by field (same syntax as a variant).
+    fn record_value(&mut self, cx: &Cx, e: &Expr, name: &Ident, given: &[(&RecordField, Type)]) -> Option<Type> {
+        let (_, record) = self.lookup(cx.file, &name.name, &[Kind::Record])?;
+        let fields = self.records.get(&record)?.fields.clone();
+        let what = format!("record \"{}\"", name.name);
+        self.check_fields(cx, e, &what, &name.name, &fields, given);
+        self.resolutions.insert(NodeKey::new(cx.file, e.span), Resolution::Record { record: record.clone() });
+        Some(Type::Record(record))
     }
 
     fn unknown_variant(&mut self, file: usize, qualifier: Option<&str>, name: &Ident) {
@@ -518,7 +544,8 @@ impl Checker<'_> {
                 }
             }
             None => {
-                let cands = self.variant_candidates(file);
+                let mut cands = self.variant_candidates(file);
+                cands.extend(self.scopes[file].names_of(&[Kind::Record]));
                 let d = Diagnostic::error(
                     E_UNKNOWN_VARIANT,
                     self.path(file),
@@ -867,14 +894,14 @@ impl Checker<'_> {
         }
         // naming the value
         match (&arm.bind, takes_value) {
-            (None, true) if matches!(pattern, Pattern::Some | Pattern::Ok | Pattern::Error) => {
+            (None, true) if matches!(pattern, Pattern::Some) => {
                 let d = Diagnostic::error(
                     E_BINDER,
                     self.path(cx.file),
                     arm.pattern.span,
                     format!("\"{key}\" carries a value, so the branch must name it."),
                 )
-                .with_help(format!("Write \"- {key} value:\" and use \"value\" below."));
+                .with_help(format!("Write \"- {key} value:\" and use \"value\" below. (\"ok\", \"error\" and the variants may leave the name out.)"));
                 self.diags.push(d);
             }
             (Some(b), false) => {

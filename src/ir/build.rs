@@ -655,7 +655,7 @@ impl<'a> Builder<'a> {
                 }
             }
             K::Stop => ir::StmtKind::Stop,
-            K::Do { name, args, into } => self.do_stmt(s, name, args, into),
+            K::Do { name, args, into, .. } => self.do_stmt(s, name, args, into),
             K::ModelCall {
                 with,
                 prompt,
@@ -1127,11 +1127,22 @@ impl<'a> Builder<'a> {
                 self.mke(e, ir::ExprKind::Not(Box::new(x)), Type::Bool)
             }
             X::Call { func, args } => self.call(e, func, args, known),
+            X::Some(x) => {
+                let x = self.expr(x);
+                let ty = Type::Maybe(Box::new(x.ty.clone()));
+                self.mke(e, ir::ExprKind::Some(Box::new(x)), ty)
+            }
+            X::None => self.mke(e, ir::ExprKind::None, known.unwrap_or(Type::Maybe(Box::new(Type::Unknown)))),
             X::Variant { fields, .. } => {
                 let fields: Vec<(String, ir::Expr)> = fields
                     .iter()
                     .map(|f| (f.name.name.clone(), self.expr(&f.value)))
                     .collect();
+                if let Some(Resolution::Record { record }) = self.checked.resolutions.get(&self.nk(e.span)) {
+                    let record = record.clone();
+                    let ty = Type::Record(record.clone());
+                    return self.mke(e, ir::ExprKind::Struct { record, fields }, ty);
+                }
                 let (enum_name, variant) = match self.checked.resolutions.get(&self.nk(e.span)) {
                     Some(Resolution::Variant { enum_name, variant }) => (enum_name.clone(), variant.clone()),
                     _ => panic!(
@@ -1416,9 +1427,9 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
             add(lhs);
             add(rhs);
         }
-        X::TextToBytes(x) | X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
+        X::Some(x) | X::TextToBytes(x) | X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
         X::Call { args, .. } => args.iter().for_each(&mut add),
-        X::Record(fields) | X::Variant { fields, .. } => fields.iter().for_each(|(_, x)| add(x)),
+        X::Record(fields) | X::Variant { fields, .. } | X::Struct { fields, .. } => fields.iter().for_each(|(_, x)| add(x)),
         X::Count { source, .. } => add(source),
         X::First { source, cond, .. } => {
             add(source);
@@ -1438,6 +1449,7 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
         | X::Today
         | X::Now
         | X::Var(_)
+        | X::None
         | X::Source { .. } => {}
     }
     e

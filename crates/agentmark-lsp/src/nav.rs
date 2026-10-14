@@ -120,6 +120,10 @@ fn resolved_definition(
             let v = e.variants.iter().find(|v| v.name == *variant)?;
             location(a, file_path(ck, e.file)?, v.span)
         }
+        Resolution::Record { record } => {
+            let r = ck.records.get(record)?;
+            location(a, file_path(ck, r.file)?, r.span)
+        }
         Resolution::Const { name } => {
             let c = ck.constants.get(name)?;
             location(a, file_path(ck, c.file)?, c.span)
@@ -385,6 +389,7 @@ fn expression_hover(a: &Analysis, ck: &Checked, fid: usize, line: usize, col: us
             let f = ck.records.get(record)?.fields.iter().find(|f| f.name == *field)?;
             format!("`{record}.{field}`: `{}`", f.ty)
         }
+        Resolution::Record { record } => format!("`{record}`: record"),
         Resolution::Variant { enum_name, variant } => {
             let v = ck.enums.get(enum_name)?.variants.iter().find(|v| v.name == *variant)?;
             if v.fields.is_empty() {

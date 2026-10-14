@@ -87,6 +87,8 @@ const RESERVED: &[&str] = &[
     "today",
     "now",
     "otherwise",
+    "some",
+    "none",
 ];
 
 /// Record a mistake in what the parser just matched, and let parsing carry on.
@@ -648,7 +650,26 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .padded_by(sp())
                 .delimited_by(just('('), just(')'));
 
+            // `some x`: the value is one atom (a path, call, literal or parenthesised expression)
+            let some_inner = choice((
+                string.clone(),
+                variant.clone(),
+                paren.clone(),
+                date.clone(),
+                number.clone(),
+                path_or_call.clone(),
+            ))
+            .boxed();
+            let some_expr = kw("some")
+                .ignore_then(sp1())
+                .ignore_then(some_inner)
+                .map_with(|x, e| mk(ExprKind::Some(Box::new(x)), e))
+                .boxed();
+            let none_expr = kw("none").map_with(|_, e| mk(ExprKind::None, e));
+
             let atom = choice((
+                some_expr,
+                none_expr,
                 string,
                 record,
                 variant,

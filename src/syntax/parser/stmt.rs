@@ -95,7 +95,7 @@ pub fn head<'a>() -> P<'a, Head> {
                         .delimited_by(just('('), just(')')),
                 )
                 .then(into.clone().or_not())
-                .map(|((name, args), into)| StmtKind::Do { name, args, into });
+                .map(|((name, args), into)| StmtKind::Do { name, args, into, bare: false });
             let do_tool = name()
                 .then_ignore(sp1())
                 .then(name())
@@ -116,6 +116,7 @@ pub fn head<'a>() -> P<'a, Head> {
                     name,
                     args: vec![],
                     into,
+                    bare: false,
                 });
             let do_stmt = kw("do")
                 .ignore_then(sp1())
@@ -318,9 +319,30 @@ pub fn head<'a>() -> P<'a, Head> {
         .ignore_then(expr.clone())
         .then_ignore(colon())
         .map(|scrutinee| Head::Match { scrutinee });
+    // `try f(x) -> v` / `try module.f(x) -> v`: a call of a function that can fail, without `do`
+    let bare_call = name()
+        .separated_by(just('.'))
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .then(
+            expr.clone()
+                .padded_by(sp())
+                .separated_by(just(','))
+                .allow_trailing()
+                .collect::<Vec<_>>()
+                .delimited_by(just('('), just(')')),
+        )
+        .then(arrow().ignore_then(ident()).or_not())
+        .map_with(|((path, args), into), e| {
+            let name = Ident {
+                name: path.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join("."),
+                span: path[0].span.to(path[path.len() - 1].span),
+            };
+            stmt_at(StmtKind::Do { name, args, into, bare: true }, e)
+        });
     let try_head = kw("try")
         .ignore_then(sp1())
-        .ignore_then(simple.clone())
+        .ignore_then(choice((bare_call, simple.clone())))
         .map(Head::Try);
 
     choice((
@@ -500,7 +522,7 @@ mod tests {
     #[test]
     fn stop_and_do() {
         assert!(matches!(kind("stop"), StmtKind::Stop));
-        let StmtKind::Do { name, args, into } = kind("do remind") else {
+        let StmtKind::Do { name, args, into, .. } = kind("do remind") else {
             panic!()
         };
         assert_eq!(name.name, "remind");

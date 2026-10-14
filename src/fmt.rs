@@ -827,8 +827,8 @@ fn params_text(ps: &[Param]) -> String {
 fn simple_text(s: &Stmt) -> String {
     match &s.kind {
         StmtKind::Stop => "stop".to_string(),
-        StmtKind::Do { name, args, into } => {
-            let mut t = format!("do {}", name.name);
+        StmtKind::Do { name, args, into, bare } => {
+            let mut t = if *bare { name.name.clone() } else { format!("do {}", name.name) };
             if !args.is_empty() {
                 t.push('(');
                 t.push_str(&exprs_text(args));
@@ -1046,6 +1046,8 @@ fn raw_expr(e: &Expr) -> String {
                 format!("{{ {} }}", f.join(", "))
             }
         }
+        ExprKind::Some(x) => format!("some {}", at_least(x, 9)),
+        ExprKind::None => "none".to_string(),
         ExprKind::Variant {
             qualifier,
             name,

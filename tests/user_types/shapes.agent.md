@@ -68,6 +68,12 @@
 - effect: pure
   - return first entry in rows where entry.label = label
 
+# Function: make_entry
+- in: label: text
+- out: Entry
+- effect: pure
+  - return Entry { label: label, shape: Shape.Empty }
+
 # Function: read_count
 - in: path: text
 - out: result of int
@@ -75,16 +81,20 @@
   - try read file path as int -> n
   - return n
 
+# Function: basics
+- effect: local
+  - print: describe(Circle { radius: 3 })
+  - print: describe(Shape.Rect { width: 2, height: 5 })
+  - print: describe(Shape.Empty)
+  - set tea = Item { name: "tea", price: 3.50 EUR }
+  - print: "{price_of(tea)} / {price_of(Menu.Empty)}"
+  - print: "{or_zero(7)}"
+
 # Command: demo
 - args: entries_path: text, count_path: text
 
 ## Run
-- print: describe(Circle { radius: 3 })
-- print: describe(Shape.Rect { width: 2, height: 5 })
-- print: describe(Shape.Empty)
-- set tea = Item { name: "tea", price: 3.50 EUR }
-- print: "{price_of(tea)} / {price_of(Menu.Empty)}"
-- print: "{or_zero(7)}"
+- do basics
 - try read file entries_path as Entries -> rows
   otherwise:
     - print: "no entries"
@@ -103,3 +113,13 @@
     - print: "count {total}"
   - error problem:
     - print: "unreadable"
+- try read_count(count_path) -> n
+  otherwise:
+    - set n = 0
+- print: "n {n}"
+- if find_entry(rows, "c") is some hit:
+  - print: "hit {hit.label}"
+- else:
+  - print: "no hit"
+- set made = make_entry("z")
+- print: made.label

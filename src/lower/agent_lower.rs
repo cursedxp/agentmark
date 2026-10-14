@@ -73,6 +73,8 @@ pub fn walk_expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
         | ExprKind::Length(x)
         | ExprKind::NoAmountsChanged(x) => walk_expr_mut(x, f),
         ExprKind::Matches { expr, .. } => walk_expr_mut(expr, f),
+        ExprKind::Some(x) => walk_expr_mut(x, f),
+        ExprKind::None => {}
         ExprKind::Call { args, .. } => args.iter_mut().for_each(|a| walk_expr_mut(a, f)),
         ExprKind::Record(fields) | ExprKind::Variant { fields, .. } => {
             fields.iter_mut().for_each(|r| walk_expr_mut(&mut r.value, f))
@@ -546,7 +548,7 @@ impl Lw<'_> {
                 }),
             },
             StmtKind::Stop => StmtKind::Stop,
-            StmtKind::Do { name, args, into } => {
+            StmtKind::Do { name, args, into, bare } => {
                 let block = match self.resolution(s.span) {
                     Some(Resolution::Call {
                         kind: CallKind::DoBlock,
@@ -573,12 +575,14 @@ impl Lw<'_> {
                             },
                             args,
                             into: None,
+                            bare: false,
                         }
                     }
                     None => StmtKind::Do {
                         name: name.clone(),
                         args: args.iter().map(|a| self.expr(a)).collect(),
                         into: into.clone(),
+                        bare: *bare,
                     },
                 }
             }

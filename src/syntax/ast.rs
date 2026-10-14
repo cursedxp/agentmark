@@ -422,6 +422,9 @@ pub enum StmtKind {
         name: Ident,
         args: Vec<Expr>,
         into: Option<Ident>,
+        /// Written `try f(x) -> v` without the `do` (only after `try`, SPEC 22.3).
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        bare: bool,
     },
     /// `ask model [with v]: "prompt" [as Record] -> var`
     AskModel {
@@ -588,6 +591,10 @@ pub enum ExprKind {
     },
     /// `{ id: invoice.id, net: x }`
     Record(Vec<RecordField>),
+    /// `some x`: a present `maybe` value (SPEC 22.1).
+    Some(Box<Expr>),
+    /// `none`: an absent `maybe` value.
+    None,
     /// `Circle { radius: 3 }` or `Shape.Circle { radius: 3 }`: a variant with fields (SPEC 22.1).
     /// A field-less variant is written as a plain [`ExprKind::Path`] (`Empty`, `Shape.Empty`).
     Variant {

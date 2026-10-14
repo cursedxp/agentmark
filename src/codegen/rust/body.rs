@@ -388,6 +388,26 @@ impl<'a> Body<'a> {
         }
     }
 
+    /// `Sale { region: "EU" }` -> `Sale { region: "EU".to_string(), note: None }`.
+    fn struct_expr(&self, record: &str, fields: &[(String, Expr)]) -> String {
+        let decl = self.p.records.iter().find(|r| r.name == record);
+        let inits: Vec<String> = decl
+            .map(|d| {
+                d.fields
+                    .iter()
+                    .map(|f| {
+                        let id = field_ident(&f.name).0;
+                        match fields.iter().find(|(n, _)| *n == f.name) {
+                            Some((_, x)) => format!("{id}: {}", self.conv(x, &f.ty)),
+                            None => format!("{id}: None"),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        format!("{} {{ {} }}", self.n.record(record), inits.join(", "))
+    }
+
     /// `Circle { radius: 3 }` -> `Shape::Circle(ShapeCircle { radius: 3 })`.
     fn variant_expr(&self, enum_name: &str, variant: &str, fields: &[(String, Expr)]) -> String {
         let e = self.n.enum_name(enum_name);
@@ -988,6 +1008,9 @@ impl<'a> Body<'a> {
                 }
             },
             ExprKind::Variant { enum_name, variant, fields } => atom(self.variant_expr(enum_name, variant, fields)),
+            ExprKind::Some(x) => atom(format!("Some({})", self.val(x))),
+            ExprKind::None => atom("None"),
+            ExprKind::Struct { record, fields } => atom(self.struct_expr(record, fields)),
             ExprKind::Record(fields) => {
                 let inner = fields
                     .iter()
@@ -1194,8 +1217,8 @@ fn has_await(e: &Expr) -> bool {
         ExprKind::Unwrap { inner, .. } => has_await(inner),
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if has_await(e))),
         ExprKind::Binary { lhs, rhs, .. } => has_await(lhs) || has_await(rhs),
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => has_await(x),
-        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } => fs.iter().any(|(_, v)| has_await(v)),
+        ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => has_await(x),
+        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().any(|(_, v)| has_await(v)),
         ExprKind::First { source, cond, .. } => has_await(source) || has_await(cond),
         ExprKind::Matches { expr, .. } => has_await(expr),
         ExprKind::NoAmountsChanged { output, input } => has_await(output) || has_await(input),
@@ -1214,9 +1237,9 @@ fn uses_bare(e: &Expr, var: &str) -> bool {
         ExprKind::Unwrap { inner, .. } => uses_bare(inner, var),
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if uses_bare(e, var))),
         ExprKind::Binary { lhs, rhs, .. } => uses_bare(lhs, var) || uses_bare(rhs, var),
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => uses_bare(x, var),
+        ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => uses_bare(x, var),
         ExprKind::Call { args, .. } => args.iter().any(|a| uses_bare(a, var)),
-        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } => fs.iter().any(|(_, v)| uses_bare(v, var)),
+        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().any(|(_, v)| uses_bare(v, var)),
         ExprKind::Count { source, .. } => uses_bare(source, var),
         ExprKind::First { source, cond, .. } => uses_bare(source, var) || uses_bare(cond, var),
         ExprKind::Matches { expr, .. } => uses_bare(expr, var),
@@ -1367,9 +1390,9 @@ fn count_unwraps(e: &Expr, out: &mut Vec<(String, String, usize)>) {
             count_unwraps(lhs, out);
             count_unwraps(rhs, out);
         }
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => count_unwraps(x, out),
+        ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => count_unwraps(x, out),
         ExprKind::Call { args, .. } => args.iter().for_each(|a| count_unwraps(a, out)),
-        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } => fs.iter().for_each(|(_, v)| count_unwraps(v, out)),
+        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().for_each(|(_, v)| count_unwraps(v, out)),
         ExprKind::Count { source, .. } => count_unwraps(source, out),
         ExprKind::Matches { expr, .. } => count_unwraps(expr, out),
         ExprKind::NoAmountsChanged { output, input } => {

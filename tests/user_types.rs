@@ -249,6 +249,62 @@ fn a_variant_value_names_the_mistake() {
 }
 
 #[test]
+fn a_record_is_built_field_by_field() {
+    let rec = "# Record: Sale\n- region: text\n- amount: money\n- note: maybe text\n\n";
+    let f = |expr: &str| format!("{rec}# Function: f\n- out: Sale\n- effect: pure\n  - return {expr}\n");
+    let c = common::ok(&use_it(&f("Sale { region: \"EU\", amount: 120.00 EUR }")));
+    assert!(c.expr_types.values().any(|t| *t == Type::Record("Sale".into())));
+    let e = sema_errors(&f("Sale { region: \"EU\" }"));
+    assert!(e.contains("The record \"Sale\" needs a value for: \"amount\"."), "{e}");
+    let e = sema_errors(&f("Sale { regoin: \"EU\", amount: 1 EUR }"));
+    assert!(e.contains("The record \"Sale\" has no field \"regoin\". Did you mean \"region\"?"), "{e}");
+    let e = sema_errors(&f("Sale { region: 1, amount: 1 EUR }"));
+    assert!(e.contains("The field \"region\" of Sale is text, but this is a number."), "{e}");
+    let e = sema_errors(&f("Sal { region: \"EU\" }"));
+    assert!(e.contains("Unknown variant \"Sal\". Did you mean \"Sale\"?"), "{e}");
+}
+
+#[test]
+fn maybe_values_are_written_some_and_none() {
+    let src = "# Function: pick\n- in: n: int\n- out: maybe int\n- effect: pure\n  - if n > 0:\n    - return some n\n  - return none\n\n# Function: show\n- in: n: int\n- out: text\n- effect: pure\n  - if pick(n) is some v:\n    - return \"got {v}\"\n  - return \"nothing\"\n";
+    let c = common::ok(&use_it(src));
+    assert_eq!(c.functions["pick"].out.as_ref().unwrap().to_string(), "maybe int");
+    assert!(is_canonical(src, "t.agent.md").unwrap());
+    let e = sema_errors("# Function: f\n- out: maybe int\n- effect: pure\n  - return some \"x\"\n");
+    assert!(e.contains("This returns"), "{e}");
+    let (out, _) = run_command(
+        "maybes",
+        &format!("{src}\n# Command: demo\n- args: n: int\n\n## Run\n- print: show(n)\n- print: show(0)\n"),
+        &[],
+        json!({"n": 4}),
+    );
+    assert_eq!(out, "got 4\nnothing\n");
+}
+
+#[test]
+fn try_works_with_and_without_do_and_branch_names_may_be_left_out() {
+    let base = "# Function: half\n- in: n: int\n- out: result of int\n- effect: pure\n  - return n / 2\n\n";
+    for call in ["try half(n) -> h", "try do half(n) -> h"] {
+        let src = format!("{base}# Function: f\n- in: n: int\n- out: int\n- effect: pure\n  - {call}\n    otherwise:\n      - set h = 0\n  - return h\n");
+        let c = common::ok(&use_it(&src));
+        assert!(c.functions.contains_key("f"));
+        // the formatter keeps the author's spelling
+        assert_eq!(format_source(&src, "t.agent.md").unwrap(), src);
+    }
+    // a result that is not used: `try f(x)` with nothing after it
+    for call in ["try half(n)", "try do half(n)"] {
+        let src = format!("{base}# Function: f\n- in: n: int\n- effect: pure\n  - {call}\n");
+        common::ok(&use_it(&src));
+        assert_eq!(format_source(&src, "t.agent.md").unwrap(), src);
+    }
+    let src = format!("{base}# Function: g\n- effect: local\n  - match half(4):\n    - ok:\n      - print: \"fine\"\n    - error:\n      - print: \"broken\"\n\n# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: h\n- in: s: Shape\n- effect: local\n  - match s:\n    - Circle:\n      - print: \"round\"\n    - Empty:\n      - print: \"none\"\n");
+    common::ok(&use_it(&src));
+    // `some` still has to name its value
+    let e = sema_errors("# Function: f\n- in: n: maybe int\n- effect: local\n  - match n:\n    - some:\n      - print: \"x\"\n    - none:\n      - print: \"y\"\n");
+    assert!(e.contains("\"some\" carries a value, so the branch must name it."), "{e}");
+}
+
+#[test]
 fn a_variant_name_that_two_enums_have_needs_its_enum() {
     let both = format!("{SH}# Enum: Menu\n- Empty\n- Item: name: text\n\n");
     let src = |expr: &str| format!("{both}# Function: f\n- out: Shape\n- effect: pure\n  - return {expr}\n");
@@ -497,7 +553,7 @@ fn the_fixture_program_prints_what_each_match_decides() {
     let (out, _) = run_command("shapes", SHAPES, &[], args.clone());
     assert_eq!(
         out,
-        "circle r=3\nrect 2x5\nnothing\n3.50 EUR / 0.00 EUR\n7\na: circle r=3 (round)\nb: nothing (plain)\nb is empty\nc: rect 4x4 (square)\nfound b\ncount 12\n"
+        "circle r=3\nrect 2x5\nnothing\n3.50 EUR / 0.00 EUR\n7\na: circle r=3 (round)\nb: nothing (plain)\nb is empty\nc: rect 4x4 (square)\nfound b\ncount 12\nn 12\nhit c\nz\n"
     );
     // the `error` branch of the result, and `no entries` when the JSON does not fit the enum
     write(&d, "entries.json", r#"[{"label":"a","shape":{"kind":"Triangle"}}]"#);
@@ -505,7 +561,7 @@ fn the_fixture_program_prints_what_each_match_decides() {
     assert_eq!(out, "circle r=3\nrect 2x5\nnothing\n3.50 EUR / 0.00 EUR\n7\nno entries\n");
     write(&d, "entries.json", "[]");
     let (out, _) = run_command("shapes3", SHAPES, &[], json!({"entries_path": s(&d.join("entries.json")), "count_path": s(&d.join("missing.json"))}));
-    assert!(out.ends_with("no entry b\nunreadable\n"), "{out}");
+    assert!(out.ends_with("no entry b\nunreadable\nn 0\nno hit\nz\n"), "{out}");
 }
 
 /// Branches that leave their name unused, a `result` matched in a route: the generated code must

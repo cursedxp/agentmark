@@ -104,6 +104,7 @@
 (match_arm pattern: (identifier) @constructor)
 (match_arm pattern: (field_expression object: (identifier) @type field: (identifier) @constructor))
 (match_arm binding: (identifier) @variable)
+(some_expression "some" @keyword)
 
 ; ---- expressions ------------------------------------------------------------
 (string) @string
