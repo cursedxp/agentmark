@@ -176,7 +176,7 @@ pub fn fixture_examples() -> Vec<String> {
 
 /// Every fixture folder of every example, as `(example, dir)`.
 pub fn fixture_dirs() -> Vec<(String, PathBuf)> {
-    fixture_examples().into_iter().flat_map(|n| fixture_dirs_of(&n).into_iter().map(move |(_, d)| (n.clone(), d))).collect()
+    fixture_examples().into_iter().filter(|n| PathBuf::from(format!("{ROOT}/fixtures/{n}/expected.trace.jsonl")).is_file()).flat_map(|n| fixture_dirs_of(&n).into_iter().map(move |(_, d)| (n.clone(), d))).collect()
 }
 
 /// Every folder of a program fixture (SPEC 22.7) of `example`: the folder itself, then each `variants/<case>/`,

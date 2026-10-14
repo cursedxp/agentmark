@@ -208,7 +208,7 @@ fn assignments_check_field_names_and_types() {
 fn results_of_get_and_list_have_record_types() {
     let c = ok(&agent(
         "crm, log",
-        "- crm get invoice \"x\" -> inv\n- crm list invoices -> all\n- crm update invoice: inv\n- log: \"{inv.id} {all}\"\n",
+        "- crm get invoice \"x\" -> inv\n- crm list invoices -> all\n- crm update invoice: inv\n- log: \"{inv.id} {count of all}\"\n",
     ));
     let types: Vec<String> = c.expr_types.values().map(|t| t.to_string()).collect();
     assert!(types.contains(&"Invoice".to_string()), "{types:?}");

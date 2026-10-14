@@ -288,6 +288,24 @@ it, so the handles you get (`handle of sqlx.SqlitePool`) are the ones for the da
 (a query that holds its text) and generic types with a single instantiation in that configuration are bound as handles too,
 and an integer wider than `int` (`u64`) is converted with a check that fails the call on overflow.
 
+`examples/08-notes-api` is a web service built on this. Its `ensure_schema` function takes the pool handle that a route
+connected, runs a statement on it, and lends it back: a function only borrows a handle it does not use up.
+
+```agentmark file=examples/08-notes-api/functions/ensure-schema.agent.md
+# Import: crate sqlx
+# Import: ../constants.agent.md
+
+> Creates the notes table when it does not exist yet. Every route calls this right after connecting, because the
+> service has no start-up step: the database file may be new. Fails when the table cannot be created.
+# Function: ensure_schema
+- in: pool: handle of sqlx.SqlitePool
+- out: result of bool
+- effect: network
+  - sqlx query create_notes_table -> statement
+  - try statement execute pool
+  - return true
+```
+
 ### Not bound yet: just write the statement
 
 An item under `## Not bound` is "not bound yet". Write the statement you want, as if it were bound, and `check` or

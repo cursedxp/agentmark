@@ -530,11 +530,6 @@ impl<'a> Walk<'a> {
             }
             // a type-erased `Any…` implementor (sqlx's `Any` driver) stands for "whichever of the
             // others", so it is not a second instantiation (Q412)
-            if std::env::var("AGENTMARK_BIND_DEBUG").is_ok() {
-                for (k, v) in &ctx.implementors {
-                    if k.contains("Database") { eprintln!("DEBUG implementors {k}: {}", v.iter().map(render).collect::<Vec<_>>().join(", ")); }
-                }
-            }
             for v in ctx.implementors.values_mut() {
                 if v.len() > 1 && v.iter().any(|t| !is_erased(t)) {
                     v.retain(|t| !is_erased(t));
@@ -920,7 +915,7 @@ impl<'a> Walk<'a> {
         // owns whatever the Rust value borrows, and the assisted tier writes that glue.
         let borrowy = hz.lifetimes || hz.assoc;
         let borrow_reason = if hz.lifetimes { "lifetimes in the public API" } else { "associated types in the signature" };
-        let fail = |msg: String| { if std::env::var("AGENTMARK_BIND_DEBUG").is_ok() { eprintln!("DEBUG {display_path}: {msg}"); } skipped(if borrowy { borrow_reason.to_string() } else { msg }) };
+        let fail = |msg: String| skipped(if borrowy { borrow_reason.to_string() } else { msg });
         let build = |catchall: bool| -> (Shape, Option<String>, BTreeMap<String, String>) {
         let lifter = Lifter { bounds: &bounds, ctx: &ctx, catchall, pending: RefCell::new(BTreeMap::new()), fixed: owner.as_ref().map(|o| o.fixed.clone()).unwrap_or_default() };
         // a method of a handle type is written with its method name; the handle tells methods apart

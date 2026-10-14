@@ -643,13 +643,13 @@ fn a_dependency_json_directory_replaces_the_nightly_build() {
 
 #[test]
 fn freshly_bound_files_keep_every_line_within_the_limit_and_check_clean() {
-    // SPEC 18.3: the limits apply to generated files too (Q110).
+    // SPEC 18.3: the limits apply to generated files too (Q110); a heading cannot wrap and is exempt (Q413).
     for (c, _) in CRATES {
         let dir = scratch(&format!("limit-{c}"));
         let out = bind(c, &opts(&dir, c, vec![])).unwrap();
         let text = std::fs::read_to_string(&out.path).unwrap();
         for (i, l) in text.lines().enumerate() {
-            assert!(l.chars().count() <= 120, "{c}:{}: {} chars: {l}", i + 1, l.chars().count());
+            assert!(l.starts_with("## ") || l.chars().count() <= 120, "{c}:{}: {} chars: {l}", i + 1, l.chars().count());
         }
         // still names the library path of what was not bound
         assert!(text.contains("## Not bound"), "{c}");

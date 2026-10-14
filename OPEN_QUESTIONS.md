@@ -821,10 +821,48 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q407 — Example layout details (step 25)
 - Choice: the `# Enum: Block` of 09 lives in `records/` (types live with records; 18.3 allows several declarations there). The non-agent examples have no `tools.toml` (SPEC 22.5: not needed with only `file` and `# Tool`). Service 08 has no `state:` (optional).
 
+## Q408 — Negative numbers (step 25b)
+- Question: `number.round(x, -1)` and `-5` did not parse; SPEC 5 has no unary minus.
+- Choice: a `-` directly before the digits of an `int` or `money` literal is part of the literal (`-5`, `-12.50 EUR`; not durations). A `-` directly before a name, a call or a parenthesis negates it and is parsed as `x * -1`, so sema, IR and codegen are untouched and `fmt` prints `n * -1`. Subtraction still needs spaces (`a - b`, `a - -b`); `a -1` is a syntax error. The tree-sitter grammar already had a unary `-`; TextMate colours the digits as before.
+- Why: the smallest change that makes both forms work without a new node through six passes.
+
+## Q409 — A list, a map or a record in a text hole (step 25b)
+- Choice: E400, "A value of type … cannot be written into text as a whole", with a help line (`join` a list of text, write a map entry by entry, name the fields of a record). Printing as JSON was rejected: it would make the text of a program depend on a serialization nobody asked for.
+- Why: it used to reach rustc as an internal compiler error.
+
+## Q410 — A field path as a tool-call or method argument (step 25b)
+- Choice: in `- statement bind draft.title -> next` the target word may be a field path `variable.field`; it is parsed as a value (`TargetPart::Value` of a path expression), a plain word stays a word.
+- Why: example 08 binds the fields of a request body.
+
+## Q411 — A facade's re-exports are followed (step 25b)
+- Question: the rustdoc JSON of `sqlx` only names `sqlx_core::query::query`; the real items live in `sqlx-core` and `sqlx-sqlite`.
+- Choice: `agentmark bind` also builds (in the same scratch crate, so with the same features) the rustdoc JSON of every crate the facade re-exports a function, type, trait or module from, except the crates of the foreign-trait rule (sha2/digest keep their old path), and `binder/rust/merge.rs` merges them into the facade's JSON: ids move into a range per crate, and an id known only as an external path points at the item that has that path in whichever loaded crate defines it. Everything after that sees one crate, and items are bound under the facade's names (`handle of sqlx.query.Query`). Macros are not followed. Fixtures: `tests/binder/{sqlx,sqlx_core,sqlx_sqlite}.json` (trimmed by `trim.py`, which now keeps external `use` ids, the `crate_id` and `kind` of paths, and associated types), `tests/binder/sqlx-model.json` holds the 8 canned assisted bodies; `tests/sqlx_binding.rs` runs the real `cargo check --offline` against sqlx (skipped when sqlx is not in the cargo cache) and compares the result with the binding checked in with example 08.
+- Why: SPEC 22.4 binds `sqlx::query` with the sqlite feature; a facade crate is the normal way to use a library.
+
+## Q412 — Instantiating sqlx's generics (step 25b)
+- Choice, all in the handle-item lift: (1) an implementor named `Any…` (the type-erased driver) is not a second instantiation, so `DB: Database` is `Sqlite` even with sqlx's default `any` feature; (2) a concrete alias of a generic struct (`SqlitePool = Pool<Sqlite>`) gets the struct's methods under the alias's name (`sqlite_pool_connect`) with the impl's parameters fixed to the alias's arguments, and the generic struct itself is not bound; (3) associated types are resolved through the crate's trait impls (`<Sqlite as Database>::QueryResult` is `SqliteQueryResult`); (4) lifetimes of the crate's types are written `'static` in a handle's Rust type; (5) bounds `Encode` / `Type` (a value handed to the database) are text, a parameter that only markers constrain (`query_scalar::<DB, O>`) is text, `Executor` is a borrow of the crate's one pool alias; (6) a type parameter of an impl that nothing pins down is the instantiation the handle already has, so binding runs twice and the second pass knows the handle types the first found; instantiations with an open parameter or the erased driver are never recorded. Items of other crates are only affected when they involve a handle.
+- Why: these are the rules under which `query`, `query_scalar`, `bind`, `execute`, `fetch_one` and `fetch_optional` become assisted items with exact signatures; the type checker still has the last word.
+
+## Q413 — Smaller decisions of step 25b
+- Binding headings (`## name(...)`) are exempt from the 120-character line limit (SPEC 18.3, amends Q110): they are generated and cannot wrap, and `execute(self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool) -> handle of sqlx.sqlite.SqliteQueryResult` is 132 characters. The binder no longer skips long headings.
+- `requests.json` entries may carry `expect_status` (SPEC 22.7): the generated program compares the status of every replayed request and counts a mismatch as a failure; without it a status of 500 or more still fails.
+- The runner (`tests/support::run_program_fixture`) gives a service fixture an empty mock model folder because `--mock` asks for one; the program reads `requests.json` from its working directory.
+- Generated Rust: imports are picked by looking at code, not at `//` comments (a comment mentioning `analyze-log` imported `log`); `serde_json::json!(` written out in full no longer imports `json`; a route takes `body` only when its code uses the word outside strings.
+- `CargoChecker` scratch crates get a unique package name. Two checkers that share a build folder (`build.target-dir` in a cargo config, `CARGO_TARGET_DIR`) used one name, hence one fingerprint, so a body could be judged "fresh" because another checker had just passed. I could not make `real_cargo_check_accepts_a_good_body_and_rejects_a_bad_one` fail again before the change (20 parallel runs with and without a shared target folder); this is the cause the code supports, not one I reproduced.
+- Example bindings: the binding checked in with example 08 lists the canned model's non-answers as `assisted tier: mock model has no response for …` under `## Not bound`; run `agentmark bind sqlx --force` with a real model to bind them.
+
+## Q414 — A function lends the handles it does not use up (step 25b; amends Q361)
+- Question: example 08 passes the pool to `ensure_schema(pool)` and uses it afterwards; Q361 made passing to a function use the handle up.
+- Choice: a `# Function` takes a handle parameter only when its body uses it up, changes it (`mut`), passes it on to something that takes it, or returns it; otherwise it only borrows it: the caller keeps the handle, the generated parameter is `&T` and the call passes `&x`. `Checked.fn_lends` carries the answer per function (the body is checked first, memoized like effects); `ir::Param.lent` gives it to codegen. A `## Rust` block still takes its handles.
+- Why: SPEC 22.4 says a handle can be passed to functions and only `self`-by-value consumes it.
+
+## Q415 — Example 08 in the docs
+- `docs/libraries.md` quotes `examples/08-notes-api/functions/ensure-schema.agent.md` through `file=` (resolves Q421).
+
 ## Q420 — Docs framing: general-purpose first, agents as one feature (step 26)
 - Decided by SPEC 22 (intro): AgentMark is a general-purpose language written as Markdown; agents are one feature.
 - Choice: the README opens with a non-agent program, the commands are shown on examples 06 and 10 (agents get their own README section after libraries and real tools), and `docs/guide.md` reaches a working report program (record, rule, function, collection words, `file read`/`file write`) before it adds an agent in its second half. The guide's vocabulary ban is unchanged. `docs/reference.md` keeps one `## N.` section per SPEC section in SPEC order, so the agent sections (2.2, 2.3, 3, 4.2, 4.4) stay where they are; a new unnumbered "Language at a glance" section before section 0 frames the language and points to them as one feature.
 - Why: `tests/docs.rs` pins the reference to the SPEC's numbering; reordering the sections would break a test that guards the specification, so the framing is done by the intro and the table, not by moving sections.
 
 ## Q421 — Example 08 is not quoted in the docs (step 26)
-- Choice: `examples/08-notes-api` appears in prose and tables only. The docs quote only programs that `agentmark check` accepts today (06, 07, 09, 10 and the agents), through `file=` so a sample cannot drift. When 08 passes, a `file=` quote of one route can be added.
+- Choice: `examples/08-notes-api` appears in prose and tables only. The docs quote only programs that `agentmark check` accepts today (06, 07, 09, 10 and the agents), through `file=` so a sample cannot drift. When 08 passes, a `file=` quote of one route can be added. (Done in step 25b: Q415.)

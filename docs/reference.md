@@ -511,6 +511,7 @@ How target words are resolved (Q4, Q5):
   record in front of the block. When several variables of that record are in scope the call is an error
   ("Which invoice?"); name the one you mean with a value after the word.
 * A tool's name alone is never a value, so a field called `email` is a field.
+* A target word may be a field path of a variable, `- statement bind draft.title -> next` (Q410).
 
 Reading a tool's source, `for each ... in crm.invoices`, is an effect of that tool (`network(crm)`).
 
@@ -656,6 +657,10 @@ field, constant, and only with a dot a tool source `crm.invoices` (Q41).
 | `date - date`, `datetime - datetime` | `duration` |
 | `12 EUR + 3 days` | error: "Cannot add a duration to money" |
 | `money / money`, `money * money`, `text + text` | error; use interpolation for text |
+
+**Negative numbers.** A `-` written directly before the digits makes a negative `int` or `money` literal (`-5`, `-12.50 EUR`, `number.round(x, -1)`); a `-` directly before a name or a parenthesis negates it, and means `x * -1` (`-n`, `-(a + b)`). Subtraction keeps its spaces (`a - b`); `a -1` is not a subtraction (Q408).
+
+**Text holes hold single values.** A list, a map or a record cannot be written into text as a whole: E400, with the way out ("join" a list of text, write a map entry by entry, name the record's fields) (Q409).
 
 ## 6. Types
 
@@ -1339,6 +1344,8 @@ library (`# Import: crate sha2`) counts. A hand-written binding (no generated he
 If the tier cannot start at all (no model, no rustdoc), the command prints `agentmark: cannot write the library code for "sha2" on demand: <why>`
 and stops with exit code 1 (`check` goes on to report the unknown item). Q230 to Q235 record the edge cases.
 
+A facade crate such as `sqlx` mostly re-exports other crates (`pub use sqlx_core::query::query`): the binder builds their rustdoc JSON too and merges it into the facade's, so what the facade exports is bound under the facade's name; a generic type with a concrete alias (`SqlitePool = Pool<Sqlite>`) is bound through the alias, and the type-erased `Any` driver is never the one instantiation (Q411, Q412). A `## name(...)` heading of a binding is generated and cannot wrap, so it is exempt from the 120-character limit (Q413).
+
 The binder never silently drops an item: everything is bound or listed as not bound. The precise edge cases are
 decisions Q70 to Q82; for example, closures stay skipped because AgentMark has no function type (Q75).
 
@@ -1396,8 +1403,9 @@ is an ordinary item (`sha256_new`) and is called on the library, `- sha2 sha256_
 
 Rules (all compile errors, in the shape of section 10):
 
-* A handle **moves**. A `consume` method, passing it to a function (`- do feed(hasher)`), and `set other = hasher` use it up; reading
-  it later is E361 and names the line that used it up. A branch that only sometimes uses it up counts ("may have"); a handle that
+* A handle **moves**. A `consume` method, passing it to a function that uses it up or hands it back (`- do feed(hasher)`), and
+  `set other = hasher` use it up; a function that only calls borrowing methods on a handle it is given only lends it, and the caller
+  keeps it (Q414). Reading a used-up handle is E361 and names the line that used it up. A branch that only sometimes uses it up counts ("may have"); a handle that
   lives outside a loop cannot be used up inside it.
 * It can be read only where something takes it: a method call, a function or binding argument, `set`, `return`. Printing,
   `{interpolating}`, comparing, putting it in a record or a request, or tracing it is E362.
@@ -2477,7 +2485,7 @@ A fixture folder of a program that is not an agent holds `run.json` (`{"args": [
 folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional
 `expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`.
 A folder under `variants/<case>/` holds only what differs from its parent. Services use `requests.json`, where an entry may
-carry `expect_status` and `expect_body`.
+carry `expect_status` and `expect_body`. The program replays the requests (`--once --mock`) and exits with an error for the first answer whose status or body differs (Q413).
 
 ### 22.8 Out of scope for v0.3
 

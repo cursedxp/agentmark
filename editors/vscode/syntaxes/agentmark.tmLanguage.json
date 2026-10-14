@@ -103,6 +103,15 @@
           }
         },
         {
+          "match": "^(##)\\s+(Handle)(:)\\s*([A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.control.trigger.agentmark" },
+            "3": { "name": "punctuation.separator.agentmark" },
+            "4": { "name": "entity.name.type.agentmark" }
+          }
+        },
+        {
           "match": "^(##)\\s+(Not bound)\\s*$",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },

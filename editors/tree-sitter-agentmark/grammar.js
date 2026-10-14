@@ -242,7 +242,7 @@ module.exports = grammar({
     // functions) carry properties and/or a fenced Rust body.
     code_block: ($) =>
       seq(
-        choice($.rust_heading, $.binding_heading),
+        choice($.rust_heading, $.binding_heading, $.handle_heading),
         repeat($._body_line),
       ),
 
@@ -266,6 +266,12 @@ module.exports = grammar({
         optional(seq('->', field('type', $.type))),
         $._newline,
       ),
+
+    // `## Handle: sqlx.query.Query` gives the Rust type of a handle (SPEC 22.4, Q370)
+    handle_heading: ($) =>
+      seq('##', ci('handle'), ':', field('name', $.handle_name), $._newline),
+
+    handle_name: () => token(/[A-Za-z_][A-Za-z0-9_-]*(\.[A-Za-z_][A-Za-z0-9_-]*)*/),
 
     not_bound_block: ($) =>
       seq(

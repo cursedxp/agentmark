@@ -568,9 +568,6 @@ impl Lifter<'_> {
             if has_generic(&r) {
                 // a type parameter of the impl that nothing here pins down is the instantiation the
                 // handle already has (`Query<'q, DB, A>` in a method: the `Query` that `query` returned)
-                if std::env::var("AGENTMARK_BIND_DEBUG2").is_ok() {
-                    eprintln!("DEBUG2 {} arg {:?} catchall={}", def.name, r, self.catchall);
-                }
                 if self.catchall && self.ctx.rust_types.borrow().contains_key(&def.name) {
                     return Some(def.name.clone());
                 }
@@ -584,12 +581,7 @@ impl Lifter<'_> {
         let ty = if parts.is_empty() { def.rust_path.clone() } else { format!("{}<{}>", def.rust_path, parts.join(", ")) };
         let mut pending = self.pending.borrow_mut();
         match self.ctx.rust_types.borrow().get(&def.name).or_else(|| pending.get(&def.name)) {
-            Some(prev) if *prev != ty => {
-                if std::env::var("AGENTMARK_BIND_DEBUG2").is_ok() {
-                    eprintln!("DEBUG2 mismatch {}: prev {prev} vs {ty}", def.name);
-                }
-                None
-            }
+            Some(prev) if *prev != ty => None,
             _ => {
                 pending.insert(def.name.clone(), ty);
                 Some(def.name.clone())

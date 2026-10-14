@@ -651,3 +651,33 @@ Tool with a statement verb and a Rust verb
         (fence_open)
         (code_content)
         (fence_close)))))
+
+================================================================================
+Handle block of a binding gives the Rust type
+================================================================================
+
+# Binding: sqlx
+- crate: sqlx
+
+## Handle: sqlx.query.Query
+  ```rust
+  sqlx::query::Query<'static, sqlx::Sqlite>
+  ```
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (code_block
+      (handle_heading
+        (handle_name))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))))
