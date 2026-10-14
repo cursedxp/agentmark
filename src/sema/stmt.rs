@@ -258,7 +258,7 @@ impl Checker<'_> {
                 let t = self.expr_handle_ok(cx, expr);
                 cx.match_call = saved;
                 if cx.var(&var.name).is_none() {
-                    self.untyped_none(cx, expr.span, &t);
+                    self.untyped_none(cx, expr, &t);
                 }
                 self.move_out(cx, expr);
                 cx.consumed.remove(&var.name);

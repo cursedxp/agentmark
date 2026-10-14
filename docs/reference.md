@@ -1934,57 +1934,6 @@ A `maybe` value is written `some x` or `none`. In a branch the name after the va
 value is not used: `- error:`. A function that returns `result of T` is also used with `try`, without `do` (`try do f(x) -> v` means
 the same), and `if ... is some x:` works on any `maybe`
 expression, including a call. A record is built the same way as a variant, with every field that is not `maybe` given:
-### 22.2 Collection words
-
-Lists are `list of T`, maps are `map of K to V` (keys: `text`, `int`, `date`, `datetime` or `bool`). The words below are
-expressions unless marked as statements. They are pure: they build a new value and never change their input.
-
-```agentmark
-# Record: Sale
-- region: text
-- amount: money
-- qty: int
-
-# Function: eu_total
-- in: sales: list of Sale
-- out: money
-- effect: pure
-  - set eu = sales where region = "EU"
-  - return sum of amount in eu
-```
-
-Inside the expression after `where`, `by`, `to` and `of … in`, the current element is called `item`, and when it is a record its
-fields are in scope by their bare names, as in a `for each` over a record. `rows where region = "EU"` and
-`rows where item.region = "EU"` mean the same. For a list of text or numbers only `item` exists:
-`names where item != "a"`.
-
-| form | result |
-|---|---|
-| `list of 1, 2, 3` · `empty list of text` | a list |
-| `map of "EU" to 1, "US" to 2` · `empty map of text to int` | a map |
-| `rows where region = "EU"` | the elements for which the condition holds |
-| `map rows to amount` | a list of the expression's values |
-| `sort rows by amount` · `sort rows by amount descending` | the list in order (stable: equal keys keep their order) |
-| `group rows by region` | `map of K to list of T`, in key order |
-| `sum of amount in rows` · `sum of numbers` | a number, or money of one currency; an empty list adds up to 0 |
-| `count of rows` · `count of rows where amount > 5 EUR` | an `int` |
-| `min of amount in rows` · `max of …` | `maybe` of the value: empty for an empty list |
-| `first of rows` · `last of rows` | `maybe` of the element |
-| `take 10 from rows` · `skip 2 from rows` | the list without its tail or head |
-| `unique rows` · `unique region in rows` | every value once, in order of first occurrence |
-| `join names with ", "` | text; the list must be a list of text |
-| `totals at "EU"` | `maybe` of the value: empty when the key is absent |
-| `keys of totals` · `values of totals` | a list, keys in order |
-
-Statements:
-
-| statement | meaning |
-|---|---|
-| `append x to rows` | add to the end of a list |
-| `put v at k in m` | set the entry of key `k` (replaces an existing one) |
-| `remove k from m` | delete the entry of key `k`; nothing happens when it is absent |
-| `for each row in rows with index i:` | `i` counts the position from 1 |
-| `for each region, total in totals:` | the entries of a map, in key order |
 
 ```agentmark
 # Record: Sale
@@ -2054,6 +2003,63 @@ shapes.agent.md:10
 
 **JSON.** An enum value is an object whose `kind` field names the variant, followed by the variant's fields:
 `{"kind":"Circle","radius":3}`, `{"kind":"Empty"}` (Q301). That is what `read file`, `read body` and `respond` read and write.
+### 22.2 Collection words
+
+Lists are `list of T`, maps are `map of K to V` (keys: `text`, `int`, `date`, `datetime` or `bool`). The words below are
+expressions unless marked as statements. They are pure: they build a new value and never change their input.
+
+```agentmark
+# Record: Sale
+- region: text
+- amount: money
+- qty: int
+
+# Function: eu_total
+- in: sales: list of Sale
+- out: money
+- effect: pure
+  - set eu = sales where region = "EU"
+  - return sum of amount in eu
+```
+
+Inside the expression after `where`, `by`, `to` and `of … in`, the current element is called `item`, and when it is a record its
+fields are in scope by their bare names, as in a `for each` over a record. `rows where region = "EU"` and
+`rows where item.region = "EU"` mean the same. For a list of text or numbers only `item` exists:
+`names where item != "a"`.
+
+| form | result |
+|---|---|
+| `list of 1, 2, 3` · `empty list of text` | a list |
+| `map of "EU" to 1, "US" to 2` · `empty map of text to int` | a map |
+| `rows where region = "EU"` | the elements for which the condition holds |
+| `map rows to amount` | a list of the expression's values |
+| `sort rows by amount` · `sort rows by amount descending` | the list in order (stable: equal keys keep their order) |
+| `group rows by region` | `map of K to list of T`, in key order |
+| `sum of amount in rows` · `sum of numbers` | a number, or money of one currency; an empty list adds up to 0 |
+| `count of rows` · `count of rows where amount > 5 EUR` | an `int` |
+| `min of amount in rows` · `max of …` | `maybe` of the value: empty for an empty list |
+| `first of rows` · `last of rows` | `maybe` of the element |
+| `take 10 from rows` · `skip 2 from rows` | the list without its tail or head |
+| `unique rows` · `unique region in rows` | every value once, in order of first occurrence |
+| `join names with ", "` | text; the list must be a list of text |
+| `totals at "EU"` | `maybe` of the value: empty when the key is absent |
+| `keys of totals` · `values of totals` | a list, keys in order |
+
+Statements:
+
+| statement | meaning |
+|---|---|
+| `append x to rows` | add to the end of a list |
+| `put v at k in m` | set the entry of key `k` (replaces an existing one) |
+| `remove k from m` | delete the entry of key `k`; nothing happens when it is absent |
+| `for each row in rows with index i:` | `i` counts the position from 1 |
+| `for each region, total in totals:` | the entries of a map, in key order |
+
+```agentmark
+# Record: Sale
+- region: text
+- amount: money
+
 # Function: region_lines
 - in: sales: list of Sale
 - out: list of text

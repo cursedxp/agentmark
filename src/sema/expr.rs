@@ -234,7 +234,7 @@ impl Checker<'_> {
                 let mut out = Vec::new();
                 for f in fields {
                     let t = self.expr(cx, &f.value);
-                    self.untyped_none(cx, f.value.span, &t);
+                    self.untyped_none(cx, &f.value, &t);
                     out.push((f.name.name.clone(), t));
                 }
                 Type::Object(out)

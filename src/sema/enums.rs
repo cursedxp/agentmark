@@ -581,8 +581,9 @@ impl Checker<'_> {
     }
 
     /// `none` whose type nothing decides (`set d = none`) would not compile.
-    pub(super) fn untyped_none(&mut self, cx: &Cx, span: Span, t: &Type) {
-        if matches!(t, Type::Maybe(i) if i.is_unknown()) {
+    pub(super) fn untyped_none(&mut self, cx: &Cx, e: &Expr, t: &Type) {
+        let span = e.span;
+        if matches!(e.kind, ExprKind::None) && matches!(t, Type::Maybe(i) if i.is_unknown()) {
             let d = Diagnostic::error(
                 E_UNTYPED_NONE,
                 self.path(cx.file),
