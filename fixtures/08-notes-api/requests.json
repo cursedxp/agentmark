@@ -1,0 +1,11 @@
+[
+  {"method":"POST","path":"/notes","body":{"title":"Buy milk","body":"2 litres"},"expect_status":201,"expect_body":{"id":1,"title":"Buy milk","body":"2 litres"}},
+  {"method":"POST","path":"/notes","body":{"title":"Call Anna","body":"about the invoice"},"expect_status":201,"expect_body":{"id":2,"title":"Call Anna","body":"about the invoice"}},
+  {"method":"POST","path":"/notes","body":{"title":"","body":"a note without a title"},"expect_status":400},
+  {"method":"GET","path":"/notes","expect_status":200,"expect_body":[{"id":1,"title":"Buy milk","body":"2 litres"},{"id":2,"title":"Call Anna","body":"about the invoice"}]},
+  {"method":"GET","path":"/notes/2","expect_status":200,"expect_body":{"id":2,"title":"Call Anna","body":"about the invoice"}},
+  {"method":"GET","path":"/notes/99","expect_status":404},
+  {"method":"DELETE","path":"/notes/1","expect_status":204},
+  {"method":"DELETE","path":"/notes/1","expect_status":404},
+  {"method":"GET","path":"/notes","expect_status":200,"expect_body":[{"id":2,"title":"Call Anna","body":"about the invoice"}]}
+]

@@ -167,6 +167,11 @@ pub fn fixture_dirs_of(example: &str) -> Vec<(String, PathBuf)> {
     out
 }
 
+/// v0.3 examples (SPEC 22.7) whose fixtures use another contract (run.json, input/, expected.stdout) and are
+/// authored ahead of the compiler; the tests that pin the v0.1/v0.2 contract skip them.
+// TODO(step 25 runner): remove when the v0.3 runner lands
+pub const V03_PENDING: [&str; 5] = ["06-sales-report", "07-file-renamer", "08-notes-api", "09-markdown-to-html", "10-log-analyzer"];
+
 /// Every example name that has a fixture folder, sorted.
 pub fn fixture_examples() -> Vec<String> {
     let mut names: Vec<_> = std::fs::read_dir(format!("{ROOT}/fixtures")).unwrap().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
@@ -176,5 +181,5 @@ pub fn fixture_examples() -> Vec<String> {
 
 /// Every fixture folder of every example, as `(example, dir)`.
 pub fn fixture_dirs() -> Vec<(String, PathBuf)> {
-    fixture_examples().into_iter().flat_map(|n| fixture_dirs_of(&n).into_iter().map(move |(_, d)| (n.clone(), d))).collect()
+    fixture_examples().into_iter().filter(|n| !V03_PENDING.contains(&n.as_str())).flat_map(|n| fixture_dirs_of(&n).into_iter().map(move |(_, d)| (n.clone(), d))).collect()
 }
