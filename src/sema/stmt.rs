@@ -62,7 +62,7 @@ impl Checker<'_> {
         .with_help(if cx.acc.class() == Effect::Unverified {
             // `unverified` is not an effect a function can declare (SPEC 13.1)
             format!(
-                "A library call nobody approved is unverified ({}). Approve the binding's \"- effect:\" line, or move this line out of the function.",
+                "A library call nobody approved is unverified ({}). Approve the binding's \"- effect:\" line (while developing, --allow-unverified assumes the proposed effect), or move this line out of the function.",
                 cx.acc.unverified.join(", ")
             )
         } else {

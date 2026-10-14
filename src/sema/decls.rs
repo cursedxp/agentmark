@@ -259,7 +259,11 @@ impl Checker<'_> {
                                 effect_name(pe.value)
                             ));
                         }
-                        if x.effect.value == Effect::Unverified {
+                        let assumed = x.effect.value == Effect::Unverified
+                            && x.proposed_effect.is_some()
+                            && self.p.assume_proposed;
+                        // W008 says it already; no second warning about the same binding
+                        if x.effect.value == Effect::Unverified && !assumed {
                             self.warn(
                                 W_UNVERIFIED,
                                 fi,

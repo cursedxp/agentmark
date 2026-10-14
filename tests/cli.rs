@@ -615,6 +615,10 @@ fn allow_unverified_checks_effects_with_the_proposed_effect_and_warns_once() {
     let e = err(&o);
     assert_eq!(e.matches("its effect is assumed to be \"pure\" from the proposal").count(), 1, "{e}");
     assert!(e.contains("Approve it before a release build"), "{e}");
+    // the JSON agrees: W008 instead of W005 for the same binding
+    let v: Value = serde_json::from_str(&out(&run(&["check", s(&d), "--json", "--allow-unverified"]))).unwrap();
+    let codes: Vec<&str> = v["diagnostics"].as_array().unwrap().iter().filter_map(|x| x["code"].as_str()).collect();
+    assert!(codes.contains(&"W008") && !codes.contains(&"W005"), "{codes:?}");
     // build without the flag still refuses
     let o = run(&["build", s(&d), "-o", s(&d.join("out")), "--no-check"]);
     assert_eq!(code(&o), 1, "{}{}", out(&o), err(&o));
