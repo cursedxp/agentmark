@@ -4,6 +4,7 @@
 
 pub mod effects;
 pub mod model;
+pub mod ondemand;
 pub mod pipeline;
 pub mod typecheck;
 pub mod writer;
@@ -12,4 +13,4 @@ pub use effects::{propose_effect, EffectHints, ProposedEffect};
 pub use model::{CrateItems, Item, NotBoundEntry, Param, Shape, Sig, Ty};
 pub use pipeline::{run_tiers, BoundCrate, BoundItem, Counts, Tier};
 pub use typecheck::{CheckRequest, TypeChecker};
-pub use writer::{freshness, parse_header, render_binding, Freshness, Header};
+pub use writer::{add_on_demand, freshness, parse_header, render_binding, render_item, Freshness, Header};

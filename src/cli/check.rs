@@ -163,20 +163,41 @@ pub(crate) fn run(path: &str, json_out: bool, allow_unverified: bool) -> u8 {
     let mut announced = Vec::new();
     let mut project = Project::load(path);
     project.assume_proposed = allow_unverified;
-    for _round in 0..2 {
+    let mut on_demand_failure = None;
+    for _round in 0..3 {
         match super::build::bind_missing(&project, &mut announced, false) {
             Ok(true) => {
                 project = Project::load(path);
                 project.assume_proposed = allow_unverified;
+                continue;
             }
-            Ok(false) => break,
+            Ok(false) => {}
             Err((name, e)) => {
                 eprintln!("agentmark: cannot bind \"{name}\": {e}");
                 break;
             }
         }
+        // SPEC 15.2, on-demand tier: statements against `## Not bound` items get them written now
+        match super::ondemand::resolve(&project) {
+            Ok(true) => {
+                project = Project::load(path);
+                project.assume_proposed = allow_unverified;
+            }
+            Ok(false) => break,
+            Err(super::ondemand::Failure::Setup(e)) => {
+                eprintln!("agentmark: {e}");
+                break;
+            }
+            Err(super::ondemand::Failure::Item(d)) => {
+                on_demand_failure = Some(*d);
+                break;
+            }
+        }
     }
-    let result = sema::check(&project);
+    let result = match on_demand_failure {
+        Some(d) => Err(vec![d]),
+        None => sema::check(&project),
+    };
     let (diags, checked) = match result {
         Ok(c) => (c.warnings.clone(), Some(c)),
         Err(d) => (d, None),
