@@ -1694,8 +1694,7 @@ Bindings are plain files, so a community registry is a git repository of `bindin
 
 ## 16. Concurrency
 
-v0.1 runs blocks one after the other. The IR carries an effect graph so that a later version can run independent
-pure and local statements concurrently. Explicit opt-in works now:
+Blocks run one after the other. A `parallel:` statement is the explicit opt-in to run statements at the same time:
 
 ```agentmark
 # Record: Invoice
@@ -1721,13 +1720,16 @@ pure and local statements concurrently. Explicit opt-in works now:
 - log: "{count of all} invoices"
 ```
 
-Statements inside `parallel:` must not write the same variable; the checker reports a conflict. All generated functions
-are `async` and use `tokio` from the start.
+**Rules**
+- v0.1 runs blocks one after the other. The IR carries an effect graph, so a later version can run independent pure and local statements concurrently.
+- Statements inside `parallel:` must not write the same variable. The checker reports a conflict as E212.
+- All generated functions are `async` and use `tokio` from the start.
+
+**Next:** [17. Escape hatch](#17-escape-hatch--rust-blocks-layer-1)
 
 ## 17. Escape hatch: `## Rust` blocks (layer 1)
 
-Any agent, service, command or function may contain a block `## Rust: <name>` whose body is a fenced `rust` block.
-Variables in scope are available by name, and the block must end with a value of its declared type:
+Any agent, service, command or function may contain a block `## Rust: <name>` whose body is a fenced `rust` block. Variables in scope are available by name, and the block must end with a value of its declared type:
 
 ````agentmark
 # Import: crate sha2
@@ -1748,14 +1750,20 @@ Variables in scope are available by name, and the block must end with a value of
   ```
 ````
 
-* The heading is `## Rust: <name>` or `## Rust: <name> -> <type>`. `- in:` lists the parameters and `- effect:` is
-  **mandatory**. The effect is trusted: the checker cannot verify arbitrary Rust. `agentmark check` lists every Rust
-  block in its summary so a reviewer sees where trust is extended.
-* A Rust block defines a module-level function called `<name>`; the declaration it sits under only groups it (Q2).
-  Any function in the project can call it like a function: `hash_payload(payload)`.
-* The block is wrapped in its own `fn` with `#[allow(unused)]` and a source-mapping comment, so a Rust error inside it
-  points at the `.agent.md` line.
-* Rust blocks may `use` any crate imported with `# Import: crate`.
+**Rules**
+- The heading is `## Rust: <name>` or `## Rust: <name> -> <type>`.
+- `- in:` lists the parameters. `- effect:` is **mandatory**.
+- The effect is trusted, because the checker cannot verify arbitrary Rust. `agentmark check` lists every Rust block in its summary, so a reviewer sees where trust is extended.
+- A Rust block defines a module-level function called `<name>`. The declaration it sits under only groups it, per Q2.
+- Any function in the project can call it like a function, as in `hash_payload(payload)`.
+- The block is wrapped in its own `fn` with `#[allow(unused)]` and a source-mapping comment. So a Rust error inside it points at the `.agent.md` line.
+- Rust blocks may `use` any crate imported with `# Import: crate`.
+
+| code | message | fix |
+|---|---|---|
+| E012 | `The Rust block "x" does not declare its effect.` | add `- effect: pure`, or `local`, `network`, `model`; the compiler cannot check Rust, so it trusts this line |
+
+**Next:** [18. Code organization](#18-code-organization-and-readability)
 
 ## 18. Code organization and readability
 
@@ -1788,8 +1796,7 @@ targets = ["rust"]
 deny = ["prompt-in-loop", "missing-doc"]
 ```
 
-`# Run` is the only declaration allowed in `main.agent.md` besides imports. Each item is an imported `# Agent`,
-`# Service` or `# Command`:
+`# Run` is the only declaration allowed in `main.agent.md` besides imports. Each item is an imported `# Agent`, `# Service` or `# Command`:
 
 ```agentmark file=examples/05-invoice-service/main.agent.md
 # Import: ./commands/import-csv.agent.md
@@ -1801,9 +1808,11 @@ deny = ["prompt-in-loop", "missing-doc"]
 - import-csv
 ```
 
-The binary starts all listed agents and services; commands become subcommands. A project with no `# Run` compiles
-to a library, not a binary. Unknown keys in `agentmark.toml` are errors with a suggestion (Q40). `[lsp] model_actions = true` lets the editor
-server offer its optional model-backed actions (Q250); it is off by default.
+**Rules**
+- The binary starts all listed agents and services. Commands become subcommands.
+- A project with no `# Run` compiles to a library, not a binary.
+- Unknown keys in `agentmark.toml` are errors with a suggestion, per Q40.
+- `[lsp] model_actions = true` lets the editor server offer its optional model-backed actions, per Q250. It is off by default.
 
 ### 18.2 Imports
 
@@ -1814,8 +1823,11 @@ server offer its optional model-backed actions (Q250); it is off by default.
 # Import: crate printpdf
 ```
 
-A file sees only what it imports; there is no global scope. Paths are relative to the importing file. A glob imports
-every matching file. An import cycle is an error, and the cycle is printed.
+**Rules**
+- A file sees only what it imports. There is no global scope.
+- Paths are relative to the importing file.
+- A glob imports every matching file.
+- An import cycle is an error, and the cycle is printed.
 
 ### 18.3 Hard limits
 
@@ -1857,10 +1869,9 @@ deep.agent.md:15
 | line length | 120 characters; the text between string quotes does not count (Q35), and a line that is long only because of such text is warning W007 |
 | block with no statements | error |
 
-### 18.4 Soft rules (`agentmark lint`)
+The code for a broken limit is E211. See section [10](#10-error-messages).
 
-Warnings by default. `agentmark.toml` can promote any to an error with `[lint] deny = ["..."]`; an unknown rule name is an
-error with a suggestion.
+### 18.4 Soft rules (`agentmark lint`)
 
 ```agentmark name=loose.agent.md
 # Record: Invoice
@@ -1908,6 +1919,12 @@ loose.agent.md:13
   Name it after its content, like "invoice_rows" or "reminder_text".
 ```
 
+**Rules**
+- Lint rules are warnings by default.
+- `agentmark.toml` can promote any rule to an error with `[lint] deny = ["..."]`.
+- An unknown rule name is an error with a suggestion.
+- `fmt` and `lint` skip `bindings/`, per Q111.
+
 | rule | fires on |
 |---|---|
 | `long-file` | a file over 150 lines |
@@ -1917,8 +1934,6 @@ loose.agent.md:13
 | `prompt-in-loop` | `ask model` inside `for each` without a later `guard` on its result in the same loop body |
 | `missing-doc` | an agent, service or command with no `>` description directly above its heading |
 | `vague-name` | an identifier called `data`, `tmp`, `x`, `result` or `thing` where it is introduced |
-
-`fmt` and `lint` skip `bindings/` (Q111).
 
 ### 18.5 Constants
 
@@ -1947,14 +1962,14 @@ loose.agent.md:13
   - email send address sales_inbox: "{id} is overdue"
 ```
 
-Constants are pure, imported like anything else, and inlined at compile time. They can hold any literal: a number, a
-text, money, a duration, a date.
+**Rules**
+- Constants are pure and imported like anything else.
+- They are inlined at compile time.
+- They can hold any literal: a number, a text, money, a duration or a date.
 
 ### 18.6 Formatter
 
-`agentmark fmt` rewrites a file into the one canonical form: 2-space indent, one blank line between declarations,
-properties before blocks, imports sorted (local files first, then folders, then crates), trailing whitespace removed.
-This file is not canonical:
+`agentmark fmt` rewrites a file into the one canonical form. This file is not canonical:
 
 ```agentmark fragment name=messy.agent.md
 # Record:   Invoice
@@ -1979,7 +1994,7 @@ not canonical: messy.agent.md
 1 of 1 file is not canonical; run "agentmark fmt" to fix it.
 ```
 
-and this is what `agentmark fmt messy.agent.md` writes:
+This is what `agentmark fmt messy.agent.md` writes:
 
 ```agentmark
 # Record: Invoice
@@ -1996,14 +2011,18 @@ and this is what `agentmark fmt messy.agent.md` writes:
   - log: "{invoice.id}"
 ```
 
-There are no formatting options. A few spellings are fixed (Q51): statements are always list items, a block heading is
-printed from its parsed trigger, money prints decimals only when not whole (`12.50 EUR`, `14 EUR`), durations are singular
-for 1, and `do f()` prints as `do f`. Comments survive (Q52). `fmt --check` fails CI when a file is not canonical.
+**Rules**
+- The canonical form has a 2-space indent, one blank line between declarations, properties before blocks and no trailing whitespace.
+- Imports are sorted: local files first, then folders, then crates.
+- There are no formatting options.
+- A few spellings are fixed, per Q51. Statements are always list items, and a block heading is printed from its parsed trigger.
+- Money prints decimals only when it is not whole, as in `12.50 EUR` and `14 EUR`. Durations are singular for 1, and `do f()` prints as `do f`.
+- Comments survive, per Q52.
+- `fmt --check` fails CI when a file is not canonical.
 
 ### 18.7 Documentation comments
 
-A `>` comment immediately before a declaration or block is its documentation. `agentmark doc` collects these into one page
-per project, so the text an operations manager reads is the text the author wrote next to the code:
+A `>` comment immediately before a declaration or block is its documentation. `agentmark doc` collects these into one page per project, so the text an operations manager reads is the text the author wrote next to the code:
 
 ```console cwd=repo
 $ agentmark doc examples/04-daily-report
@@ -2050,13 +2069,16 @@ Unpaid and more than the grace period past due.
 Applies to Invoice. Always pure.
 ```
 
-`agentmark doc <crate>` prints the cheat sheet of a bound library instead (section 15). If the argument names something on disk it is a
-project, otherwise a library; `--project` says where to look for `bindings/` (Q114).
+**Rules**
+- `agentmark doc <crate>` prints the cheat sheet of a bound library instead. See section [15](#15-library-access-automatic-bindings).
+- If the argument names something on disk, it is a project. Otherwise it is a library.
+- `--project` says where to look for `bindings/`, per Q114.
+
+**Next:** [19. Model providers](#19-model-providers)
 
 ## 19. Model providers
 
-`- model:` is a driver string, never a vendor lock. The runtime's `ModelClient` trait has one implementation per provider and the
-language is unaware of which is in use.
+`- model:` is a driver string, never a vendor lock. The runtime's `ModelClient` trait has one implementation per provider, and the language is unaware of which is in use.
 
 ```agentmark
 # Record: Lead
@@ -2072,6 +2094,11 @@ language is unaware of which is in use.
 - log: "{kind}"
 ```
 
+**Rules**
+- The driver string picks the provider. The table below lists the strings.
+- `check` rejects a driver it does not know, such as `Unknown model provider "opnai". Did you mean "openai"?`. It also rejects `openai:` or `local:` without a model name.
+- `azure` and `bedrock` are not supported in this version, and `check` says so at the `- model:` line.
+
 | string | implementation |
 |---|---|
 | `claude`, `claude:<model>` | Anthropic Messages API (key from `ANTHROPIC_API_KEY`; `haiku`, `sonnet`, `opus` or a full id) |
@@ -2079,6 +2106,8 @@ language is unaware of which is in use.
 | `local:<model>` | any OpenAI-compatible local server (Ollama, LM Studio, vLLM); base URL from `agentmark.toml` |
 | `mock`, `mock:<path>` | fixture-driven, for tests: `model.json` in `$AGENTMARK_FIXTURES` (default: the current folder), or the file named |
 | `azure:<deployment>`, `bedrock:<model>` | enterprise routes: not supported in this version; `check` says so at the `- model:` line |
+
+This agent is rejected:
 
 ```agentmark invalid
 > Enterprise routes are not supported in this version.
@@ -2090,8 +2119,9 @@ language is unaware of which is in use.
 - log: "hello"
 ```
 
-`check` rejects a driver it does not know the same way (`Unknown model provider "opnai". Did you mean "openai"?`), and `openai:` or
-`local:` without a model name.
+| code | message | fix |
+|---|---|---|
+| E221 | The model driver is unknown or unsupported, for example `Unknown model provider "opnai". Did you mean "openai"?` | use a driver from the table above |
 
 ### The `[models]` table and `AGENTMARK_ENV`
 
@@ -2107,43 +2137,45 @@ dev = "local:kat-coder"
 base_url = "http://localhost:11434/v1"
 ```
 
-Which model answers is decided at run time, strongest first (Q240):
+Which model answers is decided at run time. The sources are listed strongest first, per Q240:
 
-1. `AGENTMARK_MODEL=<driver>`: one driver for the whole program (`openai:gpt-4o`, `local:kat-coder`, `mock:<path to model.json>`).
-2. `AGENTMARK_ENV=<name>`: the `[models]` entry of that name, again one driver for every agent. `AGENTMARK_ENV=dev` runs
-   the program on the local model, `AGENTMARK_ENV=test` on `model.json`, without touching an `.agent.md` file. An environment that is not
-   in the table is an error that lists the ones that are; `production` without an entry means "no override".
-3. Otherwise each agent uses its own `- model:` line. Unset `AGENTMARK_ENV` is therefore not "production": nothing is overridden, so a
-   `- model: openai:gpt-4o` agent keeps OpenAI even if `production = "claude"`. A plain `claude` entry keeps an agent's own Claude model
-   (`claude:haiku` stays haiku) and moves agents of other providers to Claude.
+1. `AGENTMARK_MODEL=<driver>` sets one driver for the whole program. Examples are `openai:gpt-4o`, `local:kat-coder` and `mock:<path to model.json>`.
+2. `AGENTMARK_ENV=<name>` picks the `[models]` entry of that name, again as one driver for every agent. `AGENTMARK_ENV=dev` runs the program on the local model and `AGENTMARK_ENV=test` runs it on `model.json`, without touching an `.agent.md` file.
+3. Otherwise each agent uses its own `- model:` line.
 
-The generated program carries the table; the variables are read when it runs. `agentmark bind` and the on-demand tier use the same
-rules with the project's `agentmark.toml` (and Claude when nothing is set), so a company that forbids external APIs can run the
-whole toolchain on a local model. The local server's address is, strongest first, `AGENTMARK_LOCAL_BASE_URL`, `[models.local] base_url`,
-then `http://localhost:11434/v1` (Ollama); `LOCAL_API_KEY`, if set, is sent as a bearer token. The agent's own `model:` line
-describes the program, not the toolchain (Q115).
+**Rules**
+- An environment that is not in the table is an error that lists the ones that are. `production` without an entry means "no override".
+- Unset `AGENTMARK_ENV` is not "production". Nothing is overridden, so a `- model: openai:gpt-4o` agent keeps OpenAI even if `production = "claude"`.
+- A plain `claude` entry keeps an agent's own Claude model, so `claude:haiku` stays haiku. It moves agents of other providers to Claude.
+- The generated program carries the table. The variables are read when it runs.
+- `agentmark bind` and the on-demand tier use the same rules with the project's `agentmark.toml`, and Claude when nothing is set. So a company that forbids external APIs can run the whole toolchain on a local model.
+- The local server's address is, strongest first, `AGENTMARK_LOCAL_BASE_URL`, then `[models.local] base_url`, then `http://localhost:11434/v1`, which is Ollama.
+- `LOCAL_API_KEY`, if set, is sent as a bearer token.
+- The agent's own `model:` line describes the program, not the toolchain, per Q115.
+
+**Next:** [20. v0.2 scope](#20-v02-scope-editor-and-tooling)
 
 ## 20. v0.2 scope: editor and tooling
 
-Nothing here changes the language. Built after v0.1 passes all its tests, in this order:
+Nothing here changes the language. This was built after v0.1 passed all its tests, in this order:
 
-1. The on-demand binding tier (section 15.2, last row): built.
-2. Model providers `openai`, `local` and the `[models]` table (section 19): built. `azure` and `bedrock` stay unsupported.
-3. A language server, `agentmark-lsp`, in the same workspace, reusing the checker as a library: diagnostics with the same messages,
-   completion, go-to-definition across imports, hover with a block's effect summary, format-on-save, code actions for the mechanical
-   lint fixes.
-4. A VS Code extension (`editors/vscode/`): grammar, language-server client, an `agentmark.toml` schema and a "what can this agent
-   touch" panel that reads `check --json`.
-5. A tree-sitter grammar (`editors/tree-sitter-agentmark/`).
-6. AI-assistant compatibility: this file stays the single file an LLM needs, and `templates/` holds a `CLAUDE.md` and `.cursorrules`
-   that point at it.
+1. The on-demand binding tier, the last row of the table in section [15.2](#152-the-binder): built.
+2. The model providers `openai` and `local` and the `[models]` table, section [19](#19-model-providers): built. `azure` and `bedrock` stay unsupported.
+3. A language server, `agentmark-lsp`, in the same workspace. It reuses the checker as a library. It offers diagnostics with the same messages, completion, go-to-definition across imports, hover with a block's effect summary, format-on-save and code actions for the mechanical lint fixes.
+4. A VS Code extension in `editors/vscode/`: grammar, language-server client, an `agentmark.toml` schema and a "what can this agent touch" panel that reads `check --json`.
+5. A tree-sitter grammar in `editors/tree-sitter-agentmark/`.
+6. AI-assistant compatibility. This file stays the single file an LLM needs, and `templates/` holds a `CLAUDE.md` and `.cursorrules` that point at it.
+
+**Next:** [21. Out of scope for v0.2](#21-out-of-scope-for-v02)
 
 ## 21. Out of scope for v0.2
 
-* Automatic parallelism (explicit `parallel:` only).
-* Several agents talking to each other.
-* Targets other than Rust.
-* Closures and generics in the core language.
+- Automatic parallelism. Only explicit `parallel:` exists.
+- Several agents talking to each other.
+- Targets other than Rust.
+- Closures and generics in the core language.
+
+**Next:** [22. v0.3](#22-v03-a-general-purpose-markdown-language)
 
 ## 22. v0.3: a general-purpose Markdown language
 
