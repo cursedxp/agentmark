@@ -12,11 +12,12 @@ test("every file the manifest points at exists", () => {
     c.languages[0].configuration,
     c.grammars[0].path,
     c.jsonValidation[0].url,
+    c.tomlValidation[0].url,
     "LICENSE",
     "README.md",
   ];
   for (const f of files) assert.ok(fs.existsSync(path.join(root, f)), f);
-  assert.ok(pkg.main.endsWith("extension.js"));
+  assert.ok(pkg.main === "./dist/extension.js");
 });
 
 test("commands declared in package.json are the ones activate registers", () => {

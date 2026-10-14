@@ -1,4 +1,5 @@
 // Renders the "what can this agent touch" panel as HTML. Pure: takes a report, returns a string.
+import { randomBytes } from "crypto";
 import { CheckReport, Effects, EffectClass, reach, Unit } from "./checkjson";
 
 export function esc(s: string): string {
@@ -27,6 +28,21 @@ function link(file: string, line: number, text?: string): string {
   return `<a href="#" data-file="${esc(file)}" data-line="${line}">${esc(label)}</a>`;
 }
 
+/** Plain-language lines for an operations manager, from one effect summary. */
+export function describeEffects(e: Effects): string[] {
+  const out: string[] = [];
+  if (e.tools.network.length) out.push(`can reach the network: ${e.tools.network.join(", ")}`);
+  if (e.tools.model) out.push("asks the AI model");
+  if (e.tools.local.length) out.push(`writes local files or logs: ${e.tools.local.join(", ")}`);
+  if (e.tools.unverified.length) out.push(`uses libraries nobody approved yet: ${e.tools.unverified.join(", ")}`);
+  if (out.length === 0) out.push("pure: touches nothing outside itself");
+  return out;
+}
+
+function plain(e: Effects): string {
+  return `<ul class="plain">${describeEffects(e).map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`;
+}
+
 function reachList(e: Effects): string {
   const r = reach(e);
   if (r.length === 0) return `<span class="muted">nothing</span>`;
@@ -42,13 +58,14 @@ function unitSection(u: Unit): string {
     .join("");
   return `<section class="unit">
   <h2>${esc(u.name)} <span class="kind">${esc(u.kind)}</span> ${badge(u.effects.class)}</h2>
+  ${plain(u.effects)}
   <p class="summary">${esc(u.effects.summary)}</p>
   <p>Can touch: ${reachList(u.effects)}</p>
   ${blocks ? `<table><thead><tr><th>Block</th><th>Effect</th><th>Reaches</th></tr></thead><tbody>${blocks}</tbody></table>` : ""}
 </section>`;
 }
 
-export function renderPanel(report: CheckReport | null, error?: string): string {
+export function renderPanel(report: CheckReport | null, error?: string, nonce: string = randomBytes(16).toString("base64")): string {
   const body: string[] = [];
   if (error) {
     body.push(`<div class="banner error" role="alert">${esc(error)}</div>`);
@@ -103,9 +120,9 @@ export function renderPanel(report: CheckReport | null, error?: string): string 
   }
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <title>What can this agent touch</title>
-<style>
+<style nonce="${nonce}">
 body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px 16px}
 h2{font-size:1.1em;margin:1.2em 0 .3em}
 .kind{font-weight:normal;color:var(--vscode-descriptionForeground);font-size:.85em}
@@ -122,7 +139,7 @@ a{color:var(--vscode-textLink-foreground)}
 </style></head><body>
 <h1>What can this agent touch</h1>
 ${body.join("\n")}
-<script>
+<script nonce="${nonce}">
 const vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
 document.addEventListener("click", (e) => {
   const a = e.target.closest && e.target.closest("a[data-file]");

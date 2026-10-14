@@ -61,3 +61,25 @@ test("projectTarget finds the folder holding agentmark.toml", () => {
   assert.equal(projectTarget("/w/proj/agents/a.agent.md", exists), "/w/proj");
   assert.equal(projectTarget("/w/other/a.agent.md", exists), "/w/other/a.agent.md");
 });
+
+import { describeEffects } from "../src/panel";
+
+test("plain-language wording for an operations manager", () => {
+  const r = parseCheckJson(fx("check-01-invoice-chaser.json"));
+  const agent = r.units.find((u) => u.kind === "agent")!;
+  assert.deepEqual(describeEffects(agent.effects), [
+    "can reach the network: crm, email",
+    "asks the AI model",
+    "writes local files or logs: log",
+  ]);
+  const pure = parseCheckJson(JSON.stringify({ schema_version: 1, ok: true, units: [{ name: "f", kind: "function", effects: { class: "pure", summary: "pure", tools: {} }, blocks: [] }] }));
+  assert.deepEqual(describeEffects(pure.units[0].effects), ["pure: touches nothing outside itself"]);
+});
+
+test("strict CSP: nonce only, no remote sources", () => {
+  const html = renderPanel(null, undefined, "abc123");
+  assert.match(html, /default-src 'none'; style-src 'nonce-abc123'; script-src 'nonce-abc123'/);
+  assert.doesNotMatch(html, /unsafe-inline|https?:\/\//);
+  assert.equal((html.match(/<script nonce="abc123">/g) ?? []).length, 1);
+  assert.match(html, /<style nonce="abc123">/);
+});

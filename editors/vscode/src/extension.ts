@@ -88,6 +88,11 @@ async function showTouchPanel(): Promise<void> {
 export function activate(context: vscode.ExtensionContext): void {
   startServer(context);
   context.subscriptions.push(
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      if (panel && (doc.languageId === "agentmark" || /(agentmark|tools)\.toml$/.test(doc.fileName))) {
+        void showTouchPanel();
+      }
+    }),
     vscode.commands.registerCommand("agentmark.showTouchPanel", showTouchPanel),
     vscode.commands.registerCommand("agentmark.restartServer", async () => {
       await client?.stop();

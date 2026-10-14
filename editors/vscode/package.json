@@ -23,7 +23,7 @@
     "markdown",
     "llm"
   ],
-  "main": "./out/src/extension.js",
+  "main": "./dist/extension.js",
   "activationEvents": [
     "workspaceContains:**/agentmark.toml",
     "onLanguage:agentmark"
@@ -98,16 +98,20 @@
           "description": "Path to the agentmark binary used for `check --json` (the touch panel)."
         }
       }
-    }
+    },
+    "tomlValidation": [
+      {
+        "fileMatch": "agentmark.toml",
+        "url": "./schemas/agentmark.schema.json"
+      }
+    ]
   },
   "scripts": {
-    "compile": "tsc -p .",
+    "bundle": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --platform=node --format=cjs --minify",
+    "compile": "tsc -p . && npm run bundle",
     "test": "tsc -p . && node --test out/test/*.test.js",
-    "package": "vsce package",
-    "vscode:prepublish": "tsc -p ."
-  },
-  "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode:prepublish": "npm run bundle",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -117,6 +121,8 @@
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.0.0",
     "ajv": "^8.12.0",
-    "smol-toml": "^1.3.0"
+    "smol-toml": "^1.3.0",
+    "vscode-languageclient": "^9.0.1",
+    "esbuild": "^0.21.0"
   }
 }

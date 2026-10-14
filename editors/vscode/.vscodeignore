@@ -1,7 +1,8 @@
-src/**
-test/**
-out/test/**
-tsconfig.json
-.gitignore
-**/*.map
-**/*.ts
+**
+!package.json
+!README.md
+!LICENSE
+!language-configuration.json
+!syntaxes/**
+!schemas/**
+!dist/extension.js
