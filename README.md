@@ -34,7 +34,7 @@ This is a whole program. It reads a sales file and prints what every region brou
 - sales-summary
 ```
 
-Some things to notice. `money` is a type with a currency (`120.00 EUR`), and money never mixes with a plain number or another currency. Reading a file can fail, so it is written with `try … otherwise:`; there are no exceptions and no `null` (a value that may be missing is `maybe`). `agentmark check` reads the program and prints what each part can touch, computed from the code, not declared by hand; this one reads files and prints, nothing else:
+Some things to notice. `money` is a type with a currency (`120.00 EUR`), and money never mixes with a plain number or another currency. Reading a file can fail, so it is written with `try … otherwise:`; there are no exceptions and no `null` (a value that may be missing is `maybe`). `agentmark check` reads the program and prints what each part can touch, computed from the code, not declared by hand. Here it is on `examples/06-sales-report`, the full version of this program, which reads and writes files and prints, nothing else:
 
 ```console
 $ agentmark check examples/06-sales-report
