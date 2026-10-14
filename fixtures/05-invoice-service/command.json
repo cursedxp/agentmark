@@ -1,0 +1,1 @@
+{"command":"import-csv","args":{"path":"invoices.csv","dry_run":false}}

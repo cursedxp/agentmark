@@ -1,0 +1,29 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/03-support-triage/main.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 40
+    doc: ~
+    kind:
+      File:
+        path: "./agents/support-triage.agent.md"
+        alias: ~
+decls:
+  - Run:
+      span:
+        line: 4
+        col: 3
+        len: 3
+      doc: Entry point. Lists what runs in this binary.
+      items:
+        - name: support-triage
+          span:
+            line: 5
+            col: 3
+            len: 14

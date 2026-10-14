@@ -385,6 +385,8 @@ pub enum ExprKind {
     /// `inner` is `maybe T` but known to be present here (after `is not empty`, `guard`,
     /// `is some`); the value is the `T`. `what` is the source text, for the `expect` message.
     Unwrap { inner: Box<Expr>, what: String },
+    /// A `text` passed where a binding takes `bytes`: its UTF-8 bytes (Q151). `ty` is `bytes`.
+    TextToBytes(Box<Expr>),
     Interp(Vec<InterpPart>),
     Binary {
         op: BinOp,

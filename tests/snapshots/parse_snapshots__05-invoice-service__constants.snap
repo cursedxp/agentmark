@@ -1,0 +1,27 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/05-invoice-service/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 1
+        col: 3
+        len: 18
+      doc: ~
+      name:
+        name: vat_rate
+        span:
+          line: 1
+          col: 13
+          len: 8
+      value:
+        span:
+          line: 2
+          col: 10
+          len: 2
+        kind:
+          Int: 19

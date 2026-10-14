@@ -1,0 +1,6 @@
+[
+  {"id":"T-1","subject":"Invoice charged twice","body":"My card was charged twice for October.","priority":null},
+  {"id":"T-2","subject":"Dark mode request","body":"Would be nice to have.","priority":"low"},
+  {"id":"T-3","subject":"Cannot log in","body":"Password reset mail never arrives.","priority":null},
+  {"id":"T-4","subject":"Export is slow","body":"CSV export takes minutes.","priority":null}
+]

@@ -1,0 +1,358 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/04-daily-report/agents/daily-report.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 35
+    doc: ~
+    kind:
+      File:
+        path: "../records/invoice.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 30
+    doc: ~
+    kind:
+      File:
+        path: "../rules/open.agent.md"
+        alias: ~
+  - span:
+      line: 3
+      col: 3
+      len: 33
+    doc: ~
+    kind:
+      File:
+        path: "../rules/overdue.agent.md"
+        alias: ~
+decls:
+  - Agent:
+      span:
+        line: 6
+        col: 3
+        len: 19
+      doc: Mails Anil a two-sentence summary of open and overdue invoices every Monday. Reads only; changes nothing.
+      name:
+        name: daily-report
+        span:
+          line: 6
+          col: 10
+          len: 12
+      model:
+        value: claude
+        span:
+          line: 7
+          col: 10
+          len: 6
+      tools:
+        - name: crm
+          span:
+            line: 8
+            col: 10
+            len: 3
+        - name: email
+          span:
+            line: 8
+            col: 15
+            len: 5
+        - name: log
+          span:
+            line: 8
+            col: 22
+            len: 3
+      memory: ~
+      timeout: ~
+      blocks:
+        - span:
+            line: 10
+            col: 4
+            len: 21
+          doc: ~
+          trigger:
+            Weekly:
+              day: Monday
+              hour: 8
+              minute: 0
+          label: "Every Monday at 08:00"
+          body:
+            - span:
+                line: 11
+                col: 3
+                len: 55
+              kind:
+                Set:
+                  var:
+                    name: open_count
+                    span:
+                      line: 11
+                      col: 7
+                      len: 10
+                  expr:
+                    span:
+                      line: 11
+                      col: 20
+                      len: 38
+                    kind:
+                      CountOf:
+                        rule:
+                          name: open
+                          span:
+                            line: 11
+                            col: 29
+                            len: 4
+                        noun:
+                          name: invoices
+                          span:
+                            line: 11
+                            col: 34
+                            len: 8
+                        source:
+                          span:
+                            line: 11
+                            col: 46
+                            len: 12
+                          kind:
+                            Path:
+                              - name: crm
+                                span:
+                                  line: 11
+                                  col: 46
+                                  len: 3
+                              - name: invoices
+                                span:
+                                  line: 11
+                                  col: 50
+                                  len: 8
+            - span:
+                line: 12
+                col: 3
+                len: 61
+              kind:
+                Set:
+                  var:
+                    name: overdue_count
+                    span:
+                      line: 12
+                      col: 7
+                      len: 13
+                  expr:
+                    span:
+                      line: 12
+                      col: 23
+                      len: 41
+                    kind:
+                      CountOf:
+                        rule:
+                          name: overdue
+                          span:
+                            line: 12
+                            col: 32
+                            len: 7
+                        noun:
+                          name: invoices
+                          span:
+                            line: 12
+                            col: 40
+                            len: 8
+                        source:
+                          span:
+                            line: 12
+                            col: 52
+                            len: 12
+                          kind:
+                            Path:
+                              - name: crm
+                                span:
+                                  line: 12
+                                  col: 52
+                                  len: 3
+                              - name: invoices
+                                span:
+                                  line: 12
+                                  col: 56
+                                  len: 8
+            - span:
+                line: 13
+                col: 3
+                len: 115
+              kind:
+                AskModel:
+                  with: ~
+                  prompt:
+                    span:
+                      line: 13
+                      col: 14
+                      len: 93
+                    kind:
+                      Interp:
+                        - Text: "Write a two-sentence Monday summary. Open invoices: "
+                        - Expr:
+                            span:
+                              line: 13
+                              col: 68
+                              len: 10
+                            kind:
+                              Path:
+                                - name: open_count
+                                  span:
+                                    line: 13
+                                    col: 68
+                                    len: 10
+                        - Text: ". Overdue: "
+                        - Expr:
+                            span:
+                              line: 13
+                              col: 91
+                              len: 13
+                            kind:
+                              Path:
+                                - name: overdue_count
+                                  span:
+                                    line: 13
+                                    col: 91
+                                    len: 13
+                        - Text: "."
+                  as_record: ~
+                  into:
+                    name: summary
+                    span:
+                      line: 13
+                      col: 111
+                      len: 7
+            - span:
+                line: 14
+                col: 3
+                len: 27
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 14
+                      col: 10
+                      len: 20
+                    kind:
+                      IsNotEmpty:
+                        span:
+                          line: 14
+                          col: 10
+                          len: 7
+                        kind:
+                          Path:
+                            - name: summary
+                              span:
+                                line: 14
+                                col: 10
+                                len: 7
+                  else_: ~
+            - span:
+                line: 15
+                col: 3
+                len: 53
+              kind:
+                ToolCall:
+                  tool:
+                    name: email
+                    span:
+                      line: 15
+                      col: 3
+                      len: 5
+                  verb:
+                    name: send
+                    span:
+                      line: 15
+                      col: 9
+                      len: 4
+                  target:
+                    - Word:
+                        name: address
+                        span:
+                          line: 15
+                          col: 14
+                          len: 7
+                    - Value:
+                        span:
+                          line: 15
+                          col: 22
+                          len: 21
+                        kind:
+                          Str: anil@optimotion.dev
+                  payload:
+                    Value:
+                      span:
+                        line: 15
+                        col: 45
+                        len: 11
+                      kind:
+                        Interp:
+                          - Expr:
+                              span:
+                                line: 15
+                                col: 47
+                                len: 7
+                              kind:
+                                Path:
+                                  - name: summary
+                                    span:
+                                      line: 15
+                                      col: 47
+                                      len: 7
+                  into: ~
+                  via_do: false
+            - span:
+                line: 16
+                col: 3
+                len: 62
+              kind:
+                ToolCall:
+                  tool:
+                    name: log
+                    span:
+                      line: 16
+                      col: 3
+                      len: 3
+                  verb: ~
+                  target: []
+                  payload:
+                    Value:
+                      span:
+                        line: 16
+                        col: 8
+                        len: 57
+                      kind:
+                        Interp:
+                          - Text: "Report sent: "
+                          - Expr:
+                              span:
+                                line: 16
+                                col: 23
+                                len: 10
+                              kind:
+                                Path:
+                                  - name: open_count
+                                    span:
+                                      line: 16
+                                      col: 23
+                                      len: 10
+                          - Text: " open, "
+                          - Expr:
+                              span:
+                                line: 16
+                                col: 42
+                                len: 13
+                              kind:
+                                Path:
+                                  - name: overdue_count
+                                    span:
+                                      line: 16
+                                      col: 42
+                                      len: 13
+                          - Text: " overdue"
+                  into: ~
+                  via_do: false

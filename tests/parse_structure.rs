@@ -42,7 +42,7 @@ fn invoice_chaser_agent_file() {
     let f = read("examples/01-invoice-chaser/agents/invoice-chaser.agent.md");
     assert_eq!(f.imports.len(), 3);
     assert!(
-        matches!(&f.imports[0].kind, ImportKind::File { path, alias: None } if path == "../records/invoice.agent.md")
+        matches!(&f.imports[0].kind, ImportKind::File { path, alias: None } if path == "../constants.agent.md")
     );
     let a = agent(&f);
     assert_eq!(a.name.name, "invoice-chaser");
@@ -93,14 +93,24 @@ fn invoice_chaser_agent_file() {
 fn statement_spans_are_file_positions() {
     let f = read("examples/01-invoice-chaser/agents/invoice-chaser.agent.md");
     let a = agent(&f);
-    // line 11 is `for each overdue invoice in crm.invoices:` (bare control line, column 1)
+    // line 11 is `- for each overdue invoice in crm.invoices:` (canonical form: text starts at column 3)
     assert_eq!(a.blocks[0].body[0].span.line, 11);
-    assert_eq!(a.blocks[0].body[0].span.col, 1);
+    assert_eq!(a.blocks[0].body[0].span.col, 3);
     // `  - do remind` is on line 12, text starts at column 5
     let StmtKind::ForEach { body, .. } = &a.blocks[0].body[0].kind else {
         panic!()
     };
     assert_eq!(body[0].span, Span::new(12, 5, 9));
+}
+
+#[test]
+fn a_bare_for_each_control_line_keeps_its_file_position() {
+    // the canonical form writes `- for each …:`, but the bare control line of SPEC 4.1 must still parse
+    let f = parse("# Agent: a\n- model: claude\n\n## On start\nfor each overdue invoice in crm.invoices:\n  - stop\n");
+    let a = agent(&f);
+    let s = &a.blocks[0].body[0];
+    assert!(matches!(s.kind, StmtKind::ForEach { .. }));
+    assert_eq!((s.span.line, s.span.col), (5, 1));
 }
 
 #[test]

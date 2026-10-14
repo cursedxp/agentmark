@@ -1,0 +1,1 @@
+{"command":"import-csv","args":{"path":"does-not-exist.csv","dry_run":false}}

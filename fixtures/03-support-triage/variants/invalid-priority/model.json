@@ -1,0 +1,6 @@
+{
+  "today": "2026-10-13",
+  "responses": [
+    {"prompt_prefix": "Classify priority as low, medium or high", "response": "{\"priority\": \"urgent\", \"category\": \"technical\"}"}
+  ]
+}

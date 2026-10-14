@@ -1,0 +1,2 @@
+{"kind":"model","agent":"daily-report","block":"Every Monday at 08:00","prompt_prefix":"Write a two-sentence Monday summary. Open invoices: 5. Overdue: 2."}
+{"kind":"guard","agent":"daily-report","name":"summary is not empty","result":"fail"}

@@ -53,6 +53,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 
 ## Expressions (`ExprKind`, each with `ty` and `effect`)
 - Literals `Str Int Money{minor,currency} Duration Date Bool Today Now`; `Var(name)`; `Field{base,field}`.
+- `TextToBytes(inner)` — a `text` argument of a binding call whose parameter is `bytes` (Q151); codegen emits `inner.as_bytes().to_vec()`; `ty` is `bytes`.
 - `Unwrap{inner,what}` — `inner` is `maybe T` known present (narrowing from `Checked.unwraps`); codegen emits `inner.expect("<what> is not empty here")` (no bare `.unwrap()`); the node's `ty` is `T`.
 - `Interp(parts)`, `Binary{op,lhs,rhs}`, `Not`, `Record(fields)` (ty is `Object`).
 - `Call{callee: Fn|Rust, name, args}`; `Source{tool,source,record}` (read `crm.invoices`, effect network).

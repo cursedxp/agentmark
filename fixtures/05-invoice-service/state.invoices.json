@@ -1,0 +1,4 @@
+[
+  {"id":"INV-1","customer":"Müller GmbH","amount":"1200.00 EUR","due":"2026-09-01","status":"open"},
+  {"id":"INV-2","customer":"Schmidt AG","amount":"450.00 EUR","due":"2026-10-10","status":"paid"}
+]
