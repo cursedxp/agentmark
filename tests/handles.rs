@@ -154,6 +154,11 @@ fn async_library_methods_are_assisted_and_their_bodies_await() {
 /// A small crate in the shape of `sqlx::query`: `fn query<'q, DB: Database>(sql: &'q str) -> Query<'q, DB>`,
 /// one database (`Sqlite`) compiled in, and a builder method on the generic `Query`.
 fn mini_rustdoc() -> String {
+    mini_rustdoc_with(false)
+}
+
+/// `two_databases`: a second implementor of `Database`, so `DB` has no single instantiation.
+fn mini_rustdoc_with(two_databases: bool) -> String {
     let path = |id: u64, p: &str, args: serde_json::Value| serde_json::json!({"resolved_path": {"path": p, "id": id, "args": args}});
     let query_args = serde_json::json!({"angle_bracketed": {"args": [{"lifetime": "'q"}, {"type": {"generic": "DB"}}], "constraints": []}});
     let generics = serde_json::json!({"params": [
@@ -161,12 +166,17 @@ fn mini_rustdoc() -> String {
         {"name": "DB", "kind": {"type": {"bounds": [{"trait_bound": {"trait": {"path": "Database", "id": 10, "args": null}, "generic_params": [], "modifier": "none"}}], "default": null, "is_synthetic": false}}},
     ], "where_predicates": []});
     let none = serde_json::json!({"params": [], "where_predicates": []});
+    let generics_db = serde_json::json!({"params": [
+        {"name": "DB", "kind": {"type": {"bounds": [{"trait_bound": {"trait": {"path": "Database", "id": 10, "args": null}, "generic_params": [], "modifier": "none"}}], "default": null, "is_synthetic": false}}},
+    ], "where_predicates": []});
     let header = serde_json::json!({"is_unsafe": false, "is_async": false});
     let item = |id: u64, name: &str, inner: serde_json::Value| serde_json::json!({"id": id, "name": name, "visibility": "public", "docs": "Starts a query.", "inner": inner});
-    serde_json::json!({
+    let describe = item(4, "describe", serde_json::json!({"function": {"sig": {"inputs": [], "output": {"primitive": "i64"}}, "generics": generics_db, "header": header}}));
+    let mut doc = serde_json::json!({
         "format_version": 61, "crate_version": "1.0.0", "root": 0,
         "index": {
-            "0": item(0, "mini", serde_json::json!({"module": {"items": [10, 11, 13, 3]}})),
+            "4": describe,
+            "0": item(0, "mini", serde_json::json!({"module": {"items": [10, 11, 13, 3, 4]}})),
             "10": item(10, "Database", serde_json::json!({"trait": {}})),
             "11": item(11, "Sqlite", serde_json::json!({"struct": {"impls": [12], "generics": none}})),
             "12": item(12, "", serde_json::json!({"impl": {"is_synthetic": false, "blanket_impl": null, "is_negative": false,
@@ -180,8 +190,16 @@ fn mini_rustdoc() -> String {
                 "output": path(13, "Query", query_args)}, "generics": generics, "header": header}})),
         },
         "paths": {"10": {"path": ["mini", "Database"]}, "11": {"path": ["mini", "Sqlite"]}, "13": {"path": ["mini", "Query"]}}
-    })
-    .to_string()
+    });
+    if two_databases {
+        let idx = doc["index"].as_object_mut().unwrap();
+        idx.insert("16".into(), item(16, "Postgres", serde_json::json!({"struct": {"impls": [17], "generics": none}})));
+        idx.insert("17".into(), item(17, "", serde_json::json!({"impl": {"is_synthetic": false, "blanket_impl": null, "is_negative": false,
+            "trait": {"path": "Database", "id": 10, "args": null}, "for": path(16, "Postgres", serde_json::Value::Null), "items": [], "generics": none}})));
+        idx["0"]["inner"]["module"]["items"].as_array_mut().unwrap().push(serde_json::json!(16));
+        doc["paths"]["16"] = serde_json::json!({"path": ["mini", "Postgres"]});
+    }
+    doc.to_string()
 }
 
 #[test]
@@ -217,6 +235,8 @@ fn a_handle_owns_what_it_borrows_and_has_one_instantiation() {
         "2026-10-14",
     );
     assert!(text.contains("## Handle: mini.Query\n  ```rust\n  mini::Query<'static, mini::Sqlite>\n  ```\n"), "{text}");
+    // regression (review 1): `fmt` must not lose the `## Handle:` block
+    assert_eq!(agentmark::fmt::format_source(&text, "mini.agent.md").unwrap(), text);
     let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", "# Import: crate mini\n"), ("app/bindings/mini.agent.md", &text), ("app/tools.toml", "")]);
     let checked = match sema::check(&p) {
         Ok(c) => c,
@@ -227,6 +247,19 @@ fn a_handle_owns_what_it_borrows_and_has_one_instantiation() {
         }
     };
     assert_eq!(checked.bindings[0].handles.get("mini.Query").map(String::as_str), Some("mini::Query<'static, mini::Sqlite>"));
+}
+
+#[test]
+fn a_type_parameter_with_two_implementors_has_no_instantiation_and_other_generics_keep_v02() {
+    // regression (review 4): one implementor makes `DB` obvious for a handle item only
+    let one = read_crate_with(&mini_rustdoc(), &[]).unwrap();
+    let describe = one.items.iter().find(|i| i.name == "describe").unwrap();
+    assert!(matches!(&describe.shape, agentmark::binder::core::Shape::Assisted { why, .. } if why.contains("generic")), "{:?}", describe.shape);
+    // two implementors: the handle item is not bound, and nothing is recorded for the Rust type
+    let two = read_crate_with(&mini_rustdoc_with(true), &[]).unwrap();
+    let query = two.items.iter().find(|i| i.name == "query").unwrap();
+    assert!(matches!(&query.shape, agentmark::binder::core::Shape::Skipped { .. }), "{:?}", query.shape);
+    assert!(two.handle_types.is_empty(), "{:?}", two.handle_types);
 }
 
 #[test]
@@ -517,6 +550,43 @@ fn types_with_an_agentmark_equivalent_stay_values_and_generic_ones_are_not_handl
     }
 }
 
+const MK: &str = "# Import: crate sha2\n\n> Makes one.\n# Function: mk\n- out: handle of sha2.Sha256\n- effect: pure\n  - sha2 sha256_new -> h\n  - return h\n\n";
+
+#[test]
+fn a_handle_that_is_not_a_variable_is_refused_where_nothing_takes_it() {
+    // regression (review 2): the check is by type, not by the shape of the expression
+    for (line, what) in [
+        ("- print: mk()", "print"),
+        ("- print: \"x {mk()}\"", "interpolation"),
+        ("- set same = mk() = mk()", "comparison"),
+        ("- set rec = { name: \"a\", h: mk() }", "record literal"),
+    ] {
+        let e = errors_of(&format!("{MK}> Hashes.\n# Command: go\n- args: word: text\n\n## Run\n{line}\n"));
+        assert!(e.contains("a library value that cannot be printed, compared, saved, sent or traced"), "{what}: {e}");
+    }
+    // handed on, it is fine
+    ok(&format!("{MK}> Hashes.\n# Command: go\n- args: word: text\n\n## Run\n- set h = mk()\n- h update word\n"));
+}
+
+#[test]
+fn a_handle_cannot_come_from_outside_the_program() {
+    let e = errors_of("# Import: crate sha2\n\n> Hashes.\n# Command: go\n- args: h: handle of sha2.Sha256\n\n## Run\n- h update \"x\"\n");
+    assert!(e.contains("The command argument \"h\" comes from outside the program, and a handle cannot"), "{e}");
+}
+
+#[test]
+fn a_parallel_block_cannot_lend_one_handle_to_two_statements() {
+    // regression (review 6): arguments count, not only receivers
+    let e = errors_of(&prog(&[
+        "- sha2 sha256_new -> a",
+        "- sha2 sha256_new -> b",
+        "- parallel:",
+        "  - a same_state b -> x",
+        "  - b same_state a -> y",
+    ]));
+    assert!(e.contains("both use the handle \"b\""), "{e}");
+}
+
 #[test]
 fn a_try_that_makes_a_handle_must_leave_when_it_fails() {
     let e = errors_of(&prog(&["- try sha2 sha256_new -> hasher", "  otherwise:", "    - print: \"no\""]));
@@ -583,6 +653,34 @@ const HASH_COMMAND: &str = "# Import: ../records/invoice.agent.md
   ```
 ";
 
+const TWICE_COMMAND: &str = "# Import: crate sha2
+
+> Hashes `first`; when `second` is \"again\", starts a new hasher inside the branch and hashes that too.
+# Command: hash-twice
+- args: first: text, second: text
+
+## Run
+- sha2 sha256_new -> hasher
+- hasher update first
+- if second = \"again\":
+  - hasher finalize -> early
+  - print: \"{hex2(early)}\"
+  - sha2 sha256_new -> hasher
+  - hasher update second
+  - hasher finalize -> late
+  - print: \"{hex2(late)}\"
+  - stop
+- hasher finalize -> digest
+- print: \"{hex2(digest)}\"
+
+## Rust: hex2 -> text
+- in: digest: bytes
+- effect: pure
+  ```rust
+  digest.iter().map(|b| format!(\"{:02x}\", b)).collect::<String>()
+  ```
+";
+
 /// Example 05 (service, records, a command) plus a command that hashes in pieces: its sha2 binding
 /// is generated from the checked-in rustdoc, so it holds the handle methods.
 fn hash_project(d: &Path) -> PathBuf {
@@ -590,13 +688,15 @@ fn hash_project(d: &Path) -> PathBuf {
     copy_dir(Path::new(&format!("{ROOT}/examples/05-invoice-service")), &proj);
     std::fs::remove_file(proj.join("bindings/sha2.agent.md")).unwrap();
     write(&proj, "commands/hash-pieces.agent.md", HASH_COMMAND);
+    write(&proj, "commands/hash-twice.agent.md", TWICE_COMMAND);
     // the library is bound and built with the features `agentmark.toml` names (Q371)
     let toml = std::fs::read_to_string(proj.join("agentmark.toml")).unwrap();
     write(&proj, "agentmark.toml", &format!("{toml}\n[crates]\nsha2 = {{ default-features = false, features = [\"std\"] }}\n"));
     let main = std::fs::read_to_string(proj.join("main.agent.md")).unwrap();
     let main = main
         .replace("# Import: ./commands/import-csv.agent.md\n", "# Import: ./commands/import-csv.agent.md\n# Import: ./commands/hash-pieces.agent.md\n")
-        .replace("- import-csv\n", "- import-csv\n- hash-pieces\n");
+        .replace("- import-csv\n", "- import-csv\n- hash-pieces\n- hash-twice\n")
+        .replace("# Import: ./commands/hash-pieces.agent.md\n", "# Import: ./commands/hash-pieces.agent.md\n# Import: ./commands/hash-twice.agent.md\n");
     write(&proj, "main.agent.md", &main);
     proj
 }
@@ -634,4 +734,15 @@ fn an_incremental_hash_builds_and_prints_the_right_digest() {
     // pieces split elsewhere give the same digest: the hasher keeps its state between the calls
     let run = std::process::Command::new(&bin).args(["hash-pieces", "hello w", "orld"]).current_dir(&d).output().unwrap();
     assert_eq!(stdout(&run).lines().last(), Some(HELLO_WORLD));
+    // regression (review 5): a handle made again inside a branch is a new variable there; the
+    // outer one was used up in the branch and is not touched afterwards
+    let sha = |a: &str, b: &str| {
+        let o = std::process::Command::new(&bin).args(["hash-twice", a, b]).current_dir(&d).output().unwrap();
+        assert!(o.status.success(), "{}", stderr(&o));
+        stdout(&o).lines().map(String::from).collect::<Vec<_>>()
+    };
+    let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    let again = "b4c9e14061c2fd453b36700e3b0da008db2189c711ac629f0f583089164e267d";
+    assert_eq!(sha("abc", "again"), [abc, again]);
+    assert_eq!(sha("abc", "other"), [abc]);
 }

@@ -122,14 +122,30 @@ pub fn render_binding(
 
 /// A Rust type on lines of at most `width` characters: broken after a `, ` (Rust does not mind).
 fn wrap_type(t: &str, width: usize) -> Vec<String> {
+    // pieces end after a `, `; a piece longer than a line is cut after `::` and `<` too
+    let mut atoms: Vec<String> = Vec::new();
+    for piece in t.split_inclusive(", ") {
+        if piece.chars().count() + 4 <= width {
+            atoms.push(piece.to_string());
+            continue;
+        }
+        let mut cur = String::new();
+        for part in piece.split_inclusive(['<', ':']) {
+            if !cur.is_empty() && cur.chars().count() + part.chars().count() + 4 > width {
+                atoms.push(std::mem::take(&mut cur));
+            }
+            cur.push_str(part);
+        }
+        atoms.push(cur);
+    }
     let mut lines: Vec<String> = Vec::new();
     let mut cur = String::new();
-    for piece in t.split_inclusive(", ") {
+    for piece in atoms {
         if !cur.is_empty() && cur.chars().count() + piece.chars().count() > width {
             lines.push(cur.trim_end().to_string());
             cur = "    ".to_string();
         }
-        cur.push_str(piece);
+        cur.push_str(&piece);
     }
     lines.push(cur);
     lines
@@ -347,6 +363,15 @@ fn one_line_doc(doc: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_type_breaks_at_commas_and_then_at_paths_and_angle_brackets() {
+        let t = format!("a::B<'static, {}::C<{}>>", "very_long_module_name::".repeat(6), "x::y::".repeat(12));
+        let lines = wrap_type(&t, 60);
+        assert!(lines.len() > 2 && lines.iter().all(|l| l.chars().count() <= 60), "{lines:?}");
+        let joined: String = lines.iter().map(|l| l.trim()).collect::<Vec<_>>().join("");
+        assert_eq!(joined.replace(' ', ""), t.replace(' ', ""));
+    }
 
     #[test]
     fn header_round_trip() {

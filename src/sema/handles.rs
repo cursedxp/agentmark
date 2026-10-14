@@ -25,6 +25,10 @@ pub const E_HANDLE_USE: &str = "E362";
 pub const E_HANDLE_NEST: &str = "E363";
 pub const E_HANDLE_MODE: &str = "E365";
 pub const E_HANDLE_TRY: &str = "E366";
+/// A handle cannot come from outside the program (command line, request body, file).
+pub const E_HANDLE_OUTSIDE: &str = "E367";
+// E364 is intentionally unused: an unknown method of a handle is reported as E207 (the same
+// code as an unknown verb of a binding), with a did-you-mean over that handle type's methods.
 
 /// Every handle type a type expression names.
 fn handles_in(te: &TypeExpr, out: &mut Vec<String>) {
@@ -201,6 +205,31 @@ impl Checker<'_> {
         );
     }
 
+    /// A handle where the value would have to come from outside the program.
+    pub(super) fn outside_handle(&mut self, file: usize, span: Span, ty: &Type, what: &str) {
+        if ty.is_handle() {
+            self.error(
+                E_HANDLE_OUTSIDE,
+                file,
+                span,
+                format!("{what} comes from outside the program, and a handle cannot: it is a live library value ({ty})."),
+            );
+        }
+    }
+
+    /// A handle that is the value of an expression (a call) in a place that does not take it.
+    pub(super) fn handle_value_misuse(&mut self, cx: &Cx, span: Span, ty: &Type) {
+        self.diags.push(
+            Diagnostic::error(
+                E_HANDLE_USE,
+                self.path(cx.file),
+                span,
+                format!("This is {ty}, a library value that cannot be printed, compared, saved, sent or traced."),
+            )
+            .with_help("Store it in a variable first (\"... -> name\") and use it with a call that takes it."),
+        );
+    }
+
     /// An expression whose value was handed over (`set`, a function argument): a plain handle
     /// variable is used up.
     pub(super) fn move_out(&mut self, cx: &mut Cx, e: &Expr) {
@@ -213,7 +242,7 @@ impl Checker<'_> {
 
     /// Check an expression that may be a handle read (`set`, call arguments, `return`).
     pub(super) fn expr_handle_ok(&mut self, cx: &mut Cx, e: &Expr) -> Type {
-        cx.handle_ok = matches!(&e.kind, ExprKind::Path(s) if s.len() == 1);
+        cx.handle_ok = true;
         let t = self.expr(cx, e);
         cx.handle_ok = false;
         t

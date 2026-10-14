@@ -579,12 +579,13 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q362 — Where a handle may be read (step 23)
 - Question: SPEC: a handle "cannot be printed, compared, put in a record that is serialized, or traced".
 - Choice: default deny at ONE place. `path_expr` on a bare handle variable is E362 unless the caller set `Cx.handle_ok`: `set` right-hand side, arguments of `do`/calls and of binding calls, `return`. So printing, `{interpolation}`, `=`/`!=`/ordering, record literals and `respond` bodies, `ask model with`, tool payloads and targets, `append`, conditions and everything a later construct adds (Task 20's `match`) are refused without listing them. A handle is a single value: `list of handle…` / `maybe handle…` (E363), as a record field (E363); `result of handle…` is allowed (a fallible constructor in a function). `try … -> h otherwise:` is E366 unless the `otherwise` branch leaves, since `default_expr` has no handle.
+- Amended (review): the check is by TYPE at every consumer, not by the shape of the expression: `expr()` refuses an expression of handle type (a call such as `mk()`) unless the caller sanctions it (`set`, arguments, `return`), and `path_expr` does the same for a bare variable. A handle cannot come from outside the program either (command argument, `read body`, `read file`: E367). When Task 20's `match` lands it needs the same consumption join as `if` (a handle used up in one arm is "may have been" used up after the match, arms that `stop`/`return` contribute nothing).
 - Why: a list of live library values or a handle in a trace line would need a defined meaning for clone/serialize that the library does not give; one deny point cannot rot when new expression forms arrive.
 
 ## Q363 — Item names: unique key vs heading name (step 23)
 - Question: Q74 requires unique item names; methods of six hash types all want to be called `update`.
 - Choice: `Item.name` stays the unique, type-prefixed key (`sha256_update`, the key of `## Not bound`, placements, `.prev` merges, on-demand), and `Item.heading` (`Some("update")`) is what the `##` heading shows for a method; a heading without one shows `name`. IR: `BindingFn.on = Some("sha2.Sha256")` and `ir::binding_key(item, on)` (`sha2.Sha256::update`) name the Rust method; codegen assigns each binding item its own `impl` method name, so six `update`s become `update`, `update_2`, …
-- Why: nothing keyed by name had to change; only rendering and the sema/IR lookup know about methods.
+- Why: nothing keyed by name had to change; only rendering and the sema/IR lookup know about methods. E364 ("no such method") is intentionally unused: an unknown method of a handle is E207, the code of an unknown verb of a binding, with a did-you-mean over that type's methods.
 
 ## Q364 — Which Rust types become handles (step 23)
 - Question: "a Rust type that has no AgentMark equivalent" is unbounded.
@@ -619,3 +620,6 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 
 ## Q372 — Integers wider than `int` (step 23)
 - Choice: `u64`, `usize` and `isize` parameters convert with `T::try_from(x)?` and results with `i64::try_from(x)?` in the rule-written (direct) bodies, so a value that does not fit fails the call instead of wrapping; inside `Vec`/`Option` the conversion runs in a closure that returns the error. Such items used to go to the assisted tier. `u128`/`i128` still have no AgentMark type. A rule-written body that is still over 120 characters after one-argument-per-line layout goes to the assisted tier.
+
+## Q373 — Review fixes to handles (step 23)
+- `fmt` prints `## Handle:` blocks. A handle made again with `->` inside a branch or loop is a new variable of that block (the generated code declares a new one): sema shadows it and restores the outer one's state when the block ends (a handle used up outside stays used up). Single-implementor instantiation is keyed by the trait's resolved path, tried only after the v0.2 lift fails and kept only if the item then involves a handle; the Rust type of a handle is recorded only for an item that is bound or goes to the model. `parallel:` counts a handle in any argument, not only as receiver.

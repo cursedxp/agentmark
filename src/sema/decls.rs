@@ -223,8 +223,12 @@ impl Checker<'_> {
                         });
                     }
                     Decl::Command(x) => {
+                        let params = self.params(fi, &x.args);
+                        for (p, ast_p) in params.iter().zip(&x.args) {
+                            self.outside_handle(fi, ast_p.ty.span, &p.ty, &format!("The command argument \"{}\"", p.name));
+                        }
                         let sig = Sig {
-                            params: self.params(fi, &x.args),
+                            params,
                             out: None,
                             effect: Effect::Model,
                             file: fi,

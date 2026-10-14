@@ -27,6 +27,8 @@ pub enum RT {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bound {
     pub name: String,
+    /// The trait's path (`digest::Digest`) as far as rustdoc says; `name` is its last segment.
+    pub full: Vec<String>,
     pub args: Vec<RT>,
     /// `Output = T` of `Future<Output = T>`.
     pub output: Option<Box<RT>>,
@@ -64,6 +66,10 @@ impl<'a> TypeParser<'a> {
             hz: Hazards::default(),
             self_ty,
         }
+    }
+
+    pub fn full_path_of(&self, id: Option<u64>, fallback: &str) -> Vec<String> {
+        self.full_path(id, fallback)
     }
 
     fn full_path(&self, id: Option<u64>, fallback: &str) -> Vec<String> {
@@ -205,8 +211,10 @@ impl<'a> TypeParser<'a> {
                 self.hz.closure = true;
             }
             let marker = MARKERS.contains(&name.as_str()) || tb["modifier"] == "maybe";
+            let full = self.full_path(t["id"].as_u64(), t["path"].as_str().unwrap_or("?"));
             out.push(Bound {
                 name,
+                full,
                 args,
                 output,
                 marker,
@@ -363,6 +371,11 @@ pub struct Lifter<'a> {
     /// Generic parameter name -> its bounds (fn and impl level).
     pub bounds: &'a [(String, Vec<Bound>)],
     pub ctx: &'a LiftCtx,
+    /// Also instantiate a bound by the crate's only implementor of the trait (used for items that
+    /// turn out to involve a handle; other generics keep their v0.2 treatment).
+    pub catchall: bool,
+    /// Rust types of handles met while lifting this item; the caller keeps them only if the item is bound.
+    pub pending: RefCell<BTreeMap<String, String>>,
 }
 
 fn utc() -> RT {
@@ -392,10 +405,11 @@ impl Lifter<'_> {
                 },
                 ("ToString" | "Display" | "IntoUrl", _) => std_path("String", vec![]),
                 ("TimeZone", _) => utc(),
-                (n, _) => match self.ctx.implementors.get(n).map(Vec::as_slice) {
+                _ if self.catchall => match self.ctx.implementors.get(&b.full.join("::")).map(Vec::as_slice) {
                     Some([only]) => only.clone(),
                     _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
                 },
+                _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
             };
             match &found {
                 Some(f) if *f != one => {
@@ -503,11 +517,11 @@ impl Lifter<'_> {
             parts.push(render(&publicize(&r, &self.ctx.pubmap)));
         }
         let ty = if parts.is_empty() { def.rust_path.clone() } else { format!("{}<{}>", def.rust_path, parts.join(", ")) };
-        let mut seen = self.ctx.rust_types.borrow_mut();
-        match seen.get(&def.name) {
+        let mut pending = self.pending.borrow_mut();
+        match self.ctx.rust_types.borrow().get(&def.name).or_else(|| pending.get(&def.name)) {
             Some(prev) if *prev != ty => None,
             _ => {
-                seen.insert(def.name.clone(), ty);
+                pending.insert(def.name.clone(), ty);
                 Some(def.name.clone())
             }
         }
@@ -723,10 +737,10 @@ mod tests {
     fn generic_with_asref_str_has_one_obvious_instantiation() {
         let bounds = vec![(
             "S".to_string(),
-            vec![Bound { name: "AsRef".into(), args: vec![p("str")], output: None, marker: false }],
+            vec![Bound { name: "AsRef".into(), full: vec![], args: vec![p("str")], output: None, marker: false }],
         )];
         let ctx = LiftCtx::default();
-        let l = Lifter { bounds: &bounds, ctx: &ctx };
+        let l = Lifter { bounds: &bounds, ctx: &ctx, catchall: false, pending: Default::default() };
         assert_eq!(l.value(&RT::Generic("S".into())), Ok(Ty::Text));
         assert!(l.value(&RT::Generic("T".into())).is_err());
     }

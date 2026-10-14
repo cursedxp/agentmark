@@ -17,7 +17,8 @@
 use super::types::*;
 use crate::binder::core::{CrateItems, EffectHints, HandleMode, Item, NotBoundEntry, Param, Shape, Sig, Ty};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 /// rustdoc JSON `format_version` this reader understands (nightly 2026-10, rustdoc-types 0.5x).
@@ -433,7 +434,10 @@ impl<'a> Walk<'a> {
                 if imp["is_synthetic"] == true || !imp["blanket_impl"].is_null() || imp["is_negative"] == true || imp["trait"].is_null() {
                     continue;
                 }
-                let tname = imp["trait"]["path"].as_str().unwrap_or("?").rsplit("::").next().unwrap_or("?").to_string();
+                let tpath = imp["trait"]["path"].as_str().unwrap_or("?");
+                let tname = TypeParser::new(self.doc, None)
+                    .full_path_of(imp["trait"]["id"].as_u64(), tpath)
+                    .join("::");
                 let ty = TypeParser::new(self.doc, None).parse(&imp["for"]);
                 let concrete = matches!(&ty, RT::Path { args, .. } if args.is_empty())
                     && imp["generics"]["params"].as_array().is_none_or(|p| p.is_empty());
@@ -768,8 +772,15 @@ impl<'a> Walk<'a> {
             .collect();
 
         let source_sig = render_sig(&fname, recv, &params, &ret_rt, &bounds, is_async);
-        let lifter = Lifter { bounds: &bounds, ctx: &ctx };
-        let contract_of = |sig: &Sig| super::checker::rust_fn_header_with(&name, sig, &ctx.rust_types.borrow());
+        let contract_of = |sig: &Sig, h: &BTreeMap<String, String>| super::checker::rust_fn_header_with(&name, sig, h);
+        let skipped = |reason: String| Shape::Skipped { reason };
+        // Lifetimes and associated types keep an item out of reach unless it has a handle: a handle
+        // owns whatever the Rust value borrows, and the assisted tier writes that glue.
+        let borrowy = hz.lifetimes || hz.assoc;
+        let borrow_reason = if hz.lifetimes { "lifetimes in the public API" } else { "associated types in the signature" };
+        let fail = |msg: String| skipped(if borrowy { borrow_reason.to_string() } else { msg });
+        let build = |catchall: bool| -> (Shape, Option<String>, BTreeMap<String, String>) {
+        let lifter = Lifter { bounds: &bounds, ctx: &ctx, catchall, pending: RefCell::new(BTreeMap::new()) };
         // a method of a handle type is written with its method name; the handle tells methods apart
         let recv_handle = match recv {
             Recv::None | Recv::Other => None,
@@ -779,13 +790,6 @@ impl<'a> Walk<'a> {
             let prefix = format!("{}_", snake(&h.split('.').skip(1).collect::<Vec<_>>().join("_")));
             name.strip_prefix(&prefix).unwrap_or(&name).to_string()
         });
-
-        let skipped = |reason: String| Shape::Skipped { reason };
-        // Lifetimes and associated types keep an item out of reach unless it has a handle: a handle
-        // owns whatever the Rust value borrows, and the assisted tier writes that glue.
-        let borrowy = hz.lifetimes || hz.assoc;
-        let borrow_reason = if hz.lifetimes { "lifetimes in the public API" } else { "associated types in the signature" };
-        let fail = |msg: String| skipped(if borrowy { borrow_reason.to_string() } else { msg });
         let shape = (|| {
             if is_unsafe {
                 return skipped("unsafe function".into());
@@ -883,9 +887,31 @@ impl<'a> Walk<'a> {
                 }
             }
         })();
-
+        (shape, heading, lifter.pending.into_inner())
+        };
+        // First as v0.2 lifted: a bound with several implementors has no obvious instantiation.
+        // An item that fails that way may still be a handle item whose type parameter has exactly
+        // one implementor in this crate (`DB: Database` with one database compiled in): try again
+        // with that rule, and keep the result only when it really involves a handle.
+        let (mut shape, mut heading, mut pending) = build(false);
+        if matches!(shape, Shape::Skipped { .. }) {
+            let (s2, h2, p2) = build(true);
+            let handle_sig = |sh: &Shape| match sh {
+                Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => {
+                    sig.params.iter().any(|p| matches!(p.ty, Ty::Handle { .. })) || matches!(sig.ret, Some(Ty::Handle { .. }))
+                }
+                Shape::Skipped { .. } => false,
+            };
+            if handle_sig(&s2) {
+                (shape, heading, pending) = (s2, h2, p2);
+            }
+        }
+        // the Rust type of a handle is recorded only for an item that is bound or goes to the model
+        if !matches!(shape, Shape::Skipped { .. }) {
+            ctx.rust_types.borrow_mut().extend(pending.clone());
+        }
         let contract = match &shape {
-            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => contract_of(sig),
+            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => contract_of(sig, &ctx.rust_types.borrow()),
             Shape::Skipped { .. } => String::new(),
         };
         Item {

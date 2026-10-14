@@ -114,8 +114,18 @@ impl Checker<'_> {
     }
 
     pub fn expr(&mut self, cx: &mut Cx, e: &Expr) -> Type {
+        // a handle may be the value of this expression only where the caller says so (Q362); a
+        // bare variable is judged in `path_expr`, everything else (a call) by its type here
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
+        let is_path = matches!(e.kind, ExprKind::Path(_));
+        cx.handle_ok = handle_ok && is_path;
         let outer = std::mem::take(&mut cx.acc);
-        let ty = self.expr_inner(cx, e);
+        let mut ty = self.expr_inner(cx, e);
+        cx.handle_ok = false;
+        if ty.is_handle() && !handle_ok && !is_path {
+            self.handle_value_misuse(cx, e.span, &ty);
+            ty = Type::Unknown;
+        }
         let eff = std::mem::replace(&mut cx.acc, outer);
         cx.acc.merge(&eff);
         let key = NodeKey::new(cx.file, e.span);

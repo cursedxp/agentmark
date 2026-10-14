@@ -761,7 +761,7 @@ impl Checker<'_> {
                     arg_vars.push(Some(w.name.clone()));
                 }
                 TargetPart::Value(e) => {
-                    cx.handle_ok = wants_handle && matches!(e.kind, crate::syntax::ast::ExprKind::Path(_));
+                    cx.handle_ok = wants_handle;
                     let ty = self.expr(cx, e);
                     cx.handle_ok = false;
                     args.push((ty, e.span));

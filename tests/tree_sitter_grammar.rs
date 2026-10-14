@@ -17,7 +17,11 @@ fn grammar_dir() -> PathBuf {
 /// dir), so nothing is left behind in the real TMPDIR.
 fn tool(cmd: &str, scratch: &Path) -> Command {
     let mut c = Command::new(cmd);
-    c.env("TMPDIR", scratch).env("NODE_COMPILE_CACHE", scratch.join("node-compile-cache"));
+    // the parser library tree-sitter compiles goes to a folder of this run, not to the shared
+    // ~/.cache/tree-sitter, which a parallel checkout with another grammar would overwrite
+    c.env("TMPDIR", scratch)
+        .env("NODE_COMPILE_CACHE", scratch.join("node-compile-cache"))
+        .env("TREE_SITTER_LIBDIR", scratch.join("ts-lib"));
     c
 }
 

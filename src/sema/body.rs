@@ -34,6 +34,9 @@ pub struct Frame {
     pub bare: Option<Implicit>,
     /// Paths (`found`, `ticket.priority`) known not to be empty in this frame.
     pub narrowed: Vec<String>,
+    /// Handles this frame shadows (`-> h` inside a branch or loop, where codegen declares a new
+    /// `h`): what was known of the outer one, put back when the frame ends.
+    pub shadowed: Vec<(String, Option<crate::diag::Span>)>,
 }
 
 pub struct AgentCx {
@@ -111,6 +114,11 @@ impl Cx {
             for v in f.vars.keys() {
                 self.consumed.remove(v);
             }
+            for (v, at) in f.shadowed {
+                if let Some(at) = at {
+                    self.consumed.insert(v, at);
+                }
+            }
         }
     }
 
@@ -134,6 +142,15 @@ impl Cx {
 
     pub fn define(&mut self, name: &str, ty: Type, span: crate::diag::Span) {
         self.forget(name);
+        // a handle made again inside a branch or loop is a new variable of that block (the
+        // generated code declares a new one), so the outer one keeps its state
+        if ty.is_handle() && !self.top().vars.contains_key(name) && self.var(name).is_some() {
+            let saved = self.consumed.remove(name);
+            self.top().shadowed.push((name.to_string(), saved));
+            self.top().vars.insert(name.to_string(), ty);
+            self.top().defs.insert(name.to_string(), span);
+            return;
+        }
         self.consumed.remove(name);
         for f in self.frames.iter_mut().rev() {
             if let Some(slot) = f.vars.get_mut(name) {

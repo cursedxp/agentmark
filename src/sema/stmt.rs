@@ -301,6 +301,7 @@ impl Checker<'_> {
                     self.diags.push(d);
                 }
                 let t = self.resolve_type(cx.file, ty);
+                self.outside_handle(cx.file, ty.span, &t, "A request body");
                 cx.define(&into.name, t, into.span);
                 self.check_limit(cx, s);
             }
@@ -319,6 +320,7 @@ impl Checker<'_> {
                     self.diags.push(d);
                 }
                 let t = self.resolve_type(cx.file, ty);
+                self.outside_handle(cx.file, ty.span, &t, "The content of a file");
                 cx.define(&into.name, t, into.span);
                 cx.acc.add(Effect::Local, "file");
                 self.check_limit(cx, s);
@@ -395,35 +397,53 @@ impl Checker<'_> {
         }
     }
 
-    /// Two statements of a `parallel:` block that call methods on one handle would hold it twice at
-    /// once (SPEC 22.4).
+    /// Two statements of a `parallel:` block that use one handle (as the receiver or in any
+    /// argument) would hold it twice at once (SPEC 22.4).
     fn parallel_handles(&mut self, cx: &Cx, body: &[Stmt]) {
-        let mut first: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+        use crate::syntax::ast::TargetPart;
+        let is_handle = |n: &str| matches!(cx.var(n), Some(Type::Handle(_)));
+        let path_var = |e: &crate::syntax::ast::Expr| match &e.kind {
+            ExprKind::Path(segs) if segs.len() == 1 => Some(segs[0].name.clone()),
+            _ => None,
+        };
+        let mut first: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
         for s in body {
-            let StmtKind::ToolCall { tool, .. } = &s.kind else { continue };
-            let is_method = self
-                .tool_calls
-                .get(&super::NodeKey::new(cx.file, s.span))
-                .is_some_and(|t| t.on.is_some());
-            if !is_method {
-                continue;
-            }
-            match first.get(tool.name.as_str()) {
-                Some(line) => {
-                    let d = Diagnostic::error(
-                        parallel::E_PARALLEL,
-                        self.path(cx.file),
-                        s.span,
-                        format!(
-                            "Two statements of this \"parallel\" block both use the handle \"{}\" (the first is on line {line}).",
-                            tool.name
-                        ),
-                    )
-                    .with_help("A handle can only be used by one thing at a time: run these one after the other.");
-                    self.diags.push(d);
+            let mut used: Vec<String> = Vec::new();
+            match &s.kind {
+                StmtKind::ToolCall { tool, target, .. } => {
+                    if is_handle(&tool.name) {
+                        used.push(tool.name.clone());
+                    }
+                    for t in target {
+                        match t {
+                            TargetPart::Word(w) => used.push(w.name.clone()),
+                            TargetPart::Value(e) => used.extend(path_var(e)),
+                        }
+                    }
                 }
-                None => {
-                    first.insert(tool.name.as_str(), s.span.line);
+                StmtKind::Do { args, .. } => used.extend(args.iter().filter_map(path_var)),
+                _ => {}
+            }
+            used.retain(|n| is_handle(n));
+            used.sort();
+            used.dedup();
+            for name in used {
+                match first.get(&name) {
+                    Some(line) => {
+                        let d = Diagnostic::error(
+                            parallel::E_PARALLEL,
+                            self.path(cx.file),
+                            s.span,
+                            format!(
+                                "Two statements of this \"parallel\" block both use the handle \"{name}\" (the first is on line {line})."
+                            ),
+                        )
+                        .with_help("A handle can only be used by one thing at a time: run these one after the other.");
+                        self.diags.push(d);
+                    }
+                    None => {
+                        first.insert(name, s.span.line);
+                    }
                 }
             }
         }
