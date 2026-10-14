@@ -71,11 +71,12 @@
     },
     "crates": {
       "type": "object",
-      "description": "Extra Rust crates for the generated project (SPEC 22.4). Each entry is a version string, or a table with an optional version and optional features.",
+      "description": "How a library is built, for the binder and the generated Cargo.toml: features and default-features. A binding header pins the exact version.",
       "additionalProperties": {
         "oneOf": [
           {
-            "type": "string"
+            "type": "string",
+            "description": "A version requirement."
           },
           {
             "type": "object",
@@ -88,7 +89,11 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "uniqueItems": true
+              },
+              "default-features": {
+                "type": "boolean"
               }
             }
           }

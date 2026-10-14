@@ -3514,6 +3514,10 @@
       "required": true,
       "types": [
         {
+          "type": "handle_type",
+          "named": true
+        },
+        {
           "type": "type",
           "named": true
         }
@@ -3861,6 +3865,10 @@
   {
     "type": "guard",
     "named": false
+  },
+  {
+    "type": "handle_type",
+    "named": true
   },
   {
     "type": "http_method",

@@ -149,7 +149,7 @@ base_url = "http://localhost:11434/v1"
 | `targets` | `["rust"]`, the only target in v0.1 |
 | `[lint] deny` | lint rules that are errors instead of warnings: `long-file`, `magic-value`, `unnamed-guard`, `duplicate-rule`, `prompt-in-loop`, `missing-doc`, `vague-name` (see section 18.4 of [the reference](reference.md)) |
 | `[rust.dependencies]` | copied into the `[dependencies]` of the generated `Cargo.toml` |
-| `[crates]` | extra Rust crates a `## Rust` block or binding may use (section 22.4 of [the reference](reference.md)): a version string, or a table with `version` and optional `features` |
+| `[crates]` | how a bound library is built, for the binder and the generated `Cargo.toml`: `sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }` (and `default-features = false`); without an entry the crate's defaults apply (section 15.4 of [the reference](reference.md)) |
 | `[lsp] model_actions` | `true` turns on the optional model-backed code actions below; off by default |
 | `[models]` | environment name to model driver, picked by `AGENTMARK_ENV` (section 19 of [the reference](reference.md)); `[models.local] base_url` is the server for `local:<model>` drivers |
 

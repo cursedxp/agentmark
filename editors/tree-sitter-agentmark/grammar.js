@@ -312,7 +312,13 @@ module.exports = grammar({
         seq('list', 'of', $.type),
         seq('maybe', $.type),
         seq('result', 'of', $.type),
+        $.handle_type,
       ),
+
+    // `handle of sha2.Sha256`, `mut handle of …`, `consume handle of …` (SPEC 22.4). One token,
+    // so `handle`, `mut` and `consume` stay plain identifiers everywhere else.
+    handle_type: () =>
+      token(/((mut|consume)[ \t]+)?handle[ \t]+of[ \t]+[A-Za-z_][A-Za-z0-9_-]*(\.[A-Za-z_][A-Za-z0-9_-]*)*/),
 
     // ---- statements ------------------------------------------------------
 

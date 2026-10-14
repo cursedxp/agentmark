@@ -396,6 +396,84 @@ Binding
         (reason)))))
 
 ====================
+Binding with handles
+====================
+
+# Binding: sha2
+- crate: sha2
+- effect: pure
+
+## sha256_new() -> handle of sha2.Sha256
+  ```rust
+  Ok(todo())
+  ```
+
+## update(self: mut handle of sha2.Sha256, data: bytes)
+  ```rust
+  Ok(())
+  ```
+
+## finalize(self: consume handle of sha2.Sha256) -> bytes
+  ```rust
+  Ok(vec![])
+  ```
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (code_block
+      (binding_heading
+        (identifier)
+        (type
+          (type_phrase
+            (handle_type))))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))
+    (code_block
+      (binding_heading
+        (identifier)
+        (parameter
+          (identifier)
+          (type
+            (type_phrase
+              (handle_type))))
+        (parameter
+          (identifier)
+          (type
+            (identifier))))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))
+    (code_block
+      (binding_heading
+        (identifier)
+        (parameter
+          (identifier)
+          (type
+            (type_phrase
+              (handle_type))))
+        (type
+          (identifier)))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))))
+
+====================
 Run declaration
 ====================
 

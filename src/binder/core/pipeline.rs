@@ -2,7 +2,7 @@
 //! (model writes the body, the type checker accepts or rejects it) -> skipped (listed under
 //! `## Not bound` with the reason). Every item lands in exactly one tier; nothing is dropped.
 
-use super::model::{CrateItems, Item, Shape, Sig};
+use super::model::{CrateItems, Item, Shape, Sig, Ty};
 use super::typecheck::{CheckRequest, TypeChecker};
 use agentmark_rt::{ModelClient, ModelRequest};
 
@@ -16,6 +16,8 @@ pub enum Tier {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundItem {
     pub name: String,
+    /// See [`Item::heading`].
+    pub heading: Option<String>,
     pub path: String,
     pub summary: String,
     pub sig: Sig,
@@ -47,6 +49,8 @@ pub struct BoundCrate {
     /// "exactly one tier each".
     pub placements: Vec<(String, Tier)>,
     pub counts: Counts,
+    /// Rust types of the bound items' handles that are not `<crate>::<Type>` (`## Handle:` blocks).
+    pub handle_types: std::collections::BTreeMap<String, String>,
 }
 
 /// Run every item through the tiers. `extra_not_bound` entries (traits, foreign re-exports)
@@ -63,12 +67,44 @@ pub async fn run_tiers(
         not_bound: Vec::new(),
         placements: Vec::new(),
         counts: Counts::default(),
+        handle_types: Default::default(),
     };
     for item in &ci.items {
+        let too_long = match &item.shape {
+            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => heading_too_long(item, sig),
+            Shape::Skipped { .. } => None,
+        };
+        if let Some(reason) = too_long {
+            out.not_bound.push((item.name.clone(), with_path(item, &reason)));
+            out.counts.skipped += 1;
+            out.placements.push((item.name.clone(), Tier::Skipped));
+            continue;
+        }
         let tier = match &item.shape {
-            Shape::Direct { sig, body } => {
-                push_bound(&mut out, item, sig, body.clone(), Tier::Direct);
-                Tier::Direct
+            Shape::Direct { sig, body, verify } => {
+                let checked = if *verify {
+                    checker
+                        .check(&CheckRequest {
+                            crate_name: &ci.name,
+                            version: &ci.version,
+                            name: &item.name,
+                            sig,
+                            body,
+                        })
+                        .map_err(|e| format!("rule-written body failed type-check: {}", one_line(&e)))
+                } else {
+                    Ok(())
+                };
+                match checked {
+                    Ok(()) => {
+                        push_bound(&mut out, item, sig, body.clone(), Tier::Direct);
+                        Tier::Direct
+                    }
+                    Err(reason) => {
+                        out.not_bound.push((item.name.clone(), with_path(item, &reason)));
+                        Tier::Skipped
+                    }
+                }
             }
             Shape::Assisted { sig, why } => {
                 match assist(ci, item, sig, why, model, checker).await {
@@ -99,12 +135,32 @@ pub async fn run_tiers(
         out.counts.skipped += 1;
         out.placements.push((e.name.clone(), Tier::Skipped));
     }
+    for it in &out.items {
+        for t in it.sig.params.iter().map(|p| &p.ty).chain(it.sig.ret.as_ref()) {
+            if let Ty::Handle { name, .. } = t {
+                if let Some(r) = ci.handle_types.get(name) {
+                    out.handle_types.insert(name.clone(), r.clone());
+                }
+            }
+        }
+    }
     out
+}
+
+/// SPEC 18.3: no line over 120 characters; a heading cannot be wrapped (Q110).
+const MAX_HEADING: usize = 120;
+
+/// The reason an item cannot be written as a binding heading, if its heading is too long.
+fn heading_too_long(item: &Item, sig: &Sig) -> Option<String> {
+    let h = sig.heading(item.heading.as_deref().unwrap_or(&item.name));
+    let n = "## ".len() + h.chars().count();
+    (n > MAX_HEADING).then(|| format!("its signature is {n} characters, over the 120 a line may have (SPEC 18.3)"))
 }
 
 fn push_bound(out: &mut BoundCrate, item: &Item, sig: &Sig, body: String, tier: Tier) {
     out.items.push(BoundItem {
         name: item.name.clone(),
+        heading: item.heading.clone(),
         path: item.path.clone(),
         summary: item.summary.clone(),
         sig: sig.clone(),
@@ -144,13 +200,32 @@ pub fn assist_prompt(ci: &CrateItems, item: &Item, sig: &Sig, why: &str) -> Stri
     } else {
         item.docs.trim()
     };
+    let heading = sig.heading(item.heading.as_deref().unwrap_or(&item.name));
+    let mut handles = if heading.contains("handle of") {
+        "\n\nA `handle of <crate>.<Type>` is a value of the library's own type that AgentMark cannot look \
+         into: it is only passed on, returned, or used for the call itself."
+            .to_string()
+    } else {
+        String::new()
+    };
+    for t in sig.params.iter().map(|p| &p.ty).chain(sig.ret.as_ref()) {
+        if let Ty::Handle { name, .. } = t {
+            if let Some(r) = ci.handle_types.get(name) {
+                handles.push_str(&format!(
+                    "\nThe handle `{name}` is the {lang} type `{r}`: whatever it borrows, the handle owns \
+                     (copy, clone or leak it).",
+                    lang = ci.language
+                ));
+            }
+        }
+    }
     format!(
         "bind {path}\n\
          You are the AgentMark binder. Write the {lang} body of one binding item for the crate \
          `{krate}` {version}.\n\n\
          {lang} signature of the library item:\n{src}\n\n\
          AgentMark signature to implement (types: text, int, bool, bytes, date, datetime, \
-         duration, list of T, maybe T):\n{heading}\n\n\
+         duration, list of T, maybe T, handle of <crate>.<Type>):\n{heading}{handles}\n\n\
          Why this needs hand-written glue: {why}\n\n\
          The body is placed inside:\n{contract}\n\n\
          Documentation of the item:\n{docs}\n\n\
@@ -161,7 +236,6 @@ pub fn assist_prompt(ci: &CrateItems, item: &Item, sig: &Sig, why: &str) -> Stri
         krate = ci.name,
         version = ci.version,
         src = item.source_sig,
-        heading = sig.heading(&item.name),
         contract = item.contract,
         style = ci.style_guide,
     )

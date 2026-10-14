@@ -212,7 +212,7 @@ fn skip_reasons_cover_the_spec_cases() {
     let reasons: String = b.not_bound.iter().map(|(_, r)| r.as_str()).collect::<Vec<_>>().join("\n");
     assert!(reasons.contains("lifetimes in the public API"));
     assert!(reasons.contains("associated types"));
-    assert!(reasons.contains("mutates its receiver"));
+    assert!(reasons.contains("takes a closure"));
     assert!(reasons.contains("has no AgentMark type"));
     let (_, b) = tiered("sha2", vec![]);
     assert!(b.not_bound.iter().any(|(_, r)| r.contains("another crate")), "foreign re-exports are listed");
@@ -383,16 +383,29 @@ fn sha2_hashing_comes_from_the_reexported_digest_trait() {
     let bound = b.items.iter().find(|i| i.name == "sha256_digest").expect("bound");
     assert_eq!(bound.tier, Tier::Assisted);
     assert_eq!(bound.sig.heading(&bound.name), "sha256_digest(data: bytes) -> bytes");
-    // Receiver-less methods only; `self` methods are one aggregated line.
-    assert!(b.not_bound.iter().any(|(n, r)| n == "sha256_new" && r.contains("no AgentMark type")));
-    assert!(!b.items.iter().any(|i| i.name.contains("finalize") || i.name.ends_with("_update")));
-    // ... each one its own entry, never a list (SPEC 15.2)
-    assert!(!b.not_bound.iter().any(|(n, _)| n.contains("methods_with_self")));
-    for m in ["update", "chain_update", "finalize", "finalize_into", "finalize_reset", "finalize_into_reset", "reset"] {
+    // Every method of the trait is bound on the alias, now that `Sha256` is a handle (SPEC 22.4):
+    // constructors and `self` methods alike, under the method's own name.
+    let b256 = |n: &str| b.items.iter().find(|i| i.name == n).unwrap_or_else(|| panic!("{n} bound"));
+    assert_eq!(b256("sha256_new").sig.heading("sha256_new"), "sha256_new() -> handle of sha2.Sha256");
+    for (m, heading) in [
+        ("update", "update(self: mut handle of sha2.Sha256, data: bytes)"),
+        ("chain_update", "chain_update(self: consume handle of sha2.Sha256, data: bytes) -> handle of sha2.Sha256"),
+        ("finalize", "finalize(self: consume handle of sha2.Sha256) -> bytes"),
+        ("finalize_reset", "finalize_reset(self: mut handle of sha2.Sha256) -> bytes"),
+        ("reset", "reset(self: mut handle of sha2.Sha256)"),
+    ] {
+        let it = b256(&format!("sha256_{m}"));
+        assert_eq!(it.sig.heading(it.heading.as_deref().unwrap()), heading);
+        assert_eq!(it.tier, Tier::Direct, "{m}: written by rules, confirmed by the type checker");
+    }
+    // ... except the ones that want a `&mut` buffer AgentMark cannot lend
+    for m in ["finalize_into", "finalize_into_reset"] {
         let name = format!("sha256_{m}");
         let (_, r) = b.not_bound.iter().find(|(n, _)| *n == name).unwrap_or_else(|| panic!("{name} listed"));
-        assert!(r.contains("takes `self`") && r.contains(&format!("Digest::{m} on sha2::Sha256")), "{r}");
+        assert!(r.contains("mutable borrow") && r.contains(&format!("Digest>::{m}")), "{r}");
     }
+    // no aggregated line (SPEC 15.2), and the alias is a handle type now, not a listed alias
+    assert!(!b.not_bound.iter().any(|(n, _)| n.contains("methods_with_self") || n == "alias_sha256"));
     // Without digest's rustdoc the re-export stays a listed non-callable.
     let j = std::fs::read_to_string(fixture("sha2")).unwrap();
     assert_eq!(agentmark::binder::rust::foreign_crates(&j).unwrap(), vec!["digest".to_string()]);
@@ -730,12 +743,16 @@ fn generated_files_round_trip_through_fmt_byte_for_byte() {
 
 #[test]
 fn alias_lines_say_which_crate_and_no_generic_noise() {
+    // without the other crate's rustdoc nothing is bound on the alias, so it stays listed
+    let ci = read_crate(&std::fs::read_to_string(fixture("sha2")).unwrap()).unwrap();
+    let e = ci.extra_not_bound.iter().find(|e| e.name == "alias_sha256").expect("alias entry");
+    assert!(e.reason.contains(" from crate digest; its methods live there"), "{}", e.reason);
+    assert!(e.reason.contains("<…>") && !e.reason.contains("U32"), "{}", e.reason);
+    // with it, the alias is a handle type whose methods are bound: the entry is gone
     let dir = scratch("alias");
     let out = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
     let e = entries(&std::fs::read_to_string(&out.path).unwrap());
-    let (n, r) = e.iter().find(|(_, r)| r.contains("is a type alias for")).expect("alias entry");
-    assert!(r.contains(" from crate digest; its methods live there"), "{n}: {r}");
-    assert!(r.contains("<…>") && !r.contains("U32"), "{r}");
+    assert!(!e.keys().any(|n| n.starts_with("alias_")), "{:?}", e.keys().collect::<Vec<_>>());
 }
 
 #[test]

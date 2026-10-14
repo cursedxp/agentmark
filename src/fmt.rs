@@ -360,6 +360,11 @@ impl Printer {
             self.heading(&item.doc, item.span.line, h);
             self.fence(1, &item.rust);
         }
+        for h in &b.handles {
+            self.blank();
+            self.heading(&None, h.span.line, format!("## Handle: {}", h.name));
+            self.fence(1, &h.rust);
+        }
         if !b.not_bound.is_empty() {
             self.blank();
             let before = b.not_bound.first().map_or(u32::MAX, |n| n.span.line);
@@ -748,6 +753,10 @@ pub(crate) fn type_text(t: &TypeExpr) -> String {
         TypeKind::List(i) => format!("list of {}", type_text(i)),
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
+        TypeKind::Handle { name, mode } => match mode.word() {
+            Some(w) => format!("{w} handle of {name}"),
+            None => format!("handle of {name}"),
+        },
     }
 }
 

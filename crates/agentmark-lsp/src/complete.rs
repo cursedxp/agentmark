@@ -203,7 +203,9 @@ fn binding_names(a: &Analysis) -> Vec<(String, Vec<String>)> {
     for f in &a.project.files {
         for d in &f.ast.decls {
             if let Decl::Binding(b) = d {
-                v.push((b.name.name.clone(), b.items.iter().map(|i| i.name.name.clone()).collect()));
+                // methods of a handle are called on a variable (`- hasher update data`), not on the binding
+                let is_method = |i: &agentmark::syntax::ast::BindingItem| i.params.first().is_some_and(|p| p.name.name == "self");
+                v.push((b.name.name.clone(), b.items.iter().filter(|i| !is_method(i)).map(|i| i.name.name.clone()).collect()));
             }
         }
     }
@@ -455,6 +457,10 @@ fn type_text(t: &agentmark::syntax::ast::TypeExpr) -> String {
         TypeKind::List(i) => format!("list of {}", type_text(i)),
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
+        TypeKind::Handle { name, mode } => match mode.word() {
+            Some(w) => format!("{w} handle of {name}"),
+            None => format!("handle of {name}"),
+        },
     }
 }
 

@@ -23,6 +23,9 @@ pub enum Type {
     Record(String),
     /// A record literal `{ id: x }`: field names and types, in written order.
     Object(Vec<(String, Type)>),
+    /// `handle of <crate>.<Type>` (SPEC 22.4): a library value AgentMark cannot look into, by its
+    /// dotted name (`sha2.Sha256`). It moves, and cannot be printed, compared, serialized or traced.
+    Handle(String),
     /// The type of something that already produced an error; compatible with everything so one
     /// mistake is reported once.
     Unknown,
@@ -68,6 +71,10 @@ impl Type {
         }
     }
 
+    pub fn is_handle(&self) -> bool {
+        matches!(self, Type::Handle(_))
+    }
+
     pub fn is_maybe(&self) -> bool {
         matches!(self, Type::Maybe(_))
     }
@@ -102,6 +109,7 @@ impl fmt::Display for Type {
             Type::Maybe(t) => write!(f, "maybe {t}"),
             Type::Result(t) => write!(f, "result of {t}"),
             Type::Record(n) => f.write_str(n),
+            Type::Handle(n) => write!(f, "handle of {n}"),
             Type::Object(fields) => {
                 let inner: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
                 write!(f, "{{ {} }}", inner.join(", "))
