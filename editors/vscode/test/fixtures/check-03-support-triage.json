@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "path": "examples/03-support-triage",
+  "diagnostics": [],
+  "units": [
+    {
+      "name": "support-triage",
+      "kind": "agent",
+      "file": "examples/03-support-triage/agents/support-triage.agent.md",
+      "effects": {
+        "class": "model",
+        "summary": "model, network(crm, http), local(log)",
+        "tools": {
+          "model": true,
+          "network": [
+            "crm",
+            "http"
+          ],
+          "local": [
+            "log"
+          ],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "Every 15 minutes",
+          "file": "examples/03-support-triage/agents/support-triage.agent.md",
+          "line": 10,
+          "effects": {
+            "class": "model",
+            "summary": "model, network(crm, http), local(log)",
+            "tools": {
+              "model": true,
+              "network": [
+                "crm",
+                "http"
+              ],
+              "local": [
+                "log"
+              ],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "inferred_fields": [],
+  "unverified_bindings": [],
+  "rust_blocks": []
+}

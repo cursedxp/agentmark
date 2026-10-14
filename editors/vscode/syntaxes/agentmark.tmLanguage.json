@@ -1,0 +1,233 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "AgentMark",
+  "scopeName": "source.agentmark",
+  "fileTypes": ["agent.md"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#rust-fence" },
+    { "include": "#declaration" },
+    { "include": "#block-heading" },
+    { "include": "#property" },
+    { "include": "#statement" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.greater-than.agentmark",
+      "match": "^\\s*>.*$"
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "^(#)\\s+(Agent|Record|Rule|Function|Service|Command|Constant|Binding)(:)\\s*([A-Za-z][\\w-]*)?",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.declaration.agentmark" },
+            "3": { "name": "punctuation.separator.agentmark" },
+            "4": { "name": "entity.name.type.agentmark" }
+          }
+        },
+        {
+          "match": "^(#)\\s+(Import)(:)\\s*(crate\\b)?\\s*(\\S+)?(?:\\s+(as)\\s+([A-Za-z][\\w-]*))?",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.control.import.agentmark" },
+            "3": { "name": "punctuation.separator.agentmark" },
+            "4": { "name": "storage.modifier.crate.agentmark" },
+            "5": { "name": "string.unquoted.path.agentmark" },
+            "6": { "name": "keyword.control.as.agentmark" },
+            "7": { "name": "entity.name.namespace.agentmark" }
+          }
+        },
+        {
+          "match": "^(#)\\s+(Run)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.declaration.agentmark" }
+          }
+        }
+      ]
+    },
+    "block-heading": {
+      "patterns": [
+        {
+          "match": "^(##)\\s+(Rust)(:)\\s*([A-Za-z][\\w-]*)?\\s*(->)?\\s*(\\w+)?",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.declaration.agentmark" },
+            "3": { "name": "punctuation.separator.agentmark" },
+            "4": { "name": "entity.name.function.agentmark" },
+            "5": { "name": "keyword.operator.arrow.agentmark" },
+            "6": { "name": "support.type.agentmark" }
+          }
+        },
+        {
+          "match": "^(##)\\s+(GET|POST|PUT|PATCH|DELETE)\\s+(\\S+)",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.control.http-method.agentmark" },
+            "3": { "name": "string.unquoted.route.agentmark" }
+          }
+        },
+        {
+          "match": "^(##)\\s+(Every)\\s+(.*)$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.control.trigger.agentmark" },
+            "3": { "patterns": [{ "include": "#duration-and-time" }] }
+          }
+        },
+        {
+          "match": "^(##)\\s+(When)\\s+([A-Za-z][\\w-]*)\\s+(receives)\\s+([A-Za-z][\\w-]*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.control.trigger.agentmark" },
+            "3": { "name": "support.class.tool.agentmark" },
+            "4": { "name": "keyword.control.trigger.agentmark" },
+            "5": { "name": "entity.name.tag.event.agentmark" }
+          }
+        },
+        {
+          "match": "^(##)\\s+(On start|Run)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.control.trigger.agentmark" }
+          }
+        },
+        {
+          "match": "^(##)\\s+(Do)\\s+([A-Za-z][\\w-]*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.control.trigger.agentmark" },
+            "3": { "name": "entity.name.function.agentmark" }
+          }
+        },
+        {
+          "match": "^(##)\\s+(Not bound)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "markup.heading.not-bound.agentmark" }
+          }
+        },
+        {
+          "match": "^(##)\\s+([A-Za-z_][\\w]*)(\\()([^)]*)(\\))\\s*(->)?\\s*(\\w+)?",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "entity.name.function.agentmark" },
+            "3": { "name": "punctuation.definition.parameters.begin.agentmark" },
+            "4": { "patterns": [{ "include": "#typed-names" }] },
+            "5": { "name": "punctuation.definition.parameters.end.agentmark" },
+            "6": { "name": "keyword.operator.arrow.agentmark" },
+            "7": { "name": "support.type.agentmark" }
+          }
+        },
+        {
+          "match": "^(##)\\s+(.*)$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "markup.heading.agentmark" }
+          }
+        }
+      ]
+    },
+    "typed-names": {
+      "match": "([A-Za-z_][\\w]*)\\s*(:)\\s*([A-Za-z_][\\w]*)",
+      "captures": {
+        "1": { "name": "variable.parameter.agentmark" },
+        "2": { "name": "punctuation.separator.agentmark" },
+        "3": { "name": "support.type.agentmark" }
+      }
+    },
+    "duration-and-time": {
+      "patterns": [
+        { "match": "\\b\\d{1,2}:\\d{2}\\b", "name": "constant.numeric.time.agentmark" },
+        { "match": "\\b\\d+\\s*(?:second|minute|hour|day|week|month|year)s?\\b", "name": "constant.numeric.duration.agentmark" },
+        { "match": "\\b(?:day|at|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\\b", "name": "keyword.other.schedule.agentmark" }
+      ]
+    },
+    "property": {
+      "match": "^(\\s*)(-)\\s+(model|tools|memory|timeout|for|when|value|in|out|effect|listen|state|args|crate|doc)(:)",
+      "captures": {
+        "2": { "name": "punctuation.definition.list.agentmark" },
+        "3": { "name": "variable.other.property.agentmark" },
+        "4": { "name": "punctuation.separator.agentmark" }
+      }
+    },
+    "statement": {
+      "patterns": [
+        {
+          "match": "^(\\s*)(-)\\s+(guard)(:)",
+          "captures": {
+            "2": { "name": "punctuation.definition.list.agentmark" },
+            "3": { "name": "keyword.control.guard.agentmark" },
+            "4": { "name": "punctuation.separator.agentmark" }
+          }
+        },
+        {
+          "match": "^(\\s*)(-)\\s+(ask model)(?:\\s+(with)\\s+([A-Za-z][\\w.-]*))?(:)",
+          "captures": {
+            "2": { "name": "punctuation.definition.list.agentmark" },
+            "3": { "name": "keyword.other.model.agentmark" },
+            "4": { "name": "keyword.control.agentmark" },
+            "5": { "name": "variable.other.agentmark" },
+            "6": { "name": "punctuation.separator.agentmark" }
+          }
+        },
+        {
+          "match": "^(\\s*)(-)\\s+([a-z][\\w-]*)\\s+([a-z][\\w-]*)(?:\\s+([a-z][\\w-]*))?(?=\\s*(?::|\"|->|$))",
+          "captures": {
+            "2": { "name": "punctuation.definition.list.agentmark" },
+            "3": { "name": "support.class.tool.agentmark" },
+            "4": { "name": "support.function.verb.agentmark" },
+            "5": { "name": "entity.name.tag.target.agentmark" }
+          }
+        },
+        { "match": "^(\\s*)(-)", "captures": { "2": { "name": "punctuation.definition.list.agentmark" } } },
+        { "include": "#control" },
+        { "include": "#expression" }
+      ]
+    },
+    "control": {
+      "patterns": [
+        { "match": "\\b(for each|if|else|stop|do|set|return|respond|read|print)\\b", "name": "keyword.control.agentmark" },
+        { "match": "\\b(in|as|with|from|and|or|not|is|matches|else)\\b", "name": "keyword.operator.word.agentmark" },
+        { "match": "->", "name": "keyword.operator.arrow.agentmark" }
+      ]
+    },
+    "expression": {
+      "patterns": [
+        { "include": "#string" },
+        { "match": "\\b\\d{4}-\\d{2}-\\d{2}\\b", "name": "constant.numeric.date.agentmark" },
+        { "match": "\\b\\d+(?:\\.\\d+)?\\s*(?:[A-Z]{3})\\b", "name": "constant.numeric.money.agentmark" },
+        { "match": "\\b\\d+\\s*(?:second|minute|hour|day|week|month|year)s?\\b", "name": "constant.numeric.duration.agentmark" },
+        { "match": "\\b\\d+(?:\\.\\d+)?\\b", "name": "constant.numeric.agentmark" },
+        { "match": "\\b(true|false|today|now|count of)\\b", "name": "constant.language.agentmark" },
+        { "match": "<=|>=|!=|=|<|>|\\+|-|\\*|/", "name": "keyword.operator.agentmark" }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.agentmark",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.agentmark" },
+        {
+          "match": "\\{[^}\"]*\\}",
+          "name": "meta.interpolation.agentmark",
+          "captures": { "0": { "name": "variable.other.interpolation.agentmark" } }
+        }
+      ]
+    },
+    "rust-fence": {
+      "begin": "^(\\s*)(`{3})\\s*(rust)\\s*$",
+      "end": "^(\\s*)(`{3})\\s*$",
+      "beginCaptures": {
+        "2": { "name": "punctuation.definition.markdown.agentmark" },
+        "3": { "name": "fenced_code.block.language.agentmark" }
+      },
+      "endCaptures": { "2": { "name": "punctuation.definition.markdown.agentmark" } },
+      "contentName": "meta.embedded.block.rust.agentmark",
+      "patterns": [{ "include": "source.rust" }]
+    }
+  }
+}

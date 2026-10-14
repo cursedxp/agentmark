@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "path": "examples/05-invoice-service",
+  "diagnostics": [],
+  "units": [
+    {
+      "name": "import-csv",
+      "kind": "command",
+      "file": "examples/05-invoice-service/commands/import-csv.agent.md",
+      "effects": {
+        "class": "local",
+        "summary": "local(file, print, state)",
+        "tools": {
+          "model": false,
+          "network": [],
+          "local": [
+            "file",
+            "print",
+            "state"
+          ],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "Run",
+          "file": "examples/05-invoice-service/commands/import-csv.agent.md",
+          "line": 4,
+          "effects": {
+            "class": "local",
+            "summary": "local(file, print, state)",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [
+                "file",
+                "print",
+                "state"
+              ],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "invoice_fingerprint",
+      "kind": "function",
+      "file": "examples/05-invoice-service/functions/invoice-fingerprint.agent.md",
+      "effects": {
+        "class": "pure",
+        "summary": "pure",
+        "tools": {
+          "model": false,
+          "network": [],
+          "local": [],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "invoice_fingerprint",
+          "file": "examples/05-invoice-service/functions/invoice-fingerprint.agent.md",
+          "line": 5,
+          "effects": {
+            "class": "pure",
+            "summary": "pure",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "net_amount",
+      "kind": "function",
+      "file": "examples/05-invoice-service/functions/net-amount.agent.md",
+      "effects": {
+        "class": "pure",
+        "summary": "pure",
+        "tools": {
+          "model": false,
+          "network": [],
+          "local": [],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "net_amount",
+          "file": "examples/05-invoice-service/functions/net-amount.agent.md",
+          "line": 4,
+          "effects": {
+            "class": "pure",
+            "summary": "pure",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "api",
+      "kind": "service",
+      "file": "examples/05-invoice-service/services/api.agent.md",
+      "effects": {
+        "class": "local",
+        "summary": "local(state)",
+        "tools": {
+          "model": false,
+          "network": [],
+          "local": [
+            "state"
+          ],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "GET /invoices/{id}",
+          "file": "examples/05-invoice-service/services/api.agent.md",
+          "line": 12,
+          "effects": {
+            "class": "pure",
+            "summary": "pure",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [],
+              "unverified": []
+            }
+          }
+        },
+        {
+          "label": "GET /invoices/{id}/net",
+          "file": "examples/05-invoice-service/services/api.agent.md",
+          "line": 17,
+          "effects": {
+            "class": "pure",
+            "summary": "pure",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [],
+              "unverified": []
+            }
+          }
+        },
+        {
+          "label": "POST /invoices",
+          "file": "examples/05-invoice-service/services/api.agent.md",
+          "line": 22,
+          "effects": {
+            "class": "local",
+            "summary": "local(state)",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [
+                "state"
+              ],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "inferred_fields": [],
+  "unverified_bindings": [],
+  "rust_blocks": [
+    {
+      "name": "fingerprint",
+      "file": "examples/05-invoice-service/functions/invoice-fingerprint.agent.md",
+      "line": 13,
+      "parent": "invoice_fingerprint",
+      "effect": "pure"
+    }
+  ]
+}

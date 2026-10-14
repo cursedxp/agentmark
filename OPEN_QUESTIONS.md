@@ -524,3 +524,11 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 
 ## Q259 — Odd requests and the end of the session (step 15 review)
 **Choice:** a request for a document that is not a readable `file://` URI (`untitled:`, deleted file) is answered with `null`, not an error, and opening such a document is ignored. `exit` without a `shutdown` before it makes the process exit with code 1 (LSP), after `shutdown` with 0. Diagnostics of `agentmark.toml` / `tools.toml` that point at a line (not a word) underline the whole line.
+
+## Q270 — VS Code extension layout, bundling and testing (step 16)
+**Choice:** `editors/vscode/` is TypeScript. `tsc` compiles `src` and `test`; esbuild bundles `src/extension.ts` (with `vscode-languageclient`) into `dist/extension.js`, so the vsix holds 9 files and `vsce package` prints no warnings. Pure modules (`checkjson.ts`, `panel.ts`, `server.ts`) hold the logic; only `extension.ts` imports `vscode`. `npm test` (`node --test`) tokenizes the TextMate grammar over every `examples/**/*.agent.md`, validates `agentmark.toml` examples against the schema with `ajv`, and renders the panel from `check --json` output recorded from the real CLI (`test/fixtures`). The root `cargo test --test vscode_extension` copies `editors/vscode` to a temp dir and runs `npm ci`, `npm run compile`, `npm test` and `vsce package`, failing on any vsce warning; it skips with a message when npm is missing.
+**Why:** an extension host cannot run in CI cheaply, and the LSP is already tested directly (step 15), so the client stays thin; a temp copy keeps the checkout free of build output.
+
+## Q271 — `agentmark.toml` schema and `[models]` (step 16)
+**Choice:** `schemas/agentmark.schema.json` covers `name`, `version`, `targets`, `[lint] deny`, `[rust.dependencies]`, `[lsp] model_actions` and `[models]`, mirroring the compiler on dev: driver `^(claude(:\S+)?|openai:\S+|local:\S+|mock(:\S+)?)$` (azure and bedrock are rejected), `local` is either a driver string or a table with `base_url` matching `^https?://`. The schema is registered as `tomlValidation` (Even Better TOML's contribution point, no manual association). The extension is bundled with esbuild into `dist/extension.js`, so the vsix has 9 files and vsce prints no warnings.
+**Why:** SPEC 19 defines the keys; the schema must not lag the compiler.

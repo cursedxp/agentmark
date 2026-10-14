@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "path": "examples/04-daily-report",
+  "diagnostics": [],
+  "units": [
+    {
+      "name": "daily-report",
+      "kind": "agent",
+      "file": "examples/04-daily-report/agents/daily-report.agent.md",
+      "effects": {
+        "class": "model",
+        "summary": "model, network(crm, email), local(log)",
+        "tools": {
+          "model": true,
+          "network": [
+            "crm",
+            "email"
+          ],
+          "local": [
+            "log"
+          ],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "Every Monday at 08:00",
+          "file": "examples/04-daily-report/agents/daily-report.agent.md",
+          "line": 10,
+          "effects": {
+            "class": "model",
+            "summary": "model, network(crm, email), local(log)",
+            "tools": {
+              "model": true,
+              "network": [
+                "crm",
+                "email"
+              ],
+              "local": [
+                "log"
+              ],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "open",
+      "kind": "rule",
+      "file": "examples/04-daily-report/rules/open.agent.md",
+      "effects": {
+        "class": "pure",
+        "summary": "pure",
+        "tools": {
+          "model": false,
+          "network": [],
+          "local": [],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "open",
+          "file": "examples/04-daily-report/rules/open.agent.md",
+          "line": 4,
+          "effects": {
+            "class": "pure",
+            "summary": "pure",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "overdue",
+      "kind": "rule",
+      "file": "examples/04-daily-report/rules/overdue.agent.md",
+      "effects": {
+        "class": "pure",
+        "summary": "pure",
+        "tools": {
+          "model": false,
+          "network": [],
+          "local": [],
+          "unverified": []
+        }
+      },
+      "blocks": [
+        {
+          "label": "overdue",
+          "file": "examples/04-daily-report/rules/overdue.agent.md",
+          "line": 5,
+          "effects": {
+            "class": "pure",
+            "summary": "pure",
+            "tools": {
+              "model": false,
+              "network": [],
+              "local": [],
+              "unverified": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "inferred_fields": [],
+  "unverified_bindings": [],
+  "rust_blocks": []
+}

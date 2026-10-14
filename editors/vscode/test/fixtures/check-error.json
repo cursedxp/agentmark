@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "ok": false,
+  "path": "proj/effect-violation-in-rule.agent.md",
+  "diagnostics": [
+    {
+      "code": "W003",
+      "severity": "warning",
+      "file": "proj/effect-violation-in-rule.agent.md",
+      "line": 17,
+      "column": 9,
+      "length": 7,
+      "message": "Unused rule: nothing refers to \"is_open\".",
+      "did_you_mean": null,
+      "help": null
+    },
+    {
+      "code": "E205",
+      "severity": "error",
+      "file": "proj/effect-violation-in-rule.agent.md",
+      "line": 19,
+      "column": 9,
+      "length": 20,
+      "message": "A rule must be pure, but \"live_status\" has the effect network.",
+      "did_you_mean": null,
+      "help": "Rules are pure checks: they may only read the record's own fields and call pure functions."
+    }
+  ],
+  "units": [],
+  "inferred_fields": [],
+  "unverified_bindings": [],
+  "rust_blocks": []
+}
