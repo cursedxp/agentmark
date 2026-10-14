@@ -946,6 +946,10 @@
           "named": true
         },
         {
+          "type": "handle_heading",
+          "named": true
+        },
+        {
           "type": "property",
           "named": true
         },
@@ -955,6 +959,10 @@
         },
         {
           "type": "statement_line",
+          "named": true
+        },
+        {
+          "type": "wrapped_heading",
           "named": true
         }
       ]
@@ -2088,6 +2096,22 @@
           },
           {
             "type": "tool_call",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "handle_heading",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "handle_name",
             "named": true
           }
         ]
@@ -5385,6 +5409,22 @@
     }
   },
   {
+    "type": "wrapped_heading",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "!=",
     "named": false
   },
@@ -5627,6 +5667,14 @@
   {
     "type": "guard",
     "named": false
+  },
+  {
+    "type": "handle",
+    "named": false
+  },
+  {
+    "type": "handle_name",
+    "named": true
   },
   {
     "type": "handle_type",

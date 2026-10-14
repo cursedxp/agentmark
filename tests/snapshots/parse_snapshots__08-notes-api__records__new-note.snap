@@ -1,0 +1,55 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/08-notes-api/records/new-note.agent.md
+doc: ~
+imports: []
+decls:
+  - Record:
+      span:
+        line: 2
+        col: 3
+        len: 15
+      doc: What a client sends to create a note.
+      name:
+        name: NewNote
+        span:
+          line: 2
+          col: 11
+          len: 7
+      fields:
+        - span:
+            line: 3
+            col: 3
+            len: 11
+          name:
+            name: title
+            span:
+              line: 3
+              col: 3
+              len: 5
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 3
+              col: 10
+              len: 4
+        - span:
+            line: 4
+            col: 3
+            len: 10
+          name:
+            name: body
+            span:
+              line: 4
+              col: 3
+              len: 4
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 4
+              col: 9
+              len: 4

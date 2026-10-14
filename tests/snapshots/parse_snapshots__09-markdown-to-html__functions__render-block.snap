@@ -1,0 +1,398 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/09-markdown-to-html/functions/render-block.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 43
+    doc: ~
+    kind:
+      File:
+        path: "../functions/inline-format.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 33
+    doc: ~
+    kind:
+      File:
+        path: "../records/block.agent.md"
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 5
+        col: 3
+        len: 22
+      doc: The HTML for one line of Markdown. A blank line gives no HTML at all.
+      name:
+        name: render_block
+        span:
+          line: 5
+          col: 13
+          len: 12
+      params:
+        - name:
+            name: block
+            span:
+              line: 6
+              col: 7
+              len: 5
+          ty:
+            kind:
+              Named: Block
+            span:
+              line: 6
+              col: 14
+              len: 5
+          default: ~
+      out:
+        kind:
+          Named: text
+        span:
+          line: 7
+          col: 8
+          len: 4
+      effect:
+        value: Pure
+        span:
+          line: 8
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 9
+            col: 5
+            len: 13
+          kind:
+            Set:
+              var:
+                name: html
+                span:
+                  line: 9
+                  col: 9
+                  len: 4
+              expr:
+                span:
+                  line: 9
+                  col: 16
+                  len: 2
+                kind:
+                  Str: ""
+        - span:
+            line: 10
+            col: 5
+            len: 12
+          kind:
+            Match:
+              scrutinee:
+                span:
+                  line: 10
+                  col: 11
+                  len: 5
+                kind:
+                  Path:
+                    - name: block
+                      span:
+                        line: 10
+                        col: 11
+                        len: 5
+              arms:
+                - span:
+                    line: 11
+                    col: 7
+                    len: 10
+                  qualifier: ~
+                  pattern:
+                    name: Heading
+                    span:
+                      line: 11
+                      col: 7
+                      len: 7
+                  bind:
+                    name: h
+                    span:
+                      line: 11
+                      col: 15
+                      len: 1
+                  body:
+                    - span:
+                        line: 12
+                        col: 9
+                        len: 64
+                      kind:
+                        Set:
+                          var:
+                            name: html
+                            span:
+                              line: 12
+                              col: 13
+                              len: 4
+                          expr:
+                            span:
+                              line: 12
+                              col: 20
+                              len: 53
+                            kind:
+                              Interp:
+                                - Text: "<h"
+                                - Expr:
+                                    span:
+                                      line: 12
+                                      col: 24
+                                      len: 7
+                                    kind:
+                                      Path:
+                                        - name: h
+                                          span:
+                                            line: 12
+                                            col: 24
+                                            len: 1
+                                        - name: level
+                                          span:
+                                            line: 12
+                                            col: 26
+                                            len: 5
+                                - Text: ">"
+                                - Expr:
+                                    span:
+                                      line: 12
+                                      col: 34
+                                      len: 24
+                                    kind:
+                                      Call:
+                                        func:
+                                          - name: inline_format
+                                            span:
+                                              line: 12
+                                              col: 34
+                                              len: 13
+                                        args:
+                                          - span:
+                                              line: 12
+                                              col: 48
+                                              len: 9
+                                            kind:
+                                              Path:
+                                                - name: h
+                                                  span:
+                                                    line: 12
+                                                    col: 48
+                                                    len: 1
+                                                - name: content
+                                                  span:
+                                                    line: 12
+                                                    col: 50
+                                                    len: 7
+                                - Text: "</h"
+                                - Expr:
+                                    span:
+                                      line: 12
+                                      col: 63
+                                      len: 7
+                                    kind:
+                                      Path:
+                                        - name: h
+                                          span:
+                                            line: 12
+                                            col: 63
+                                            len: 1
+                                        - name: level
+                                          span:
+                                            line: 12
+                                            col: 65
+                                            len: 5
+                                - Text: ">"
+                - span:
+                    line: 13
+                    col: 7
+                    len: 15
+                  qualifier: ~
+                  pattern:
+                    name: ListItem
+                    span:
+                      line: 13
+                      col: 7
+                      len: 8
+                  bind:
+                    name: entry
+                    span:
+                      line: 13
+                      col: 16
+                      len: 5
+                  body:
+                    - span:
+                        line: 14
+                        col: 9
+                        len: 52
+                      kind:
+                        Set:
+                          var:
+                            name: html
+                            span:
+                              line: 14
+                              col: 13
+                              len: 4
+                          expr:
+                            span:
+                              line: 14
+                              col: 20
+                              len: 41
+                            kind:
+                              Interp:
+                                - Text: "<li>"
+                                - Expr:
+                                    span:
+                                      line: 14
+                                      col: 26
+                                      len: 28
+                                    kind:
+                                      Call:
+                                        func:
+                                          - name: inline_format
+                                            span:
+                                              line: 14
+                                              col: 26
+                                              len: 13
+                                        args:
+                                          - span:
+                                              line: 14
+                                              col: 40
+                                              len: 13
+                                            kind:
+                                              Path:
+                                                - name: entry
+                                                  span:
+                                                    line: 14
+                                                    col: 40
+                                                    len: 5
+                                                - name: content
+                                                  span:
+                                                    line: 14
+                                                    col: 46
+                                                    len: 7
+                                - Text: "</li>"
+                - span:
+                    line: 15
+                    col: 7
+                    len: 12
+                  qualifier: ~
+                  pattern:
+                    name: Paragraph
+                    span:
+                      line: 15
+                      col: 7
+                      len: 9
+                  bind:
+                    name: p
+                    span:
+                      line: 15
+                      col: 17
+                      len: 1
+                  body:
+                    - span:
+                        line: 16
+                        col: 9
+                        len: 46
+                      kind:
+                        Set:
+                          var:
+                            name: html
+                            span:
+                              line: 16
+                              col: 13
+                              len: 4
+                          expr:
+                            span:
+                              line: 16
+                              col: 20
+                              len: 35
+                            kind:
+                              Interp:
+                                - Text: "<p>"
+                                - Expr:
+                                    span:
+                                      line: 16
+                                      col: 25
+                                      len: 24
+                                    kind:
+                                      Call:
+                                        func:
+                                          - name: inline_format
+                                            span:
+                                              line: 16
+                                              col: 25
+                                              len: 13
+                                        args:
+                                          - span:
+                                              line: 16
+                                              col: 39
+                                              len: 9
+                                            kind:
+                                              Path:
+                                                - name: p
+                                                  span:
+                                                    line: 16
+                                                    col: 39
+                                                    len: 1
+                                                - name: content
+                                                  span:
+                                                    line: 16
+                                                    col: 41
+                                                    len: 7
+                                - Text: "</p>"
+                - span:
+                    line: 17
+                    col: 7
+                    len: 6
+                  qualifier: ~
+                  pattern:
+                    name: Blank
+                    span:
+                      line: 17
+                      col: 7
+                      len: 5
+                  bind: ~
+                  body:
+                    - span:
+                        line: 18
+                        col: 9
+                        len: 13
+                      kind:
+                        Set:
+                          var:
+                            name: html
+                            span:
+                              line: 18
+                              col: 13
+                              len: 4
+                          expr:
+                            span:
+                              line: 18
+                              col: 20
+                              len: 2
+                            kind:
+                              Str: ""
+              otherwise: ~
+        - span:
+            line: 19
+            col: 5
+            len: 11
+          kind:
+            Return:
+              span:
+                line: 19
+                col: 12
+                len: 4
+              kind:
+                Path:
+                  - name: html
+                    span:
+                      line: 19
+                      col: 12
+                      len: 4

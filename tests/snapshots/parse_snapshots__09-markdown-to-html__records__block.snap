@@ -1,0 +1,133 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/09-markdown-to-html/records/block.agent.md
+doc: ~
+imports: []
+decls:
+  - Enum:
+      span:
+        line: 2
+        col: 3
+        len: 11
+      doc: The kinds of line a Markdown file is made of.
+      name:
+        name: Block
+        span:
+          line: 2
+          col: 9
+          len: 5
+      variants:
+        - span:
+            line: 3
+            col: 3
+            len: 34
+          name:
+            name: Heading
+            span:
+              line: 3
+              col: 3
+              len: 7
+          fields:
+            - span:
+                line: 3
+                col: 12
+                len: 10
+              name:
+                name: level
+                span:
+                  line: 3
+                  col: 12
+                  len: 5
+              ty:
+                kind:
+                  Named: int
+                span:
+                  line: 3
+                  col: 19
+                  len: 3
+            - span:
+                line: 3
+                col: 24
+                len: 13
+              name:
+                name: content
+                span:
+                  line: 3
+                  col: 24
+                  len: 7
+              ty:
+                kind:
+                  Named: text
+                span:
+                  line: 3
+                  col: 33
+                  len: 4
+        - span:
+            line: 4
+            col: 3
+            len: 23
+          name:
+            name: ListItem
+            span:
+              line: 4
+              col: 3
+              len: 8
+          fields:
+            - span:
+                line: 4
+                col: 13
+                len: 13
+              name:
+                name: content
+                span:
+                  line: 4
+                  col: 13
+                  len: 7
+              ty:
+                kind:
+                  Named: text
+                span:
+                  line: 4
+                  col: 22
+                  len: 4
+        - span:
+            line: 5
+            col: 3
+            len: 24
+          name:
+            name: Paragraph
+            span:
+              line: 5
+              col: 3
+              len: 9
+          fields:
+            - span:
+                line: 5
+                col: 14
+                len: 13
+              name:
+                name: content
+                span:
+                  line: 5
+                  col: 14
+                  len: 7
+              ty:
+                kind:
+                  Named: text
+                span:
+                  line: 5
+                  col: 23
+                  len: 4
+        - span:
+            line: 6
+            col: 3
+            len: 5
+          name:
+            name: Blank
+            span:
+              line: 6
+              col: 3
+              len: 5
+          fields: []

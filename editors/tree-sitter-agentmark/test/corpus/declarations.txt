@@ -651,3 +651,83 @@ Tool with a statement verb and a Rust verb
         (fence_open)
         (code_content)
         (fence_close)))))
+
+================================================================================
+Handle block of a binding gives the Rust type
+================================================================================
+
+# Binding: sqlx
+- crate: sqlx
+
+## Handle: sqlx.query.Query
+  ```rust
+  sqlx::query::Query<'static, sqlx::Sqlite>
+  ```
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (code_block
+      (handle_heading
+        (handle_name))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))))
+
+================================================================================
+Binding item whose heading is written over several lines
+================================================================================
+
+# Binding: sqlx
+- crate: sqlx
+
+## execute
+- in: self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool
+- out: handle of sqlx.sqlite.SqliteQueryResult
+  ```rust
+  Ok(self_.execute(executor).await?)
+  ```
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (code_block
+      (wrapped_heading
+        (identifier))
+      (property
+        (property_key)
+        (property_value
+          (parameter
+            (identifier)
+            (type
+              (type_phrase
+                (handle_type))))
+          (parameter
+            (identifier)
+            (type
+              (type_phrase
+                (handle_type))))))
+      (property
+        (property_key)
+        (property_value
+          (type_phrase
+            (handle_type))))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))))

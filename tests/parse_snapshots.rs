@@ -5,17 +5,8 @@ mod support;
 
 use std::path::{Path, PathBuf};
 
-use support::V03_PENDING;
-
 use agentmark::diag::render_all;
 use agentmark::syntax::parser::parse_file;
-
-/// v0.3 examples are authored ahead of the compiler (step 25); until they parse they are skipped here.
-// TODO(steps 20-24): remove when enums/match (20), collection words (21), the built-in library (22),
-// handles (23) and user tools (24) have landed
-fn v03_pending(p: &Path) -> bool {
-    p.file_name().map(|n| V03_PENDING.contains(&n.to_string_lossy().as_ref())).unwrap_or(false)
-}
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
@@ -24,9 +15,6 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
         .collect();
     entries.sort();
     for p in entries {
-        if v03_pending(&p) {
-            continue;
-        }
         if p.is_dir() {
             collect(&p, out);
         } else if p.to_string_lossy().ends_with(".agent.md") {
@@ -50,7 +38,12 @@ fn every_example_is_a_project_folder_with_an_entry_point() {
     }
     // no single-file drafts remain directly under examples/ (step 9)
     assert!(std::fs::read_dir("examples").unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".agent.md")));
-    assert_eq!(example_files().len(), 30);
+    for n in ["06-sales-report", "07-file-renamer", "08-notes-api", "09-markdown-to-html", "10-log-analyzer"] {
+        for f in ["agentmark.toml", "main.agent.md"] {
+            assert!(Path::new("examples").join(n).join(f).is_file(), "examples/{n}/{f} is missing");
+        }
+    }
+    assert_eq!(example_files().len(), 61);
 }
 
 #[test]

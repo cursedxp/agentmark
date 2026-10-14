@@ -1,0 +1,335 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/06-sales-report/functions/region-totals.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 40
+    doc: ~
+    kind:
+      File:
+        path: "../records/region-total.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 32
+    doc: ~
+    kind:
+      File:
+        path: "../records/sale.agent.md"
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 5
+        col: 3
+        len: 23
+      doc: "Adds up the sales of every region, biggest revenue first."
+      name:
+        name: region_totals
+        span:
+          line: 5
+          col: 13
+          len: 13
+      params:
+        - name:
+            name: sales
+            span:
+              line: 6
+              col: 7
+              len: 5
+          ty:
+            kind:
+              List:
+                kind:
+                  Named: Sale
+                span:
+                  line: 6
+                  col: 22
+                  len: 4
+            span:
+              line: 6
+              col: 14
+              len: 12
+          default: ~
+      out:
+        kind:
+          List:
+            kind:
+              Named: RegionTotal
+            span:
+              line: 7
+              col: 16
+              len: 11
+        span:
+          line: 7
+          col: 8
+          len: 19
+      effect:
+        value: Pure
+        span:
+          line: 8
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 9
+            col: 5
+            len: 37
+          kind:
+            Set:
+              var:
+                name: by_region
+                span:
+                  line: 9
+                  col: 9
+                  len: 9
+              expr:
+                span:
+                  line: 9
+                  col: 21
+                  len: 21
+                kind:
+                  Coll:
+                    GroupBy:
+                      source:
+                        span:
+                          line: 9
+                          col: 27
+                          len: 5
+                        kind:
+                          Path:
+                            - name: sales
+                              span:
+                                line: 9
+                                col: 27
+                                len: 5
+                      key:
+                        span:
+                          line: 9
+                          col: 36
+                          len: 6
+                        kind:
+                          Path:
+                            - name: region
+                              span:
+                                line: 9
+                                col: 36
+                                len: 6
+        - span:
+            line: 10
+            col: 5
+            len: 38
+          kind:
+            Set:
+              var:
+                name: totals
+                span:
+                  line: 10
+                  col: 9
+                  len: 6
+              expr:
+                span:
+                  line: 10
+                  col: 18
+                  len: 25
+                kind:
+                  Coll:
+                    EmptyList:
+                      kind:
+                        Named: RegionTotal
+                      span:
+                        line: 10
+                        col: 32
+                        len: 11
+        - span:
+            line: 11
+            col: 5
+            len: 35
+          kind:
+            Coll:
+              ForEachEntry:
+                key:
+                  name: region
+                  span:
+                    line: 11
+                    col: 14
+                    len: 6
+                value:
+                  name: rows
+                  span:
+                    line: 11
+                    col: 22
+                    len: 4
+                source:
+                  span:
+                    line: 11
+                    col: 30
+                    len: 9
+                  kind:
+                    Path:
+                      - name: by_region
+                        span:
+                          line: 11
+                          col: 30
+                          len: 9
+                body:
+                  - span:
+                      line: 12
+                      col: 7
+                      len: 102
+                    kind:
+                      Append:
+                        value:
+                          span:
+                            line: 12
+                            col: 14
+                            len: 85
+                          kind:
+                            Variant:
+                              qualifier: ~
+                              name:
+                                name: RegionTotal
+                                span:
+                                  line: 12
+                                  col: 14
+                                  len: 11
+                              fields:
+                                - name:
+                                    name: region
+                                    span:
+                                      line: 12
+                                      col: 28
+                                      len: 6
+                                  value:
+                                    span:
+                                      line: 12
+                                      col: 36
+                                      len: 6
+                                    kind:
+                                      Path:
+                                        - name: region
+                                          span:
+                                            line: 12
+                                            col: 36
+                                            len: 6
+                                - name:
+                                    name: orders
+                                    span:
+                                      line: 12
+                                      col: 44
+                                      len: 6
+                                  value:
+                                    span:
+                                      line: 12
+                                      col: 52
+                                      len: 13
+                                    kind:
+                                      CountOf:
+                                        rule: ~
+                                        noun: ~
+                                        source:
+                                          span:
+                                            line: 12
+                                            col: 61
+                                            len: 4
+                                          kind:
+                                            Path:
+                                              - name: rows
+                                                span:
+                                                  line: 12
+                                                  col: 61
+                                                  len: 4
+                                - name:
+                                    name: revenue
+                                    span:
+                                      line: 12
+                                      col: 67
+                                      len: 7
+                                  value:
+                                    span:
+                                      line: 12
+                                      col: 76
+                                      len: 21
+                                    kind:
+                                      Coll:
+                                        Sum:
+                                          expr:
+                                            span:
+                                              line: 12
+                                              col: 83
+                                              len: 6
+                                            kind:
+                                              Path:
+                                                - name: amount
+                                                  span:
+                                                    line: 12
+                                                    col: 83
+                                                    len: 6
+                                          source:
+                                            span:
+                                              line: 12
+                                              col: 93
+                                              len: 4
+                                            kind:
+                                              Path:
+                                                - name: rows
+                                                  span:
+                                                    line: 12
+                                                    col: 93
+                                                    len: 4
+                        list:
+                          span:
+                            line: 12
+                            col: 103
+                            len: 6
+                          kind:
+                            Path:
+                              - name: totals
+                                span:
+                                  line: 12
+                                  col: 103
+                                  len: 6
+        - span:
+            line: 13
+            col: 5
+            len: 40
+          kind:
+            Return:
+              span:
+                line: 13
+                col: 12
+                len: 33
+              kind:
+                Coll:
+                  Sort:
+                    source:
+                      span:
+                        line: 13
+                        col: 17
+                        len: 6
+                      kind:
+                        Path:
+                          - name: totals
+                            span:
+                              line: 13
+                              col: 17
+                              len: 6
+                    key:
+                      span:
+                        line: 13
+                        col: 27
+                        len: 7
+                      kind:
+                        Path:
+                          - name: revenue
+                            span:
+                              line: 13
+                              col: 27
+                              len: 7
+                    descending: true

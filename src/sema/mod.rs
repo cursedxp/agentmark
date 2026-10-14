@@ -370,6 +370,8 @@ pub struct Checked {
     /// segment indices whose value must be unwrapped (`found.id` after `guard: found is not
     /// empty` -> `[0]`). Codegen unwraps exactly there.
     pub unwraps: HashMap<NodeKey, Vec<usize>>,
+    /// For every function, which of its parameters are handles it only borrows: the caller keeps them (Q414).
+    pub fn_lends: HashMap<String, Vec<bool>>,
     /// Arguments of binding calls (key = the argument's span) that are `text` where the bound
     /// function takes `bytes`: the IR wraps them in `TextToBytes` (UTF-8, Q151).
     pub text_to_bytes: std::collections::HashSet<NodeKey>,
@@ -472,6 +474,7 @@ pub(crate) struct Checker<'a> {
     pub resolutions: HashMap<NodeKey, Resolution>,
     pub tool_calls: HashMap<NodeKey, ToolResolution>,
     pub unwraps: HashMap<NodeKey, Vec<usize>>,
+    pub fn_lends: HashMap<String, Vec<bool>>,
     pub text_to_bytes: std::collections::HashSet<NodeKey>,
     pub inferred_fields: Vec<InferredField>,
     pub blocks: Vec<BlockInfo>,
@@ -512,6 +515,7 @@ impl<'a> Checker<'a> {
             resolutions: HashMap::new(),
             tool_calls: HashMap::new(),
             unwraps: HashMap::new(),
+            fn_lends: HashMap::new(),
             text_to_bytes: std::collections::HashSet::new(),
             inferred_fields: Vec::new(),
             blocks: Vec::new(),
@@ -625,6 +629,7 @@ impl<'a> Checker<'a> {
             resolutions: self.resolutions,
             tool_calls: self.tool_calls,
             unwraps: self.unwraps,
+            fn_lends: self.fn_lends,
             text_to_bytes: self.text_to_bytes,
             declarations: self
                 .reg

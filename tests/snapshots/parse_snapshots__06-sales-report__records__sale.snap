@@ -1,0 +1,72 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/06-sales-report/records/sale.agent.md
+doc: ~
+imports: []
+decls:
+  - Record:
+      span:
+        line: 2
+        col: 3
+        len: 12
+      doc: "One line of the sales file: what was sold, where, and for how much."
+      name:
+        name: Sale
+        span:
+          line: 2
+          col: 11
+          len: 4
+      fields:
+        - span:
+            line: 3
+            col: 3
+            len: 12
+          name:
+            name: region
+            span:
+              line: 3
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 3
+              col: 11
+              len: 4
+        - span:
+            line: 4
+            col: 3
+            len: 13
+          name:
+            name: product
+            span:
+              line: 4
+              col: 3
+              len: 7
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 4
+              col: 12
+              len: 4
+        - span:
+            line: 5
+            col: 3
+            len: 13
+          name:
+            name: amount
+            span:
+              line: 5
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: money
+            span:
+              line: 5
+              col: 11
+              len: 5

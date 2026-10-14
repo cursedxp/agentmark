@@ -5,19 +5,10 @@ mod support;
 
 use std::path::{Path, PathBuf};
 
-use support::V03_PENDING;
-
 use agentmark::diag::render_all;
 use agentmark::fmt::{format_source, is_canonical};
 use agentmark::syntax::lexer::{lex, LineKind};
 use agentmark::syntax::parser::parse_file;
-
-/// v0.3 examples are authored ahead of the compiler (step 25); until they parse they are skipped here.
-// TODO(steps 20-24): remove when enums/match (20), collection words (21), the built-in library (22),
-// handles (23) and user tools (24) have landed
-fn v03_pending(p: &Path) -> bool {
-    p.file_name().map(|n| V03_PENDING.contains(&n.to_string_lossy().as_ref())).unwrap_or(false)
-}
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
@@ -26,9 +17,6 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
         .collect();
     entries.sort();
     for p in entries {
-        if v03_pending(&p) {
-            continue;
-        }
         if p.is_dir() {
             collect(&p, out);
         } else if p.to_string_lossy().ends_with(".agent.md") {
@@ -140,6 +128,19 @@ fn every_example_formats_idempotently_and_keeps_its_ast() {
     for path in example_files() {
         let src = std::fs::read_to_string(&path).unwrap();
         check_properties(&src);
+    }
+}
+
+/// The examples are what people copy: every file outside `bindings/` (generated, Q111) is already
+/// in the canonical style, which is what `agentmark fmt --check` asks.
+#[test]
+fn every_example_file_outside_bindings_is_canonical() {
+    for path in example_files() {
+        if path.components().any(|c| c.as_os_str() == "bindings") {
+            continue;
+        }
+        let src = std::fs::read_to_string(&path).unwrap();
+        assert!(is_canonical(&src, "t.agent.md").unwrap(), "{} is not canonical: run `agentmark fmt`", path.display());
     }
 }
 

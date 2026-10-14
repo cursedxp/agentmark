@@ -300,12 +300,18 @@ impl<'a> Builder<'a> {
                 name: p.name.name.clone(),
                 ty: self.ty(&p.ty),
                 default: p.default.as_ref().map(|d| self.expr(d)),
+                lent: false,
             })
             .collect()
     }
 
     fn function(&mut self, f: &ast::Function) -> ir::Fn {
-        let params = self.params(&f.params);
+        let mut params = self.params(&f.params);
+        if let Some(l) = self.checked.fn_lends.get(&f.name.name) {
+            for (p, lent) in params.iter_mut().zip(l) {
+                p.lent = *lent;
+            }
+        }
         self.env = vec![HashMap::new()];
         for p in &params {
             self.define(&p.name, p.ty.clone());

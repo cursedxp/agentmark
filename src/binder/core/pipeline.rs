@@ -147,14 +147,12 @@ pub async fn run_tiers(
     out
 }
 
-/// SPEC 18.3: no line over 120 characters; a heading cannot be wrapped (Q110).
-const MAX_HEADING: usize = 120;
-
-/// The reason an item cannot be written as a binding heading, if its heading is too long.
+/// SPEC 18.3: no line over 120 characters. A heading that does not fit is written over several lines (Q416);
+/// an item whose signature does not fit even then is listed as not bound (Q110).
 fn heading_too_long(item: &Item, sig: &Sig) -> Option<String> {
-    let h = sig.heading(item.heading.as_deref().unwrap_or(&item.name));
-    let n = "## ".len() + h.chars().count();
-    (n > MAX_HEADING).then(|| format!("its signature is {n} characters, over the 120 a line may have (SPEC 18.3)"))
+    sig.heading_lines(item.heading.as_deref().unwrap_or(&item.name))
+        .is_none()
+        .then(|| format!("its signature does not fit in {} characters even over several lines (SPEC 18.3)", super::model::MAX_LINE))
 }
 
 fn push_bound(out: &mut BoundCrate, item: &Item, sig: &Sig, body: String, tier: Tier) {
@@ -254,9 +252,9 @@ async fn assist(
         .complete(&ModelRequest::new(prompt))
         .await
         .map_err(|e| match e {
-            // a canned model without an answer: say so, do not echo the prompt it was asked
+            // a canned model without an answer: say so, do not echo the prompt it was asked (Q415)
             agentmark_rt::RtError::NoMockResponse { .. } => {
-                format!("assisted tier: mock model has no response for {}", item.name)
+                format!("not bound yet: no model answer when this file was generated; run `agentmark bind {} --force` with a model", ci.name)
             }
             e => format!("assisted tier: model gave no body ({})", one_line(&e.to_string())),
         })?;

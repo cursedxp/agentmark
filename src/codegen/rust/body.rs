@@ -782,7 +782,17 @@ impl<'a> Body<'a> {
 
     fn fn_call(&self, name: &str, args: &[Expr]) -> String {
         let f = self.p.functions.iter().find(|f| f.name == name);
-        let a = self.args(args, f.map(|f| f.params.as_slice()));
+        // a function is lent its handles (Q414)
+        let a = args
+            .iter()
+            .enumerate()
+            .map(|(i, a)| match f.and_then(|f| f.params.get(i)) {
+                Some(p) if p.lent => format!("&{}", paren(self.ex(a), P_ATOM)),
+                Some(p) => self.conv(a, &p.ty),
+                None => self.val(a),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         let home = self.n.fns.get(name);
         let path = match home {
             Some(h) if h.module == self.module => h.ident.clone(),

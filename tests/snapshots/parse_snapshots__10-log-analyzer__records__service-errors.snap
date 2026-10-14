@@ -1,0 +1,55 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/10-log-analyzer/records/service-errors.agent.md
+doc: ~
+imports: []
+decls:
+  - Record:
+      span:
+        line: 2
+        col: 3
+        len: 21
+      doc: How many errors one service logged.
+      name:
+        name: ServiceErrors
+        span:
+          line: 2
+          col: 11
+          len: 13
+      fields:
+        - span:
+            line: 3
+            col: 3
+            len: 13
+          name:
+            name: service
+            span:
+              line: 3
+              col: 3
+              len: 7
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 3
+              col: 12
+              len: 4
+        - span:
+            line: 4
+            col: 3
+            len: 11
+          name:
+            name: errors
+            span:
+              line: 4
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: int
+            span:
+              line: 4
+              col: 11
+              len: 3

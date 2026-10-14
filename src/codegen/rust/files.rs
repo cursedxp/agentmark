@@ -39,12 +39,12 @@ fn use_line(path: &str, items: &[&str]) -> String {
     }
 }
 
-/// `body` with the text of its string literals blanked out: a word inside a string (`"log.txt"`) is
-/// not a use of the item of that name.
+/// `body` with the text of its string literals and `//` comments blanked out: a word inside a string
+/// (`"log.txt"`) or a comment (`// commands/analyze-log.agent.md:9`) is not a use of the item of that name.
 fn without_strings(body: &str) -> String {
     let mut out = String::with_capacity(body.len());
     let mut in_str = false;
-    let mut chars = body.chars();
+    let mut chars = body.chars().peekable();
     while let Some(c) = chars.next() {
         match (in_str, c) {
             (true, '\\') => {
@@ -59,6 +59,14 @@ fn without_strings(body: &str) -> String {
             (false, '"') => {
                 in_str = true;
                 out.push('"');
+            }
+            (false, '/') if chars.peek() == Some(&'/') => {
+                while let Some(&n) = chars.peek() {
+                    if n == '\n' {
+                        break;
+                    }
+                    chars.next();
+                }
             }
             (false, _) => out.push(c),
         }
@@ -89,7 +97,8 @@ fn imports_with(body: &str, c: &Ctxt, records: bool) -> String {
     if !ch.is_empty() {
         out.push_str(&use_line("chrono", &ch));
     }
-    if body.contains("json!(") {
+    let code = without_strings(body);
+    if code.match_indices("json!(").any(|(i, _)| !code[..i].ends_with("::")) {
         out.push_str("use serde_json::json;\n");
     }
     let recs: Vec<&str> = c.n.record_file_types().filter(|r| has_word(body, r)).collect();
@@ -154,7 +163,8 @@ fn param_list(params: &[Param], body: &str, c: &Ctxt, assigned: &[bool]) -> Stri
             let id = c.n.local(&p.name);
             let used = has_word(body, &id);
             let mutq = if *assigned { "mut " } else { "" };
-            format!("{mutq}{}{id}: {}", if used { "" } else { "_" }, rust_type(&p.ty, c.n))
+            let lent = if p.lent { "&" } else { "" };
+            format!("{mutq}{}{id}: {lent}{}", if used { "" } else { "_" }, rust_type(&p.ty, c.n))
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -328,7 +338,7 @@ pub fn service_rs(c: &Ctxt, idx: usize, s: &Service) -> String {
         b.function_body(&r.body);
         let src = b.src_comment(&r.source);
         let text = b.finish();
-        let takes_body = text.contains("body");
+        let takes_body = has_word(&without_strings(&text), "body");
         let state_param = match (&s.state, uses_state) {
             (Some(rec), true) => format!(", state: &Mutex<{}>", c.n.record(rec)),
             (Some(rec), false) => format!(", _state: &Mutex<{}>", c.n.record(rec)),

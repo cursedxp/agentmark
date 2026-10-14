@@ -1,0 +1,1548 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/08-notes-api/services/notes.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 43
+    doc: ~
+    kind:
+      File:
+        path: "../functions/ensure-schema.agent.md"
+        alias: ~
+  - span:
+      line: 3
+      col: 3
+      len: 36
+    doc: ~
+    kind:
+      File:
+        path: "../records/new-note.agent.md"
+        alias: ~
+  - span:
+      line: 4
+      col: 3
+      len: 32
+    doc: ~
+    kind:
+      File:
+        path: "../records/note.agent.md"
+        alias: ~
+  - span:
+      line: 5
+      col: 3
+      len: 18
+    doc: ~
+    kind:
+      Crate:
+        name:
+          name: sqlx
+          span:
+            line: 5
+            col: 17
+            len: 4
+        alias: ~
+decls:
+  - Service:
+      span:
+        line: 11
+        col: 3
+        len: 14
+      doc: "A small notes API: create, list, read and delete notes. Everything is stored in SQLite.\nEvery route opens the database, makes sure the table exists, and then runs its query.\nRows are not read column by column: SQLite's json_object turns a row into JSON text and `json.parse` reads it.\n(Typed row access is not exercised in v0.3.)"
+      name:
+        name: notes
+        span:
+          line: 11
+          col: 12
+          len: 5
+      listen:
+        value: "0.0.0.0:8081"
+        span:
+          line: 12
+          col: 11
+          len: 12
+      state: ~
+      routes:
+        - span:
+            line: 14
+            col: 4
+            len: 11
+          doc: ~
+          method: POST
+          path: /notes
+          path_params: []
+          body:
+            - span:
+                line: 15
+                col: 3
+                len: 29
+              kind:
+                ReadBody:
+                  ty:
+                    kind:
+                      Named: NewNote
+                    span:
+                      line: 15
+                      col: 16
+                      len: 7
+                  into:
+                    name: draft
+                    span:
+                      line: 15
+                      col: 27
+                      len: 5
+            - span:
+                line: 16
+                col: 3
+                len: 48
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 16
+                      col: 10
+                      len: 24
+                    kind:
+                      IsNotEmpty:
+                        span:
+                          line: 16
+                          col: 10
+                          len: 11
+                        kind:
+                          Path:
+                            - name: draft
+                              span:
+                                line: 16
+                                col: 10
+                                len: 5
+                            - name: title
+                              span:
+                                line: 16
+                                col: 16
+                                len: 5
+                  else_:
+                    span:
+                      line: 16
+                      col: 40
+                      len: 11
+                    kind:
+                      Respond:
+                        status: 400
+                        body: ~
+            - span:
+                line: 17
+                col: 3
+                len: 49
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 17
+                      col: 7
+                      len: 45
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: sqlx
+                          span:
+                            line: 17
+                            col: 7
+                            len: 4
+                        verb:
+                          name: sqlite_pool_connect
+                          span:
+                            line: 17
+                            col: 12
+                            len: 19
+                        target:
+                          - Word:
+                              name: database_url
+                              span:
+                                line: 17
+                                col: 32
+                                len: 12
+                        payload: ~
+                        into:
+                          name: pool
+                          span:
+                            line: 17
+                            col: 48
+                            len: 4
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 19
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 20
+                col: 3
+                len: 23
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 20
+                      col: 7
+                      len: 19
+                    kind:
+                      Do:
+                        name:
+                          name: ensure_schema
+                          span:
+                            line: 20
+                            col: 7
+                            len: 13
+                        args:
+                          - span:
+                              line: 20
+                              col: 21
+                              len: 4
+                            kind:
+                              Path:
+                                - name: pool
+                                  span:
+                                    line: 20
+                                    col: 21
+                                    len: 4
+                        into: ~
+                        bare: true
+                  otherwise:
+                    - span:
+                        line: 22
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 23
+                col: 3
+                len: 71
+              kind:
+                ToolCall:
+                  tool:
+                    name: sqlx
+                    span:
+                      line: 23
+                      col: 3
+                      len: 4
+                  verb:
+                    name: query
+                    span:
+                      line: 23
+                      col: 8
+                      len: 5
+                  target:
+                    - Value:
+                        span:
+                          line: 23
+                          col: 14
+                          len: 47
+                        kind:
+                          Str: "insert into notes (title, body) values (?, ?)"
+                  payload: ~
+                  into:
+                    name: statement
+                    span:
+                      line: 23
+                      col: 65
+                      len: 9
+                  via_do: false
+            - span:
+                line: 24
+                col: 3
+                len: 40
+              kind:
+                ToolCall:
+                  tool:
+                    name: statement
+                    span:
+                      line: 24
+                      col: 3
+                      len: 9
+                  verb:
+                    name: bind
+                    span:
+                      line: 24
+                      col: 13
+                      len: 4
+                  target:
+                    - Value:
+                        span:
+                          line: 24
+                          col: 18
+                          len: 11
+                        kind:
+                          Path:
+                            - name: draft
+                              span:
+                                line: 24
+                                col: 18
+                                len: 5
+                            - name: title
+                              span:
+                                line: 24
+                                col: 24
+                                len: 5
+                  payload: ~
+                  into:
+                    name: with_title
+                    span:
+                      line: 24
+                      col: 33
+                      len: 10
+                  via_do: false
+            - span:
+                line: 25
+                col: 3
+                len: 36
+              kind:
+                ToolCall:
+                  tool:
+                    name: with_title
+                    span:
+                      line: 25
+                      col: 3
+                      len: 10
+                  verb:
+                    name: bind
+                    span:
+                      line: 25
+                      col: 14
+                      len: 4
+                  target:
+                    - Value:
+                        span:
+                          line: 25
+                          col: 19
+                          len: 10
+                        kind:
+                          Path:
+                            - name: draft
+                              span:
+                                line: 25
+                                col: 19
+                                len: 5
+                            - name: body
+                              span:
+                                line: 25
+                                col: 25
+                                len: 4
+                  payload: ~
+                  into:
+                    name: insert
+                    span:
+                      line: 25
+                      col: 33
+                      len: 6
+                  via_do: false
+            - span:
+                line: 26
+                col: 3
+                len: 34
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 26
+                      col: 7
+                      len: 30
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: insert
+                          span:
+                            line: 26
+                            col: 7
+                            len: 6
+                        verb:
+                          name: execute
+                          span:
+                            line: 26
+                            col: 14
+                            len: 7
+                        target:
+                          - Word:
+                              name: pool
+                              span:
+                                line: 26
+                                col: 22
+                                len: 4
+                        payload: ~
+                        into:
+                          name: outcome
+                          span:
+                            line: 26
+                            col: 30
+                            len: 7
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 28
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 500
+                          body: ~
+            - span:
+                line: 29
+                col: 3
+                len: 31
+              kind:
+                ToolCall:
+                  tool:
+                    name: outcome
+                    span:
+                      line: 29
+                      col: 3
+                      len: 7
+                  verb:
+                    name: last_insert_rowid
+                    span:
+                      line: 29
+                      col: 11
+                      len: 17
+                  target: []
+                  payload: ~
+                  into:
+                    name: id
+                    span:
+                      line: 29
+                      col: 32
+                      len: 2
+                  via_do: false
+            - span:
+                line: 30
+                col: 3
+                len: 65
+              kind:
+                Respond:
+                  status: 201
+                  body:
+                    span:
+                      line: 30
+                      col: 15
+                      len: 53
+                    kind:
+                      Variant:
+                        qualifier: ~
+                        name:
+                          name: Note
+                          span:
+                            line: 30
+                            col: 15
+                            len: 4
+                        fields:
+                          - name:
+                              name: id
+                              span:
+                                line: 30
+                                col: 22
+                                len: 2
+                            value:
+                              span:
+                                line: 30
+                                col: 26
+                                len: 2
+                              kind:
+                                Path:
+                                  - name: id
+                                    span:
+                                      line: 30
+                                      col: 26
+                                      len: 2
+                          - name:
+                              name: title
+                              span:
+                                line: 30
+                                col: 30
+                                len: 5
+                            value:
+                              span:
+                                line: 30
+                                col: 37
+                                len: 11
+                              kind:
+                                Path:
+                                  - name: draft
+                                    span:
+                                      line: 30
+                                      col: 37
+                                      len: 5
+                                  - name: title
+                                    span:
+                                      line: 30
+                                      col: 43
+                                      len: 5
+                          - name:
+                              name: body
+                              span:
+                                line: 30
+                                col: 50
+                                len: 4
+                            value:
+                              span:
+                                line: 30
+                                col: 56
+                                len: 10
+                              kind:
+                                Path:
+                                  - name: draft
+                                    span:
+                                      line: 30
+                                      col: 56
+                                      len: 5
+                                  - name: body
+                                    span:
+                                      line: 30
+                                      col: 62
+                                      len: 4
+        - span:
+            line: 32
+            col: 4
+            len: 10
+          doc: ~
+          method: GET
+          path: /notes
+          path_params: []
+          body:
+            - span:
+                line: 33
+                col: 3
+                len: 49
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 33
+                      col: 7
+                      len: 45
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: sqlx
+                          span:
+                            line: 33
+                            col: 7
+                            len: 4
+                        verb:
+                          name: sqlite_pool_connect
+                          span:
+                            line: 33
+                            col: 12
+                            len: 19
+                        target:
+                          - Word:
+                              name: database_url
+                              span:
+                                line: 33
+                                col: 32
+                                len: 12
+                        payload: ~
+                        into:
+                          name: pool
+                          span:
+                            line: 33
+                            col: 48
+                            len: 4
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 35
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 36
+                col: 3
+                len: 23
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 36
+                      col: 7
+                      len: 19
+                    kind:
+                      Do:
+                        name:
+                          name: ensure_schema
+                          span:
+                            line: 36
+                            col: 7
+                            len: 13
+                        args:
+                          - span:
+                              line: 36
+                              col: 21
+                              len: 4
+                            kind:
+                              Path:
+                                - name: pool
+                                  span:
+                                    line: 36
+                                    col: 21
+                                    len: 4
+                        into: ~
+                        bare: true
+                  otherwise:
+                    - span:
+                        line: 38
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 39
+                col: 3
+                len: 106
+              kind:
+                ToolCall:
+                  tool:
+                    name: sqlx
+                    span:
+                      line: 39
+                      col: 3
+                      len: 4
+                  verb:
+                    name: query_scalar
+                    span:
+                      line: 39
+                      col: 8
+                      len: 12
+                  target:
+                    - Value:
+                        span:
+                          line: 39
+                          col: 21
+                          len: 77
+                        kind:
+                          Interp:
+                            - Text: select json_group_array(
+                            - Expr:
+                                span:
+                                  line: 39
+                                  col: 47
+                                  len: 9
+                                kind:
+                                  Path:
+                                    - name: note_json
+                                      span:
+                                        line: 39
+                                        col: 47
+                                        len: 9
+                            - Text: ) from (select * from notes order by id)
+                  payload: ~
+                  into:
+                    name: listing
+                    span:
+                      line: 39
+                      col: 102
+                      len: 7
+                  via_do: false
+            - span:
+                line: 40
+                col: 3
+                len: 37
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 40
+                      col: 7
+                      len: 33
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: listing
+                          span:
+                            line: 40
+                            col: 7
+                            len: 7
+                        verb:
+                          name: fetch_one
+                          span:
+                            line: 40
+                            col: 15
+                            len: 9
+                        target:
+                          - Word:
+                              name: pool
+                              span:
+                                line: 40
+                                col: 25
+                                len: 4
+                        payload: ~
+                        into:
+                          name: encoded
+                          span:
+                            line: 40
+                            col: 33
+                            len: 7
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 42
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 500
+                          body: ~
+            - span:
+                line: 43
+                col: 3
+                len: 48
+              kind:
+                Set:
+                  var:
+                    name: parsed
+                    span:
+                      line: 43
+                      col: 7
+                      len: 6
+                  expr:
+                    span:
+                      line: 43
+                      col: 16
+                      len: 35
+                    kind:
+                      Decode:
+                        call:
+                          span:
+                            line: 43
+                            col: 16
+                            len: 19
+                          kind:
+                            Call:
+                              func:
+                                - name: json
+                                  span:
+                                    line: 43
+                                    col: 16
+                                    len: 4
+                                - name: parse
+                                  span:
+                                    line: 43
+                                    col: 21
+                                    len: 5
+                              args:
+                                - span:
+                                    line: 43
+                                    col: 27
+                                    len: 7
+                                  kind:
+                                    Path:
+                                      - name: encoded
+                                        span:
+                                          line: 43
+                                          col: 27
+                                          len: 7
+                        ty:
+                          kind:
+                            List:
+                              kind:
+                                Named: Note
+                              span:
+                                line: 43
+                                col: 47
+                                len: 4
+                          span:
+                            line: 43
+                            col: 39
+                            len: 12
+            - span:
+                line: 44
+                col: 3
+                len: 13
+              kind:
+                Match:
+                  scrutinee:
+                    span:
+                      line: 44
+                      col: 9
+                      len: 6
+                    kind:
+                      Path:
+                        - name: parsed
+                          span:
+                            line: 44
+                            col: 9
+                            len: 6
+                  arms:
+                    - span:
+                        line: 45
+                        col: 5
+                        len: 9
+                      qualifier: ~
+                      pattern:
+                        name: ok
+                        span:
+                          line: 45
+                          col: 5
+                          len: 2
+                      bind:
+                        name: notes
+                        span:
+                          line: 45
+                          col: 8
+                          len: 5
+                      body:
+                        - span:
+                            line: 46
+                            col: 7
+                            len: 17
+                          kind:
+                            Respond:
+                              status: 200
+                              body:
+                                span:
+                                  line: 46
+                                  col: 19
+                                  len: 5
+                                kind:
+                                  Path:
+                                    - name: notes
+                                      span:
+                                        line: 46
+                                        col: 19
+                                        len: 5
+                    - span:
+                        line: 47
+                        col: 5
+                        len: 6
+                      qualifier: ~
+                      pattern:
+                        name: error
+                        span:
+                          line: 47
+                          col: 5
+                          len: 5
+                      bind: ~
+                      body:
+                        - span:
+                            line: 48
+                            col: 7
+                            len: 11
+                          kind:
+                            Respond:
+                              status: 500
+                              body: ~
+                  otherwise: ~
+        - span:
+            line: 50
+            col: 4
+            len: 15
+          doc: ~
+          method: GET
+          path: "/notes/{id}"
+          path_params:
+            - id
+          body:
+            - span:
+                line: 51
+                col: 3
+                len: 49
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 51
+                      col: 7
+                      len: 45
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: sqlx
+                          span:
+                            line: 51
+                            col: 7
+                            len: 4
+                        verb:
+                          name: sqlite_pool_connect
+                          span:
+                            line: 51
+                            col: 12
+                            len: 19
+                        target:
+                          - Word:
+                              name: database_url
+                              span:
+                                line: 51
+                                col: 32
+                                len: 12
+                        payload: ~
+                        into:
+                          name: pool
+                          span:
+                            line: 51
+                            col: 48
+                            len: 4
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 53
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 54
+                col: 3
+                len: 23
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 54
+                      col: 7
+                      len: 19
+                    kind:
+                      Do:
+                        name:
+                          name: ensure_schema
+                          span:
+                            line: 54
+                            col: 7
+                            len: 13
+                        args:
+                          - span:
+                              line: 54
+                              col: 21
+                              len: 4
+                            kind:
+                              Path:
+                                - name: pool
+                                  span:
+                                    line: 54
+                                    col: 21
+                                    len: 4
+                        into: ~
+                        bare: true
+                  otherwise:
+                    - span:
+                        line: 56
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 57
+                col: 3
+                len: 75
+              kind:
+                ToolCall:
+                  tool:
+                    name: sqlx
+                    span:
+                      line: 57
+                      col: 3
+                      len: 4
+                  verb:
+                    name: query_scalar
+                    span:
+                      line: 57
+                      col: 8
+                      len: 12
+                  target:
+                    - Value:
+                        span:
+                          line: 57
+                          col: 21
+                          len: 44
+                        kind:
+                          Interp:
+                            - Text: "select "
+                            - Expr:
+                                span:
+                                  line: 57
+                                  col: 30
+                                  len: 9
+                                kind:
+                                  Path:
+                                    - name: note_json
+                                      span:
+                                        line: 57
+                                        col: 30
+                                        len: 9
+                            - Text: " from notes where id = ?"
+                  payload: ~
+                  into:
+                    name: statement
+                    span:
+                      line: 57
+                      col: 69
+                      len: 9
+                  via_do: false
+            - span:
+                line: 58
+                col: 3
+                len: 27
+              kind:
+                ToolCall:
+                  tool:
+                    name: statement
+                    span:
+                      line: 58
+                      col: 3
+                      len: 9
+                  verb:
+                    name: bind
+                    span:
+                      line: 58
+                      col: 13
+                      len: 4
+                  target:
+                    - Word:
+                        name: id
+                        span:
+                          line: 58
+                          col: 18
+                          len: 2
+                  payload: ~
+                  into:
+                    name: lookup
+                    span:
+                      line: 58
+                      col: 24
+                      len: 6
+                  via_do: false
+            - span:
+                line: 59
+                col: 3
+                len: 39
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 59
+                      col: 7
+                      len: 35
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: lookup
+                          span:
+                            line: 59
+                            col: 7
+                            len: 6
+                        verb:
+                          name: fetch_optional
+                          span:
+                            line: 59
+                            col: 14
+                            len: 14
+                        target:
+                          - Word:
+                              name: pool
+                              span:
+                                line: 59
+                                col: 29
+                                len: 4
+                        payload: ~
+                        into:
+                          name: found
+                          span:
+                            line: 59
+                            col: 37
+                            len: 5
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 61
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 500
+                          body: ~
+            - span:
+                line: 62
+                col: 3
+                len: 42
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 62
+                      col: 10
+                      len: 18
+                    kind:
+                      IsNotEmpty:
+                        span:
+                          line: 62
+                          col: 10
+                          len: 5
+                        kind:
+                          Path:
+                            - name: found
+                              span:
+                                line: 62
+                                col: 10
+                                len: 5
+                  else_:
+                    span:
+                      line: 62
+                      col: 34
+                      len: 11
+                    kind:
+                      Respond:
+                        status: 404
+                        body: ~
+            - span:
+                line: 63
+                col: 3
+                len: 38
+              kind:
+                Set:
+                  var:
+                    name: parsed
+                    span:
+                      line: 63
+                      col: 7
+                      len: 6
+                  expr:
+                    span:
+                      line: 63
+                      col: 16
+                      len: 25
+                    kind:
+                      Decode:
+                        call:
+                          span:
+                            line: 63
+                            col: 16
+                            len: 17
+                          kind:
+                            Call:
+                              func:
+                                - name: json
+                                  span:
+                                    line: 63
+                                    col: 16
+                                    len: 4
+                                - name: parse
+                                  span:
+                                    line: 63
+                                    col: 21
+                                    len: 5
+                              args:
+                                - span:
+                                    line: 63
+                                    col: 27
+                                    len: 5
+                                  kind:
+                                    Path:
+                                      - name: found
+                                        span:
+                                          line: 63
+                                          col: 27
+                                          len: 5
+                        ty:
+                          kind:
+                            Named: Note
+                          span:
+                            line: 63
+                            col: 37
+                            len: 4
+            - span:
+                line: 64
+                col: 3
+                len: 13
+              kind:
+                Match:
+                  scrutinee:
+                    span:
+                      line: 64
+                      col: 9
+                      len: 6
+                    kind:
+                      Path:
+                        - name: parsed
+                          span:
+                            line: 64
+                            col: 9
+                            len: 6
+                  arms:
+                    - span:
+                        line: 65
+                        col: 5
+                        len: 8
+                      qualifier: ~
+                      pattern:
+                        name: ok
+                        span:
+                          line: 65
+                          col: 5
+                          len: 2
+                      bind:
+                        name: note
+                        span:
+                          line: 65
+                          col: 8
+                          len: 4
+                      body:
+                        - span:
+                            line: 66
+                            col: 7
+                            len: 16
+                          kind:
+                            Respond:
+                              status: 200
+                              body:
+                                span:
+                                  line: 66
+                                  col: 19
+                                  len: 4
+                                kind:
+                                  Path:
+                                    - name: note
+                                      span:
+                                        line: 66
+                                        col: 19
+                                        len: 4
+                    - span:
+                        line: 67
+                        col: 5
+                        len: 6
+                      qualifier: ~
+                      pattern:
+                        name: error
+                        span:
+                          line: 67
+                          col: 5
+                          len: 5
+                      bind: ~
+                      body:
+                        - span:
+                            line: 68
+                            col: 7
+                            len: 11
+                          kind:
+                            Respond:
+                              status: 500
+                              body: ~
+                  otherwise: ~
+        - span:
+            line: 70
+            col: 4
+            len: 18
+          doc: ~
+          method: DELETE
+          path: "/notes/{id}"
+          path_params:
+            - id
+          body:
+            - span:
+                line: 71
+                col: 3
+                len: 49
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 71
+                      col: 7
+                      len: 45
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: sqlx
+                          span:
+                            line: 71
+                            col: 7
+                            len: 4
+                        verb:
+                          name: sqlite_pool_connect
+                          span:
+                            line: 71
+                            col: 12
+                            len: 19
+                        target:
+                          - Word:
+                              name: database_url
+                              span:
+                                line: 71
+                                col: 32
+                                len: 12
+                        payload: ~
+                        into:
+                          name: pool
+                          span:
+                            line: 71
+                            col: 48
+                            len: 4
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 73
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 74
+                col: 3
+                len: 23
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 74
+                      col: 7
+                      len: 19
+                    kind:
+                      Do:
+                        name:
+                          name: ensure_schema
+                          span:
+                            line: 74
+                            col: 7
+                            len: 13
+                        args:
+                          - span:
+                              line: 74
+                              col: 21
+                              len: 4
+                            kind:
+                              Path:
+                                - name: pool
+                                  span:
+                                    line: 74
+                                    col: 21
+                                    len: 4
+                        into: ~
+                        bare: true
+                  otherwise:
+                    - span:
+                        line: 76
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 503
+                          body: ~
+            - span:
+                line: 77
+                col: 3
+                len: 56
+              kind:
+                ToolCall:
+                  tool:
+                    name: sqlx
+                    span:
+                      line: 77
+                      col: 3
+                      len: 4
+                  verb:
+                    name: query
+                    span:
+                      line: 77
+                      col: 8
+                      len: 5
+                  target:
+                    - Value:
+                        span:
+                          line: 77
+                          col: 14
+                          len: 32
+                        kind:
+                          Str: delete from notes where id = ?
+                  payload: ~
+                  into:
+                    name: statement
+                    span:
+                      line: 77
+                      col: 50
+                      len: 9
+                  via_do: false
+            - span:
+                line: 78
+                col: 3
+                len: 28
+              kind:
+                ToolCall:
+                  tool:
+                    name: statement
+                    span:
+                      line: 78
+                      col: 3
+                      len: 9
+                  verb:
+                    name: bind
+                    span:
+                      line: 78
+                      col: 13
+                      len: 4
+                  target:
+                    - Word:
+                        name: id
+                        span:
+                          line: 78
+                          col: 18
+                          len: 2
+                  payload: ~
+                  into:
+                    name: removal
+                    span:
+                      line: 78
+                      col: 24
+                      len: 7
+                  via_do: false
+            - span:
+                line: 79
+                col: 3
+                len: 35
+              kind:
+                Try:
+                  stmt:
+                    span:
+                      line: 79
+                      col: 7
+                      len: 31
+                    kind:
+                      ToolCall:
+                        tool:
+                          name: removal
+                          span:
+                            line: 79
+                            col: 7
+                            len: 7
+                        verb:
+                          name: execute
+                          span:
+                            line: 79
+                            col: 15
+                            len: 7
+                        target:
+                          - Word:
+                              name: pool
+                              span:
+                                line: 79
+                                col: 23
+                                len: 4
+                        payload: ~
+                        into:
+                          name: outcome
+                          span:
+                            line: 79
+                            col: 31
+                            len: 7
+                        via_do: false
+                  otherwise:
+                    - span:
+                        line: 81
+                        col: 7
+                        len: 11
+                      kind:
+                        Respond:
+                          status: 500
+                          body: ~
+            - span:
+                line: 82
+                col: 3
+                len: 32
+              kind:
+                ToolCall:
+                  tool:
+                    name: outcome
+                    span:
+                      line: 82
+                      col: 3
+                      len: 7
+                  verb:
+                    name: rows_affected
+                    span:
+                      line: 82
+                      col: 11
+                      len: 13
+                  target: []
+                  payload: ~
+                  into:
+                    name: removed
+                    span:
+                      line: 82
+                      col: 28
+                      len: 7
+                  via_do: false
+            - span:
+                line: 83
+                col: 3
+                len: 35
+              kind:
+                Guard:
+                  cond:
+                    span:
+                      line: 83
+                      col: 10
+                      len: 11
+                    kind:
+                      Binary:
+                        op: Gt
+                        lhs:
+                          span:
+                            line: 83
+                            col: 10
+                            len: 7
+                          kind:
+                            Path:
+                              - name: removed
+                                span:
+                                  line: 83
+                                  col: 10
+                                  len: 7
+                        rhs:
+                          span:
+                            line: 83
+                            col: 20
+                            len: 1
+                          kind:
+                            Int: 0
+                  else_:
+                    span:
+                      line: 83
+                      col: 27
+                      len: 11
+                    kind:
+                      Respond:
+                        status: 404
+                        body: ~
+            - span:
+                line: 84
+                col: 3
+                len: 11
+              kind:
+                Respond:
+                  status: 204
+                  body: ~

@@ -1,0 +1,282 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/09-markdown-to-html/functions/inline-format.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 4
+        col: 3
+        len: 23
+      doc: "Turns the marks inside a line into HTML: & is escaped first, then bold, italic and links."
+      name:
+        name: inline_format
+        span:
+          line: 4
+          col: 13
+          len: 13
+      params:
+        - name:
+            name: content
+            span:
+              line: 5
+              col: 7
+              len: 7
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 5
+              col: 16
+              len: 4
+          default: ~
+      out:
+        kind:
+          Named: text
+        span:
+          line: 6
+          col: 8
+          len: 4
+      effect:
+        value: Pure
+        span:
+          line: 7
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 8
+            col: 5
+            len: 49
+          kind:
+            Set:
+              var:
+                name: escaped
+                span:
+                  line: 8
+                  col: 9
+                  len: 7
+              expr:
+                span:
+                  line: 8
+                  col: 19
+                  len: 35
+                kind:
+                  Call:
+                    func:
+                      - name: text
+                        span:
+                          line: 8
+                          col: 19
+                          len: 4
+                      - name: replace
+                        span:
+                          line: 8
+                          col: 24
+                          len: 7
+                    args:
+                      - span:
+                          line: 8
+                          col: 32
+                          len: 7
+                        kind:
+                          Path:
+                            - name: content
+                              span:
+                                line: 8
+                                col: 32
+                                len: 7
+                      - span:
+                          line: 8
+                          col: 41
+                          len: 3
+                        kind:
+                          Str: "&"
+                      - span:
+                          line: 8
+                          col: 46
+                          len: 7
+                        kind:
+                          Str: "&amp;"
+        - span:
+            line: 9
+            col: 5
+            len: 70
+          kind:
+            Set:
+              var:
+                name: bold
+                span:
+                  line: 9
+                  col: 9
+                  len: 4
+              expr:
+                span:
+                  line: 9
+                  col: 16
+                  len: 59
+                kind:
+                  Call:
+                    func:
+                      - name: regex
+                        span:
+                          line: 9
+                          col: 16
+                          len: 5
+                      - name: replace
+                        span:
+                          line: 9
+                          col: 22
+                          len: 7
+                    args:
+                      - span:
+                          line: 9
+                          col: 30
+                          len: 7
+                        kind:
+                          Path:
+                            - name: escaped
+                              span:
+                                line: 9
+                                col: 30
+                                len: 7
+                      - span:
+                          line: 9
+                          col: 39
+                          len: 12
+                        kind:
+                          Path:
+                            - name: bold_pattern
+                              span:
+                                line: 9
+                                col: 39
+                                len: 12
+                      - span:
+                          line: 9
+                          col: 53
+                          len: 21
+                        kind:
+                          Str: "<strong>$1</strong>"
+        - span:
+            line: 10
+            col: 5
+            len: 63
+          kind:
+            Set:
+              var:
+                name: italic
+                span:
+                  line: 10
+                  col: 9
+                  len: 6
+              expr:
+                span:
+                  line: 10
+                  col: 18
+                  len: 50
+                kind:
+                  Call:
+                    func:
+                      - name: regex
+                        span:
+                          line: 10
+                          col: 18
+                          len: 5
+                      - name: replace
+                        span:
+                          line: 10
+                          col: 24
+                          len: 7
+                    args:
+                      - span:
+                          line: 10
+                          col: 32
+                          len: 4
+                        kind:
+                          Path:
+                            - name: bold
+                              span:
+                                line: 10
+                                col: 32
+                                len: 4
+                      - span:
+                          line: 10
+                          col: 38
+                          len: 14
+                        kind:
+                          Path:
+                            - name: italic_pattern
+                              span:
+                                line: 10
+                                col: 38
+                                len: 14
+                      - span:
+                          line: 10
+                          col: 54
+                          len: 13
+                        kind:
+                          Str: "<em>$1</em>"
+        - span:
+            line: 11
+            col: 5
+            len: 67
+          kind:
+            Return:
+              span:
+                line: 11
+                col: 12
+                len: 60
+              kind:
+                Call:
+                  func:
+                    - name: regex
+                      span:
+                        line: 11
+                        col: 12
+                        len: 5
+                    - name: replace
+                      span:
+                        line: 11
+                        col: 18
+                        len: 7
+                  args:
+                    - span:
+                        line: 11
+                        col: 26
+                        len: 6
+                      kind:
+                        Path:
+                          - name: italic
+                            span:
+                              line: 11
+                              col: 26
+                              len: 6
+                    - span:
+                        line: 11
+                        col: 34
+                        len: 12
+                      kind:
+                        Path:
+                          - name: link_pattern
+                            span:
+                              line: 11
+                              col: 34
+                              len: 12
+                    - span:
+                        line: 11
+                        col: 48
+                        len: 23
+                      kind:
+                        Str: "<a href=\"$2\">$1</a>"

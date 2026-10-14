@@ -1,0 +1,65 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/08-notes-api/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 2
+        col: 3
+        len: 22
+      doc: "The SQLite file that holds the notes. `mode=rwc` creates it on first use."
+      name:
+        name: database_url
+        span:
+          line: 2
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 3
+          col: 10
+          len: 28
+        kind:
+          Str: "sqlite://notes.db?mode=rwc"
+  - Constant:
+      span:
+        line: 6
+        col: 3
+        len: 28
+      doc: The one table of the application.
+      name:
+        name: create_notes_table
+        span:
+          line: 6
+          col: 13
+          len: 18
+      value:
+        span:
+          line: 7
+          col: 10
+          len: 100
+        kind:
+          Str: "create table if not exists notes (id integer primary key, title text not null, body text not null)"
+  - Constant:
+      span:
+        line: 10
+        col: 3
+        len: 19
+      doc: "One note as a JSON object, the same shape the API returns."
+      name:
+        name: note_json
+        span:
+          line: 10
+          col: 13
+          len: 9
+      value:
+        span:
+          line: 11
+          col: 10
+          len: 53
+        kind:
+          Str: "json_object('id', id, 'title', title, 'body', body)"

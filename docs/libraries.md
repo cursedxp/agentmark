@@ -288,6 +288,30 @@ it, so the handles you get (`handle of sqlx.SqlitePool`) are the ones for the da
 (a query that holds its text) and generic types with a single instantiation in that configuration are bound as handles too,
 and an integer wider than `int` (`u64`) is converted with a check that fails the call on overflow.
 
+A binding item whose one-line heading would be longer than 120 characters is written over several lines, with the same
+words as a function: `## execute`, then `- in: self: consume handle of sqlx.query.Query, executor: handle of
+sqlx.SqlitePool` (one `- in:` line per parameter when they do not fit together) and `- out: handle of
+sqlx.sqlite.SqliteQueryResult`. The binder writes it, `agentmark fmt` keeps it, and the meaning is the same. Where a library
+asks for a value of its own (`bind` takes any encodable value), the binding takes AgentMark `text`.
+
+`examples/08-notes-api` is a web service built on this. Its `ensure_schema` function takes the pool handle that a route
+connected, runs a statement on it, and lends it back: a function only borrows a handle it does not use up.
+
+```agentmark file=examples/08-notes-api/functions/ensure-schema.agent.md
+# Import: ../constants.agent.md
+# Import: crate sqlx
+
+> Creates the notes table when it does not exist yet. Every route calls this right after connecting, because the
+> service has no start-up step: the database file may be new. Fails when the table cannot be created.
+# Function: ensure_schema
+- in: pool: handle of sqlx.SqlitePool
+- out: result of bool
+- effect: local
+  - sqlx query create_notes_table -> statement
+  - try statement execute pool
+  - return true
+```
+
 ### Not bound yet: just write the statement
 
 An item under `## Not bound` is "not bound yet". Write the statement you want, as if it were bound, and `check` or

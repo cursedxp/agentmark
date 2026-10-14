@@ -43,6 +43,8 @@
 (rust_heading "rust" @keyword)
 (rust_heading name: (identifier) @function)
 (binding_heading name: (identifier) @function)
+(handle_heading "handle" @keyword)
+(handle_heading name: (handle_name) @type)
 (not_bound_block ["not" "bound"] @keyword)
 (not_bound_item name: (identifier) @variable)
 (not_bound_item reason: (reason) @comment)

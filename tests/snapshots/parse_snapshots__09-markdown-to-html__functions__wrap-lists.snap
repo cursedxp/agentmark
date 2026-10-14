@@ -1,0 +1,142 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/09-markdown-to-html/functions/wrap-lists.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 4
+        col: 3
+        len: 20
+      doc: "Puts every run of list items between <ul> and </ul>, and ends the page with a newline."
+      name:
+        name: wrap_lists
+        span:
+          line: 4
+          col: 13
+          len: 10
+      params:
+        - name:
+            name: body
+            span:
+              line: 5
+              col: 7
+              len: 4
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 5
+              col: 13
+              len: 4
+          default: ~
+      out:
+        kind:
+          Named: text
+        span:
+          line: 6
+          col: 8
+          len: 4
+      effect:
+        value: Pure
+        span:
+          line: 7
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 8
+            col: 5
+            len: 21
+          kind:
+            Set:
+              var:
+                name: page
+                span:
+                  line: 8
+                  col: 9
+                  len: 4
+              expr:
+                span:
+                  line: 8
+                  col: 16
+                  len: 10
+                kind:
+                  Interp:
+                    - Expr:
+                        span:
+                          line: 8
+                          col: 18
+                          len: 4
+                        kind:
+                          Path:
+                            - name: body
+                              span:
+                                line: 8
+                                col: 18
+                                len: 4
+                    - Text: "\n"
+        - span:
+            line: 9
+            col: 5
+            len: 63
+          kind:
+            Return:
+              span:
+                line: 9
+                col: 12
+                len: 56
+              kind:
+                Call:
+                  func:
+                    - name: regex
+                      span:
+                        line: 9
+                        col: 12
+                        len: 5
+                    - name: replace
+                      span:
+                        line: 9
+                        col: 18
+                        len: 7
+                  args:
+                    - span:
+                        line: 9
+                        col: 26
+                        len: 4
+                      kind:
+                        Path:
+                          - name: page
+                            span:
+                              line: 9
+                              col: 26
+                              len: 4
+                    - span:
+                        line: 9
+                        col: 32
+                        len: 16
+                      kind:
+                        Path:
+                          - name: list_run_pattern
+                            span:
+                              line: 9
+                              col: 32
+                              len: 16
+                    - span:
+                        line: 9
+                        col: 50
+                        len: 17
+                      kind:
+                        Str: "<ul>\n$1</ul>\n"

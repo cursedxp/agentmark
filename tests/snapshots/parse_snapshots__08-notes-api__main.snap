@@ -1,0 +1,29 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/08-notes-api/main.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 33
+    doc: ~
+    kind:
+      File:
+        path: "./services/notes.agent.md"
+        alias: ~
+decls:
+  - Run:
+      span:
+        line: 4
+        col: 3
+        len: 3
+      doc: Entry point. The notes API runs as a service.
+      items:
+        - name: notes
+          span:
+            line: 5
+            col: 3
+            len: 5

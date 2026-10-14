@@ -597,6 +597,11 @@ impl Checker<'_> {
 
     fn return_stmt(&mut self, cx: &mut Cx, s: &Stmt, e: &crate::syntax::ast::Expr) {
         let t = self.expr_handle_ok(cx, e);
+        if let crate::syntax::ast::ExprKind::Path(segs) = &e.kind {
+            if segs.len() == 1 {
+                cx.took.insert(segs[0].name.clone());
+            }
+        }
         let Some(f) = &cx.func else {
             let d = Diagnostic::error(
                 E_STMT,
@@ -764,14 +769,15 @@ impl Checker<'_> {
         let arg_types: Vec<Type> = args
             .iter()
             .map(|a| {
-                let t = self.expr_handle_ok(cx, a);
-                self.move_out(cx, a);
-                t
+                self.expr_handle_ok(cx, a)
             })
             .collect();
         let Some((kind, decl)) =
             self.lookup(cx.file, &name.name, &[Kind::Function, Kind::RustBlock])
         else {
+            for a in args {
+                self.move_out(cx, a);
+            }
             let mut cands = block_names;
             cands.extend(self.scopes[cx.file].names_of(&[Kind::Function, Kind::RustBlock]));
             let d = Diagnostic::error(
@@ -791,6 +797,7 @@ impl Checker<'_> {
             let _ = E_UNKNOWN_NAME;
             return;
         };
+        self.move_call_args(cx, kind, &decl, args);
         self.resolutions.insert(
             super::NodeKey::new(cx.file, s.span),
             super::Resolution::Call {

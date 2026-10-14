@@ -1,0 +1,161 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/08-notes-api/functions/ensure-schema.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 18
+    doc: ~
+    kind:
+      Crate:
+        name:
+          name: sqlx
+          span:
+            line: 2
+            col: 17
+            len: 4
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 6
+        col: 3
+        len: 23
+      doc: "Creates the notes table when it does not exist yet. Every route calls this right after connecting, because the\nservice has no start-up step: the database file may be new. Fails when the table cannot be created."
+      name:
+        name: ensure_schema
+        span:
+          line: 6
+          col: 13
+          len: 13
+      params:
+        - name:
+            name: pool
+            span:
+              line: 7
+              col: 7
+              len: 4
+          ty:
+            kind:
+              Handle:
+                name: sqlx.SqlitePool
+                mode: Shared
+            span:
+              line: 7
+              col: 13
+              len: 25
+          default: ~
+      out:
+        kind:
+          Result:
+            kind:
+              Named: bool
+            span:
+              line: 8
+              col: 18
+              len: 4
+        span:
+          line: 8
+          col: 8
+          len: 14
+      effect:
+        value: Local
+        span:
+          line: 9
+          col: 11
+          len: 5
+      body:
+        - span:
+            line: 10
+            col: 5
+            len: 42
+          kind:
+            ToolCall:
+              tool:
+                name: sqlx
+                span:
+                  line: 10
+                  col: 5
+                  len: 4
+              verb:
+                name: query
+                span:
+                  line: 10
+                  col: 10
+                  len: 5
+              target:
+                - Word:
+                    name: create_notes_table
+                    span:
+                      line: 10
+                      col: 16
+                      len: 18
+              payload: ~
+              into:
+                name: statement
+                span:
+                  line: 10
+                  col: 38
+                  len: 9
+              via_do: false
+        - span:
+            line: 11
+            col: 5
+            len: 26
+          kind:
+            Try:
+              stmt:
+                span:
+                  line: 11
+                  col: 9
+                  len: 22
+                kind:
+                  ToolCall:
+                    tool:
+                      name: statement
+                      span:
+                        line: 11
+                        col: 9
+                        len: 9
+                    verb:
+                      name: execute
+                      span:
+                        line: 11
+                        col: 19
+                        len: 7
+                    target:
+                      - Word:
+                          name: pool
+                          span:
+                            line: 11
+                            col: 27
+                            len: 4
+                    payload: ~
+                    into: ~
+                    via_do: false
+              otherwise: ~
+        - span:
+            line: 12
+            col: 5
+            len: 11
+          kind:
+            Return:
+              span:
+                line: 12
+                col: 12
+                len: 4
+              kind:
+                Bool: true

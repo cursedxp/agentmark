@@ -146,7 +146,7 @@ fn async_library_methods_are_assisted_and_their_bodies_await() {
     // the rest of the crate: handles bound by rules, what needs the model and has no canned answer is listed
     assert!(b.counts.direct >= 40, "{:?}", b.counts);
     let (_, why) = b.not_bound.iter().find(|(n, _)| n == "response_upgrade").expect("listed");
-    assert!(why.contains("mock model has no response"), "{why}");
+    assert!(why.contains("no model answer when this file was generated"), "{why}");
 }
 
 // ------------------------------------------- lifetimes and one-instantiation generics (Q370)
@@ -416,6 +416,18 @@ fn using_a_handle_after_a_consuming_call_names_the_line_that_used_it_up() {
     assert!(e.contains("app/main.agent.md:10\n  - hasher update \"late\"\n    ^^^^^^"), "{e}");
     assert!(e.contains("\"hasher\" was used up on line 9 (\"hasher finalize -> digest\")"), "{e}");
     assert_eq!(e.matches("was used up").count(), 1, "{e}");
+}
+
+/// A function that only borrows the handles it is given leaves them with the caller (Q414).
+#[test]
+fn a_function_that_only_borrows_a_handle_leaves_it_with_the_caller() {
+    let peek = "# Import: crate sha2\n\n> Compares.\n# Function: peek\n- in: h: handle of sha2.Sha256, g: handle of sha2.Sha256\n- out: bool\n- effect: pure\n  - h same_state g -> same\n  - return same\n\n";
+    let go = "> Hashes.\n# Command: go\n- args: word: text\n\n## Run\n- sha2 sha256_new -> a\n- sha2 sha256_new -> b\n- do peek(a, b) -> same\n- a update word\n- b finalize -> digest\n";
+    ok(&format!("{peek}{go}"));
+    // a function that uses the handle up takes it from the caller
+    let eat = "# Import: crate sha2\n\n> Eats.\n# Function: eat\n- in: h: handle of sha2.Sha256\n- out: bytes\n- effect: pure\n  - h finalize -> d\n  - return d\n\n";
+    let e = errors_of(&format!("{eat}> Hashes.\n# Command: go\n- args: word: text\n\n## Run\n- sha2 sha256_new -> a\n- do eat(a) -> d\n- a update word\n"));
+    assert!(e.contains("\"a\" was used up on line"), "{e}");
 }
 
 #[test]

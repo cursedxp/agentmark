@@ -1,0 +1,552 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/09-markdown-to-html/functions/classify-line.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 33
+    doc: ~
+    kind:
+      File:
+        path: "../records/block.agent.md"
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 4
+        col: 3
+        len: 23
+      doc: Decides what kind of Markdown line this is and strips the marks that say so.
+      name:
+        name: classify_line
+        span:
+          line: 4
+          col: 13
+          len: 13
+      params:
+        - name:
+            name: line
+            span:
+              line: 5
+              col: 7
+              len: 4
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 5
+              col: 13
+              len: 4
+          default: ~
+      out:
+        kind:
+          Named: Block
+        span:
+          line: 6
+          col: 8
+          len: 5
+      effect:
+        value: Pure
+        span:
+          line: 7
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 8
+            col: 5
+            len: 27
+          kind:
+            Set:
+              var:
+                name: clean
+                span:
+                  line: 8
+                  col: 9
+                  len: 5
+              expr:
+                span:
+                  line: 8
+                  col: 17
+                  len: 15
+                kind:
+                  Call:
+                    func:
+                      - name: text
+                        span:
+                          line: 8
+                          col: 17
+                          len: 4
+                      - name: trim
+                        span:
+                          line: 8
+                          col: 22
+                          len: 4
+                    args:
+                      - span:
+                          line: 8
+                          col: 27
+                          len: 4
+                        kind:
+                          Path:
+                            - name: line
+                              span:
+                                line: 8
+                                col: 27
+                                len: 4
+        - span:
+            line: 9
+            col: 5
+            len: 14
+          kind:
+            If:
+              cond:
+                span:
+                  line: 9
+                  col: 8
+                  len: 10
+                kind:
+                  Binary:
+                    op: Eq
+                    lhs:
+                      span:
+                        line: 9
+                        col: 8
+                        len: 5
+                      kind:
+                        Path:
+                          - name: clean
+                            span:
+                              line: 9
+                              col: 8
+                              len: 5
+                    rhs:
+                      span:
+                        line: 9
+                        col: 16
+                        len: 2
+                      kind:
+                        Str: ""
+              then:
+                - span:
+                    line: 10
+                    col: 7
+                    len: 12
+                  kind:
+                    Return:
+                      span:
+                        line: 10
+                        col: 14
+                        len: 5
+                      kind:
+                        Path:
+                          - name: Blank
+                            span:
+                              line: 10
+                              col: 14
+                              len: 5
+              else_: []
+        - span:
+            line: 11
+            col: 5
+            len: 34
+          kind:
+            If:
+              cond:
+                span:
+                  line: 11
+                  col: 8
+                  len: 30
+                kind:
+                  Call:
+                    func:
+                      - name: text
+                        span:
+                          line: 11
+                          col: 8
+                          len: 4
+                      - name: starts_with
+                        span:
+                          line: 11
+                          col: 13
+                          len: 11
+                    args:
+                      - span:
+                          line: 11
+                          col: 25
+                          len: 5
+                        kind:
+                          Path:
+                            - name: clean
+                              span:
+                                line: 11
+                                col: 25
+                                len: 5
+                      - span:
+                          line: 11
+                          col: 32
+                          len: 5
+                        kind:
+                          Str: "## "
+              then:
+                - span:
+                    line: 12
+                    col: 7
+                    len: 70
+                  kind:
+                    Return:
+                      span:
+                        line: 12
+                        col: 14
+                        len: 63
+                      kind:
+                        Variant:
+                          qualifier: ~
+                          name:
+                            name: Heading
+                            span:
+                              line: 12
+                              col: 14
+                              len: 7
+                          fields:
+                            - name:
+                                name: level
+                                span:
+                                  line: 12
+                                  col: 24
+                                  len: 5
+                              value:
+                                span:
+                                  line: 12
+                                  col: 31
+                                  len: 1
+                                kind:
+                                  Int: 2
+                            - name:
+                                name: content
+                                span:
+                                  line: 12
+                                  col: 34
+                                  len: 7
+                              value:
+                                span:
+                                  line: 12
+                                  col: 43
+                                  len: 32
+                                kind:
+                                  Call:
+                                    func:
+                                      - name: regex
+                                        span:
+                                          line: 12
+                                          col: 43
+                                          len: 5
+                                      - name: replace
+                                        span:
+                                          line: 12
+                                          col: 49
+                                          len: 7
+                                    args:
+                                      - span:
+                                          line: 12
+                                          col: 57
+                                          len: 5
+                                        kind:
+                                          Path:
+                                            - name: clean
+                                              span:
+                                                line: 12
+                                                col: 57
+                                                len: 5
+                                      - span:
+                                          line: 12
+                                          col: 64
+                                          len: 6
+                                        kind:
+                                          Str: "^## "
+                                      - span:
+                                          line: 12
+                                          col: 72
+                                          len: 2
+                                        kind:
+                                          Str: ""
+              else_: []
+        - span:
+            line: 13
+            col: 5
+            len: 33
+          kind:
+            If:
+              cond:
+                span:
+                  line: 13
+                  col: 8
+                  len: 29
+                kind:
+                  Call:
+                    func:
+                      - name: text
+                        span:
+                          line: 13
+                          col: 8
+                          len: 4
+                      - name: starts_with
+                        span:
+                          line: 13
+                          col: 13
+                          len: 11
+                    args:
+                      - span:
+                          line: 13
+                          col: 25
+                          len: 5
+                        kind:
+                          Path:
+                            - name: clean
+                              span:
+                                line: 13
+                                col: 25
+                                len: 5
+                      - span:
+                          line: 13
+                          col: 32
+                          len: 4
+                        kind:
+                          Str: "# "
+              then:
+                - span:
+                    line: 14
+                    col: 7
+                    len: 69
+                  kind:
+                    Return:
+                      span:
+                        line: 14
+                        col: 14
+                        len: 62
+                      kind:
+                        Variant:
+                          qualifier: ~
+                          name:
+                            name: Heading
+                            span:
+                              line: 14
+                              col: 14
+                              len: 7
+                          fields:
+                            - name:
+                                name: level
+                                span:
+                                  line: 14
+                                  col: 24
+                                  len: 5
+                              value:
+                                span:
+                                  line: 14
+                                  col: 31
+                                  len: 1
+                                kind:
+                                  Int: 1
+                            - name:
+                                name: content
+                                span:
+                                  line: 14
+                                  col: 34
+                                  len: 7
+                              value:
+                                span:
+                                  line: 14
+                                  col: 43
+                                  len: 31
+                                kind:
+                                  Call:
+                                    func:
+                                      - name: regex
+                                        span:
+                                          line: 14
+                                          col: 43
+                                          len: 5
+                                      - name: replace
+                                        span:
+                                          line: 14
+                                          col: 49
+                                          len: 7
+                                    args:
+                                      - span:
+                                          line: 14
+                                          col: 57
+                                          len: 5
+                                        kind:
+                                          Path:
+                                            - name: clean
+                                              span:
+                                                line: 14
+                                                col: 57
+                                                len: 5
+                                      - span:
+                                          line: 14
+                                          col: 64
+                                          len: 5
+                                        kind:
+                                          Str: "^# "
+                                      - span:
+                                          line: 14
+                                          col: 71
+                                          len: 2
+                                        kind:
+                                          Str: ""
+              else_: []
+        - span:
+            line: 15
+            col: 5
+            len: 33
+          kind:
+            If:
+              cond:
+                span:
+                  line: 15
+                  col: 8
+                  len: 29
+                kind:
+                  Call:
+                    func:
+                      - name: text
+                        span:
+                          line: 15
+                          col: 8
+                          len: 4
+                      - name: starts_with
+                        span:
+                          line: 15
+                          col: 13
+                          len: 11
+                    args:
+                      - span:
+                          line: 15
+                          col: 25
+                          len: 5
+                        kind:
+                          Path:
+                            - name: clean
+                              span:
+                                line: 15
+                                col: 25
+                                len: 5
+                      - span:
+                          line: 15
+                          col: 32
+                          len: 4
+                        kind:
+                          Str: "- "
+              then:
+                - span:
+                    line: 16
+                    col: 7
+                    len: 60
+                  kind:
+                    Return:
+                      span:
+                        line: 16
+                        col: 14
+                        len: 53
+                      kind:
+                        Variant:
+                          qualifier: ~
+                          name:
+                            name: ListItem
+                            span:
+                              line: 16
+                              col: 14
+                              len: 8
+                          fields:
+                            - name:
+                                name: content
+                                span:
+                                  line: 16
+                                  col: 25
+                                  len: 7
+                              value:
+                                span:
+                                  line: 16
+                                  col: 34
+                                  len: 31
+                                kind:
+                                  Call:
+                                    func:
+                                      - name: regex
+                                        span:
+                                          line: 16
+                                          col: 34
+                                          len: 5
+                                      - name: replace
+                                        span:
+                                          line: 16
+                                          col: 40
+                                          len: 7
+                                    args:
+                                      - span:
+                                          line: 16
+                                          col: 48
+                                          len: 5
+                                        kind:
+                                          Path:
+                                            - name: clean
+                                              span:
+                                                line: 16
+                                                col: 48
+                                                len: 5
+                                      - span:
+                                          line: 16
+                                          col: 55
+                                          len: 5
+                                        kind:
+                                          Str: "^- "
+                                      - span:
+                                          line: 16
+                                          col: 62
+                                          len: 2
+                                        kind:
+                                          Str: ""
+              else_: []
+        - span:
+            line: 17
+            col: 5
+            len: 35
+          kind:
+            Return:
+              span:
+                line: 17
+                col: 12
+                len: 28
+              kind:
+                Variant:
+                  qualifier: ~
+                  name:
+                    name: Paragraph
+                    span:
+                      line: 17
+                      col: 12
+                      len: 9
+                  fields:
+                    - name:
+                        name: content
+                        span:
+                          line: 17
+                          col: 24
+                          len: 7
+                      value:
+                        span:
+                          line: 17
+                          col: 33
+                          len: 5
+                        kind:
+                          Path:
+                            - name: clean
+                              span:
+                                line: 17
+                                col: 33
+                                len: 5

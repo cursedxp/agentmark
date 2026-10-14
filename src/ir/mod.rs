@@ -106,6 +106,9 @@ pub struct Param {
     pub ty: Type,
     /// Default value (command arguments).
     pub default: Option<Expr>,
+    /// A handle parameter the function only borrows: it is passed as `&T` and the caller keeps it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub lent: bool,
 }
 
 /// A variable that a statement introduces.

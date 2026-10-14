@@ -1,0 +1,72 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/06-sales-report/records/region-total.agent.md
+doc: ~
+imports: []
+decls:
+  - Record:
+      span:
+        line: 2
+        col: 3
+        len: 19
+      doc: "What one region brought in: how many orders and how much money."
+      name:
+        name: RegionTotal
+        span:
+          line: 2
+          col: 11
+          len: 11
+      fields:
+        - span:
+            line: 3
+            col: 3
+            len: 12
+          name:
+            name: region
+            span:
+              line: 3
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 3
+              col: 11
+              len: 4
+        - span:
+            line: 4
+            col: 3
+            len: 11
+          name:
+            name: orders
+            span:
+              line: 4
+              col: 3
+              len: 6
+          ty:
+            kind:
+              Named: int
+            span:
+              line: 4
+              col: 11
+              len: 3
+        - span:
+            line: 5
+            col: 3
+            len: 14
+          name:
+            name: revenue
+            span:
+              line: 5
+              col: 3
+              len: 7
+          ty:
+            kind:
+              Named: money
+            span:
+              line: 5
+              col: 12
+              len: 5
