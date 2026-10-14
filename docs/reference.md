@@ -1011,8 +1011,7 @@ Money text is `"1200.00 EUR"`. EUR, USD, GBP and CHF have two decimals and JPY h
 
 ## 10. Error messages
 
-Every error points at a line and says what was expected, in plain words, with a caret under the offending
-token, and a suggestion when a known word is within edit distance 2:
+Every error points at a line, says in plain words what was expected and puts a caret under the offending token. It adds a suggestion when a known word is within edit distance 2.
 
 ```agentmark invalid name=typo.agent.md says=Unknown_target
 > Mails a reminder.
@@ -1032,28 +1031,96 @@ typo.agent.md:7
   Unknown target "custmer" for tool email. Did you mean "customer"?
 ```
 
-* The distance is Damerau-Levenshtein (a swapped pair of letters is one edit), at most 2 and less than the number
-  of letters of the typed word. A word that already matches exactly is never a suggestion (Q26).
-* The parser suggests only from closed sets of keywords (block headings, statement words, time units, type
-  constructors). Tool, verb, target and field typos are the semantic check's job (Q27).
-* A mistake in AgentMark source never shows a Rust compiler error. If the Rust written for a program does not
-  build, that is reported as `internal compiler error: generated Rust did not compile` with the generated file, and
-  is a bug of AgentMark. Errors inside your own `## Rust` or binding bodies are mapped back to the `.agent.md` line.
-* JSON diagnostics (`check --json`) carry a stable `code`. Codes: `E0xx` syntax and structure (E001 tab, E002
-  odd indentation, E003 unclosed fence, E004 unreadable line, E010 to E012 properties, E020 unknown declaration,
-  E030 to E032 structure, E040 syntax, E050 import syntax), `E1xx` project files (E100 to E105 `tools.toml`, E110
-  to E113 files and imports including cycles, E114 `agentmark.toml`), `E2xx` meaning (E221 model driver (unknown or unsupported provider), E200 duplicate name, E201
-  unknown type, E202 unknown name, E203 type mismatch, E204 `maybe` not unwrapped, E205 effect in a pure place,
-  E206 effect above the declared one, E207 unknown tool, verb, target or source, E208 tool not listed, E209
-  call, E210 statement, E211 hard limit, E212 `parallel` write conflict, E213 `do`, E214 `# Run`, E215 agent
-  properties, E216 constants, E217 duplicate field, E218 two services with state), and warnings `W001` guessed
-  type, `W002` unused import, `W003` unused declaration, `W004` library without binding, `W005` unapproved
-  library, `W006` several runnable declarations in one file, `W007` long line caused by string text, `W008` a library whose effect is assumed from its proposal (`--allow-unverified`). E219 is a crate import that has no binding although a statement or an agent's `tools:` line uses it. E220 is an on-demand library item the model could not bind (15.2). E360 to E366 are about handles (15.4): E360 an unknown handle type, E361 a handle used after it was used up, E362 a handle read where nothing takes it, E363 a handle in a list, a `maybe` or a record, E365 a mode word or `self` in the wrong place or a handle given twice to one call, E366 a `try … otherwise` that cannot leave when it makes a handle.
+**Rules**
+- The distance is Damerau-Levenshtein, so a swapped pair of letters is one edit. It is at most 2 and less than the number of letters of the typed word.
+- A word that already matches exactly is never a suggestion, per Q26.
+- The parser suggests only from closed sets of keywords: block headings, statement words, time units and type constructors.
+- Tool, verb, target and field typos are the job of the semantic check, per Q27.
+- A mistake in AgentMark source never shows a Rust compiler error. If the generated Rust does not build, you see `internal compiler error: generated Rust did not compile` with the generated file, and it is a bug of AgentMark.
+- Errors inside your own `## Rust` or binding bodies are mapped back to the `.agent.md` line.
+- JSON diagnostics from `check --json` carry a stable `code`.
+
+**Syntax and structure: E0xx**
+
+| code | message | fix |
+|---|---|---|
+| E001 | Tabs are not allowed in AgentMark files. | use 2 spaces for each indentation level |
+| E002 | Indentation must be 2 spaces per level. | indent in steps of 2 spaces |
+| E003 | This code fence is never closed. | add a line with just three backticks after the code |
+| E004 | A line is not part of the language, or a line with statements under it lacks its `:`. | start statements with `- `, put explanations in a `>` comment, end a line that owns statements with `:` |
+| E010 | Unknown property for a declaration. | use one of the properties the message lists |
+| E011 | The property is given twice. | remove one of the lines |
+| E012 | A declaration lacks a required property, such as the `effect` of a function or of a `## Rust` block. | add the line the message names |
+| E020 | Unknown declaration. | start with one of the kinds in section [1](#1-file-structure); the message suggests the closest |
+| E030 | This line is not inside a declaration. | start with a heading such as `# Agent: name` |
+| E031 | This line is indented more than is possible here. | indent one level, 2 spaces, at a time |
+| E032 | A structure error, for example a declaration with no `##` blocks, or lines under an import. | add the blocks, or remove the lines under the import |
+| E040 | Syntax error, for example an unknown statement word. | use a statement from Appendix A; the message suggests the closest |
+| E050 | Import syntax error, for example a glob renamed with `as`, or a folder without a name. | write `# Import: ./folder as name` for a folder, and do not rename a glob |
+
+**Project files: E1xx**
+
+| code | message | fix |
+|---|---|---|
+| E100 to E105 | `tools.toml` is wrong: not valid TOML, an unknown key, a list that is not a list of words, an entry that is not a tool table, a missing or unknown `effect`. | write each tool as a table `[name]` with the keys of section [7](#7-tool-manifest) and `effect = "local"` or `"network"` |
+| E110 | The project or file cannot be found or read. | check the path |
+| E111 | An imported file is missing. | fix the path of the `# Import` line |
+| E112 | Imports form a cycle. | break the cycle; the message prints it |
+| E113 | A glob import matches no file. | fix the pattern |
+| E114 | `agentmark.toml` is wrong: not valid TOML, or a key of the wrong type. | fix the key the message names |
+
+**Meaning: E2xx**
+
+| code | message | fix |
+|---|---|---|
+| E200 | The name is already declared in another place. | rename one of them |
+| E201 | Unknown type. | declare it or import its file |
+| E202 | Unknown name, field or event record, for example "no record Lead is visible in this file". | declare the record or import the file that does |
+| E203 | Type mismatch, for example "The prompt must be text". | use a value of the type the message names |
+| E204 | A `maybe` value is used before it is unwrapped. | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
+| E205 | An effect sits in a pure place such as a rule or a guard. | move the effectful call out |
+| E206 | A function has more effect than it declares. | raise the declared `effect`, or move the line out |
+| E207 | Unknown tool, verb, target or source. | use a name from `tools.toml`; the message suggests the closest |
+| E208 | The tool is not listed in the tools of the agent. | add it to the `- tools:` line |
+| E209 | A call is wrong: unknown action or function, a `result` called without `try`, a function with no result stored. | call a `## Do` block or a visible function; use `try` for a `result of T` |
+| E210 | A statement is in the wrong place, such as `stop` in a function or `respond` outside a route. | use `return` in a function; use routes of a `# Service` for `respond` |
+| E211 | A hard limit is broken. See section [18.3](#183-hard-limits). | split the file or the block |
+| E212 | Two statements of a `parallel` block write the same variable. | give each its own variable, or run them one after the other |
+| E213 | A `## Do` block is called wrongly: with values, with a result, or with another record than its first caller. | call it from places that have the same record in front of them |
+| E214 | An item of `# Run` is not an imported agent, service or command. | import it first |
+| E215 | An agent property is wrong, such as an unknown tool. | declare the tool in `tools.toml` |
+| E216 | A constant is defined in terms of itself. | break the loop |
+| E217 | A record has the same field twice. | remove one |
+| E218 | Two services have `state:`. | keep the state in one service, or pass data through a tool |
+| E219 | A crate import has no binding although a statement or an agent's `tools:` line uses it. | run `agentmark bind <crate>` |
+| E220 | An on-demand library item could not be bound. See section [15.2](#152-the-binder). | use a `## Rust` block, or bind it by hand |
+| E221 | The model driver is unknown or unsupported. | use a driver of section [19](#19-model-providers) |
+
+**Warnings**
+
+| code | message | fix |
+|---|---|---|
+| W001 | A field type was guessed from its name. | write the type |
+| W002 | An import is not used. | remove the import line |
+| W003 | A declaration is not used. | remove it or use it |
+| W004 | A library has no binding. | run `agentmark bind <crate>` |
+| W005 | A library is not approved. | approve the binding's `- effect:` line, as section [15.3](#153-effects-and-trust) shows |
+| W006 | A file holds several runnable declarations. | split it into a project folder with one per file |
+| W007 | A line is long only because of text between quotes. | shorten the text or split it |
+| W008 | A library's effect is assumed from its proposal, because of `--allow-unverified`. | approve the library |
+
+**Where the other codes are**
+- E360 to E366 are about handles. See the table in section [15.4](#154-binding-file-format).
+- E320 to E329 are about collection words. See section [22.2](#222-collection-words).
+- E340 to E347 are about the built-in library and the `file` tool. See section [22.3](#223-the-built-in-library).
+- E380 to E387 are about user-defined tools. See section [22.5](#225-user-defined-tools).
+- E400 is about text holes. See section [5](#5-expressions).
+
+**Next:** [11. Testing contract](#11-testing-contract)
 
 ## 11. Testing contract
 
-For every program there is a folder of fixtures that makes its behaviour reproducible without any real system.
-This is the fixture folder of the invoice chaser:
+Every program has a folder of fixtures that makes its behaviour reproducible without any real system. This is the fixture folder of the invoice chaser:
 
 ```text
 fixtures/01-invoice-chaser/
@@ -1062,9 +1129,16 @@ fixtures/01-invoice-chaser/
   expected.trace.jsonl     the exact sequence of tool and model calls the agent must make
 ```
 
-The input is one file per tool source, `<tool>.<source>.json` (`crm.invoices.json`). The same file also feeds
-events: each item of `crm.leads.json` fires `## When crm receives lead` once (Q154). The model file answers
-`ask model`; the longest matching prompt prefix wins:
+**Rules**
+- The input is one file per tool source, named `<tool>.<source>.json`, such as `crm.invoices.json`.
+- The same file also feeds events. Each item of `crm.leads.json` fires `## When crm receives lead` once, per Q154.
+- The model file answers `ask model`. The longest matching prompt prefix wins.
+- A service folder adds `requests.json`, a list of `{method, path, body?, expect_body?}`.
+- A command adds `command.json`, which holds `{command, args}`.
+- `state.<field>.json` seeds the application state, per Q153.
+- The program runs with the fixture folder as its working directory.
+
+**The model file**
 
 ```json file=fixtures/02-lead-qualifier/model.json
 {
@@ -1075,10 +1149,9 @@ events: each item of `crm.leads.json` fires `## When crm receives lead` once (Q1
 }
 ```
 
-A service folder adds `requests.json` (`[{method, path, body?, expect_body?}]`), a command adds `command.json`
-(`{command, args}`) and `state.<field>.json` seeds the application state (Q153). The program runs with the fixture
-folder as its working directory. The expected trace of the invoice service shows all the kinds of line a service
-and a command write:
+**The expected trace**
+
+The expected trace of the invoice service shows all the kinds of line that a service and a command write:
 
 ```json file=fixtures/05-invoice-service/expected.trace.jsonl
 {"kind":"guard","agent":"api","name":"found is not empty","result":"pass"}
@@ -1094,7 +1167,7 @@ and a command write:
 {"kind":"print","message":"Imported 3 rows"}
 ```
 
-The trace is JSON lines. Tests compare the parsed objects line by line, never generated source text:
+The trace is JSON lines. Tests compare the parsed objects line by line, never generated source text.
 
 | `kind` | fields |
 |---|---|
@@ -1108,14 +1181,17 @@ The trace is JSON lines. Tests compare the parsed objects line by line, never ge
 | `print` | `message` |
 | `error` | `agent`, `block`, `message` (a `try` without `otherwise` that failed) |
 
-`agent` is the name of the agent, service or command; `block` is the heading of the entry that started the run (a
-`## Do` block called from `## Every day at 09:00` reports `Every day at 09:00`). Reading a source with `for each` is
-not traced.
+**Reading a trace**
+- `agent` is the name of the agent, service or command.
+- `block` is the heading of the entry that started the run. A `## Do` block called from `## Every day at 09:00` reports `Every day at 09:00`.
+- Reading a source with `for each` is not traced.
 
-One mock response exists per prompt, so one run cannot take both branches of an `if` on a model answer. The
-fixture folder covers the main path; every other branch lives in `variants/<case>/` with the same set of files,
-and a test harness runs each as its own fixture folder (Q150). `cargo test` builds every example, runs it with
-`--mock --fixtures` and compares the trace.
+**Variants**
+- One mock response exists per prompt, so one run cannot take both branches of an `if` on a model answer.
+- The fixture folder covers the main path. Every other branch lives in `variants/<case>/` with the same set of files, and a test harness runs each as its own fixture folder, per Q150.
+- `cargo test` builds every example, runs it with `--mock --fixtures` and compares the trace.
+
+**Next:** [13. Core language: functions and modules](#13-core-language-functions-and-modules-layer-2)
 
 ## 13. Core language: functions and modules (layer 2)
 
