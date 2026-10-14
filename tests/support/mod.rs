@@ -35,6 +35,13 @@ pub fn agentmark(args: &[&str]) -> Command {
         .env("TMPDIR", compiler_tmp())
         .env("AGENTMARK_OFFLINE", "1")
         .env_remove("AGENTMARK_MODEL")
+        .env_remove("AGENTMARK_ENV")
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("OPENAI_BASE_URL")
+        .env_remove("LOCAL_API_KEY")
+        .env_remove("AGENTMARK_LOCAL_BASE_URL")
+        .env_remove("ANTHROPIC_BASE_URL")
+        .env_remove("AGENTMARK_FIXTURES")
         .env_remove("AGENTMARK_RUSTDOC_JSON")
         .env_remove("AGENTMARK_RUSTDOC_JSON_DIR")
         .env_remove("ANTHROPIC_API_KEY");

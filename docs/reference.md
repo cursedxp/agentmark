@@ -863,7 +863,7 @@ typo.agent.md:7
 * JSON diagnostics (`check --json`) carry a stable `code`. Codes: `E0xx` syntax and structure (E001 tab, E002
   odd indentation, E003 unclosed fence, E004 unreadable line, E010 to E012 properties, E020 unknown declaration,
   E030 to E032 structure, E040 syntax, E050 import syntax), `E1xx` project files (E100 to E105 `tools.toml`, E110
-  to E113 files and imports including cycles, E114 `agentmark.toml`), `E2xx` meaning (E200 duplicate name, E201
+  to E113 files and imports including cycles, E114 `agentmark.toml`), `E2xx` meaning (E221 model driver (unknown or unsupported provider), E200 duplicate name, E201
   unknown type, E202 unknown name, E203 type mismatch, E204 `maybe` not unwrapped, E205 effect in a pure place,
   E206 effect above the declared one, E207 unknown tool, verb, target or source, E208 tool not listed, E209
   call, E210 statement, E211 hard limit, E212 `parallel` write conflict, E213 `do`, E214 `# Run`, E215 agent

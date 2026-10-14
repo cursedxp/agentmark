@@ -16,7 +16,7 @@ use super::{
 pub const E_UNKNOWN_TYPE: &str = "E201";
 pub const W_INFERRED: &str = "W001";
 const E_BAD_AGENT: &str = "E215";
-const E_BAD_MODEL: &str = "E220";
+const E_BAD_MODEL: &str = "E221";
 const E_CONST: &str = "E216";
 const W_UNVERIFIED: &str = "W005";
 const W_ASSUMED: &str = "W008";

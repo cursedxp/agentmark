@@ -42,3 +42,24 @@ fn request_ids_keep_the_provider_for_non_claude_drivers() {
     assert_eq!(request_model_id("mock"), "mock");
     assert_eq!(claude_id(None), "claude-sonnet-4-5");
 }
+
+#[test]
+fn a_colon_without_a_name_is_the_same_error_for_every_provider() {
+    for (s, p) in [("claude:", "claude"), ("openai:", "openai"), ("local:", "local"), ("mock:", "mock")] {
+        let e = Driver::parse(s).unwrap_err();
+        assert!(matches!(e, DriverError::MissingModel(ref got, _) if got == p), "{s}: {e:?}");
+        assert!(e.to_string().contains("needs a model name"), "{e}");
+    }
+}
+
+#[test]
+fn debug_output_hides_api_keys() {
+    use agentmark_rt::{AnthropicModel, LocalModel, OpenAiModel};
+    let shown = format!(
+        "{:?} {:?} {:?}",
+        AnthropicModel::new("sk-ant-SECRET", "m"),
+        OpenAiModel::new("sk-SECRET", "m"),
+        LocalModel::new("http://x/v1", "m", Some("sk-SECRET".into()))
+    );
+    assert!(!shown.contains("SECRET") && shown.contains("<redacted>"), "{shown}");
+}

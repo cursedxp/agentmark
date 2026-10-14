@@ -64,6 +64,17 @@ impl Driver {
             None => (s, None),
         };
         let named = |rest: Option<&str>| rest.filter(|r| !r.is_empty()).map(str::to_string);
+        // a colon must be followed by a name, for every provider
+        if rest == Some("") && !matches!(provider, "azure" | "bedrock") {
+            let example = match provider {
+                "claude" => "haiku",
+                "openai" => "gpt-4o",
+                "local" => "llama3",
+                "mock" => "model.json",
+                other => return Err(DriverError::Unknown(other.to_string())),
+            };
+            return Err(DriverError::MissingModel(provider.to_string(), example));
+        }
         match provider {
             "claude" => Ok(Driver::Claude(named(rest))),
             "mock" => Ok(Driver::Mock(named(rest))),
@@ -123,6 +134,7 @@ impl ProviderConfig {
 }
 
 type Built = Arc<dyn ModelClient>;
+type GetEnv = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 /// Chooses a provider per request and builds each client once.
 ///
@@ -130,7 +142,7 @@ type Built = Arc<dyn ModelClient>;
 /// `[models]` entry named by `AGENTMARK_ENV`, then each agent's own `- model:` (Q240).
 pub struct Router {
     config: ProviderConfig,
-    getenv: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+    getenv: GetEnv,
     forced: Option<Driver>,
     forced_client: Option<Built>,
     mock_today: Option<NaiveDate>,
@@ -155,7 +167,7 @@ impl Router {
 
     /// A router with its own environment lookup (tests).
     pub fn new(config: ProviderConfig, getenv: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Result<Router, RtError> {
-        let getenv: Arc<dyn Fn(&str) -> Option<String> + Send + Sync> = Arc::new(getenv);
+        let getenv: GetEnv = Arc::new(getenv);
         let spec = match nonempty(getenv("AGENTMARK_MODEL")) {
             Some(s) => Some(s),
             None => match nonempty(getenv("AGENTMARK_ENV")) {
@@ -181,10 +193,12 @@ impl Router {
         let mut r = Router { config, getenv, forced, forced_client: None, mock_today: None, built: Mutex::new(BTreeMap::new()) };
         if let Some(d) = r.forced.clone() {
             // fail at start-up, not at the first question, for a mock whose file cannot be read
-            let c = r.build(&d)?;
-            r.forced_client = Some(c);
             if let Driver::Mock(_) = d {
-                r.mock_today = r.mock(&d)?.today();
+                let m = r.mock(&d)?;
+                r.mock_today = m.today();
+                r.forced_client = Some(Arc::new(m));
+            } else {
+                r.forced_client = Some(r.build(&d)?);
             }
         }
         Ok(r)
@@ -256,7 +270,7 @@ impl Router {
     fn driver_of(req: &ModelRequest) -> Result<Driver, RtError> {
         match req.model.as_deref() {
             None => Ok(Driver::Claude(None)),
-            Some(m) if ["openai:", "local:", "mock"].iter().any(|p| m.starts_with(p)) => {
+            Some(m) if m == "mock" || ["openai:", "local:", "mock:"].iter().any(|p| m.starts_with(p)) => {
                 Driver::parse(m).map_err(|e| RtError::Model(format!("model \"{m}\": {e}")))
             }
             Some(id) => Ok(Driver::Claude(Some(id.to_string()))),

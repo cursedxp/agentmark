@@ -268,3 +268,12 @@ fn mock_files_load_from_the_driver_path() {
     let missing = format!("mock:{}/nope.json", d.path().display());
     assert!(Router::new(ProviderConfig::default(), env(&[("AGENTMARK_MODEL", &missing)])).is_err());
 }
+
+#[tokio::test]
+async fn only_mock_itself_routes_to_the_mock_model() {
+    // "claude:mockingbird" style ids are Claude ids, not mocks: the Claude client wants its key
+    let r = Router::new(ProviderConfig::default(), env(&[])).unwrap();
+    let mut q = ModelRequest::new("p");
+    q.model = Some("mockingbird".into());
+    assert_eq!(r.complete(&q).await.unwrap_err().to_string(), "environment variable ANTHROPIC_API_KEY is not set");
+}

@@ -98,7 +98,7 @@ impl ModelClient for MockModel {
 }
 
 /// Anthropic Messages API client.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AnthropicModel {
     api_key: String,
     model: String,
@@ -181,7 +181,7 @@ impl ModelClient for AnthropicModel {
 }
 
 /// Request/response shape shared by OpenAI Chat Completions and compatible local servers.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ChatCompletions {
     api_key: Option<String>,
     model: String,
@@ -314,5 +314,26 @@ impl LocalModel {
 impl ModelClient for LocalModel {
     async fn complete(&self, req: &ModelRequest) -> Result<ModelResponse, RtError> {
         self.0.complete(req).await
+    }
+}
+
+/// Debug output never contains an API key.
+impl std::fmt::Debug for ChatCompletions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatCompletions")
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("model", &self.model)
+            .field("base_url", &self.base_url)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AnthropicModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AnthropicModel")
+            .field("api_key", &"<redacted>")
+            .field("model", &self.model)
+            .field("base_url", &self.base_url)
+            .finish()
     }
 }
