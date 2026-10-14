@@ -171,3 +171,17 @@ fn real_install_when_asked() {
     assert!(root.join("bin/agentmark-lsp").exists());
     assert!(home.join("src/crates/agentmark-rt").exists());
 }
+
+/// The docs name the real repository and the installer, never "this repository".
+#[test]
+fn docs_name_the_installer_and_the_real_repository() {
+    let read = |p: &str| std::fs::read_to_string(Path::new(ROOT).join(p)).unwrap();
+    let readme = read("README.md");
+    assert!(readme.contains("curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh"));
+    assert!(readme.contains("git clone https://github.com/cursedxp/agentmark"));
+    for p in ["README.md", "docs/guide.md", "docs/reference.md", "docs/internals.md", "docs/libraries.md", "docs/editor.md", "templates/CLAUDE.md", "templates/.cursorrules"] {
+        let t = read(p);
+        assert!(!t.contains("this repository") && !t.contains("/path/to/agentmark"), "{p} has vague repository wording");
+    }
+    assert!(read("LICENSE").contains("Copyright (c) 2026 Anil Ozsoy"));
+}

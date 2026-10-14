@@ -828,3 +828,19 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 
 ## Q421 — Example 08 is not quoted in the docs (step 26)
 - Choice: `examples/08-notes-api` appears in prose and tables only. The docs quote only programs that `agentmark check` accepts today (06, 07, 09, 10 and the agents), through `file=` so a sample cannot drift. When 08 passes, a `file=` quote of one route can be added.
+
+## Q422 — Q420 and Q421 were already taken (step 28)
+- Choice: the range Q420–Q429 was reserved for this task, but step 26 had already written Q420 and Q421 in it. This task uses Q422–Q425.
+- Why: renumbering step 26's entries would break references to them.
+
+## Q423 — Installer test: stand-in `cargo` always, real install opt-in (step 28)
+- Choice: `tests/install_script.rs` always runs `sh -n`, `--help`, the missing-cargo message and the whole clone/update/install/uninstall flow against a local git repository with a stand-in `cargo` that records its arguments (under a second). The real install, which compiles the compiler and the language server (about two minutes, reusing `CARGO_TARGET_DIR`), runs only with `AGENTMARK_TEST_INSTALL=1`; it passed once in this worktree. `shellcheck` was not available here, so it is not part of the tests.
+- Why: a two-minute compile in every `cargo test --workspace` is too slow, and the stand-in still pins the arguments that matter (`--locked --path <src>` and the `crates/agentmark-lsp` path, never `--git`).
+
+## Q424 — Installer details (step 28)
+- Choice: the installer checks out `AGENTMARK_REF` with `git fetch origin <ref>` and `git checkout FETCH_HEAD`, so a branch, a tag or `HEAD` all work and an update on a detached checkout needs no merge (a local edit in `~/.agentmark/src` is not kept if it conflicts). `--uninstall` ignores a missing binary and removes `AGENTMARK_HOME` after printing it. The version line comes from `agentmark --version`; `agentmark-lsp` takes no arguments, so it prints nothing. The PATH hint looks at `$CARGO_INSTALL_ROOT/bin` when set, else `$CARGO_HOME/bin`, else `~/.cargo/bin`.
+- Why: simplest flow that works for all three ref kinds and keeps the checkout persistent, as the compiler bakes in the path of `crates/agentmark-rt`.
+
+## Q425 — Paths in editor config files (step 28)
+- Choice: `docs/editor.md` writes the source folder as `~/.agentmark/src` in shell commands and as `/Users/you/.agentmark/src` in the Lua, TOML and `file://` snippets, with a sentence saying so, because those formats do not expand `~`.
+- Why: the brief asked for `~/.agentmark/src` in place of `/path/to/agentmark`; a literal `~` in a `file://` URL or a Helix grammar path would not work.
