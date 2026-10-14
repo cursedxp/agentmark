@@ -862,7 +862,7 @@ fn editor_doc_toml_is_a_valid_config() {
 fn editor_doc_panel_matches_check_json() {
     let block = blocks_of("editor")
         .into_iter()
-        .find(|b| b.body.starts_with("What can this agent touch"))
+        .find(|b| b.body.starts_with("What can this program touch"))
         .expect("docs/editor.md shows the panel as text");
     let out = Command::new(env!("CARGO_BIN_EXE_agentmark"))
         .args(["check", "--json", "examples/01-invoice-chaser"])

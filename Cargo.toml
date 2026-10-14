@@ -2,7 +2,7 @@
 name = "agentmark"
 version = "0.1.0"
 edition = "2021"
-description = "AgentMark: a Markdown-based language that compiles to Rust"
+description = "AgentMark: a general-purpose programming language written as Markdown, compiled to Rust"
 license = "MIT"
 
 [workspace]

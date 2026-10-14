@@ -1,6 +1,6 @@
 # AgentMark in your editor
 
-AgentMark files are Markdown, so any editor opens them. This page is about making the editor understand them: colours, errors as you type, completion, a formatter, and in VS Code a panel that answers the question a careful manager asks first, "what can this agent touch?".
+AgentMark files are Markdown, so any editor opens them. This page is about making the editor understand them: colours, errors as you type, completion, a formatter, and in VS Code a panel that answers the question a careful manager asks first, "what can this program touch?". AgentMark is a Markdown programming language; the editor support covers all of it (records, enums, functions, commands, services, tools, the built-in library, library handles) and agents, which are one more kind of declaration.
 
 There are three pieces, and they work alone:
 
@@ -58,14 +58,14 @@ Both settings are machine-scoped: a workspace cannot set them, and they are igno
 
 Two commands are in the command palette:
 
-* **AgentMark: Show what this agent can touch** opens the panel (also a button in the title bar of every `.agent.md` file).
+* **AgentMark: Show what this program can touch** opens the panel (also a button in the title bar of every `.agent.md` file).
 * **AgentMark: Restart language server** after you reinstall `agentmark-lsp`.
 
-## 3. What can this agent touch
+## 3. What can this program touch
 
 The panel runs `agentmark check --json` on the project that holds the open file (the nearest folder with an `agentmark.toml`) and shows the answer in plain words. While the panel is open it refreshes whenever you save a `.agent.md` file, `agentmark.toml` or `tools.toml`. The JSON it reads is described in [docs/check-json.md](check-json.md).
 
-Per agent, service, command, rule and function it shows:
+Per command, service, function, tool, rule and agent it shows:
 
 * the **effect class**: `pure` (computes only), `local` (this machine: logs, files), `network` (outside systems), `model` (asks an AI model) or `unverified` (a library nobody approved yet);
 * a plain sentence for each kind of access, for example "can reach the network: crm, email" or "asks the AI model";
@@ -89,7 +89,7 @@ ok: 0 errors, 0 warnings.
 and the panel shows, as text (the real panel prints the absolute path of the project where the sample says `examples/01-invoice-chaser`):
 
 ```text
-What can this agent touch
+What can this program touch
 
 Check passed for examples/01-invoice-chaser · 0 error(s), 0 warning(s)
 
@@ -160,9 +160,9 @@ What `agentmark-lsp` offers, in any editor:
 | feature | what you get |
 |---|---|
 | diagnostics | the errors and warnings of `agentmark check` and `agentmark lint`, with the same text, as you type |
-| completion | typed after `.` or a space: heading kinds (`Agent:`, `Record:` ...), triggers, statements, tools and their verbs, records, rules, constants, bound libraries, and the fields of a variable after `x.` |
+| completion | typed after `.` or a space: heading kinds (`Agent:`, `Record:`, `Enum:`, `Tool:` ...), triggers, statements, tools and their verbs (the built-in `file` tool and your own `# Tool` declarations included), records, enums and their variants, rules, constants, bound libraries, the modules of the built-in library (`text.` offers `lower`, `split`, ...), the methods of a handle after the variable's name, and the fields of a variable after `x.` |
 | go to definition | from a name to its declaration, across `# Import:` lines |
-| hover | on a heading: the effect summary of the block or of the whole agent; on a record field: its type, and whether the type was inferred from the name |
+| hover | on a heading: the effect summary of the block or of the whole agent, command or tool; on a record field: its type, and whether the type was inferred from the name |
 | formatting | `textDocument/formatting` returns the canonical style (same as `agentmark fmt`) |
 | code actions | quick fixes for the mechanical lint warnings (add a description above an agent, service or command, which is what `missing-doc` asks for; add a comment above a guard; extract a repeated literal into a `# Constant`) and for "did you mean" suggestions |
 | model actions | only with `[lsp] model_actions = true` and a model available: `AGENTMARK_MODEL` if set, else the `[models]` entry that `AGENTMARK_ENV` names, else Claude with `ANTHROPIC_API_KEY` (section 19 of [the reference](reference.md)). The actions are "Explain this block" and "Suggest a guard for this answer" on an `ask model` line |

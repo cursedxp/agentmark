@@ -2,7 +2,7 @@
 name = "agentmark-lsp"
 version = "0.1.0"
 edition = "2021"
-description = "Language server for AgentMark (stdio), built on the agentmark compiler library"
+description = "Language server for AgentMark, a general-purpose programming language written as Markdown (stdio), built on the agentmark library"
 license = "MIT"
 
 [lib]

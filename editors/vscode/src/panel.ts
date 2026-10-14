@@ -1,4 +1,4 @@
-// Renders the "what can this agent touch" panel as HTML. Pure: takes a report, returns a string.
+// Renders the "what can this program touch" panel as HTML. Pure: takes a report, returns a string.
 import { randomBytes } from "crypto";
 import { CheckReport, Effects, EffectClass, reach, Unit } from "./checkjson";
 
@@ -121,7 +121,7 @@ export function renderPanel(report: CheckReport | null, error?: string, nonce: s
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
-<title>What can this agent touch</title>
+<title>What can this program touch</title>
 <style nonce="${nonce}">
 body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px 16px}
 h2{font-size:1.1em;margin:1.2em 0 .3em}
@@ -137,7 +137,7 @@ table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:3px 8px;
 li.error strong{color:var(--vscode-errorForeground)}
 a{color:var(--vscode-textLink-foreground)}
 </style></head><body>
-<h1>What can this agent touch</h1>
+<h1>What can this program touch</h1>
 ${body.join("\n")}
 <script nonce="${nonce}">
 const vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;

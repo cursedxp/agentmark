@@ -1,4 +1,4 @@
-# AgentMark language reference (v0.1)
+# AgentMark language reference
 
 This is the whole language in one file, written so that a person, an editor plugin or an AI assistant
 can read it once and then write correct AgentMark. It follows `SPEC.md` section by section and in the
@@ -16,6 +16,65 @@ Rules that hold everywhere, so they are not repeated below:
   count (Q35).
 * Indentation is exactly 2 spaces per level. A tab is an error.
 * A file ends in `.agent.md`. Names are case-sensitive, headings are not.
+
+## Language at a glance
+
+AgentMark is a general-purpose programming language written as Markdown. A program is made of declarations (`# Record`,
+`# Enum`, `# Function`, `# Command`, `# Service`, `# Tool`, `# Constant`) written as headings with `-` lines under them, and
+`agentmark build` turns the project into one standalone binary. This is a complete program that uses no agent, no tool and no
+library from outside; it needs only the built-in ones:
+
+```agentmark
+# Enum: Shape
+- Circle: radius: int
+- Rect: width: int, height: int
+- Empty
+
+> Area of a shape, rounded down.
+# Function: area
+- in: shape: Shape
+- out: int
+- effect: pure
+  - match shape:
+    - Circle c:
+      - return c.radius * c.radius * 3
+    - Rect r:
+      - return r.width * r.height
+    - Empty:
+      - return 0
+
+> Prints the areas of three shapes, biggest first.
+# Command: areas
+- args: label: text = "Areas"
+
+## Run
+- set shapes = list of Rect { width: 2, height: 5 }, Circle { radius: 2 }, Empty
+- set sizes = map shapes to area(item)
+- set ranked = sort sizes by item descending
+- set words = map ranked to "{item}"
+- print: "{label}: {join words with ", "}"
+
+# Run
+- areas
+```
+
+Where each part of the language is described:
+
+| you want | read |
+|---|---|
+| records, rules, constants, files and imports | 2.1, 2.2, 1, 18 |
+| functions, commands, services | 13 |
+| enums, `match`, collection words (`group`, `sort`, `sum of`), the built-in library, the `file` tool, user-defined tools, default commands | 22 |
+| `try`, `maybe`, errors | 14 |
+| Rust libraries (`# Import: crate …`, handles) and `## Rust` blocks | 15, 17 |
+| types and units (money, date, duration) | 6 |
+| what a block can touch (`pure`, `local`, `network`, `model`) | 8 |
+| agents: `# Agent`, triggers, `ask model`, `guard`, model providers | 2.3, 3, 4.2, 4.4, 19 |
+
+Agents are one feature of the language, not its center. They are sugar over the core: before anything is generated, every
+agent construct is rewritten into functions and entries (section 0). Their sections keep the places the specification gives
+them, so the numbers here are the specification's; read sections 2.1, 4.1, 4.3, 4.5, 5 to 8 and 13 to 18 first and the agent
+sections afterwards if you never write an agent.
 
 ## 0. Architecture: three layers
 
@@ -54,7 +113,7 @@ Monday, counts invoices with two rules, asks a model for two sentences, checks t
 | layer | what lives there | where it is described |
 |---|---|---|
 | 3. Agent layer | `# Agent`, `# Rule`, triggers (`## Every ...`), `ask model`, `guard` | sections 2 to 4 |
-| 2. Core language | `# Record`, `# Function`, `# Service`, `# Command`, `# Constant`, control flow, `try`, bindings | sections 13 to 16 |
+| 2. Core language | `# Record`, `# Enum`, `# Function`, `# Service`, `# Command`, `# Tool`, `# Constant`, control flow, `match`, collection words, the built-in library, `try`, library bindings | sections 13 to 16 and 22 |
 | 1. Escape hatch | `## Rust` blocks: verbatim Rust inside any block | section 17 |
 
 Layer 3 is sugar over layer 2. Before the program is turned into Rust, every agent construct is
@@ -1828,9 +1887,11 @@ Nothing here changes the language. Built after v0.1 passes all its tests, in thi
 
 ## 22. v0.3: a general-purpose Markdown language
 
-Section 22 of the specification turns the core (Layer 2) into a general-purpose language: user-defined types and `match`,
-collection words, a built-in library, opaque library handles and user-defined tools. Each subsection below is added as the
-construct lands in the compiler, with checked samples like every other section.
+Section 22 of the specification makes the core (Layer 2) a general-purpose language, and it is where a program that has
+nothing to do with agents finds its tools: user-defined types and `match` (22.1), collection words (22.2), a built-in library
+and the `file` tool (22.3), opaque library handles (22.4), user-defined tools (22.5) and programs with a default command
+(22.6). Everything in it is Layer 2, and every sample in it is a program that uses no agent and no `## Rust` block. The
+agent sections (2.2, 2.3, 3, 4.2, 4.4) stay where the specification puts them; an agent is built from the same parts.
 
 ### 22.1 User-defined types
 
@@ -2258,6 +2319,22 @@ for a CSV cell, `cannot read "x.txt": it does not exist`). Error codes: E340 unk
 `try`, E342 `json.parse` / `csv.parse` without a usable `as` type, E343 a literal pattern that cannot work, E344 unknown
 `file` verb, E345 a `file` statement with a missing or extra part, E347 `[file]` in `tools.toml`.
 
+### 22.4 Opaque library types
+
+When the binder meets a Rust type that has no AgentMark equivalent, it declares the type as `handle of <crate>.<Type>` and
+binds its constructors and methods instead of skipping the API around it. A handle is created by a library statement, used by
+method statements whose first word is the variable, and passed to your own functions; a method that takes `self` by value
+consumes it, and a later use is an error naming the line. A handle cannot be printed, compared, stored in a record or traced.
+
+```text
+- sha2 sha256_new -> hasher
+- hasher update "hello "
+- hasher finalize -> digest
+```
+
+The rules and the error messages are in section 15.4, the workflow in `docs/libraries.md`. Crate features come from the
+`[crates]` table of `agentmark.toml`.
+
 ### 22.5 User-defined tools
 
 A tool can be written in AgentMark itself. `# Tool: name` has an `- effect:` line and one `## verb(params) -> type` block
@@ -2389,6 +2466,25 @@ several commands, or an agent or service next to the command, the commands stay 
 `agentmark run <project> -- <arguments>` and `agentmark trace <project> -- <arguments>` build the project and give the
 arguments after `--` to the program.
 
+### 22.7 v0.3 examples and testing contract
+
+Five examples, none an agent and none with a `## Rust` block: `06-sales-report` (CSV, `group by`, `sum of`, money, a report file),
+`07-file-renamer` (`file list`, patterns, dates, `file rename`, a `--dry-run` flag), `08-notes-api` (a REST service over SQLite
+through library handles), `09-markdown-to-html` (text and pattern functions, an `# Enum`, `match`) and `10-log-analyzer`
+(`lines`, patterns, `group by`, `count of`, `take … from`).
+
+A fixture folder of a program that is not an agent holds `run.json` (`{"args": […]}` and an optional `"stdin"`), an `input/`
+folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional
+`expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`.
+A folder under `variants/<case>/` holds only what differs from its parent. Services use `requests.json`, where an entry may
+carry `expect_status` and `expect_body`.
+
+### 22.8 Out of scope for v0.3
+
+* Closures, first-class functions and user generics (collection words never take a function value).
+* Async user code (handles to async library APIs are awaited by the generated code).
+* Operator overloading: every operator keeps the meaning of section 5.
+
 ## Appendix A. Statement index
 
 Every statement form of the language, with where it is explained:
@@ -2409,12 +2505,17 @@ Every statement form of the language, with where it is explained:
 | `respond <status>[ <expr>]` | 13.3 |
 | `read body as <Type> -> var` | 13.3 |
 | `read file <path> as <Type> -> var` | 13.3 |
-| `append <value> to <list>` | 13.3 |
 | `read input -> var` | 22.3 |
 | `file <verb> <path>[ to <new>\|: <text>][ -> var]` | 22.3 |
-| `try [do] <module.function>(args)[ as <Type>] -> var` | 22.3 |
+| `try [do] <call>(args)[ as <Type>] -> var` (a built-in or user function that returns `result of T`) | 14, 22.3 |
 | `print: "<text>"` | 13.3 |
 | `<binding> <item> <arguments>[ -> var]` (a library call) | 15 |
+| `<handle> <method> [<arguments>][ -> var]` (a method on a library handle) | 15.4, 22.4 |
+| `<tool> <verb> <arguments>[: <value>][ -> var]` (a user-defined tool) | 22.5 |
+| `<tool>.<verb>(arguments)` (an expression, pure tools only) | 22.5 |
+| `put <value> at <key> in <map>` / `remove <key> from <map>` | 22.2 |
+| `append <value> to <list>` | 13.3, 22.2 |
+| `for each <var> in <list> with index <i>:` / `for each <key>, <value> in <map>:` | 22.2 |
 | `try <statement>` + `otherwise:` | 14 |
 | `parallel:` | 16 |
 | `match <value>:` with `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | 22.1 |
