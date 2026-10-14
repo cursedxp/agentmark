@@ -7,8 +7,10 @@
 //!   default 0) and `# in FILE: replace "A" with "B"` (the edit the reader makes by hand).
 //!   The words `app` and `out` stand for scratch folders; ```console app starts with `app` = a copy
 //!   of examples/05-invoice-service without its sha2 binding. `$PWD` is the repository root.
-//! - the ```rust file=rust/connect.rs block is dropped into a copy of example 01 and must compile
-//!   and run up to the model call.
+//!   ```console connect: `app` = a copy of example 01 with the README's ```rust file=rust/connect.rs.
+//! - the ```rust http block (with the ```toml agentmark.toml block appended to agentmark.toml) must
+//!   build: `[rust.dependencies]` brings in reqwest, nothing calls a network.
+//! - the ```rust trait block must appear verbatim in the generated `src/tools.rs`.
 
 mod support;
 
@@ -86,9 +88,17 @@ fn head(t: &str) -> String {
 
 fn run_console(b: &Block) {
     let d = temp("readme-console");
-    if b.info.split_whitespace().nth(1) == Some("app") {
-        copy_dir(Path::new(&format!("{ROOT}/examples/05-invoice-service")), &d.join("app"));
-        std::fs::remove_file(d.join("app/bindings/sha2.agent.md")).unwrap();
+    std::fs::create_dir_all(d.join("tmp")).unwrap();
+    match b.info.split_whitespace().nth(1) {
+        Some("app") => {
+            copy_dir(Path::new(&format!("{ROOT}/examples/05-invoice-service")), &d.join("app"));
+            std::fs::remove_file(d.join("app/bindings/sha2.agent.md")).unwrap();
+        }
+        Some("connect") => {
+            copy_dir(Path::new(&format!("{ROOT}/examples/01-invoice-chaser")), &d.join("app"));
+            write(&d.join("app"), "rust/connect.rs", &readme_block("rust file=rust/connect.rs").body);
+        }
+        _ => {}
     }
     let scrub = |t: &str| t.replace(&format!("{}/", s(&d)), "").replace(&format!("{ROOT}/"), "");
 
@@ -129,6 +139,8 @@ fn run_console(b: &Block) {
         let args: Vec<String> = words.map(|w| place(w, &d)).collect();
         let args: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
         let mut c = agentmark(&args);
+        // build caches of run/trace go under the block's own folder, removed with it
+        c.env("TMPDIR", d.join("tmp"));
         for (k, v) in &env {
             c.env(k, v);
         }
@@ -175,23 +187,40 @@ fn every_command_is_shown() {
     }
 }
 
-#[test]
-fn connect_rs_of_the_readme_compiles_and_runs() {
-    let all = blocks();
-    let b = all.iter().find(|b| b.info == "rust file=rust/connect.rs").expect("README.md has no ```rust file=rust/connect.rs block");
-    let d = temp("readme-connect");
+fn readme_block(info: &str) -> Block {
+    let b = blocks().into_iter().find(|b| b.info == info);
+    b.unwrap_or_else(|| panic!("README.md has no ```{info} block"))
+}
+
+/// A copy of example 01 in a scratch folder.
+fn project_01(d: &Path) -> PathBuf {
     let project = d.join("chaser");
     copy_dir(Path::new(&format!("{ROOT}/examples/01-invoice-chaser")), &project);
-    write(&project, "rust/connect.rs", &b.body);
-    // a real run (no --mock) reads the invoices through the README's MemoryCrm, then asks the real
-    // model, which cannot be reached without a key: the run gets that far. The build cache of the
-    // run goes to a TMPDIR of its own, so nothing is left behind.
-    let cache = temp("readme-connect-cache");
-    let mut c = agentmark(&["run", s(&project)]);
-    c.env("TMPDIR", s(&cache));
-    let o = c.output_locked();
-    let err = stderr(&o);
-    assert!(!err.contains("not connected yet"), "stub still in use:\n{err}");
-    assert!(!err.contains("error["), "README connect.rs does not compile:\n{err}");
-    assert!(err.contains("environment variable ANTHROPIC_API_KEY is not set"), "the run did not reach the model call:\n{err}");
+    project
+}
+
+#[test]
+fn http_backed_connect_rs_builds_with_rust_dependencies() {
+    let d = temp("readme-http");
+    let project = project_01(&d);
+    write(&project, "rust/connect.rs", &readme_block("rust http").body);
+    let toml = std::fs::read_to_string(project.join("agentmark.toml")).unwrap();
+    write(&project, "agentmark.toml", &format!("{toml}\n{}", readme_block("toml agentmark.toml").body));
+    let out = d.join("out");
+    let o = agentmark(&["build", s(&project), "-o", s(&out)]).output_locked();
+    assert!(o.status.success(), "README http connect.rs does not build:\n{}{}", stdout(&o), stderr(&o));
+    let cargo = std::fs::read_to_string(out.join("Cargo.toml")).unwrap();
+    assert!(cargo.contains("reqwest = "), "[rust.dependencies] was not merged:\n{cargo}");
+}
+
+#[test]
+fn the_trait_block_is_what_build_generates() {
+    let d = temp("readme-trait");
+    let project = project_01(&d);
+    let out = d.join("out");
+    let o = agentmark(&["build", s(&project), "-o", s(&out), "--no-check"]).output();
+    assert!(o.map(|o| o.status.success()).unwrap(), "build failed");
+    let tools = std::fs::read_to_string(out.join("src/tools.rs")).unwrap();
+    let block = readme_block("rust");
+    assert!(tools.contains(block.body.trim_end()), "the trait in README.md:{} is not in the generated tools.rs:\n{tools}", block.line);
 }

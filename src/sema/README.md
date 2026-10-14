@@ -16,7 +16,7 @@ project.render(&diags)                                           // SPEC 10 text
 | `Project.kind` | `SingleFile` (root = the file's folder) or `Folder` (every `*.agent.md` below it) |
 | `Project.files: Vec<SourceFile>` | parsed files; the index is the **file id** used everywhere (`NodeKey.file`, `BlockInfo.file`) |
 | `SourceFile { path, text, ast, imports, rel_dir }` | `imports[i]` is the resolution of `ast.imports[i]` (`ResolvedImport::Files(..)` with module prefix, `Crate { name, binding }`, `Unresolved`) |
-| `Project.manifest`, `.config` | `tools.toml` (`Manifest`), `agentmark.toml` (`Config { name, version, targets, lint_deny }`) |
+| `Project.manifest`, `.config` | `tools.toml` (`Manifest`), `agentmark.toml` (`Config { name, version, targets, lint_deny, rust_dependencies }`) |
 | `Project.entry_files` | roots of the check |
 | `Project.load_diagnostics` | syntax / import / cycle / manifest errors; `check` returns them unchanged |
 | `Project.sources` | text of every file read, so `render` works for `tools.toml` too |

@@ -95,10 +95,14 @@ Prints the documentation page of a project (agents, records, rules, what each bl
 ```console
 $ agentmark doc examples/01-invoice-chaser
 # invoice-chaser
+…
 ### invoice-chaser
 Chases unpaid invoices once a day. Never changes amounts; only sends reminders.
+…
 - can touch: model, network(crm, email), local(log)
+…
 **Every day at 09:00** (can touch: model, network(crm, email), local(log))
+…
 ```
 
 ### bind
@@ -144,7 +148,7 @@ $ agentmark check app
 ok: 0 errors, 0 warnings.
 ```
 
-(`app` is a copy of `examples/05-invoice-service` without its `bindings/sha2.agent.md`. While you develop, `--allow-unverified` on `check`, `build`, `run` and `trace` assumes the proposed effect and warns once per binding; a release build still needs the approval.) The effect line is the only thing you approve: it is what `check` holds every caller to, so a function that says `- effect: pure` and calls a library you marked `network` is an error. The pin is the version in the binding header: the generated `Cargo.toml` depends on `sha2 = "=0.10.9"`.
+(`app` is a copy of `examples/05-invoice-service` without its `bindings/sha2.agent.md`. While you develop, `--allow-unverified` on `check`, `build`, `run` and `trace` assumes the proposed effect and warns once per binding; `build`, `run` and `trace` without the flag refuse a program that uses an unapproved binding.) The effect line is the only thing you approve: it is what `check` holds every caller to, so a function that says `- effect: pure` and calls a library you marked `network` is an error. The pin is the version in the binding header: the generated `Cargo.toml` depends on `sha2 = "=0.10.9"`.
 
 ## Writing a real tool implementation
 
@@ -154,7 +158,10 @@ ok: 0 errors, 0 warnings.
 [crm]
 verbs = ["list", "get", "update"]
 sources = ["invoices", "leads", "tickets"]
+events = ["lead", "ticket"]
 effect = "network"
+
+# … [email], [http] and [log] follow
 ```
 
 For every tool that has verbs, `agentmark build` generates one trait in `src/tools.rs` with one method per verb. A method takes the call's arguments as JSON and returns the answer as JSON:
@@ -170,7 +177,80 @@ pub trait Crm: Send + Sync {
 
 `Email` (`send`) and `Http` (`get`, `post`) are generated the same way; `log` has no verbs and is built in (stderr and the trace). `--mock` runs answer from fixtures, so mock and real runs share all other code. For a real run, `Connected { crm: Box<dyn Crm>, email: Box<dyn Email>, http: Box<dyn Http> }` is what the program uses, and you build it in **`rust/connect.rs`**, a file of your project beside `agentmark.toml` (for a single file: `rust/` next to it). `build`, `run` and `trace` create it once, with a stub for every tool whose methods fail with `not connected yet: implement Crm::list in rust/connect.rs`, and never change it again. Every build copies it to `src/connect.rs` of the generated project, so deleting the output loses nothing; a compiler error in it is reported against your file. When `tools.toml` gains a tool, add it to `Connected` there.
 
-The arguments are exactly what the generated code sends: `crm list` gets `{"source": "invoices"}` and answers an array of rows shaped like the record; `crm update` gets `{"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}`; `email send` gets `{"target": "customer", "to": "ap@mueller.de", "text": "…"}`. Here is `rust/connect.rs` for `examples/01-invoice-chaser` with an in-memory CRM and an "email provider" that prints; `http` stays a stub because this program never calls it. An HTTP-backed CRM has the same shape, with the HTTP calls inside the methods instead of the `Mutex`. `connect.rs` can use the dependencies of the generated project (`agentmark-rt`, `async-trait`, `serde_json`, `tokio`, `chrono`, and every crate the program imports); the generated `Cargo.toml` is rewritten on every build and v0.1 has no setting for more.
+The arguments are exactly what the generated code sends: `crm list` gets `{"source": "invoices"}` and answers an array of rows shaped like the record; `crm update` gets `{"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}`; `email send` gets `{"target": "customer", "to": "ap@mueller.de", "text": "…"}`. Here is `rust/connect.rs` for `examples/01-invoice-chaser` with an in-memory CRM and an "email provider" that prints; `http` stays a stub because this program never calls it.
+
+A real backend usually needs a client crate. `agentmark.toml` has an optional `[rust.dependencies]` table that is copied verbatim into the `[dependencies]` of the generated `Cargo.toml` (each entry is a version text or a table, as in Cargo; naming a dependency the generated project already has, such as `serde_json`, `tokio` or an imported crate, is an error):
+
+```toml agentmark.toml
+[rust.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+```
+
+With that, `Crm::list` can be HTTP-backed. This is a complete `rust/connect.rs` that reads `GET <base>/<source>` (the base URL from the environment) and leaves the other methods to implement; `build` compiles it, nothing in the tests calls a network:
+
+```rust http
+use agentmark_rt::RtError;
+use async_trait::async_trait;
+use serde_json::Value;
+
+use crate::tools::{Connected, Crm, Email, Http};
+
+/// The CRM behind an HTTP API: `GET <base>/invoices` answers the rows as a JSON array.
+struct HttpCrm {
+    base: String,
+    client: reqwest::Client,
+}
+
+#[async_trait]
+impl Crm for HttpCrm {
+    // args: {"source": "invoices"}
+    async fn list(&self, args: Value) -> Result<Value, RtError> {
+        let source = args["source"].as_str().unwrap_or_default();
+        let fail = |e: reqwest::Error| RtError::Tool(format!("crm list {source}: {e}"));
+        let reply = self.client.get(format!("{}/{source}", self.base)).send().await.map_err(fail)?;
+        reply.error_for_status().map_err(fail)?.json::<Value>().await.map_err(fail)
+    }
+    async fn get(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Crm::get in rust/connect.rs".into()))
+    }
+    async fn update(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Crm::update in rust/connect.rs".into()))
+    }
+}
+
+/// Nobody connected the other tools yet: every call says what to implement.
+struct NotConnected;
+
+#[async_trait]
+impl Email for NotConnected {
+    async fn send(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Email::send in rust/connect.rs".into()))
+    }
+}
+
+#[async_trait]
+impl Http for NotConnected {
+    async fn get(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Http::get in rust/connect.rs".into()))
+    }
+    async fn post(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Http::post in rust/connect.rs".into()))
+    }
+}
+
+pub fn connect() -> Connected {
+    Connected {
+        crm: Box::new(HttpCrm {
+            base: std::env::var("CRM_URL").unwrap_or_else(|_| "http://localhost:8080".into()),
+            client: reqwest::Client::new(),
+        }),
+        email: Box::new(NotConnected),
+        http: Box::new(NotConnected),
+    }
+}
+```
+
+The in-memory version below is what `examples/01-invoice-chaser` needs to run end to end offline: an in-memory CRM (two invoices, updated in place) and an "email provider" that prints. `http` stays a stub because this program never calls it.
 
 ```rust file=rust/connect.rs
 //! Connect the tools to the real world (this file is yours; `build` never overwrites it).
@@ -266,11 +346,22 @@ pub fn connect() -> Connected {
 }
 ```
 
-With this file in `examples/01-invoice-chaser/rust/`, `agentmark run examples/01-invoice-chaser` reads the invoices from `MemoryCrm`, asks the real model (set `ANTHROPIC_API_KEY`; without it the run stops at the first question with `environment variable ANTHROPIC_API_KEY is not set`), prints the reminder through `PrintEmail` and updates the row. Errors you return become `error` lines in the trace and stop the block, like any failing tool.
+With this file in `examples/01-invoice-chaser/rust/`, `agentmark run examples/01-invoice-chaser` reads the invoices from `MemoryCrm`, asks the real model (set `ANTHROPIC_API_KEY`), prints the reminder through `PrintEmail` and updates the row. To try it without a key, point `AGENTMARK_MODEL` at a model file: `AGENTMARK_MODEL=mock:fixtures/01-invoice-chaser/model.json` makes the generated program answer from it, in the same syntax the binder uses. The program is a copy of the example with that file in `rust/`:
+
+```console connect
+$ AGENTMARK_MODEL=mock:$PWD/fixtures/01-invoice-chaser/model.json agentmark run app
+-> ap@mueller.de: Dear Müller GmbH, this is a friendly reminder that invoice INV-1 for 1200.00 EUR was due on 2026-09-01. …
+[log] Reminded Müller GmbH about 1200.00 EUR
+$ AGENTMARK_MODEL=mock:$PWD/fixtures/01-invoice-chaser/model.json agentmark trace app
+{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
+{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
+```
+
+Errors you return become `error` lines in the trace and stop the block, like any failing tool.
 
 ## Adding a target
 
-A target is a module under `src/codegen/` that reads the IR and nothing else (`src/ir/README.md` lists every node; the IR has no agent, rule, trigger or guard concept left, constants are inlined, and every statement and expression carries its `EffectSet`). Write `src/codegen/<target>.rs` with a `generate(&ir::Program, &Options) -> Vec<GeneratedFile>` like `codegen::rust::generate` (path, content, whether the file belongs to the user), declare it in `src/codegen/mod.rs`, and accept the new name in `build` (`src/cli/build.rs` refuses every `--target` but `rust` today). A target also needs a runtime with the same contract as `crates/agentmark-rt` (`Money` in integer minor units, the model client, mock tools and fixtures, the JSONL trace of DESIGN §5.1), because a target is correct when `trace` of every example equals `fixtures/<example>/expected.trace.jsonl`: `tests/examples_e2e.rs` runs exactly that check for Rust, and the same fixtures run for yours. Keep the output readable (one function per block, a `<file>.agent.md:<line>` comment on every statement) and put a mapping from the target's compiler errors back to `.agent.md` lines next to `report_failure` in the CLI, so an AgentMark author never reads a foreign compiler's message.
+A target is a module under `src/codegen/` that reads the IR and nothing else. `src/ir/README.md` lists every node: there are no agent, rule or guard nodes left (a guard is a `Let`, a trace `Effect` and an `If`), triggers sit on `Entry` values (`Trigger::Every`, `DailyAt`, `Weekly`, `Event`, `Start`), constants are inlined, and every statement and expression carries its `EffectSet`. Write `src/codegen/<target>.rs` with a `generate(&ir::Program, &Options) -> Vec<GeneratedFile>` like `codegen::rust::generate`, declare it in `src/codegen/mod.rs`, and accept the new name in `build` (`src/cli/build.rs` refuses every `--target` but `rust`). `Options` and `GeneratedFile` are defined in `src/codegen/rust.rs` today; move them to `codegen/mod.rs` when a second target shares them. `run` and `trace` have no `--target`: `build_and_run` in the same file calls the Rust generator and cargo directly, then starts the binary with `--once` (plus `--mock`, `--fixtures`, `--trace -`), so a target that should run under `agentmark run` needs that function generalised: a build step, and a program that takes those flags. A target also needs a runtime with the contract of `crates/agentmark-rt` (`Money` in integer minor units, the model client, mock tools and fixtures, the JSONL trace of DESIGN §5.1), because a target is correct when the trace of every example equals `fixtures/<example>/expected.trace.jsonl`: `tests/examples_e2e.rs` runs exactly that check for Rust. Keep the output readable (one function per block, a `<file>.agent.md:<line>` comment on every statement) and map the target's compiler errors back to `.agent.md` lines next to `report_failure`, so an AgentMark author never reads a foreign compiler's message.
 
 ## Layout
 
