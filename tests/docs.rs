@@ -13,7 +13,7 @@
 //! |---|---|
 //! | `agentmark` | a **complete program**: the first line that is not blank or a `>` comment must be a `# ` heading, and `check` (the library, against `examples/tools.toml`) must report 0 errors. A single-file program may hold several declarations. It also has to be in the canonical style `fmt` writes. It sees the `tools.toml` and the `bindings/` files named by earlier blocks of the same doc (see `name=`). |
 //! | `agentmark invalid` | a complete program that is **meant to fail**: `check` must report at least one error (used where the text says "this is an error") |
-//! | `agentmark fragment` | a **fragment**: only *parsed*, inside the minimal wrapper below |
+//! | `agentmark fragment` | a **fragment**: parsed inside the minimal wrapper below, then checked with errors about names it cannot see (other records, actions, files) ignored. `agentmark fragment gap` is parsed only: a documented gap of the checker |
 //! | `agent.md` | same as `agentmark` (the older spelling) |
 //! | anything else (`text`, `toml`, `json`, `rust`, `bash`, `console`) | not an AgentMark sample; the modifiers below still apply |
 //!
@@ -259,11 +259,13 @@ fn every_doc_exists_and_has_samples() {
 #[test]
 fn info_strings_are_known() {
     for b in all_blocks() {
+        assert!(!b.info.is_empty(), "{}: a fenced block with no info string (is a fence closing early? give it text/console/...)", b.at());
         let words = b.words();
         for w in words.iter().skip(1) {
-            let known = matches!(*w, "fragment" | "invalid" | "stderr")
+            let known = matches!(*w, "fragment" | "invalid" | "stderr" | "gap")
                 || w.starts_with("name=")
                 || w.starts_with("file=")
+                || w.starts_with("says=")
                 || *w == "cwd=repo";
             assert!(known, "{}: unknown word \"{w}\" in the info string \"{}\"", b.at(), b.info);
         }
@@ -324,15 +326,31 @@ fn complete_programs_are_in_the_canonical_style() {
 fn invalid_programs_really_fail() {
     let mut n = 0;
     for (b, ctx) in agentmark_blocks_in_context().into_iter().filter(|(b, _)| b.has_word("invalid")) {
-        assert!(
-            check_complete(&b.body, &ctx).is_err(),
-            "{}: tagged invalid but check reports no error:\n{}",
-            b.at(),
-            b.body
-        );
+        let err = check_complete(&b.body, &ctx)
+            .expect_err(&format!("{}: tagged invalid but check reports no error:\n{}", b.at(), b.body));
+        if let Some(says) = b.modifier("says") {
+            let says = says.replace('_', " ");
+            assert!(err.contains(&says), "{}: expected the error to say \"{says}\", got:\n{err}", b.at());
+        }
         n += 1;
     }
     assert!(n >= 3, "the guide and reference should show a few real mistakes, found {n}");
+}
+
+/// A fragment refers to records, rules and variables that are not in it, so errors about names that
+/// cannot be found are expected; any other error (a wrong type, a bad verb, a purity violation inside
+/// the fragment itself) is a mistake in the doc.
+fn fragment_semantic_errors(src: &str) -> Option<String> {
+    let project = Project::from_str("fragment.agent.md", src, TOOLS);
+    let Err(diags) = sema::check(&project) else { return None };
+    let unresolved = |m: &str| {
+        ["Unknown name", "no record", "Unknown tool", "Unknown type", "Unknown source", "Unknown function", "Unknown rule",
+         "Unknown agent", "is not visible", "not listed", "Unknown record", "arrives as a record", "Which ", "Unknown action or function", "Cannot find the", "matches no files"]
+            .iter()
+            .any(|p| m.contains(p))
+    };
+    let rest: Vec<_> = diags.into_iter().filter(|d| d.severity == Severity::Error && !unresolved(&d.message)).collect();
+    (!rest.is_empty()).then(|| project.render(&rest))
 }
 
 #[test]
@@ -343,6 +361,11 @@ fn fragments_parse_inside_the_wrapper() {
         let src = wrapped(&b.body);
         if let Err(d) = parse_file("fragment.agent.md", &src) {
             failures.push(format!("{}: fragment does not parse:\n{}", b.at(), render_all(&d, &src)));
+        }
+        else if b.has_word("gap") {
+            // a known gap of the checker (OPEN_QUESTIONS Q170): parsed only
+        } else if let Some(rendered) = fragment_semantic_errors(&src) {
+            failures.push(format!("{}: fragment has errors beyond unresolved names:\n{rendered}", b.at()));
         }
         n += 1;
     }
@@ -594,6 +617,7 @@ fn reference_shows_every_statement_form() {
         "## On start",
         "## Do ",
         "## GET ",
+        "- pdf render ",
     ];
     for f in forms {
         assert!(samples.contains(f), "docs/reference.md never shows the form {f:?} in a sample");
@@ -650,4 +674,45 @@ fn sha2_description_matches_the_library_documentation() {
     assert!(digest.contains("Compute hash of `data`."), "the recorded rustdoc of digest changed");
     let binding = std::fs::read_to_string("examples/05-invoice-service/bindings/sha2.agent.md").unwrap();
     assert!(binding.contains("> Compute hash of `data`.\n## sha256_digest(data: bytes) -> bytes"));
+}
+
+/// Every `$ agentmark` line of a doc is the first line of a `console` block, and so is executed.
+#[test]
+fn every_transcript_is_executed() {
+    for doc in DOCS {
+        let text = read_doc(doc);
+        let lines = text.lines().filter(|l| l.trim_start().starts_with("$ agentmark")).count();
+        let executed = blocks_of(doc)
+            .iter()
+            .filter(|b| b.lang() == "console" && b.body.starts_with("$ agentmark "))
+            .count();
+        assert_eq!(lines, executed, "docs/{doc}.md has `$ agentmark` lines outside an executed console block");
+    }
+}
+
+/// docs/check-json.md: the sample is JSON and has the keys the real output has.
+#[test]
+fn check_json_doc_matches_the_real_output() {
+    let text = std::fs::read_to_string("docs/check-json.md").unwrap();
+    let start = text.find("```json\n").expect("a json sample") + 8;
+    let end = start + text[start..].find("\n```").unwrap();
+    let doc: serde_json::Value = serde_json::from_str(&text[start..end]).expect("the sample parses as JSON");
+    let out = Command::new(env!("CARGO_BIN_EXE_agentmark"))
+        .args(["check", "--json", "examples/05-invoice-service"])
+        .output()
+        .unwrap();
+    let real: serde_json::Value = serde_json::from_slice(&out.stdout).expect("check --json prints JSON");
+    let keys = |v: &serde_json::Value| -> Vec<String> {
+        let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+        k.sort();
+        k
+    };
+    assert_eq!(keys(&doc), keys(&real), "top-level keys of docs/check-json.md and `check --json`");
+    for (section, field) in [("units", "blocks"), ("diagnostics", "code")] {
+        let d = doc[section].as_array().and_then(|a| a.first());
+        let r = real[section].as_array().and_then(|a| a.first());
+        if let (Some(d), Some(r)) = (d, r) {
+            assert!(d.get(field).is_some() && r.get(field).is_some(), "{section}[].{field}");
+        }
+    }
 }

@@ -177,7 +177,7 @@ tiers. The tiers are tried in order:
 Nothing is silently dropped. The counts in the `bind` output add up to every item. A larger crate, `chrono`
 (dates and times), shows how the first tier works. Seventy-one items bound by rules alone, for example:
 
-```text
+````text
 chrono 0.4.45: generated ./bindings/chrono.agent.md: 71 direct, 5 assisted, 338 not bound.
 
 > Returns the number of non-leap seconds since January 1, 1970 0:00:00 UTC (aka "UNIX timestamp").
@@ -191,7 +191,7 @@ chrono 0.4.45: generated ./bindings/chrono.agent.md: 71 direct, 5 assisted, 338 
   ```rust
   Ok(date_time.checked_add_signed(rhs))
   ```
-```
+````
 
 Notice how names are built: the Rust type and function joined with underscores (`date_time_timestamp`), the
 receiver as the first parameter, `Option<T>` as `maybe T`. The sentence above each is rustdoc's.

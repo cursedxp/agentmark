@@ -803,7 +803,7 @@ currency has is an error, never silent rounding (Q14).
 Every error points at a line and says what was expected, in plain words, with a caret under the offending
 token, and a suggestion when a known word is within edit distance 2:
 
-```agentmark invalid name=typo.agent.md
+```agentmark invalid name=typo.agent.md says=Unknown_target
 > Mails a reminder.
 # Agent: reminder
 - model: claude
@@ -1052,7 +1052,6 @@ Statements for services and commands:
 - append inv to state.invoices
 - respond 201 inv
 - respond 204
-- return inv
 ```
 
 ```agentmark fragment
@@ -1101,7 +1100,7 @@ value is used (Q94).
 
 A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rust, and its callers must use `try`:
 
-```agentmark fragment
+```agentmark fragment gap
 # Function: half
 - in: n: int
 - out: result of int
@@ -1142,7 +1141,7 @@ statements such as `- pdf render doc -> bytes`. AgentMark generates and caches t
 ordinary layer-2 file: reviewable, diffable and editable by hand. This one is written in the same format as the
 generated ones:
 
-````agentmark
+````agentmark name=bindings/printpdf.agent.md
 > Invoice titles as PDF files.
 # Binding: pdf
 - crate: printpdf
@@ -1159,6 +1158,28 @@ generated ones:
 ````
 
 A statement then reads `- pdf render title -> bytes`: the binding name, the item name, the arguments, the result.
+
+Used from a program, with the binding file above in place, the call is an ordinary statement:
+
+```agentmark
+# Import: crate printpdf
+
+# Record: Invoice
+- id: text
+- amount: money
+
+> Renders a PDF title for every invoice.
+# Agent: printer
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - pdf render "{invoice.id}" -> document
+  - log: "rendered {invoice.id}"
+```
+
+The form is `- <binding> <item> <arguments> -> var`; the effect of the call is the binding's `- effect:` (here `local(pdf)`).
 
 ### 15.1 Flow
 
@@ -1343,7 +1364,7 @@ every matching file. An import cycle is an error, and the cycle is printed.
 
 These are errors and cannot be switched off, because they are what keep a file readable.
 
-```agentmark invalid name=deep.agent.md
+```agentmark invalid name=deep.agent.md says=nested_4_levels_deep
 # Record: Invoice
 - id: text
 - amount: money
@@ -1652,6 +1673,7 @@ Every statement form of the language, with where it is explained:
 | `read file <path> as <Type> -> var` | 13.3 |
 | `append <value> to <list>` | 13.3 |
 | `print: "<text>"` | 13.3 |
+| `<binding> <item> <arguments>[ -> var]` (a library call) | 15 |
 | `try <statement>` + `otherwise:` | 14 |
 | `parallel:` | 16 |
 | `## Rust: <name>[ -> <type>]` | 17 |

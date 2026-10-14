@@ -35,8 +35,7 @@ back into an earlier one. Two rules keep the pipeline honest:
   node; the lowering tests walk the layer-2 AST to assert that. The generator never sees an agent
   (SPEC 0, DESIGN 4).
 * **Every IR node carries an effect set**, copied from `Checked` (or merged from children for nodes lowering invented).
-  The effect summary that `check` prints is computed from the IR, so the summary and any future optimiser read the
-  same source of truth.
+  The effect summary that `check` prints is read from the semantic check (`Checked.blocks`, see `src/cli/check.rs`); the IR carries the same sets, so a future optimiser reads them there.
 
 The pieces, in the order a program meets them:
 

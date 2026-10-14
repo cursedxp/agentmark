@@ -44,9 +44,9 @@ money, a due date and a status." That is all it says.
   `bool` for yes or no, `datetime` for a day and a time, and `duration` for a length of time such
   as `14 days`.
 
-If you leave the kind out, AgentMark guesses it from the name: a name ending in `date` or `at` is a
-date, one ending in `amount` or `price` is money, one ending in `count` is a whole number, and
-everything else is text. When it cannot tell, it says so and tells you which kind it picked. Writing
+If you leave the kind out, AgentMark guesses it from the last word of the name. For example, a name ending in `date`, `at` or `on`
+is a date, one ending in `amount`, `price`, `total` or `fee` is money, one ending in `count`, `qty` or
+`number` is a whole number, and everything else is text. When it cannot tell, it says so and tells you which kind it picked. Writing
 the kind yourself is always the clearer choice.
 
 ## 2. Say what "overdue" means
@@ -372,7 +372,7 @@ expected. It never shows you programmer's error text. Three that you are likely 
 
 **A typo.** It suggests the word it thinks you meant:
 
-```agentmark invalid name=mistake.agent.md
+```agentmark invalid name=mistake.agent.md says=Unknown_target
 > Mails a reminder.
 # Agent: reminder
 - model: claude
@@ -392,7 +392,7 @@ mistake.agent.md:7
 
 **A tool that is not on the list.** This is the safety net doing its job:
 
-```agentmark invalid name=mistake.agent.md
+```agentmark invalid name=mistake.agent.md says=is_not_listed_in_the_tools
 > Mails a reminder.
 # Agent: reminder
 - model: claude
@@ -413,7 +413,7 @@ mistake.agent.md:7
 
 **Mixing things that do not mix.** Units are real: money and days are different kinds of things.
 
-```agentmark invalid name=mistake.agent.md
+```agentmark invalid name=mistake.agent.md says=Cannot_add_money_to_a_date
 # Record: Invoice
 - amount: money
 - due: date
@@ -506,7 +506,7 @@ And `main.agent.md` is the table of contents of the program:
 ```
 
 `agentmark check`, `doc`, `fmt` and `lint` all accept the folder in place of the file. The report for
-the whole project is the one you saw in section 4:
+the whole project is the same kind of report you saw in section 4:
 
 ```console cwd=repo
 $ agentmark check examples/01-invoice-chaser
