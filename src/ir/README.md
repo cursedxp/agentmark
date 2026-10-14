@@ -26,7 +26,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Entry` — `unit, label, trigger, param, timeout, memory_file, body, effect`; stop = return from the body.
 - `Trigger` — `Every(Duration) | DailyAt | Weekly | Event{tool,event} | Start`; `Duration {amount, unit}`.
 - `Service` / `Route` — `name, listen, state record`; route has `method, path, path_params (text vars), label ("GET /x"), body`. `state` is a variable of the state record.
-- `Command` — `name, args (with defaults), state (Q9: the project's service state record, variable `state`), body`.
+- `Command` — `name, args (with defaults), state (Q9: the project's service state record, variable `state`), body`; `source` = `# Command` heading, `run` = its `## Run` heading.
 - `RustFn` — `## Rust` block: verbatim `code`, `code_line`, declared `effect`; `BindingFn` — one binding item, verbatim `code`, `effect` (`Unverified` until approved).
 - `CrateImport` — `# Import: crate x` (`binding` = binding name if a binding file exists; versions live in the binding header).
 - `ToolDef` (re-export of `manifest::ToolDef`) — `tools.toml` entry, for one trait per tool.

@@ -18,7 +18,7 @@ use crate::syntax::parser::parse_file;
 
 const DEFAULT_CLAUDE: &str = "claude-sonnet-4-5";
 
-fn model_from_env() -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String> {
+pub(crate) fn model_from_env() -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String> {
     let spec = std::env::var("AGENTMARK_MODEL").unwrap_or_default();
     let spec = if spec.is_empty() { "claude".to_string() } else { spec };
     if let Some(path) = spec.strip_prefix("mock:") {
@@ -38,7 +38,7 @@ fn model_from_env() -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String>
 }
 
 /// Today's date from the system clock (UTC), without a timezone database.
-fn system_today() -> NaiveDate {
+pub(crate) fn system_today() -> NaiveDate {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())

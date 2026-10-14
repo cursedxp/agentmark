@@ -180,6 +180,8 @@ pub struct Command {
     pub body: Vec<Stmt>,
     pub effect: EffectSet,
     pub source: SourceRef,
+    /// The `## Run` heading (the block the statements belong to).
+    pub run: SourceRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

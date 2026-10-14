@@ -53,12 +53,14 @@ pub struct Ctx {
     pub unit: String,
     /// Heading of the entry that started the run (e.g. `Every day at 09:00`).
     pub entry: String,
+    /// Model id the current agent asked for (`claude-haiku-4-5`); `None` = the provider's default.
+    pub model_id: Option<String>,
 }
 
 impl Ctx {
     /// Bundle the parts; labels start empty (set them with [`Ctx::enter`]).
     pub fn new(trace: Trace, model: Arc<dyn ModelClient>, tools: Arc<dyn Tools>, clock: Clock) -> Ctx {
-        Ctx { trace, model, tools, clock, unit: String::new(), entry: String::new() }
+        Ctx { trace, model, tools, clock, unit: String::new(), entry: String::new(), model_id: None }
     }
 
     /// Mock context from a fixtures folder (`model.json` with a required `"today"`, `<tool>.<source>.json`); errors without `today`.
@@ -80,12 +82,44 @@ impl Ctx {
         Ctx { unit: unit.into(), entry: entry.into(), ..self.clone() }
     }
 
+    /// A copy that asks the given model id (each agent has its own `- model:`).
+    pub fn with_model(&self, id: &str) -> Ctx {
+        Ctx { model_id: Some(id.into()), ..self.clone() }
+    }
+
     /// Ask the model, then trace one `model` line (matched fixture prefix, or the prompt start).
     pub async fn ask_model(&self, prompt: &str, context: Option<Value>) -> Result<String, RtError> {
-        let resp = self.model.complete(&ModelRequest::new(prompt)).await?;
+        let mut req = ModelRequest::new(prompt);
+        req.model = self.model_id.clone();
+        let resp = self.model.complete(&req).await?;
         let prefix = resp.matched_prefix.unwrap_or_else(|| prompt.chars().take(60).collect());
         self.trace_model(&prefix, context)?;
         Ok(resp.text)
+    }
+
+    /// Ask the model about a value: the prompt, then the value as JSON ("Context"), then an optional
+    /// answer-format hint (the `as Record` shape). The `model` trace line reports the context as
+    /// `{"id": ...}` when the value has an `id`, else the value itself; `None` adds no context.
+    pub async fn ask_model_about(
+        &self,
+        prompt: &str,
+        subject: Option<&Value>,
+        schema_hint: Option<&str>,
+    ) -> Result<String, RtError> {
+        let mut full = prompt.to_string();
+        if let Some(s) = subject {
+            full.push_str("\n\n");
+            full.push_str(&serde_json::to_string(s).map_err(|e| RtError::Model(e.to_string()))?);
+        }
+        if let Some(h) = schema_hint {
+            full.push_str("\n\n");
+            full.push_str(h);
+        }
+        let context = subject.map(|s| match s.get("id") {
+            Some(id) => serde_json::json!({ "id": id }),
+            None => s.clone(),
+        });
+        self.ask_model(&full, context).await
     }
 
     /// Trace a `model` line with the current labels.
