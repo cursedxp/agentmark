@@ -72,6 +72,12 @@ pub enum Command {
         /// Refresh every `bindings/*.agent.md` of the project.
         #[arg(long, conflicts_with = "name")]
         all: bool,
+        /// Bind this exact version of the library (moves an existing binding to it).
+        #[arg(long, conflicts_with_all = ["all", "latest"])]
+        version: Option<String>,
+        /// Move an existing binding to the newest version (it stays on its own otherwise).
+        #[arg(long)]
+        latest: bool,
         /// Project folder whose `bindings/` is used.
         #[arg(long, default_value = ".")]
         project: String,
@@ -141,7 +147,7 @@ where
         Command::Fmt { path, check } => fmtlint::fmt(&path, check),
         Command::Lint { path } => fmtlint::lint(&path),
         Command::Doc { target, project } => docgen::run(target.as_deref(), &project),
-        Command::Bind { name, force, all, project } => bind::run(name.as_deref(), force, all, &project),
+        Command::Bind { name, force, all, version, latest, project } => bind::run(name.as_deref(), force, all, version, latest, &project),
         Command::Build { path, target, out, allow_unverified, no_check } => build::build(&path, &target, &out, allow_unverified, no_check),
         Command::Run { path, mock, fixtures, allow_unverified } => build::run(&path, mock, fixtures.as_deref(), allow_unverified),
         Command::Trace { path, mock, fixtures, allow_unverified } => build::trace(&path, mock, fixtures.as_deref(), allow_unverified),

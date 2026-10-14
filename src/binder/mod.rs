@@ -39,6 +39,9 @@ pub struct BindOptions {
     pub bindings_dir: PathBuf,
     /// Exact crate version; `None` = whatever the pre-generated rustdoc JSON says, or cargo resolves.
     pub version: Option<String>,
+    /// Move an existing binding to the newest version. Without `version` or `latest`, an existing
+    /// binding stays on the version in its header (Q155); only a missing one takes the newest.
+    pub latest: bool,
     /// Regenerate even when the file is fresh, or hand-written. Overwrites an approved binding.
     pub force: bool,
     /// Pre-generated rustdoc JSON (tests, `AGENTMARK_RUSTDOC_JSON`); else it is built.
@@ -65,6 +68,7 @@ impl BindOptions {
         BindOptions {
             bindings_dir: bindings_dir.into(),
             version: None,
+            latest: false,
             force: false,
             rustdoc_json: None,
             model,
@@ -183,16 +187,25 @@ fn read_counts(path: &Path) -> Result<(Counts, usize, String), BindError> {
     Err(BindError::Invalid(format!("{name} has no `# Binding` declaration")))
 }
 
+/// The version in the header of an existing binding of this crate.
+fn header_version(path: &Path, crate_name: &str) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    self::core::parse_header(&text).filter(|h| h.crate_name == crate_name).map(|h| h.version)
+}
+
 /// `agentmark bind <crate>` (SPEC 15.1): reuse the cached binding when it is for the wanted
 /// version, otherwise run the three tiers and write a fresh `unverified` file.
 pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindError> {
     let path = binding_path(&opts.bindings_dir, crate_name);
     let env_json = rust::fetch::env_nonempty(rust::fetch::ENV_JSON).map(PathBuf::from);
     let json_given = opts.rustdoc_json.clone().or(env_json);
-    let version = match (&opts.version, &json_given) {
-        (Some(v), _) => v.clone(),
-        (None, Some(j)) => model_version(j)?,
-        (None, None) => rust::resolve_version(&spec(crate_name, None, opts)).map_err(BindError::Metadata)?,
+    // an existing binding is the lock (Q155): no silent jump to a newer release
+    let pinned = if opts.version.is_none() && !opts.latest { header_version(&path, crate_name) } else { None };
+    let version = match (&opts.version, &pinned, &json_given) {
+        (Some(v), _, _) => v.clone(),
+        (None, Some(v), _) => v.clone(),
+        (None, None, Some(j)) => model_version(j)?,
+        (None, None, None) => rust::resolve_version(&spec(crate_name, None, opts)).map_err(BindError::Metadata)?,
     };
 
     let state = freshness(&path, crate_name, &version).map_err(|e| BindError::Io(format!("{}: {e}", path.display())))?;

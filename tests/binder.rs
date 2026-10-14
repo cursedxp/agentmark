@@ -251,7 +251,14 @@ fn a_binding_for_another_version_is_stale_and_rebinding_re_marks_unverified() {
     assert_eq!(freshness(&first.path, "sha2", "0.9.0").unwrap(), Freshness::Fresh);
     assert_eq!(freshness(&dir.join("nope.agent.md"), "x", "1").unwrap(), Freshness::Missing);
 
-    let again = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    // plain `bind` keeps the version of the header (no silent jump to the newest release) ...
+    let kept = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    assert!(!kept.generated && kept.version == "0.9.0", "{kept:?}");
+    assert_eq!(std::fs::read_to_string(&first.path).unwrap(), old, "and writes nothing");
+    // ... moving needs `--version <v>` (or `--latest`)
+    let mut o = opts(&dir, "sha2", vec![]);
+    o.version = Some("0.10.9".into());
+    let again = bind("sha2", &o).unwrap();
     assert!(again.generated);
     assert_eq!(again.reason, Some(Regenerated::Stale { from: "0.9.0".into() }));
     assert_eq!(again.effect, "unverified");
@@ -735,4 +742,29 @@ fn indented_comment_lines_continue_a_not_bound_reason() {
     // fmt joins what fits on one line and keeps the plain note
     let out = agentmark::fmt::format_source(src, "lib.agent.md").unwrap();
     assert!(out.contains("- a: first part second part third\n") && out.contains("> plain note"), "{out}");
+}
+
+#[test]
+fn bind_stays_on_the_header_version_force_regenerates_it_and_latest_moves() {
+    let dir = scratch("pinned");
+    let first = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    let old = std::fs::read_to_string(&first.path).unwrap().replace("sha2 0.10.9", "sha2 0.10.8").replace("- effect: unverified", "- effect: pure");
+    std::fs::write(&first.path, &old).unwrap();
+    // the header is the lock: the newer release the tooling knows about (0.10.9) is not taken
+    let kept = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    assert!(!kept.generated && kept.version == "0.10.8", "{kept:?}");
+    assert_eq!(std::fs::read_to_string(&first.path).unwrap(), old);
+    // `--latest` goes to what the tooling resolves (the JSON's 0.10.9) and re-marks unverified
+    let mut l = opts(&dir, "sha2", vec![]);
+    l.latest = true;
+    let moved = bind("sha2", &l).unwrap();
+    assert_eq!(moved.reason, Some(Regenerated::Stale { from: "0.10.8".into() }));
+    assert_eq!(moved.effect, "unverified");
+    // now the header says 0.10.9: plain bind is a cache hit, --force regenerates the SAME version
+    let hit = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    assert!(!hit.generated);
+    let mut f = opts(&dir, "sha2", vec![]);
+    f.force = true;
+    let forced = bind("sha2", &f).unwrap();
+    assert_eq!((forced.generated, forced.reason, forced.version.as_str()), (true, Some(Regenerated::Forced), "0.10.9"));
 }

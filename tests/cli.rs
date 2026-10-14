@@ -375,6 +375,26 @@ fn bind_generates_then_serves_from_cache() {
 }
 
 #[test]
+fn bind_keeps_the_header_version_until_asked_to_move() {
+    let d = sha2_project("bindpin");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    let file = d.join("bindings/sha2.agent.md");
+    let text = std::fs::read_to_string(&file).unwrap().replace("sha2 0.10.9", "sha2 0.10.8");
+    std::fs::write(&file, &text).unwrap();
+    // plain bind and --force stay on 0.10.8 (--force regenerates that version when the docs for it exist)
+    let o = bind(&d, &[]);
+    assert!(out(&o).contains("sha2 0.10.8: cached"), "{}", out(&o));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+    // moving is explicit
+    let o = bind(&d, &["--latest"]);
+    assert!(out(&o).contains("sha2 0.10.9: generated"), "{}{}", out(&o), err(&o));
+    let o = bind(&d, &["--version", "0.10.9", "--latest"]);
+    assert_eq!(code(&o), 2, "--version and --latest exclude each other");
+    let o = run(&["bind", "--all", "--version", "0.10.9", "--project", s(&d)]);
+    assert_eq!(code(&o), 2);
+}
+
+#[test]
 fn bind_all_refreshes_every_binding_and_keeps_approved_ones() {
     let d = sha2_project("bindall");
     assert_eq!(code(&bind(&d, &[])), 0);

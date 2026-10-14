@@ -47,7 +47,7 @@ pub(crate) fn system_today() -> NaiveDate {
     NaiveDate::from_num_days_from_ce_opt(days + 719_163).unwrap_or_default()
 }
 
-pub(crate) fn run(name: Option<&str>, force: bool, all: bool, project: &str) -> u8 {
+pub(crate) fn run(name: Option<&str>, force: bool, all: bool, version: Option<String>, latest: bool, project: &str) -> u8 {
     let (model, mock_today) = match model_from_env() {
         Ok(m) => m,
         Err(e) => return fail(e),
@@ -78,6 +78,8 @@ pub(crate) fn run(name: Option<&str>, force: bool, all: bool, project: &str) -> 
         }
         let mut opts = BindOptions::new(&dir, model.clone(), mock_today.unwrap_or_else(system_today));
         opts.force = force;
+        opts.version = version.clone();
+        opts.latest = latest;
         opts.offline = matches!(std::env::var("AGENTMARK_OFFLINE").as_deref(), Ok("1") | Ok("true"));
         match bind(c, &opts) {
             Ok(out) => println!("{}", describe(c, &out)),
