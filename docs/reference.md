@@ -646,6 +646,8 @@ The rules are Q4 and Q5.
 
 ## 5. Expressions
 
+An expression computes a value. It appears after `set`, in conditions, in the `{holes}` of a string and in call arguments.
+
 ```agentmark
 # Record: Invoice
 - id: text
@@ -673,6 +675,14 @@ The rules are Q4 and Q5.
 - log: "{open_count} invoices, {net}, due on {next_check}, since {a_month_ago}, {late}"
 ```
 
+**Rules**
+- A name resolves in this order: variable, bare field, constant. Only a name with a dot can be a tool source such as `crm.invoices`, per Q41.
+- `invoice.amount` is a field of a variable. A bare `amount` is a field of the record in front of the block. That record is the item of a `for each`, the record of a rule or the record of an event block.
+- In a string, `{customer}` and `{invoice.amount}` insert values. A hole holds a full expression.
+- A text hole holds a single value. A list, a map or a record cannot be written into text as a whole.
+- A decimal needs a currency, so `3.5` is an error. It may not have more digits than the currency's minor unit, so `12.505 EUR` is an error too. No silent rounding enters a program, per Q20.
+- Money, dates, durations and numbers combine only in the ways the unit table below lists.
+
 **Literals**
 
 | form | example |
@@ -680,18 +690,9 @@ The rules are Q4 and Q5.
 | text | `"text"`; escapes `\"`, `\\`, `\n`, `\{`, `\}` |
 | int | `42` |
 | money | `12.50 EUR`, `0 EUR`, `1200 JPY`; integer minor units, never a float (Q20) |
-| date | `2026-10-13` (a date that does not exist is an error, never arithmetic) |
+| date | `2026-10-13`; a date that does not exist is an error, never arithmetic |
 | duration | `14 days`, `1 month`, `15 minutes` |
 | bool | `true`, `false` |
-
-A decimal needs a currency (`3.5` is an error) and may not have more digits than the currency's minor unit
-(`12.505 EUR` is an error): no silent rounding can enter a program (Q20).
-
-**Names and fields.** `invoice.amount` is a field of a variable; a bare `amount` is a field of the record in
-front of the block (inside `for each` over a record, in a rule, in an event block). A name resolves as: variable, bare
-field, constant, and only with a dot a tool source `crm.invoices` (Q41).
-
-**Interpolation.** In a string, `{customer}` and `{invoice.amount}` insert values. A hole holds a full expression.
 
 **Operators**, from loosest to tightest:
 
@@ -705,23 +706,39 @@ field, constant, and only with a dot a tool source `crm.invoices` (Q41).
 | 6 | `*`, `/` |
 | 7 | `<expr> length` |
 
-**Built-ins:** `today`, `now`, `count of <source>` (list length), `count of <rule> <plural> in <source>`
-(how many pass the rule), `first <var> in <source> where <condition>` (a `maybe` of the item).
+**Built-ins**
+- `today` and `now` give the current date and the current moment.
+- `count of <source>` is the length of a list.
+- `count of <rule> <plural> in <source>` is how many items pass the rule.
+- `first <var> in <source> where <condition>` is a `maybe` of the item.
 
-**Units are real types.** Money, dates, durations and numbers combine only in sensible ways:
+**Units are real types**
 
 | expression | type |
 |---|---|
-| `money + money`, `money - money` | `money` (a currency mismatch between two written literals is an error; otherwise it is checked at run time) |
+| `money + money`, `money - money` | `money`; a currency mismatch between two written literals is an error, otherwise it is checked at run time |
 | `money * int`, `money / int` | `money`, rounded half away from zero at the currency's minor unit (Q7) |
 | `date + duration`, `date - duration` | `date` |
 | `date - date`, `datetime - datetime` | `duration` |
-| `12 EUR + 3 days` | error: "Cannot add a duration to money" |
+| `12 EUR + 3 days` | error: "Cannot add a duration to money." |
 | `money / money`, `money * money`, `text + text` | error; use interpolation for text |
 
-**Negative numbers.** A `-` written directly before the digits makes a negative `int` or `money` literal (`-5`, `-12.50 EUR`, `number.round(x, -1)`); a `-` directly before a name or a parenthesis negates it, and means `x * -1` (`-n`, `-(a + b)`). Subtraction keeps its spaces (`a - b`); `a -1` is not a subtraction (Q408). `agentmark fmt` prints a negation as written (Q419).
+**Negative numbers**
+- A `-` directly before the digits makes a negative `int` or `money` literal, such as `-5`, `-12.50 EUR` and `number.round(x, -1)`.
+- A `-` directly before a name or a parenthesis negates it and means `x * -1`, as in `-n` and `-(a + b)`.
+- Subtraction keeps its spaces, as in `a - b`. `a -1` is not a subtraction, per Q408.
+- `agentmark fmt` prints a negation as written, per Q419.
 
-**Text holes hold single values.** A list, a map or a record cannot be written into text as a whole: E400, with the way out ("join" a list of text, write a map entry by entry, name the record's fields) (Q409).
+**Watch out:** subtraction needs a space on both sides, because inside an expression `-` is never part of a name.
+
+**Errors**
+
+| code | message | fix |
+|---|---|---|
+| E203 | `Cannot add a duration to money.` | money only combines with money; durations combine with dates and other durations |
+| E400 | `A value of type <T> cannot be written into text as a whole.` | `join` a list of text, write a map entry by entry, or name the record's fields, per Q409 |
+
+**Next:** [6. Types](#6-types)
 
 ## 6. Types
 
@@ -746,7 +763,13 @@ field, constant, and only with a dot a tool source `crm.invoices` (Q41).
   - return "{s.name} has {s.visits} visits and costs {s.price}"
 ```
 
-The built-in types:
+**Rules**
+- A record's name is also a type. Record names are unique in a project, per Q31.
+- Any value that can be absent must be declared `maybe`. There is no null.
+- Where a binding takes `bytes`, a `text` argument is accepted and means its UTF-8 bytes. No other position coerces, per Q151.
+- The type of a record literal `{ id: x }` is an object type. It is accepted wherever a record with those fields is.
+
+**Built-in types**
 
 | type | Rust representation |
 |---|---|
@@ -760,14 +783,10 @@ The built-in types:
 | `bytes` | `Vec<u8>` (added for bindings, Q8) |
 | `list of <T>` | `Vec<T>` |
 | `maybe <T>` | `Option<T>` |
-| `result of <T>` | `Result<T, AgentError>`, function results only (section 14) |
-| `handle of <crate>.<Type>` | the library's own `<crate>::<Type>` (v0.3, section 15.4) |
+| `result of <T>` | `Result<T, AgentError>`, function results only (section [14](#14-errors)) |
+| `handle of <crate>.<Type>` | the library's own `<crate>::<Type>` (v0.3, section [15.4](#154-binding-file-format)) |
 
-* A record's name is also a type. Record names are unique in a project (Q31).
-* Any value that can be absent must be declared `maybe`. There is no null.
-* Where a binding takes `bytes`, a `text` argument is accepted and means its UTF-8 bytes. No other
-  position coerces (Q151).
-* The type of a record literal `{ id: x }` is an object type; it is accepted wherever a record with those fields is.
+**Next:** [7. Tool manifest](#7-tool-manifest)
 
 ## 7. Tool manifest
 
