@@ -869,7 +869,7 @@ typo.agent.md:7
   call, E210 statement, E211 hard limit, E212 `parallel` write conflict, E213 `do`, E214 `# Run`, E215 agent
   properties, E216 constants, E217 duplicate field, E218 two services with state), and warnings `W001` guessed
   type, `W002` unused import, `W003` unused declaration, `W004` library without binding, `W005` unapproved
-  library, `W006` several runnable declarations in one file, `W007` long line caused by string text, `W008` a library whose effect is assumed from its proposal (`--allow-unverified`). E219 is a crate import that has no binding although a statement or an agent's `tools:` line uses it.
+  library, `W006` several runnable declarations in one file, `W007` long line caused by string text, `W008` a library whose effect is assumed from its proposal (`--allow-unverified`). E219 is a crate import that has no binding although a statement or an agent's `tools:` line uses it. E220 is an on-demand library item the model could not bind (15.2).
 
 ## 11. Testing contract
 
@@ -1247,7 +1247,35 @@ every public function and method:
 | direct | every parameter and the return type map 1:1 onto AgentMark types, no generics, no closures | binding written by rules, no model call |
 | assisted | generics with one obvious instantiation, `Result`/`Option` wrapping, `async` | the binder asks the model for the Rust body, then type-checks it against the declared signature before accepting it |
 | skipped | traits with associated types, lifetimes in the public API, `unsafe`, `&mut` receivers, closures, types AgentMark cannot hold, anything the assisted tier fails to type-check | listed under `## Not bound` with the reason |
-| on-demand (v0.2) | the user writes a plain statement against a skipped item | the binder writes the body from the statement and the rustdoc, saves it as `unverified`, and continues |
+| on-demand | the user writes a plain statement against an item listed under `## Not bound` | the binder writes the body from the statement and the rustdoc, saves it as `unverified`, and continues |
+
+**The on-demand tier.** `check`, `build`, `run` and `trace` look for statements of the form `<library> <item> value ...`
+whose item the library's binding lists under `## Not bound`. For each such item (once, however many statements use it) the binder asks
+the model (the same `AGENTMARK_MODEL`) for the body, from the statement as written and the item's rustdoc. When the item has no
+AgentMark signature (it was skipped, not assisted) the model proposes one; its parameter count must match the values in the statement.
+The body is type-checked with the same checker as the assisted tier. Two attempts are made, the second told what was wrong with the first;
+each is one line on stderr: `binding sha2: writing sha224_digest on demand… done`, or `… failed`, the second try marked `(try 2 of 2)`.
+When every item succeeds, the binding file is rewritten once: the items move out of `## Not bound` into bound items (their `>` line ends in
+"Written on demand; not reviewed yet."), `- effect:` becomes `unverified` and `- proposed-effect:` never goes down. The previous file is kept
+as `.prev`. The build then continues under the rules of 15.3. When an item fails twice, the binding file is not touched, nothing is built, and
+the error is E220 at the item's name in the author's statement:
+
+```text
+fingerprint.agent.md:8
+  - sha2 sha224_digest payload -> digest
+         ^^^^^^^^^^^^^
+  Could not bind "sha224_digest" of sha2 on demand: the code the model wrote did not pass the type check, twice.
+  Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md. Details for a bug report: target/agentmark/ondemand-sha2-sha224_digest.log
+```
+
+The middle sentence depends on the cause: "the code the model wrote did not pass the type check, twice." (shown), "the model could not be
+reached: <reason>." (API error, timeout, no answer), or "the signature the model chose does not fit your statement (1 value, 2 parameters)."
+Several libraries are handled together: no binding file is changed unless every library succeeded. Only a statement in a file that imports the
+library (`# Import: crate sha2`) counts. A hand-written binding (no generated header) is bound against the version in `Cargo.lock` next to
+`bindings/`, else the rustdoc JSON supplied; if neither is known the error says so, it never guesses the newest.
+
+If the tier cannot start at all (no model, no rustdoc), the command prints `agentmark: cannot write the library code for "sha2" on demand: <why>`
+and stops with exit code 1 (`check` goes on to report the unknown item). Q230 to Q235 record the edge cases.
 
 The binder never silently drops an item: everything is bound or listed as not bound. The precise edge cases are
 decisions Q70 to Q82; for example, closures stay skipped because AgentMark has no function type (Q75).
@@ -1677,7 +1705,7 @@ toolchain (Q115).
 
 Nothing here changes the language. Built after v0.1 passes all its tests, in this order:
 
-1. The on-demand binding tier (section 15.2, last row).
+1. The on-demand binding tier (section 15.2, last row): built.
 2. Model providers `openai`, `local`, `azure`, `bedrock` and the `[models]` table (section 19).
 3. A language server, `agentmark-lsp`, in the same workspace, reusing the checker as a library: diagnostics with the same messages,
    completion, go-to-definition across imports, hover with a block's effect summary, format-on-save, code actions for the mechanical

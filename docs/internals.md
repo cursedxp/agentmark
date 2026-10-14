@@ -201,10 +201,11 @@ generics, receivers `self` or `&self` only, integers up to `i64`, no floats; clo
 has no function type; generics are instantiated from their bounds with a small fixed table. To move an item between
 tiers, change the classification in `src/binder/rust/rustdoc.rs` and record the decision.
 
-**Adding a tier** (the v0.2 on-demand tier is the planned one) means a new `Shape` variant or a new step after
-`run_tiers`, a new status in the file (`unverified` is already the model-written marker), and a `check` line
-that lists the item. Keep the invariant that code a model wrote is type-checked before it is accepted and is
-never silently wrong.
+**The on-demand tier** is the fourth step and lives next to the others: `src/binder/core/ondemand.rs` (prompt, two attempts, the
+signature the model proposes when the item has none, the type check), `add_on_demand` in `src/binder/core/writer.rs` (moves the items
+out of `## Not bound`, resets `- effect:` to `unverified`), `produce_on_demand` and `commit_on_demand` in `src/binder/mod.rs` (produce reads the binding and the rustdoc, computes the new text; commit replaces the files, and the CLI commits only when every crate succeeded) and `src/cli/ondemand.rs` (finds the statements, prints the E220 error and writes the compiler text to `target/agentmark/ondemand-<crate>-<item>.log`). `check` and `build` call it after
+the automatic first binding and before the semantic check. Keep the invariant that code a model wrote is type-checked before it
+is accepted and is never silently wrong; a new tier adds a step in the same shape.
 
 **Trust is a file property.** `render_binding` always writes `- effect: unverified` plus the proposal;
 `freshness` decides what `bind` does with an existing file: a header whose version matches is a cache hit (also

@@ -423,3 +423,35 @@ First written as "a real run cannot use a mock model": generated programs read o
 Generated projects depended only on a fixed list plus imported crates (and `agentmark-rt` by absolute path of the compiler checkout), so `rust/connect.rs` could not use a client crate such as `reqwest`.
 **Choice:** `agentmark.toml` has an optional `[rust.dependencies]` table (`Config.rust_dependencies`). Each entry is a version text or a TOML table; it is validated as TOML (other shapes, and unknown keys under `[rust]`, are E114 config errors) and written verbatim, as `name = <value>`, to the end of the generated `[dependencies]`. An entry named like a dependency the generated project already has (`agentmark-rt`, `async-trait`, `chrono`, `clap`, `serde`, `serde_json`, `tokio`; `axum`/`tower` with services; an imported crate or its alias) is a plain error from `build`/`run`/`trace` (exit 2) and nothing is written. The generated `Cargo.toml` is still rewritten on every build. `agentmark-rt` stays tied to the checkout (README says "keep the checkout").
 **Why:** a real backend needs a client crate; a table in the one config file keeps connect.rs the only Rust the author writes.
+
+## Q230 — Which statements trigger the on-demand tier (step 13)
+SPEC 15.2 says "a plain statement against a skipped item" but not how the statement is recognised.
+**Choice:** a tool-call statement `<binding> <item> value ...` (anywhere in a function, command, route or agent block, nested ones included) whose tool word is the name of a `# Binding` and whose item is listed under that binding's `## Not bound` and not among its bound items. Done by walking the AST before `sema` (`src/cli/ondemand.rs`), so sema is untouched; the item name is the verb as written.
+**Why:** the item of a statement is exactly what `sema` would otherwise call "Unknown verb"; finding it earlier keeps the on-demand tier a separate step in front of the check.
+**Amended (review):** the statement's own file must also import the crate (`# Import: crate X`); a binding that file does not import is not extended.
+
+## Q231 — Where the signature of an on-demand item comes from (step 13)
+Not-bound entries carry only a name and a reason; an item skipped for having no AgentMark type (`sha224_new` returns a hasher) has no signature at all.
+**Choice:** the library's rustdoc is read again (same loader as `bind`). If the item was assisted-shaped (it only lacked a body, for example `sha224_digest`) its AgentMark signature is used and the model writes the body only. If it was skipped, the model proposes the signature on the first line (`## name(params) -> type`, read back with the real parser, types limited to the binding types); its parameter count must equal the number of values in the statement, otherwise the attempt fails. A wrong argument *type* is left to the normal check afterwards (Q151 conversions apply).
+**Why:** the statement alone cannot say what an object-returning call should become; the checked signature keeps `sema` the judge of the author's arguments.
+**Amended (review):** the version the rustdoc is read for is, in order: the binding's generated header, a `Cargo.lock` next to `bindings/` (or above `.agentmark/bindings/`), the rustdoc JSON the caller supplied, else a plain error. Never "the newest".
+
+## Q232 — Two attempts, all or nothing, and the error shape (step 13)
+**Choice:** at most two model calls per item, the second prompt carries the first complaint (compiler text, "no code", bad signature). Items of one crate are saved together: if any item fails, the binding file is not touched. The error is E220 at the verb in the author's statement, in the SPEC 10 shape, with the help line "Nothing was changed. Use a ## Rust block ...". The compiler's own text is never shown (the author does not read Rust, and it differs between toolchains); each attempt is one line `binding <crate>: writing <item> on demand… done|failed` on stderr (`(try 2 of 2)` on the second).
+**Why:** a half-written binding would make the next build depend on what happened to pass; the documented message must be the same on every machine.
+**Amended (review):** the middle sentence of E220 depends on the cause (type check failed twice / the model could not be reached: reason / the signature the model chose does not fit the statement: counts). The compiler text goes to `<project>/target/agentmark/ondemand-<crate>-<item>.log`, named in the help line, never inline. With several crates, every crate is produced first and the files are committed only when all succeeded (`produce_on_demand` / `commit_on_demand`).
+
+## Q233 — What a successful on-demand write does to the file's trust (step 13)
+**Choice:** the item moves out of `## Not bound` into a bound item whose `>` line ends in "Written on demand; not reviewed yet."; the file's `- effect:` becomes `unverified` even if it was approved (code nobody read was added), `- proposed-effect:` is recomputed and never lowered; the previous file is kept as `<crate>.agent.md.prev`; a hand-written file (no generated header) is edited the same way. There is no per-item `unverified` marker, because the effect line belongs to the file (SPEC 15.4).
+**Why:** SPEC 15.3 allows an approval to cover only what was reviewed; the doc line lets a reviewer find the unreviewed items.
+
+## Q234 — When the tier cannot run (step 13)
+No model (`ANTHROPIC_API_KEY`), no rustdoc, or an unreadable binding.
+**Choice:** `build`, `run` and `trace` print `agentmark: cannot write the library code for "<crate>" on demand: <why>` and stop with exit code 1; `check` prints the same and goes on, so the unknown item is still reported by sema. Nothing is written.
+**Why:** matches `bind_missing` (build refuses, check reports and continues).
+**Amended (review):** a hand-written binding with no known version (see Q231) is a setup error that says to add a `Cargo.lock` next to `bindings/` or the generated header line with the version.
+
+## Q235 — Rounds and `check --json` (step 13)
+`prepare` and `check` reload the project after a binding changes, so the loop is three rounds (first binding, on-demand, final check).
+**Choice:** an on-demand failure in `check` replaces the semantic check: it is the only diagnostic, in the text output and in `--json` (code `E220`, `ok: false`).
+**Why:** the statement that failed would otherwise also get "Unknown verb", a second message about the same line.

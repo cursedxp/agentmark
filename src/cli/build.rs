@@ -35,7 +35,7 @@ fn is_offline() -> bool {
 fn prepare(path: &str, allow_unverified: bool, show_notes: bool) -> Result<Prepared, u8> {
     require_source(path)?;
     let mut announced: Vec<String> = Vec::new();
-    for _round in 0..2 {
+    for _round in 0..3 {
         let mut project = Project::load(path);
         project.assume_proposed = allow_unverified;
         // SPEC 15.1: every imported crate has a binding before the project is checked
@@ -48,6 +48,20 @@ fn prepare(path: &str, allow_unverified: bool, show_notes: bool) -> Result<Prepa
         };
         if generated_any {
             continue;
+        }
+        // SPEC 15.2, on-demand tier: a statement against a `## Not bound` item gets it written now
+        match super::ondemand::resolve(&project) {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(super::ondemand::Failure::Setup(e)) => {
+                eprintln!("agentmark: {e}");
+                return Err(1);
+            }
+            Err(super::ondemand::Failure::Item(d)) => {
+                eprintln!("{}\n", project.render(&[*d]));
+                eprintln!("1 error: not built.");
+                return Err(1);
+            }
         }
         let checked = match sema::check(&project) {
             Ok(c) => c,

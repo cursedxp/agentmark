@@ -1,0 +1,9 @@
+{
+  "today": "2026-10-14",
+  "responses": [
+    {
+      "prompt_prefix": "on-demand sha2 sha224_digest\n",
+      "response": "Ok(<sha2::Sha224 as sha2::Digest>::digest(&data).to_vec())"
+    }
+  ]
+}

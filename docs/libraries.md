@@ -251,8 +251,92 @@ Long reasons continue on indented `> ` lines. What each kind of reason means, an
 Two things to know before you are surprised. `reqwest` (HTTP) comes out with 0 items bound: every call in it
 returns or takes a client, a request or a response, none of which AgentMark can hold. For HTTP use the manifest's
 `http` tool (`http get "https://..."`), or a `## Rust` block. A *builder chain* such as `Client::new().get(url).send()`
-is the same problem: every link is an object. A later version (the on-demand tier, reference section 15.2) will let
-you write a plain statement against a skipped item and have the binder write the body for you.
+is the same problem: every link is an object. For an item that only needs its glue written, there is a shortcut:
+the next section.
+
+### Not bound yet: just write the statement
+
+An item under `## Not bound` is "not bound yet". Write the statement you want, as if it were bound, and `check` or
+`build` asks the model to write the glue from your statement and the library's own documentation. Say a project
+needs the 224-bit hash, and the binding lists it as not bound:
+
+````text name=ondemand/bindings/sha2.agent.md
+# Binding: sha2
+- crate: sha2
+- effect: pure
+
+> Compute hash of `data`.
+## sha256_digest(data: bytes) -> bytes
+  ```rust
+  Ok(<sha2::Sha256 as sha2::Digest>::digest(&data).to_vec())
+  ```
+
+## Not bound
+- sha224_digest: assisted tier: assisted body failed type-check: error[E0308]: mismatched types (<sha2::Sha224 as sha2::Digest>::digest)
+````
+
+````text name=ondemand/main.agent.md
+# Import: crate sha2
+
+> Prints a fingerprint.
+# Command: fingerprint
+- args: payload: bytes
+
+## Run
+- sha2 sha224_digest payload -> digest
+- print: "done"
+````
+
+````text name=ondemand/agentmark.toml
+name = "ondemand"
+````
+
+```console env=AGENTMARK_MODEL=mock:$REPO/tests/binder/ondemand-ok.json env=AGENTMARK_RUSTDOC_JSON=$REPO/tests/binder/sha2.json env=AGENTMARK_RUSTDOC_JSON_DIR=$REPO/tests/binder env=AGENTMARK_OFFLINE=1 both
+$ agentmark check ondemand
+binding sha2: writing sha224_digest on demand… done
+Effects (what each block can touch)
+  fingerprint / Run: local(print), unverified(sha2)
+
+Libraries nobody approved yet (one line each to approve)
+  sha2 (library sha2): ondemand/bindings/sha2.agent.md:3: change "- effect: unverified" to "- effect: pure" (or the right class) to approve
+
+0 warnings, but 1 unapproved library: approve the lines above, or use --allow-unverified while developing.
+```
+
+What happened, in order:
+
+* The binder found that `sha224_digest` is listed as not bound, and wrote its glue. You did not see any Rust and did
+  not need to. Each attempt is one plain line on screen.
+* The glue was compiled against the library, the same check the assisted tier uses. Only code that compiles is kept.
+* The item moved out of `## Not bound` into the binding file, with the note "Written on demand; not reviewed yet" in
+  the line above it, and the file went back to `- effect: unverified`, even if you had approved it before: code
+  nobody read was added, so the approval is asked for again. `check` shows the one line to change, as always, and
+  `--allow-unverified` lets a development build go on meanwhile.
+* The next `check` or `build` finds the item bound and does not ask the model again. The old file is kept as
+  `bindings/<crate>.agent.md.prev`.
+
+The model gets two tries; the second one is told what was wrong with the first. If both fail, nothing is changed
+and the build stops at your statement. The error names the item, says which of three things went wrong (the code did not
+pass the type check; the model could not be reached, with the reason; the signature the model chose does not fit your
+statement) and what to do. The compiler's own text is not shown; it is written to the log file named in the last line,
+for a bug report:
+
+```console env=AGENTMARK_MODEL=mock:$REPO/tests/binder/ondemand-bad.json env=AGENTMARK_RUSTDOC_JSON=$REPO/tests/binder/sha2.json env=AGENTMARK_RUSTDOC_JSON_DIR=$REPO/tests/binder env=AGENTMARK_OFFLINE=1 both
+$ agentmark check ondemand
+binding sha2: writing sha224_digest on demand… failed
+binding sha2: writing sha224_digest on demand (try 2 of 2)… failed
+ondemand/main.agent.md:8
+  - sha2 sha224_digest payload -> digest
+         ^^^^^^^^^^^^^
+  Could not bind "sha224_digest" of sha2 on demand: the code the model wrote did not pass the type check, twice.
+  Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md. Details for a bug report: ondemand/target/agentmark/ondemand-sha2-sha224_digest.log
+
+1 error, 0 warnings: not ok.
+```
+
+The same error stops `build`, `run` and `trace` (they print `1 error: not built.`), and no output folder is written.
+It only works for an item whose statement the binder can find: a plain `<library> <item> value ...` line. A `## Rust`
+block (section 5) is always the way that never needs a model.
 
 ## 5. `## Rust` blocks: when the binder cannot help
 
@@ -448,6 +532,7 @@ A rustc error in this file is reported against the project file, as your own cod
 | "... is unverified: nobody approved what it may touch" | the approval line was never changed | read the bodies, set `- effect:` to `pure`, `local` or `network` |
 | after `cargo update`, a library is unverified again | its version changed | run `bind`, read the diff against the `.prev` file, approve again |
 | "environment variable ANTHROPIC_API_KEY is not set" | the binder needs a model for the assisted tier | set the key, or `AGENTMARK_MODEL=mock:<file>` |
+| `Could not bind "x" of y on demand` (E220) | the model's code for an item you used did not pass the type check twice | write a `## Rust` block for it, or bind it by hand; nothing was changed |
 | the crate comes out with 0 bound and a long `## Not bound` | its API is made of objects (clients, builders) | use a `## Rust` block, or the manifest's `http` tool for HTTP |
 | a Rust error in your `## Rust` block | your Rust has a mistake | the message points at the `.agent.md` line; fix it there |
 | "internal compiler error: generated Rust did not compile" | a bug in AgentMark itself | report it with the generated file path it prints |

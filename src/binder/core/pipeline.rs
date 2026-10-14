@@ -119,12 +119,12 @@ fn with_path(item: &Item, reason: &str) -> String {
 }
 
 /// One line of text, whitespace flattened. Never cut: the writer wraps long causes (SPEC 15.2).
-fn one_line(s: &str) -> String {
+pub(crate) fn one_line(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Models like to wrap code in fences; the binding file wants the bare body.
-fn strip_fences(text: &str) -> String {
+pub(crate) fn strip_fences(text: &str) -> String {
     let t = text.trim();
     let Some(rest) = t.strip_prefix("```") else {
         return t.to_string();

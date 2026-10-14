@@ -17,6 +17,7 @@ mod check;
 mod docgen;
 mod files;
 mod fmtlint;
+mod ondemand;
 
 /// AgentMark: write agents, services and commands in Markdown.
 #[derive(Parser, Debug)]

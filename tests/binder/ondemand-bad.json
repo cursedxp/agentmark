@@ -1,0 +1,9 @@
+{
+  "today": "2026-10-14",
+  "responses": [
+    {
+      "prompt_prefix": "on-demand sha2 sha224_digest\n",
+      "response": "Ok(sha224_of_everything(&data))"
+    }
+  ]
+}
