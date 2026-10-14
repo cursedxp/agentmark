@@ -19,6 +19,7 @@ const DOCS = [
   { id: 'guide', file: 'docs/guide.md', title: 'Guide' },
   { id: 'reference', file: 'docs/reference.md', title: 'Reference' },
   { id: 'libraries', file: 'docs/libraries.md', title: 'Libraries' },
+  { id: 'connect', file: 'docs/connect.md', title: 'Connecting tools' },
   { id: 'editors', file: 'docs/editor.md', title: 'Editors' },
   { id: 'internals', file: 'docs/internals.md', title: 'Internals' },
   { id: 'check-json', file: 'docs/check-json.md', title: 'check --json' },

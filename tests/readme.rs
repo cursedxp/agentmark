@@ -7,7 +7,8 @@
 //!   default 0) and `# in FILE: replace "A" with "B"` (the edit the reader makes by hand).
 //!   The words `app` and `out` stand for scratch folders; ```console app starts with `app` = a copy
 //!   of examples/05-invoice-service without its sha2 binding. `$PWD` is the repository root.
-//!   ```console connect: `app` = a copy of example 01 with the README's ```rust file=rust/connect.rs.
+//!   ```console connect: `app` = a copy of example 01 with the ```rust file=rust/connect.rs block.
+//! The blocks come from README.md and from docs/connect.md (the page about `rust/connect.rs`).
 //! - the ```rust http block (with the ```toml agentmark.toml block appended to agentmark.toml) must
 //!   build: `[rust.dependencies]` brings in reqwest, nothing calls a network.
 //! - the ```rust trait block must appear verbatim in the generated `src/tools.rs`.
@@ -20,18 +21,26 @@ use std::process::Output;
 use support::*;
 
 struct Block {
+    file: &'static str,
     info: String,
     body: String,
     line: usize,
 }
 
+/// The pages whose fenced blocks are tested here.
+const PAGES: [&str; 2] = ["README.md", "docs/connect.md"];
+
 fn blocks() -> Vec<Block> {
-    let text = std::fs::read_to_string(format!("{ROOT}/README.md")).unwrap();
+    PAGES.iter().flat_map(|p| blocks_of(p)).collect()
+}
+
+fn blocks_of(file: &'static str) -> Vec<Block> {
+    let text = std::fs::read_to_string(format!("{ROOT}/{file}")).unwrap();
     let mut out = Vec::new();
     let mut open: Option<Block> = None;
     for (i, l) in text.lines().enumerate() {
         match (&mut open, l.strip_prefix("```")) {
-            (None, Some(info)) => open = Some(Block { info: info.trim().to_string(), body: String::new(), line: i + 1 }),
+            (None, Some(info)) => open = Some(Block { file, info: info.trim().to_string(), body: String::new(), line: i + 1 }),
             (Some(_), Some(_)) => out.push(open.take().unwrap()),
             (Some(b), None) => {
                 b.body.push_str(l);
@@ -40,8 +49,14 @@ fn blocks() -> Vec<Block> {
             (None, None) => {}
         }
     }
-    assert!(open.is_none(), "README.md: a code block is not closed");
+    assert!(open.is_none(), "{file}: a code block is not closed");
     out
+}
+
+impl Block {
+    fn at(&self) -> String {
+        format!("{}:{}", self.file, self.line)
+    }
 }
 
 fn with_info<'a>(all: &'a [Block], first_word: &str) -> Vec<&'a Block> {
@@ -67,8 +82,8 @@ fn agentmark_blocks_check_clean() {
         std::fs::copy(format!("{ROOT}/examples/01-invoice-chaser/tools.toml"), d.join("tools.toml")).unwrap();
         write(&d, "block.agent.md", &b.body);
         let o = run_command(agentmark(&["check", s(&d.join("block.agent.md"))]), false);
-        assert!(o.status.success(), "README.md:{}: the agentmark block does not check:\n{}{}", b.line, stdout(&o), stderr(&o));
-        assert!(stdout(&o).contains("ok: 0 errors, 0 warnings."), "README.md:{}: not clean:\n{}", b.line, stdout(&o));
+        assert!(o.status.success(), "{}: the agentmark block does not check:\n{}{}", b.at(), stdout(&o), stderr(&o));
+        assert!(stdout(&o).contains("ok: 0 errors, 0 warnings."), "{}: not clean:\n{}", b.at(), stdout(&o));
     }
 }
 
@@ -117,12 +132,12 @@ fn run_console(b: &Block) {
             steps.last_mut().expect("output before any command").2.push(frag);
         }
     }
-    assert!(!steps.is_empty(), "README.md:{}: console block without a command", b.line);
+    assert!(!steps.is_empty(), "{}: console block without a command", b.at());
 
     for (i, (cmd, code, frags)) in steps.iter().enumerate() {
         // the hand edits that happen after the previous command
         for (_, e) in edits.iter().filter(|(at, _)| *at == i) {
-            apply_edit(e, &d, b.line);
+            apply_edit(e, &d, &b.at());
         }
         let mut env = Vec::new();
         let mut words = cmd.split_whitespace().peekable();
@@ -135,7 +150,7 @@ fn run_console(b: &Block) {
                 _ => break,
             }
         }
-        assert_eq!(words.next(), Some("agentmark"), "README.md:{}: `{cmd}` must start with agentmark", b.line);
+        assert_eq!(words.next(), Some("agentmark"), "{}: `{cmd}` must start with agentmark", b.at());
         let args: Vec<String> = words.map(|w| place(w, &d)).collect();
         let args: Vec<&str> = args.iter().map(|a| a.as_str()).collect();
         let mut c = agentmark(&args);
@@ -146,22 +161,22 @@ fn run_console(b: &Block) {
         }
         let o = run_command(c, matches!(args[0], "run" | "trace" | "build"));
         let got = scrub(&format!("{}{}", stdout(&o), stderr(&o)));
-        assert_eq!(o.status.code(), Some(*code), "README.md:{}: `{cmd}` exited differently\n{}", b.line, head(&got));
+        assert_eq!(o.status.code(), Some(*code), "{}: `{cmd}` exited differently\n{}", b.at(), head(&got));
         for f in frags {
-            assert!(got.contains(f.as_str()), "README.md:{}: `{cmd}` did not print:\n  {f}\nit printed:\n{}", b.line, head(&got));
+            assert!(got.contains(f.as_str()), "{}: `{cmd}` did not print:\n  {f}\nit printed:\n{}", b.at(), head(&got));
         }
     }
 }
 
 /// `# in FILE: replace "A" with "B"`.
-fn apply_edit(directive: &str, dir: &Path, line: usize) {
+fn apply_edit(directive: &str, dir: &Path, at: &str) {
     let rest = directive.strip_prefix("# in ").unwrap();
-    let (file, what) = rest.split_once(": replace ").unwrap_or_else(|| panic!("README.md:{line}: bad directive {directive}"));
+    let (file, what) = rest.split_once(": replace ").unwrap_or_else(|| panic!("{at}: bad directive {directive}"));
     let quoted: Vec<&str> = what.split('"').collect();
-    assert!(quoted.len() == 5, "README.md:{line}: bad directive {directive}");
+    assert!(quoted.len() == 5, "{at}: bad directive {directive}");
     let path = PathBuf::from(place(file, dir));
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains(quoted[1]), "README.md:{line}: {file} has no line {:?}", quoted[1]);
+    assert!(text.contains(quoted[1]), "{at}: {file} has no line {:?}", quoted[1]);
     std::fs::write(&path, text.replacen(quoted[1], quoted[3], 1)).unwrap();
 }
 
@@ -222,5 +237,5 @@ fn the_trait_block_is_what_build_generates() {
     assert!(o.map(|o| o.status.success()).unwrap(), "build failed");
     let tools = std::fs::read_to_string(out.join("src/tools.rs")).unwrap();
     let block = readme_block("rust");
-    assert!(tools.contains(block.body.trim_end()), "the trait in README.md:{} is not in the generated tools.rs:\n{tools}", block.line);
+    assert!(tools.contains(block.body.trim_end()), "the trait in {} is not in the generated tools.rs:\n{tools}", block.at());
 }
