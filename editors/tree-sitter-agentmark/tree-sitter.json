@@ -1,0 +1,21 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "agentmark",
+      "camelcase": "AgentMark",
+      "title": "AgentMark",
+      "scope": "text.agentmark",
+      "path": ".",
+      "file-types": ["agent.md"],
+      "highlights": "queries/highlights.scm",
+      "injections": "queries/injections.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "tree-sitter grammar for AgentMark (.agent.md) files",
+    "links": { "repository": "https://github.com/agentmark/agentmark" }
+  }
+}

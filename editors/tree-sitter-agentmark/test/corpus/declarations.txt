@@ -1,0 +1,456 @@
+====================
+Record with typed and untyped fields
+====================
+
+# Record: Invoice
+- id: text
+- amount: money
+- paid_on: maybe date
+- history: list of maybe date
+- shipped_at
+
+--------------------
+
+(source_file
+  (record_declaration
+    (identifier)
+    (record_field
+      (identifier)
+      (type
+        (identifier)))
+    (record_field
+      (identifier)
+      (type
+        (identifier)))
+    (record_field
+      (identifier)
+      (type
+        (type_phrase
+          (type
+            (identifier)))))
+    (record_field
+      (identifier)
+      (type
+        (type_phrase
+          (type
+            (type_phrase
+              (type
+                (identifier)))))))
+    (record_field
+      (identifier))))
+
+====================
+Rule
+====================
+
+# Rule: overdue
+- for: Invoice
+- when: today > due + 14 days and status != "paid"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (binary_expression
+          (binary_expression
+            (builtin)
+            (binary_expression
+              (identifier)
+              (duration)))
+          (binary_expression
+            (identifier)
+            (string
+              (string_content))))))))
+
+====================
+Agent with all properties
+====================
+
+# Agent: notifier
+- model: claude:haiku
+- tools: email, log
+- memory: file
+- timeout: 10 minutes
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (driver)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (duration)))))
+
+====================
+Agent with local model driver
+====================
+
+# Agent: local-one
+- model: local:kat-coder
+- tools: log
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (driver)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))))
+
+====================
+Constant
+====================
+
+# Constant: grace_period
+- value: 14 days
+
+# Constant: sales_inbox
+- value: "sales@optimotion.dev"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (duration))))
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (string
+          (string_content))))))
+
+====================
+Function with indented body
+====================
+
+# Function: net_amount
+- in: invoice: Invoice, vat: int
+- out: money
+- effect: pure
+  - return invoice.amount - invoice.amount * vat / 100
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (identifier)))
+        (parameter
+          (identifier)
+          (type
+            (identifier)))))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (return_statement
+        (binary_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (binary_expression
+            (binary_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (identifier))
+            (number)))))))
+
+====================
+Function result type
+====================
+
+# Function: half
+- in: n: int
+- out: result of int
+- effect: pure
+  - return n / 2
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (identifier)))))
+    (property
+      (property_key)
+      (property_value
+        (type_phrase
+          (type
+            (identifier)))))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (return_statement
+        (binary_expression
+          (identifier)
+          (number))))))
+
+====================
+Service with routes
+====================
+
+# Service: api
+- listen: 0.0.0.0:8080
+- state: AppState
+
+## GET /invoices/{id}
+- guard: found is not empty else respond 404
+
+## POST /invoices
+- read body as Invoice -> inv
+- append inv to state.invoices
+- respond 201 inv
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (address)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (route_heading
+        (http_method)
+        (route_path))
+      (statement_line
+        (guard_statement
+          (predicate
+            (identifier))
+          (respond_statement
+            (number)))))
+    (trigger_block
+      (route_heading
+        (http_method)
+        (route_path))
+      (statement_line
+        (read_statement
+          (identifier)
+          (type
+            (identifier))
+          (bind
+            (identifier))))
+      (statement_line
+        (append_statement
+          (identifier)
+          (field_expression
+            (identifier)
+            (identifier))))
+      (statement_line
+        (respond_statement
+          (number)
+          (identifier))))))
+
+====================
+Command with args
+====================
+
+# Command: import-csv
+- args: path: text, dry_run: bool = false
+
+## Run
+- print: "done"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (identifier)))
+        (parameter
+          (identifier)
+          (type
+            (identifier))
+          (boolean))))
+    (trigger_block
+      (run_heading)
+      (statement_line
+        (print_statement
+          (string
+            (string_content)))))))
+
+====================
+Binding
+====================
+
+# Binding: pdf
+- crate: printpdf
+- effect: local
+- proposed-effect: network
+
+## render(doc: Document) -> bytes
+  ```rust
+  Ok(vec![])
+  ```
+
+## Not bound
+- save_to_file: takes a writer (printpdf::PdfDocument::save)
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (code_block
+      (binding_heading
+        (identifier)
+        (parameter
+          (identifier)
+          (type
+            (identifier)))
+        (type
+          (identifier)))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))
+    (not_bound_block
+      (not_bound_item
+        (identifier)
+        (reason)))))
+
+====================
+Run declaration
+====================
+
+# Run
+- invoice-chaser
+- api
+
+--------------------
+
+(source_file
+  (run_declaration
+    (run_item
+      (identifier))
+    (run_item
+      (identifier))))
+
+====================
+Imports
+====================
+
+# Import: ./billing/rules.agent.md as billing
+# Import: ./records/invoice.agent.md
+# Import: ./rules/*.agent.md
+# Import: ./billing as billing
+# Import: ../constants.agent.md
+# Import: crate serde_json
+# Import: crate reqwest as http_client
+
+--------------------
+
+(source_file
+  (import_declaration
+    (import_target
+      (import_path)
+      (import_alias
+        (identifier))))
+  (import_declaration
+    (import_target
+      (import_path)))
+  (import_declaration
+    (import_target
+      (import_path)))
+  (import_declaration
+    (import_target
+      (import_path)
+      (import_alias
+        (identifier))))
+  (import_declaration
+    (import_target
+      (import_path)))
+  (import_declaration
+    (import_target
+      (identifier)))
+  (import_declaration
+    (import_target
+      (identifier)
+      (import_alias
+        (identifier)))))

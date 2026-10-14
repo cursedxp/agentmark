@@ -1,0 +1,93 @@
+====================
+Statement fragment without a declaration
+====================
+
+- for each invoice in crm.invoices:
+  - log: "{invoice.id}"
+- stop
+
+## POST /invoices
+- respond 204
+
+--------------------
+
+(source_file
+  (statement_line
+    (for_each
+      (identifier)
+      (field_expression
+        (identifier)
+        (identifier))))
+  (statement_line
+    (tool_call
+      (identifier)
+      (string
+        (interpolation
+          (field_expression
+            (identifier)
+            (identifier))))))
+  (statement_line
+    (stop_statement))
+  (trigger_block
+    (route_heading
+      (http_method)
+      (route_path))
+    (statement_line
+      (respond_statement
+        (number)))))
+
+====================
+Keywords usable as variable and parameter names
+====================
+
+# Function: pair
+- in: first: text, count: int
+- out: text
+- effect: pure
+  - return checksum_parts(first, count)
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (identifier)))
+        (parameter
+          (identifier)
+          (type
+            (identifier)))))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (return_statement
+        (call_expression
+          (identifier)
+          (identifier)
+          (identifier))))))
+
+====================
+Prose line is an error
+:error
+====================
+
+# Agent: a
+## On start
+this is not a statement
+- log: "x"
+
+--------------------
+
+

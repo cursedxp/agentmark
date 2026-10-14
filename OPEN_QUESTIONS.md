@@ -525,6 +525,27 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q259 — Odd requests and the end of the session (step 15 review)
 **Choice:** a request for a document that is not a readable `file://` URI (`untitled:`, deleted file) is answered with `null`, not an error, and opening such a document is ignored. `exit` without a `shutdown` before it makes the process exit with code 1 (LSP), after `shutdown` with 0. Diagnostics of `agentmark.toml` / `tools.toml` that point at a line (not a word) underline the whole line.
 
+## Q260 — tree-sitter grammar is line oriented, no external scanner (step 17)
+- Question: SPEC 1 says indentation is exactly 2 spaces per level; should the tree-sitter grammar model nesting with an INDENT/DEDENT scanner?
+- Choice: no. Every statement line is a sibling inside its `##` block; indentation is skipped as whitespace. Nesting, the depth limit and indentation errors stay with the compiler (`agentmark check`).
+- Why: highlighting, folding by heading and Rust injection need only line-local structure; a scanner would add C code to maintain for no visible gain, and editors must tolerate half-typed code.
+
+## Q261 — `- key: value` is a property only for the keys SPEC defines (step 17)
+- Question: `- log: "x"` is a tool call in a block but looks like a property in a declaration body (a Function's indented statements live there).
+- Choice: only these keys are properties: model, tools, memory, timeout, for, when, value, in, out, effect, args, listen, state, crate, proposed-effect. Any other `- word: ...` is parsed as a tool call, so `- log: ...` is highlighted as a tool everywhere. A tool named like one of those keys, written without a verb, is highlighted as a property.
+- Why: no extra scanner or indentation test is needed, and the collision needs a tool called `state`, `value`, `in`, ... used without a verb.
+
+## Q262 — Fragments and doc blocks must parse too (step 17)
+- Question: docs show `fragment` blocks (statements with no declaration, `## POST` with no `# Service`) and the `invalid` blocks.
+- Choice: the grammar accepts statement lines and `##` blocks before the first declaration, and the check script parses every `agentmark` fence in README.md and docs/*.md (including `fragment` and `invalid`, which are well-formed syntax).
+- Dash-less lines are accepted only for control statements (for each, if, else, otherwise, parallel, try; docs/reference.md shows a bare `for each`); any other dash-less prose line is an ERROR instead of a tool call.
+- Why: the grammar is for highlighting, not validation; an editor showing a half-written file must not paint it red.
+
+## Q263 — Contextual words stay usable as names (step 17)
+- Question: `first`, `count` and `no` start expressions (`first x in y where ...`, `count of ...`, `no amounts changed in ...`) but docs use `first` as a parameter and argument name.
+- Choice: they are keywords only when the rest of the phrase follows; otherwise they parse as plain identifiers. Other words (`state`, `value`, `length`, ...) are only keywords where the SPEC puts them, so they stay usable as record fields and variables.
+- Why: matches how the compiler reads them; avoids ERROR nodes on valid files.
+
 ## Q270 — VS Code extension layout, bundling and testing (step 16)
 **Choice:** `editors/vscode/` is TypeScript. `tsc` compiles `src` and `test`; esbuild bundles `src/extension.ts` (with `vscode-languageclient`) into `dist/extension.js`, so the vsix holds 9 files and `vsce package` prints no warnings. Pure modules (`checkjson.ts`, `panel.ts`, `server.ts`) hold the logic; only `extension.ts` imports `vscode`. `npm test` (`node --test`) tokenizes the TextMate grammar over every `examples/**/*.agent.md`, validates `agentmark.toml` examples against the schema with `ajv`, and renders the panel from `check --json` output recorded from the real CLI (`test/fixtures`). The root `cargo test --test vscode_extension` copies `editors/vscode` to a temp dir and runs `npm ci`, `npm run compile`, `npm test` and `vsce package`, failing on any vsce warning; it skips with a message when npm is missing.
 **Why:** an extension host cannot run in CI cheaply, and the LSP is already tested directly (step 15), so the client stays thin; a temp copy keeps the checkout free of build output.
