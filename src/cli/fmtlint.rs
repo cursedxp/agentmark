@@ -59,6 +59,9 @@ pub(crate) fn fmt(path: &str, check: bool) -> u8 {
 fn write_atomic(path: &str, text: &str) -> std::io::Result<()> {
     let tmp = format!("{path}.agentmark-tmp");
     std::fs::write(&tmp, text)?;
+    if let Ok(meta) = std::fs::metadata(path) {
+        let _ = std::fs::set_permissions(&tmp, meta.permissions());
+    }
     std::fs::rename(&tmp, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&tmp);
     })

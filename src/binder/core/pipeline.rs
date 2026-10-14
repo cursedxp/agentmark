@@ -118,14 +118,9 @@ fn with_path(item: &Item, reason: &str) -> String {
     format!("{reason} ({})", item.path)
 }
 
-fn one_line(s: &str, max: usize) -> String {
-    let flat = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    if flat.chars().count() <= max {
-        flat
-    } else {
-        let cut: String = flat.chars().take(max).collect();
-        format!("{cut}...")
-    }
+/// One line of text, whitespace flattened. Never cut: the writer wraps long causes (SPEC 15.2).
+fn one_line(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Models like to wrap code in fences; the binding file wants the bare body.
@@ -184,7 +179,7 @@ async fn assist(
     let resp = model
         .complete(&ModelRequest::new(prompt))
         .await
-        .map_err(|e| format!("assisted tier: model gave no body ({})", one_line(&e.to_string(), 100)))?;
+        .map_err(|e| format!("assisted tier: model gave no body ({})", one_line(&e.to_string())))?;
     let body = strip_fences(&resp.text);
     if body.is_empty() {
         return Err("assisted tier: model returned an empty body".into());
@@ -200,7 +195,7 @@ async fn assist(
             sig,
             body: &body,
         })
-        .map_err(|e| format!("assisted body failed type-check: {}", one_line(&e, 160)))?;
+        .map_err(|e| format!("assisted body failed type-check: {}", one_line(&e)))?;
     Ok(body)
 }
 

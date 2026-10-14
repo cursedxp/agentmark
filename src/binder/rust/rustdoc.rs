@@ -134,6 +134,14 @@ fn trimmed_docs(docs: &str) -> String {
     d.split("```").next().unwrap_or("").trim().to_string()
 }
 
+/// `a::b::C<T, U>` -> `a::b::C<…>`: the generic arguments are noise in a one-line reason.
+fn without_generics(ty: &str) -> String {
+    match ty.find('<') {
+        Some(i) => format!("{}<…>", &ty[..i]),
+        None => ty.to_string(),
+    }
+}
+
 fn kind(it: &Value) -> &str {
     it["inner"]
         .as_object()
@@ -395,9 +403,10 @@ impl<'a> Walk<'a> {
                         self.extra.push(NotBoundEntry {
                             name,
                             reason: format!(
-                                "{} is a type alias for `{}` from another crate; its methods live there",
+                                "{} is a type alias for `{}` from crate {}; its methods live there",
                                 path.join("::"),
-                                render(&ty)
+                                without_generics(&render(&ty)),
+                                render(&ty).trim_start_matches('<').split([':', '<']).next().unwrap_or("another crate")
                             ),
                         });
                     }
@@ -525,17 +534,20 @@ impl<'a> Walk<'a> {
                 }
             }
             let with_self: Vec<&str> = methods.iter().filter(|m| !receiverless(m)).filter_map(|m| m["name"].as_str()).collect();
-            if !with_self.is_empty() && !aliases.is_empty() {
-                let name = self.unique(format!("{}_methods_with_self", snake(tname)));
-                self.extra.push(NotBoundEntry {
-                    name,
-                    reason: format!(
-                        "{} methods that take `self` ({}) need a value AgentMark cannot hold, so they are not bound on {} alias(es)",
-                        local_path.join("::"),
-                        with_self.join(", "),
-                        aliases.len()
-                    ),
-                });
+            // one entry per method and alias, so no name is hidden inside a list (SPEC 15.2)
+            for (apath, _) in &aliases {
+                for m in &with_self {
+                    let name = self.unique(format!("{}_{}", snake(&apath[1..].join("_")), snake(m)));
+                    self.extra.push(NotBoundEntry {
+                        name,
+                        reason: format!(
+                            "takes `self`, AgentMark cannot hold the value ({}::{} on {})",
+                            local_path.join("::"),
+                            m,
+                            apath.join("::")
+                        ),
+                    });
+                }
             }
         }
     }

@@ -102,7 +102,7 @@ pub fn render_binding(
         } else {
             doc_line(&it.summary)
         };
-        o.push_str(&format!("> {}\n", fit_doc(&doc)));
+        o.push_str(&wrap_doc(&doc));
         o.push_str(&format!("## {}\n", it.sig.heading(&it.name)));
         o.push_str(&format!("  ```{code_lang}\n"));
         for l in it.body.lines() {
@@ -117,60 +117,76 @@ pub fn render_binding(
     if !b.not_bound.is_empty() {
         o.push_str("\n## Not bound\n");
         for (name, reason) in &b.not_bound {
-            let r = fit_reason(name, &doc_line(reason));
+            let r = doc_line(reason);
             if r.is_empty() {
                 o.push_str(&format!("- {name}\n"));
             } else {
-                o.push_str(&format!("- {name}: {r}\n"));
+                o.push_str(&not_bound_entry(name, &r));
             }
         }
     }
     o
 }
 
-/// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). A reason is
-/// `text (library::path)`; when the entry is too long the text is cut with `...` and the path,
-/// which names the item to wrap by hand, is kept (cut only if the path alone does not fit).
-fn fit_reason(name: &str, reason: &str) -> String {
+/// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). Nothing is
+/// cut (SPEC 15.2: never silently drop): a long reason continues on `  > ` comment lines under
+/// the entry, each at most 120 characters.
+fn not_bound_entry(name: &str, reason: &str) -> String {
     const MAX: usize = 120;
-    let room = MAX.saturating_sub(name.chars().count() + 4); // "- " + ": "
-    if reason.chars().count() <= room {
-        return reason.to_string();
-    }
-    let cut = |s: &str, n: usize| -> String {
-        let keep = n.saturating_sub(3);
-        format!("{}...", s.chars().take(keep).collect::<String>().trim_end())
-    };
-    match reason.rfind(" (").filter(|_| reason.ends_with(')')) {
-        Some(i) => {
-            let path = &reason[i + 1..];
-            let path_len = path.chars().count();
-            if path_len + 5 <= room {
-                format!("{} {path}", cut(&reason[..i], room - path_len - 1))
-            } else {
-                cut(reason, room)
+    let first = format!("- {name}:");
+    let mut lines = vec![first];
+    let mut width = lines[0].chars().count();
+    let mut fresh = true; // nothing but the prefix on the current line yet
+    for word in reason.split_whitespace() {
+        let mut word = word.to_string();
+        loop {
+            let cur = lines.last_mut().unwrap();
+            let room = MAX.saturating_sub(width + 1);
+            if word.chars().count() <= room {
+                cur.push(' ');
+                cur.push_str(&word);
+                width += 1 + word.chars().count();
+                fresh = false;
+                break;
             }
-        }
-        None => {
-            // keep the start and the end: the end usually says why; prefer a "; " boundary
-            let tail_len = match reason.rfind("; ") {
-                Some(i) if reason[i + 2..].chars().count() + 12 <= room => reason[i + 2..].chars().count(),
-                _ => room / 3,
-            };
-            let head: String = reason.chars().take(room - tail_len - 5).collect();
-            let tail: String = reason.chars().skip(reason.chars().count() - tail_len).collect();
-            format!("{} ... {}", head.trim_end(), tail.trim_start())
+            if fresh {
+                // a single word longer than a line: split it, losing nothing
+                let take: String = word.chars().take(room.max(1)).collect();
+                word = word.chars().skip(take.chars().count()).collect();
+                cur.push(' ');
+                cur.push_str(&take);
+                fresh = false;
+                if word.is_empty() {
+                    width += 1 + take.chars().count();
+                    break;
+                }
+            }
+            lines.push("  >".to_string());
+            width = 3;
+            fresh = true;
         }
     }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
 }
 
-/// A `>` line of at most 120 characters.
-fn fit_doc(doc: &str) -> String {
-    if doc.chars().count() <= 118 {
-        return doc.to_string();
+/// A documentation comment as `> ` lines of at most 120 characters (wrapped at word breaks).
+fn wrap_doc(doc: &str) -> String {
+    let mut out = String::new();
+    let mut line = String::from(">");
+    for w in doc.split_whitespace() {
+        if line.chars().count() + 1 + w.chars().count() > 120 && line != ">" {
+            out.push_str(&line);
+            out.push('\n');
+            line = String::from(">");
+        }
+        line.push(' ');
+        line.push_str(w);
     }
-    let head: String = doc.chars().take(115).collect();
-    format!("{}...", head.trim_end())
+    out.push_str(&line);
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]

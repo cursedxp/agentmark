@@ -149,7 +149,8 @@ fn generated_files_parse_as_unverified_bindings_with_doc_lines() {
         assert_eq!(out.bound, b.items.len());
         for it in &b.items {
             let doc = it.doc.as_deref().unwrap_or_else(|| panic!("{c}: {} has no doc line", it.name.name));
-            assert!(!doc.trim().is_empty() && !doc.contains('\n'), "{c}: {}", it.name.name);
+            // long summaries wrap onto further `>` lines (Q110)
+            assert!(!doc.trim().is_empty(), "{c}: {}", it.name.name);
         }
         for n in &b.not_bound {
             assert!(n.reason.as_deref().is_some_and(|r| !r.is_empty()), "{c}: {} has no reason", n.item);
@@ -377,8 +378,13 @@ fn sha2_hashing_comes_from_the_reexported_digest_trait() {
     // Receiver-less methods only; `self` methods are one aggregated line.
     assert!(b.not_bound.iter().any(|(n, r)| n == "sha256_new" && r.contains("no AgentMark type")));
     assert!(!b.items.iter().any(|i| i.name.contains("finalize") || i.name.ends_with("_update")));
-    let (_, r) = b.not_bound.iter().find(|(n, _)| n == "digest_methods_with_self").unwrap();
-    assert!(r.contains("finalize") && r.contains("take `self`"), "{r}");
+    // ... each one its own entry, never a list (SPEC 15.2)
+    assert!(!b.not_bound.iter().any(|(n, _)| n.contains("methods_with_self")));
+    for m in ["update", "chain_update", "finalize", "finalize_into", "finalize_reset", "finalize_into_reset", "reset"] {
+        let name = format!("sha256_{m}");
+        let (_, r) = b.not_bound.iter().find(|(n, _)| *n == name).unwrap_or_else(|| panic!("{name} listed"));
+        assert!(r.contains("takes `self`") && r.contains(&format!("Digest::{m} on sha2::Sha256")), "{r}");
+    }
     // Without digest's rustdoc the re-export stays a listed non-callable.
     let j = std::fs::read_to_string(fixture("sha2")).unwrap();
     assert_eq!(agentmark::binder::rust::foreign_crates(&j).unwrap(), vec!["digest".to_string()]);
@@ -583,11 +589,11 @@ fn a_failing_dependency_rustdoc_build_is_reported_in_the_reexport_line() {
     let (_dir, mut o) = demo_opts("foreign-fail");
     o.foreign_fetch = Some(Arc::new(|c| Err(format!("cargo exploded for {c}"))));
     let out = bind("demo", &o).unwrap();
+    let r = entries(&std::fs::read_to_string(&out.path).unwrap()).remove("reexport_ext_size").expect("re-export listed");
+    // long reasons continue on `  > ` lines (Q110): the whole cause survives
+    assert!(r.contains("re-export of `ext::Size`") && r.contains("from another crate"), "{r}");
+    assert!(r.contains("cargo exploded for ext"), "{r}");
     let f = parse(&out.path);
-    let n = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").expect("re-export listed");
-    let r = n.reason.as_deref().unwrap();
-    // long reasons are cut to 120 characters (Q110): the start and the cause survive
-    assert!(r.contains("re-export of `ext::Size`") && r.contains("cargo exploded for ext"), "{r}");
     assert!(binding(&f).not_bound.iter().all(|n| n.item != "w_size"));
 }
 
@@ -601,14 +607,16 @@ fn a_dependency_json_directory_replaces_the_nightly_build() {
     std::env::set_var("AGENTMARK_RUSTDOC_JSON_DIR", &jd);
     let out = bind("demo", &o);
     std::env::remove_var("AGENTMARK_RUSTDOC_JSON_DIR");
-    let f = parse(&out.unwrap().path);
+    let out = out.unwrap();
+    let f = parse(&out.path);
     // No canned model body for it, but the item exists and was tiered (skipped by the model).
     let n = binding(&f).not_bound.iter().find(|n| n.item == "w_size").expect("w_size tiered");
     assert!(n.reason.as_deref().unwrap().contains("model gave no body"));
     // Without the directory the missing JSON is named in the re-export line.
     let (_d2, o2) = demo_opts("foreign-none");
-    let f = parse(&bind("demo", &o2).unwrap().path);
-    let r = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").unwrap().reason.clone().unwrap();
+    let r = entries(&std::fs::read_to_string(bind("demo", &o2).unwrap().path).unwrap())
+        .remove("reexport_ext_size")
+        .unwrap();
     assert!(r.contains("AGENTMARK_RUSTDOC_JSON_DIR"), "{r}");
 }
 
@@ -636,11 +644,65 @@ fn freshly_bound_files_keep_every_line_within_the_limit_and_check_clean() {
     }
 }
 
+/// `## Not bound` entries of a binding file with their `  > ` continuation lines joined.
+fn entries(text: &str) -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    let mut cur: Option<String> = None;
+    let mut in_section = false;
+    for l in text.lines() {
+        if l.starts_with('#') {
+            in_section = l.trim_end() == "## Not bound";
+        } else if in_section {
+            if let Some(rest) = l.strip_prefix("- ") {
+                let (name, reason) = rest.split_once(':').unwrap_or((rest, ""));
+                cur = Some(name.to_string());
+                m.insert(name.to_string(), reason.trim().to_string());
+            } else if let (Some(rest), Some(c)) = (l.strip_prefix("  > "), &cur) {
+                let e = m.get_mut(c).unwrap();
+                e.push(' ');
+                e.push_str(rest);
+            }
+        }
+    }
+    m
+}
+
 #[test]
-fn not_bound_entries_are_cut_but_keep_the_library_path() {
-    let dir = scratch("limit-path");
+fn long_not_bound_causes_continue_on_comment_lines_and_survive_in_full() {
+    let dir = scratch("limit-full");
     let out = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
     let text = std::fs::read_to_string(&out.path).unwrap();
-    let line = text.lines().find(|l| l.starts_with("- sha224_output_size:")).expect("entry");
-    assert!(line.contains("...") && line.ends_with("::output_size)"), "{line}");
+    let e = entries(&text);
+    let r = &e["sha224_output_size"];
+    assert!(r.starts_with("assisted tier: model gave no body"), "{r}");
+    assert!(r.ends_with("(<sha2::Sha224 as sha2::Digest>::output_size)"), "{r}");
+    assert!(text.lines().any(|l| l.starts_with("  > ")), "continuation lines exist");
+    // a long type-check error is kept whole
+    let long = "error[E0308]: mismatched types: expected `Vec<u8>`, found `GenericArray<u8, <CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, U32, OidSha256>> as OutputSizeUser>::OutputSize>` at line 3";
+    struct Long(&'static str);
+    impl TypeChecker for Long {
+        fn check(&self, req: &CheckRequest<'_>) -> Result<(), String> {
+            if req.name == "sha256_digest" { Err(self.0.to_string()) } else { Ok(()) }
+        }
+    }
+    let dir = scratch("limit-typeerr");
+    let mut o = opts(&dir, "sha2", vec![]);
+    o.checker = Some(Box::new(Long(Box::leak(long.to_string().into_boxed_str()))));
+    let out = bind("sha2", &o).unwrap();
+    let text = std::fs::read_to_string(&out.path).unwrap();
+    assert!(text.lines().all(|l| l.chars().count() <= 120));
+    let r = &entries(&text)["sha256_digest"];
+    assert!(r.contains(long), "{r}");
+    // and the file still parses
+    let _ = parse(&out.path);
+}
+
+#[test]
+fn alias_lines_say_which_crate_and_no_generic_noise() {
+    let dir = scratch("alias");
+    let out = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    let e = entries(&std::fs::read_to_string(&out.path).unwrap());
+    let (n, r) = e.iter().find(|(_, r)| r.contains("is a type alias for")).expect("alias entry");
+    assert!(r.contains(" from crate digest; its methods live there"), "{n}: {r}");
+    assert!(r.contains("<…>") && !r.contains("U32"), "{r}");
 }

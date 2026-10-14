@@ -566,3 +566,24 @@ fn help_and_unknown_commands() {
     assert_eq!(code(&run(&["frobnicate"])), 2);
     assert_eq!(code(&run(&[])), 2);
 }
+
+#[test]
+fn doc_of_a_path_like_target_says_cannot_find() {
+    for t in ["nope/sheet", "nope.agent.md"] {
+        let o = run(&["doc", t]);
+        assert_eq!(code(&o), 2);
+        assert!(err(&o).contains(&format!("cannot find \"{t}\"")), "{}", err(&o));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn fmt_keeps_file_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = temp("fmtperm");
+    let f = d.join("messy.agent.md");
+    std::fs::copy(Path::new(ROOT).join("tests/fmt/messy.agent.md"), &f).unwrap();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o640)).unwrap();
+    assert_eq!(code(&run(&["fmt", s(&d)])), 0);
+    assert_eq!(std::fs::metadata(&f).unwrap().permissions().mode() & 0o777, 0o640);
+}

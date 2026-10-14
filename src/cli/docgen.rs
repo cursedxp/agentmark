@@ -20,6 +20,9 @@ pub(crate) fn run(target: Option<&str>, project_dir: &str) -> u8 {
 
 /// `agentmark doc <crate>`: the binder's cheat sheet for `bindings/<crate>.agent.md`.
 fn crate_sheet(name: &str, project_dir: &str) -> u8 {
+    if name.ends_with(".agent.md") || name.contains('/') {
+        return fail(format!("cannot find \"{name}\""));
+    }
     for dir in ["bindings", ".agentmark/bindings"] {
         let p = Path::new(project_dir).join(dir).join(format!("{name}.agent.md"));
         if p.is_file() {
@@ -33,8 +36,8 @@ fn crate_sheet(name: &str, project_dir: &str) -> u8 {
         }
     }
     fail(format!(
-        "\"{name}\" is neither a file or folder nor a library with a binding in \"{project_dir}/bindings\". \
-         Run \"agentmark bind {name}\" first."
+        "\"{name}\" is not a file or folder, and there is no binding for a library of that name in \
+         \"{project_dir}/bindings\". Run \"agentmark bind {name}\" first."
     ))
 }
 
