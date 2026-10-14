@@ -49,6 +49,9 @@ pub struct Config {
     pub models: Vec<(String, String)>,
     /// `[models.local] base_url`: the OpenAI-compatible server behind `local:<model>`.
     pub local_base_url: Option<String>,
+    /// `[lsp] model_actions = true`: the language server may offer model-backed code actions
+    /// (Q250). Off by default.
+    pub lsp_model_actions: bool,
 }
 
 /// One import line, resolved.
@@ -391,7 +394,7 @@ struct Loader<'a> {
     failed: Vec<String>,
 }
 
-const CONFIG_KEYS: [&str; 6] = ["name", "version", "targets", "lint", "rust", "models"];
+const CONFIG_KEYS: [&str; 7] = ["name", "version", "targets", "lint", "rust", "models", "lsp"];
 
 impl Loader<'_> {
     fn config(&mut self) -> Config {
@@ -457,6 +460,27 @@ impl Loader<'_> {
                             Span::new(line_of("deny"), 1, 4),
                             "\"deny\" under [lint] must be a list of rule names.",
                         )),
+                    }
+                }
+                "lsp" => {
+                    let bad = |line: u32, msg: &str| {
+                        Diagnostic::error(E_CONFIG, &path, Span::new(line, 1, 1), msg.to_string())
+                    };
+                    match value.as_table() {
+                        None => self.diags.push(bad(line, "\"lsp\" in agentmark.toml must be a table, like [lsp] model_actions = true.")),
+                        Some(t) => {
+                            for (k, v) in t {
+                                match (k.as_str(), v.as_bool()) {
+                                    ("model_actions", Some(b)) => cfg.lsp_model_actions = b,
+                                    ("model_actions", None) => self.diags.push(bad(line_of(k), "\"model_actions\" under [lsp] must be true or false.")),
+                                    _ => self.diags.push(
+                                        bad(line_of(k), &format!("Unknown key \"{k}\" under [lsp] in agentmark.toml."))
+                                            .suggesting(k, ["model_actions"])
+                                            .with_help("[lsp] accepts: model_actions."),
+                                    ),
+                                }
+                            }
+                        }
                     }
                 }
                 "rust" => {

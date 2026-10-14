@@ -184,6 +184,11 @@ impl Ctx<'_> {
     fn report(&mut self, rule: &'static str, span: Span, message: String, help: String) {
         self.out.push(finding(self.cfg, rule, self.file, span, message, help));
     }
+
+    /// Like `report`, with the facts behind the finding for tools (the language server).
+    fn report_data(&mut self, rule: &'static str, span: Span, message: String, help: String, data: serde_json::Value) {
+        self.out.push(finding(self.cfg, rule, self.file, span, message, help).with_data(data));
+    }
 }
 
 fn finding(
@@ -453,7 +458,7 @@ fn magic_value(ctx: &mut Ctx, file: &File) {
     for (key, kind, spans) in seen {
         if spans.len() > 1 {
             let lines: Vec<String> = spans.iter().map(|s| s.line.to_string()).collect();
-            ctx.report(
+            ctx.report_data(
                 "magic-value",
                 spans[0],
                 format!(
@@ -462,6 +467,7 @@ fn magic_value(ctx: &mut Ctx, file: &File) {
                     lines.join(", ")
                 ),
                 "Give it a name with \"# Constant: name\" and \"- value: ...\", then use the name.".to_string(),
+                serde_json::json!({ "rule": "magic-value", "kind": kind, "key": key, "lines": spans.iter().map(|s| s.line).collect::<Vec<_>>() }),
             );
         }
     }
@@ -579,7 +585,7 @@ fn prompt_in_loop(ctx: &mut Ctx, file: &File) {
                         matches!(&g.kind, StmtKind::Guard { cond, .. } if mentions(cond, &into.name))
                     });
                     if !guarded {
-                        ctx.report(
+                        ctx.report_data(
                             "prompt-in-loop",
                             st.span,
                             format!(
@@ -590,7 +596,7 @@ fn prompt_in_loop(ctx: &mut Ctx, file: &File) {
                                 "Add \"- guard: ...\" on \"{}\" after it: the model can answer differently for every item (SPEC 4.4).",
                                 into.name
                             ),
-                        );
+                            serde_json::json!({ "rule": "prompt-in-loop", "var": into.name }));
                     }
                 }
             });
@@ -609,12 +615,12 @@ fn missing_doc(ctx: &mut Ctx, file: &File) {
             _ => continue,
         };
         if doc.is_none() {
-            ctx.report(
+            ctx.report_data(
                 "missing-doc",
                 span,
                 format!("The {kind} \"{}\" has no description.", name.name),
                 "Put a \"> description\" comment on the line directly above its heading.".to_string(),
-            );
+                serde_json::json!({ "rule": "missing-doc", "kind": kind }));
         }
     }
 }

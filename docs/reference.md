@@ -1418,7 +1418,8 @@ deny = ["prompt-in-loop", "missing-doc"]
 ```
 
 The binary starts all listed agents and services; commands become subcommands. A project with no `# Run` compiles
-to a library, not a binary. Unknown keys in `agentmark.toml` are errors with a suggestion (Q40).
+to a library, not a binary. Unknown keys in `agentmark.toml` are errors with a suggestion (Q40). `[lsp] model_actions = true` lets the editor
+server offer its optional model-backed actions (Q250); it is off by default.
 
 ### 18.2 Imports
 
