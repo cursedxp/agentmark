@@ -221,6 +221,7 @@ fn fmt_check_fails_on_a_messy_file_and_passes_after_fmt() {
     assert_eq!(code(&o), 1);
     assert!(out(&o).contains("not canonical:"), "{}", out(&o));
     assert!(out(&o).contains("messy.agent.md"));
+    assert!(out(&o).contains("1 of 1 file is not canonical; run \"agentmark fmt\" to fix it."), "grammar: {}", out(&o));
     assert_eq!(std::fs::read_to_string(d.join("messy.agent.md")).unwrap(), before, "--check changes nothing");
 
     let o = run(&["fmt", s(&d)]);
@@ -589,6 +590,20 @@ fn check_that_cannot_bind_says_how_and_reports_one_error_on_the_import_line() {
     assert!(!e.contains("Unknown tool \"sha2\""), "{e}");
     assert!(!e.contains("Unused import"), "{e}");
     assert!(out(&o).contains("1 error, 0 warnings: not ok."), "{}", out(&o));
+}
+
+#[test]
+fn fmt_check_counts_agree_with_the_verb() {
+    let d = temp("fmtplural");
+    let messy = std::fs::read_to_string(Path::new(ROOT).join("tests/fmt/messy.agent.md")).unwrap();
+    write(&d, "a.agent.md", &messy);
+    write(&d, "b.agent.md", &messy);
+    write(&d, "c.agent.md", "# Record: C\n- id: text\n");
+    let o = run(&["fmt", "--check", s(&d)]);
+    assert!(out(&o).contains("2 of 3 files are not canonical; run \"agentmark fmt\" to fix them."), "{}", out(&o));
+    std::fs::remove_file(d.join("b.agent.md")).unwrap();
+    let o = run(&["fmt", "--check", s(&d)]);
+    assert!(out(&o).contains("1 of 2 files is not canonical; run \"agentmark fmt\" to fix it."), "{}", out(&o));
 }
 
 // ---------------------------------------------------------------------------------- misc

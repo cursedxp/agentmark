@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
-use super::{bind, check, fail, require_source};
+use super::{bind, check, fail, plural, require_source};
 use crate::binder::core::parse_header;
 use crate::binder::{bind as run_binder, BindOptions};
 use crate::codegen::rust::{self as cg, GeneratedFile};
@@ -204,7 +204,7 @@ pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool,
             Err(e) => return fail(e),
         }
     }
-    println!("built {} ({} files). Compile it with: cargo build --release --manifest-path {}/Cargo.toml", out, files.len(), out.trim_end_matches('/'));
+    println!("built {} ({}). Compile it with: cargo build --release --manifest-path {}/Cargo.toml", out, plural(files.len(), "file"), out.trim_end_matches('/'));
     0
 }
 
