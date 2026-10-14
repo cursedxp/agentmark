@@ -22,7 +22,7 @@ pub const E_JOIN: &str = "E325";
 pub const E_ENTRY: &str = "E326";
 pub const E_HIDES_FIELD: &str = "E327";
 pub const E_TARGET: &str = "E328";
-/// A list, a map or a record written into text as a whole (Q408).
+/// A list, a map or a record written into text as a whole (Q409).
 pub const E_COLLECTION_IN_TEXT: &str = "E400";
 
 /// What a list or map key may be: values with a total order that print as a JSON object key.
@@ -536,7 +536,7 @@ impl Checker<'_> {
 }
 
 impl Checker<'_> {
-    /// A list, a map or a record written into text as a whole: there is no single right text for it (Q408).
+    /// A list, a map or a record written into text as a whole: there is no single right text for it (Q409).
     pub(super) fn collection_in_text(&mut self, cx: &Cx, span: Span, t: &Type) {
         let help = match t {
             Type::List(_) => "Join a list of text with \"join names with \\\", \\\"\", or write one element at a time (\"for each\").",

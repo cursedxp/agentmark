@@ -195,7 +195,7 @@ fn a_body_that_fails_the_type_check_is_skipped_with_the_reason() {
 fn an_item_the_model_has_no_body_for_is_skipped_not_dropped() {
     let (_, b) = tiered("chrono", vec![]);
     let (_, why) = b.not_bound.iter().find(|(n, _)| n == "date_time_hour").expect("no canned body");
-    assert!(why.contains("mock model has no response for date_time_hour"), "{why}");
+    assert!(why.contains("no model answer when this file was generated"), "{why}");
 }
 
 #[test]
@@ -632,7 +632,7 @@ fn a_dependency_json_directory_replaces_the_nightly_build() {
     let f = parse(&out.path);
     // No canned model body for it, but the item exists and was tiered (skipped by the model).
     let n = binding(&f).not_bound.iter().find(|n| n.item == "w_size").expect("w_size tiered");
-    assert!(n.reason.as_deref().unwrap().contains("mock model has no response for"));
+    assert!(n.reason.as_deref().unwrap().contains("no model answer when this file was generated"));
     // Without the directory the missing JSON is named in the re-export line.
     let (_d2, o2) = demo_opts("foreign-none");
     let r = entries(&std::fs::read_to_string(bind("demo", &o2).unwrap().path).unwrap())
@@ -699,7 +699,7 @@ fn long_not_bound_causes_continue_on_comment_lines_and_survive_in_full() {
     let text = std::fs::read_to_string(&out.path).unwrap();
     let e = entries(&text);
     let r = &e["sha224_output_size"];
-    assert!(r.starts_with("assisted tier: mock model has no response for sha224_output_size"), "{r}");
+    assert!(r.starts_with("not bound yet: no model answer when this file was generated"), "{r}");
     assert!(!r.contains("prompt") && !r.contains("bind <"), "no prompt fragments: {r}");
     assert!(r.ends_with("(<sha2::Sha224 as sha2::Digest>::output_size)"), "{r}");
     // a long type-check error is kept whole

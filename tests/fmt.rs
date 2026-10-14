@@ -131,6 +131,19 @@ fn every_example_formats_idempotently_and_keeps_its_ast() {
     }
 }
 
+/// The examples are what people copy: every file outside `bindings/` (generated, Q111) is already
+/// in the canonical style, which is what `agentmark fmt --check` asks.
+#[test]
+fn every_example_file_outside_bindings_is_canonical() {
+    for path in example_files() {
+        if path.components().any(|c| c.as_os_str() == "bindings") {
+            continue;
+        }
+        let src = std::fs::read_to_string(&path).unwrap();
+        assert!(is_canonical(&src, "t.agent.md").unwrap(), "{} is not canonical: run `agentmark fmt`", path.display());
+    }
+}
+
 #[test]
 fn messy_file_matches_the_stored_snapshot() {
     let src = std::fs::read_to_string("tests/fmt/messy.agent.md").unwrap();

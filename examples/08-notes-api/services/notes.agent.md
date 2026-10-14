@@ -1,8 +1,8 @@
-# Import: crate sqlx
 # Import: ../constants.agent.md
 # Import: ../functions/ensure-schema.agent.md
 # Import: ../records/new-note.agent.md
 # Import: ../records/note.agent.md
+# Import: crate sqlx
 
 > A small notes API: create, list, read and delete notes. Everything is stored in SQLite.
 > Every route opens the database, makes sure the table exists, and then runs its query.

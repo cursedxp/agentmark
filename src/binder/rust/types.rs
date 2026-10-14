@@ -429,8 +429,9 @@ impl Lifter<'_> {
                 },
                 ("ToString" | "Display" | "IntoUrl", _) => std_path("String", vec![]),
                 // a value handed to a database: text is the one value every column takes (Q412)
-                ("Encode" | "Type", _) if self.catchall => std_path("String", vec![]),
-                ("Executor", _) if self.catchall => match &self.ctx.executor {
+                // matched by full path, so a trait of another crate with the same name is not taken for it (Q418)
+                _ if self.catchall && matches!(b.full.join("::").as_str(), "sqlx_core::encode::Encode" | "sqlx_core::types::Type") => std_path("String", vec![]),
+                _ if self.catchall && b.full.join("::") == "sqlx_core::executor::Executor" => match &self.ctx.executor {
                     Some(e) => e.clone(),
                     None => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
                 },
@@ -447,11 +448,6 @@ impl Lifter<'_> {
                 }
                 _ => found = Some(one),
             }
-        }
-        // a parameter nothing but markers (`Send`) constrains is a value of any kind; text is the AgentMark
-        // value that stands for one (`query_scalar::<DB, O>`: the column read as text, Q412)
-        if found.is_none() && self.catchall && bounds.iter().all(|b| b.marker) {
-            return Ok(std_path("String", vec![]));
         }
         found.ok_or_else(|| "unbounded generic has no single obvious instantiation".into())
     }
@@ -564,7 +560,15 @@ impl Lifter<'_> {
         }
         let mut parts: Vec<String> = vec!["'static".to_string(); def.lifetimes];
         for a in args {
-            let r = self.resolve(a);
+            let mut r = self.resolve(a);
+            // a type parameter of a handle that nothing but markers constrains (`query_scalar::<DB, O>`:
+            // the column read) is text, the AgentMark value that stands for any (Q418)
+            if let RT::Generic(n) = &r {
+                let free = self.bounds.iter().filter(|(x, _)| x == n).all(|(_, b)| b.iter().all(|b| b.marker));
+                if self.catchall && free {
+                    r = std_path("String", vec![]);
+                }
+            }
             if has_generic(&r) {
                 // a type parameter of the impl that nothing here pins down is the instantiation the
                 // handle already has (`Query<'q, DB, A>` in a method: the `Query` that `query` returned)

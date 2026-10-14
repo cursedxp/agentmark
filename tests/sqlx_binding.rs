@@ -1,8 +1,8 @@
 //! The real `sqlx` 0.8 binding of example 08 (SPEC 22.4, Q411, Q412): a facade crate whose items are
 //! re-exports, a generic pool alias, generic query handles with lifetimes. The rustdoc JSON is a trimmed
 //! fixture (`tests/binder/regen.sh`), the model answers are canned (`tests/binder/sqlx-model.json`);
-//! the type check is the real `cargo check --offline` against sqlx, so the test is skipped on a machine
-//! whose cargo cache does not hold sqlx.
+//! the type check is the real `cargo check --offline` against sqlx, so these tests need sqlx 0.8.6 in
+//! the local cargo cache (example 08 needs it to build too): see `sqlx_in_the_cache`.
 
 mod support;
 
@@ -21,15 +21,16 @@ fn fixture(c: &str) -> PathBuf {
     Path::new(ROOT).join("tests/binder").join(format!("{c}.json"))
 }
 
-fn sqlx_available() -> bool {
+/// sqlx is a hard requirement of example 08, so a missing crate fails the test with the fix.
+fn sqlx_in_the_cache() {
     let c = CargoChecker::new(true).with_features(true, &["sqlite", "runtime-tokio"]);
     let sig = Sig { params: Vec::<Param>::new(), ret: None };
-    match c.check(&CheckRequest { crate_name: "sqlx", version: "0.8.6", name: "probe", sig: &sig, body: "Ok(())" }) {
-        Ok(()) => true,
-        Err(e) => {
-            eprintln!("skipped: sqlx 0.8.6 is not in the offline cargo cache ({e})");
-            false
-        }
+    if let Err(e) = c.check(&CheckRequest { crate_name: "sqlx", version: "0.8.6", name: "probe", sig: &sig, body: "Ok(())" }) {
+        panic!(
+            "sqlx 0.8.6 is not in the offline cargo cache ({e}).\nFetch it once with network access: \
+             `cd examples/08-notes-api && cargo fetch --manifest-path <a scratch crate depending on sqlx 0.8 with features sqlite, runtime-tokio>`, \
+             or build example 08 once online (`agentmark build examples/08-notes-api -o /tmp/n8`)."
+        );
     }
 }
 
@@ -48,9 +49,7 @@ fn generate(dir: &Path) -> String {
 /// The file checked in with example 08 is what the binder makes of sqlx, with the effect approved.
 #[test]
 fn example_08_binding_is_what_the_binder_makes_of_sqlx() {
-    if !sqlx_available() {
-        return;
-    }
+    sqlx_in_the_cache();
     let d = temp("sqlx-bind");
     let made = generate(&d);
     let kept = std::fs::read_to_string(format!("{ROOT}/examples/08-notes-api/bindings/sqlx.agent.md")).unwrap();
@@ -59,9 +58,7 @@ fn example_08_binding_is_what_the_binder_makes_of_sqlx() {
 
 #[test]
 fn the_items_example_08_calls_are_bound_as_the_example_writes_them() {
-    if !sqlx_available() {
-        return;
-    }
+    sqlx_in_the_cache();
     let d = temp("sqlx-heads");
     let made = generate(&d);
     for want in [

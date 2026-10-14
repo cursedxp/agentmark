@@ -46,10 +46,14 @@ fn a_list_a_map_or_a_record_cannot_be_written_into_text() {
 #[test]
 fn negative_numbers_parse_check_run_and_format() {
     let src = command(
-        "- set neg = -5\n- set price = -12.50 EUR\n- set r = number.round(1234, -2)\n- set back = -n\n- set both = neg - -n\n- print: \"{neg} {price} {r} {back} {both} {n - 1}\"",
+        "- set neg = -5\n- set price = -12.50 EUR\n- set r = number.round(1234, -2)\n- set back = -n\n- set grouped = -(n + 1)\n- set twice = -(-n)\n- set explicit = n * -1\n- set both = neg - -n\n- print: \"{neg} {price} {r} {back} {grouped} {twice} {explicit} {both} {n - 1}\"",
     );
     assert_eq!(errors_of(&src), "");
     let formatted = format_source(&src, "t.agent.md").unwrap();
+    // the source form of a negation survives `fmt`; a written `n * -1` stays as written (Q419)
+    for kept in ["= -n\n", "= -(n + 1)\n", "= -(-n)\n", "= n * -1\n", "= neg - -n\n"] {
+        assert!(formatted.contains(kept), "{kept:?} in {formatted}");
+    }
     assert!(formatted.contains("= -5") && formatted.contains("= -12.50 EUR") && formatted.contains("-2)"), "{formatted}");
     assert!(is_canonical(&formatted, "t.agent.md").unwrap());
     // `a - 1` is still a subtraction, `a -1` is not accepted as one
@@ -63,8 +67,8 @@ fn negative_numbers_parse_check_run_and_format() {
     assert!(o.status.success(), "{}", stderr(&o));
     let bin = build_bin(&d.join("out"), "neg");
     let run = |args: &[&str]| Command::new(&bin).args(args).output().unwrap();
-    assert_eq!(stdout(&run(&[])), "-5 -12.50 EUR 1200 -3 -2 2\n");
-    assert_eq!(stdout(&run(&["--n", "-7"])), "-5 -12.50 EUR 1200 7 -12 -8\n");
+    assert_eq!(stdout(&run(&[])), "-5 -12.50 EUR 1200 -3 -4 3 -3 -2 2\n");
+    assert_eq!(stdout(&run(&["--n", "-7"])), "-5 -12.50 EUR 1200 7 6 -7 7 -12 -8\n");
 }
 
 #[test]

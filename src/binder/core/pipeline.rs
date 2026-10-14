@@ -234,9 +234,9 @@ async fn assist(
         .complete(&ModelRequest::new(prompt))
         .await
         .map_err(|e| match e {
-            // a canned model without an answer: say so, do not echo the prompt it was asked
+            // a canned model without an answer: say so, do not echo the prompt it was asked (Q415)
             agentmark_rt::RtError::NoMockResponse { .. } => {
-                format!("assisted tier: mock model has no response for {}", item.name)
+                format!("not bound yet: no model answer when this file was generated; run `agentmark bind {} --force` with a model", ci.name)
             }
             e => format!("assisted tier: model gave no body ({})", one_line(&e.to_string())),
         })?;

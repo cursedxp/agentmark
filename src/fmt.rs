@@ -1000,6 +1000,9 @@ fn exprs_text(es: &[Expr]) -> String {
 /// Binding strength, weakest first. `first ... where` swallows the rest of the line, so it counts
 /// as weaker than everything and is parenthesised whenever something follows it.
 fn prec(e: &Expr) -> u8 {
+    if negated(e).is_some() {
+        return 9;
+    }
     match &e.kind {
         ExprKind::FirstIn { .. } => 0,
         ExprKind::Binary { op, .. } => match op {
@@ -1014,6 +1017,15 @@ fn prec(e: &Expr) -> u8 {
         ExprKind::Length(_) => 7,
         ExprKind::Coll(c) => collections::prec(c),
         _ => 9,
+    }
+}
+
+/// `-x` is parsed as `x * -1` whose `-1` has the span of the whole expression (Q419); a written `x * -1`
+/// has a smaller one. The operand of the negation, when `e` is one.
+fn negated(e: &Expr) -> Option<&Expr> {
+    match &e.kind {
+        ExprKind::Binary { op: BinOp::Mul, lhs, rhs } if matches!(rhs.kind, ExprKind::Int(-1)) && rhs.span == e.span => Some(lhs),
+        _ => None,
     }
 }
 
@@ -1074,6 +1086,13 @@ fn raw_expr(e: &Expr) -> String {
             }
             s.push('"');
             s
+        }
+        ExprKind::Binary { lhs, .. } if negated(e).is_some() => {
+            if negated(lhs).is_some() {
+                format!("-({})", expr_text(lhs))
+            } else {
+                format!("-{}", at_least(lhs, 9))
+            }
         }
         ExprKind::Binary { op, lhs, rhs } => {
             let p = prec(e);

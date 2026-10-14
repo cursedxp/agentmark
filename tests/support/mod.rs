@@ -174,9 +174,12 @@ pub fn fixture_examples() -> Vec<String> {
     names.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect()
 }
 
-/// Every fixture folder of every example, as `(example, dir)`.
+/// The examples whose fixtures are traces (v0.1/v0.2 contract); 06-10 use the program contract (SPEC 22.7).
+pub const AGENT_FIXTURES: [&str; 5] = ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"];
+
+/// Every fixture folder of every agent example, as `(example, dir)`.
 pub fn fixture_dirs() -> Vec<(String, PathBuf)> {
-    fixture_examples().into_iter().filter(|n| PathBuf::from(format!("{ROOT}/fixtures/{n}/expected.trace.jsonl")).is_file()).flat_map(|n| fixture_dirs_of(&n).into_iter().map(move |(_, d)| (n.clone(), d))).collect()
+    AGENT_FIXTURES.iter().map(|n| n.to_string()).flat_map(|n| fixture_dirs_of(&n).into_iter().map(move |(_, d)| (n.clone(), d))).collect()
 }
 
 /// Every folder of a program fixture (SPEC 22.7) of `example`: the folder itself, then each `variants/<case>/`,
@@ -225,12 +228,25 @@ pub fn tree_files(dir: &Path) -> Vec<(String, Vec<u8>)> {
     out
 }
 
+/// Removes a path when dropped, so a failing assertion leaves nothing behind.
+struct Cleanup(Vec<PathBuf>);
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        for p in &self.0 {
+            let _ = std::fs::remove_dir_all(p);
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
 /// Runs a built program on one program fixture (SPEC 22.7): `input/` copied into a fresh working directory,
 /// `run.json` arguments (and optional stdin), then `expected.stdout`, `expected/` (exactly that file set) and an
 /// optional `expected.trace.jsonl` are compared. A fixture with `requests.json` is a service: the requests are
 /// replayed (`--once --mock`) and their `expect_status` / `expect_body` checked by the program itself.
 pub fn run_program_fixture(bin: &Path, label: &str, dir: &Path) {
     let work = temp("fx");
+    let mut cleanup = Cleanup(vec![]);
     if let Some(input) = fixture_part(dir, "input") {
         copy_dir(&input, &work);
     }
@@ -238,14 +254,13 @@ pub fn run_program_fixture(bin: &Path, label: &str, dir: &Path) {
     let mut cmd = Command::new(bin);
     cmd.current_dir(&*work);
     let mut stdin_text = None;
-    let mut fixtures_dir = None;
     if let Some(r) = &requests {
         std::fs::copy(r, work.join("requests.json")).unwrap();
         // mock mode wants a fixtures folder with a model file, which a non-agent service never asks
         let fx = work.join("..").join(format!("{}-fixtures", work.file_name().unwrap().to_string_lossy()));
         write(&fx, "model.json", r#"{"today": "2026-10-14", "responses": []}"#);
         cmd.args(["--once", "--mock", "--fixtures"]).arg(&fx);
-        fixtures_dir = Some(fx);
+        cleanup.0.push(fx);
     } else {
         let run: Value = serde_json::from_str(&std::fs::read_to_string(fixture_part(dir, "run.json").unwrap_or_else(|| panic!("{label}: no run.json"))).unwrap()).unwrap();
         for a in run["args"].as_array().into_iter().flatten() {
@@ -255,6 +270,7 @@ pub fn run_program_fixture(bin: &Path, label: &str, dir: &Path) {
     }
     let trace_file = fixture_part(dir, "expected.trace.jsonl").map(|_| work.join("..").join(format!("{}-trace.jsonl", work.file_name().unwrap().to_string_lossy())));
     if let Some(t) = &trace_file {
+        cleanup.0.push(t.clone());
         cmd.arg("--trace").arg(t);
     }
     cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
@@ -267,26 +283,23 @@ pub fn run_program_fixture(bin: &Path, label: &str, dir: &Path) {
         }
     }
     let o = child.wait_with_output().unwrap();
-    if let Some(fx) = fixtures_dir {
-        let _ = std::fs::remove_dir_all(fx);
-    }
     assert!(o.status.success(), "{label}: the program failed ({}):\n{}", o.status, stderr(&o));
     if let Some(want) = fixture_part(dir, "expected.stdout") {
         assert_eq!(stdout(&o), std::fs::read_to_string(want).unwrap(), "{label}: stdout differs");
     }
     if let Some(want) = fixture_part(dir, "expected") {
-        let got = tree_files(&work);
+        // the replayed `requests.json` of a service is input, not a result
+        let got: Vec<_> = tree_files(&work).into_iter().filter(|(n, _)| !(requests.is_some() && n == "requests.json")).collect();
         let want = tree_files(&want);
         let names = |v: &[(String, Vec<u8>)]| v.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
         assert_eq!(names(&got), names(&want), "{label}: the working directory must hold exactly the expected files");
         for ((n, g), (_, w)) in got.iter().zip(&want) {
-            assert_eq!(String::from_utf8_lossy(g), String::from_utf8_lossy(w), "{label}: file {n} differs");
+            assert!(g == w, "{label}: file {n} differs:\n got: {}\nwant: {}", String::from_utf8_lossy(g), String::from_utf8_lossy(w));
         }
     }
     if let (Some(t), Some(want)) = (&trace_file, fixture_part(dir, "expected.trace.jsonl")) {
         let got = parse_lines(&std::fs::read_to_string(t).unwrap());
         let want = parse_lines(&std::fs::read_to_string(want).unwrap());
         assert_eq!(got, want, "{label}: trace differs");
-        let _ = std::fs::remove_file(t);
     }
 }

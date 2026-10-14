@@ -146,7 +146,7 @@ fn async_library_methods_are_assisted_and_their_bodies_await() {
     // the rest of the crate: handles bound by rules, what needs the model and has no canned answer is listed
     assert!(b.counts.direct >= 40, "{:?}", b.counts);
     let (_, why) = b.not_bound.iter().find(|(n, _)| n == "response_upgrade").expect("listed");
-    assert!(why.contains("mock model has no response"), "{why}");
+    assert!(why.contains("no model answer when this file was generated"), "{why}");
 }
 
 // ------------------------------------------- lifetimes and one-instantiation generics (Q370)

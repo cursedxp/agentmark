@@ -73,7 +73,7 @@ pub struct CargoChecker {
     /// Unique per checker: the package name goes into cargo's output hash, so scratch crates that
     /// share a build folder (`build.target-dir` in a cargo config, `CARGO_TARGET_DIR`) never share
     /// a fingerprint. With one fixed name cargo could call a body "fresh" because another checker
-    /// had just passed its own (Q410).
+    /// had just passed its own (Q413).
     package: String,
 }
 

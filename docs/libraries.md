@@ -292,15 +292,15 @@ and an integer wider than `int` (`u64`) is converted with a check that fails the
 connected, runs a statement on it, and lends it back: a function only borrows a handle it does not use up.
 
 ```agentmark file=examples/08-notes-api/functions/ensure-schema.agent.md
-# Import: crate sqlx
 # Import: ../constants.agent.md
+# Import: crate sqlx
 
 > Creates the notes table when it does not exist yet. Every route calls this right after connecting, because the
 > service has no start-up step: the database file may be new. Fails when the table cannot be created.
 # Function: ensure_schema
 - in: pool: handle of sqlx.SqlitePool
 - out: result of bool
-- effect: network
+- effect: local
   - sqlx query create_notes_table -> statement
   - try statement execute pool
   - return true
