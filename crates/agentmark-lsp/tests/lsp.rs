@@ -326,6 +326,38 @@ fn hover_shows_the_effect_summary_of_a_block_and_the_type_of_a_field() {
     c.shutdown();
 }
 
+// ---------------------------------------------------------------------------------- enums
+
+#[test]
+fn variants_and_enums_have_definitions_hovers_and_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().canonicalize().unwrap().join("shapes.agent.md");
+    let text = "# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: area\n- in: shape: Shape\n- out: int\n- effect: pure\n  - match shape:\n    - Circle c:\n      - return c.radius\n    - Empty:\n      - return 0\n\n> Prints an area.\n# Command: go\n\n## Run\n- print: \"{area(Circle { radius: 3 })}\"\n";
+    let mut c = Client::start(None);
+    c.open(&file, text, 1);
+    let d = c.diagnostics(&file, Some(1));
+    assert!(d.is_empty(), "{d:?}");
+
+    // a variant value -> the variant's line in the enum
+    let l = definition(&mut c, &file, at(text, "Circle { radius: 3 }", 0, 2));
+    assert_eq!((l[0].uri.clone(), l[0].range.start.line), (uri(&file), line_of(text, "- Circle:")));
+    // hover shows the variant and its fields
+    let h = hover(&mut c, &file, at(text, "Circle { radius: 3 }", 0, 2)).expect("hover on a variant");
+    assert!(h.contains("Shape.Circle") && h.contains("radius: int"), "{h}");
+    // the branch's name is a variable of the match
+    let l = definition(&mut c, &file, at(text, "c.radius", 0, 0));
+    assert_eq!(l[0].range.start.line, line_of(text, "- Circle c:"));
+
+    // a match that misses a variant is reported with the compiler's message, on the match line
+    let bad = text.replace("    - Empty:\n      - return 0\n", "");
+    c.change(&file, &bad, 2);
+    let d = c.diagnostics(&file, Some(2));
+    assert_eq!(d.len(), 1, "{d:?}");
+    assert!(d[0].message.contains("does not handle the variant \"Empty\" of Shape."), "{}", d[0].message);
+    assert_eq!(d[0].range.start.line, line_of(&bad, "- match shape:"));
+    c.shutdown();
+}
+
 // ---------------------------------------------------------------------------------- formatting
 
 #[test]

@@ -69,6 +69,9 @@ pub struct Cx {
     /// The statement about to be checked is the one directly after `try` (a `result of` function
     /// may only be called there).
     pub in_try: bool,
+    /// The call expression directly after `match`: a `result of T` function may be called there
+    /// without `try`.
+    pub match_call: Option<crate::diag::Span>,
 }
 
 impl Cx {
@@ -85,6 +88,7 @@ impl Cx {
             unit: String::new(),
             unwrap_log: Vec::new(),
             in_try: false,
+            match_call: None,
         }
     }
 
@@ -231,6 +235,12 @@ pub fn contains_return(stmts: &[Stmt]) -> bool {
                 || otherwise.as_deref().is_some_and(contains_return)
         }
         StmtKind::Parallel(b) => contains_return(b),
+        StmtKind::Match {
+            arms, otherwise, ..
+        } => {
+            arms.iter().any(|a| contains_return(&a.body))
+                || otherwise.as_ref().is_some_and(|o| contains_return(&o.body))
+        }
         StmtKind::Guard { else_: Some(e), .. } => contains_return(std::slice::from_ref(e)),
         _ => false,
     })

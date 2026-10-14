@@ -115,6 +115,11 @@ fn resolved_definition(
             None
         }
         Resolution::Field { record, field, .. } => field_location(a, ck, record, field),
+        Resolution::Variant { enum_name, variant } => {
+            let e = ck.enums.get(enum_name)?;
+            let v = e.variants.iter().find(|v| v.name == *variant)?;
+            location(a, file_path(ck, e.file)?, v.span)
+        }
         Resolution::Const { name } => {
             let c = ck.constants.get(name)?;
             location(a, file_path(ck, c.file)?, c.span)
@@ -196,6 +201,15 @@ fn loop_binding(a: &Analysis, ck: &Checked, fid: usize, line: usize, name: &str)
                 StmtKind::Parallel(b) => {
                     if let Some(v) = find(b, target, var) {
                         return Some(v);
+                    }
+                }
+                StmtKind::Match { arms, otherwise, .. } => {
+                    let found = arms
+                        .iter()
+                        .find_map(|a| find(&a.body, target, var))
+                        .or_else(|| otherwise.as_ref().and_then(|o| find(&o.body, target, var)));
+                    if found.is_some() {
+                        return found;
                     }
                 }
                 _ => {}
@@ -370,6 +384,15 @@ fn expression_hover(a: &Analysis, ck: &Checked, fid: usize, line: usize, col: us
         Resolution::Field { record, field, .. } => {
             let f = ck.records.get(record)?.fields.iter().find(|f| f.name == *field)?;
             format!("`{record}.{field}`: `{}`", f.ty)
+        }
+        Resolution::Variant { enum_name, variant } => {
+            let v = ck.enums.get(enum_name)?.variants.iter().find(|v| v.name == *variant)?;
+            if v.fields.is_empty() {
+                format!("`{enum_name}.{variant}`: `{enum_name}`")
+            } else {
+                let fields: Vec<String> = v.fields.iter().map(|f| format!("{}: {}", f.name, f.ty)).collect();
+                format!("`{enum_name}.{variant}` {{ {} }}: `{enum_name}`", fields.join(", "))
+            }
         }
         Resolution::Const { name } => {
             let c = ck.constants.get(name)?;

@@ -85,6 +85,10 @@ pub enum TypeKind {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Decl {
     Record(Record),
+    /// `# Enum: Shape` (SPEC 22.1).
+    Enum(Enum),
+    /// `# Type: Totals` (SPEC 22.1).
+    TypeAlias(TypeAlias),
     Rule(Rule),
     Agent(Agent),
     Function(Function),
@@ -126,6 +130,37 @@ pub struct Field {
     pub name: Ident,
     /// `None` means "infer from the field name" (SPEC 2.1).
     pub ty: Option<TypeExpr>,
+}
+
+/// `# Enum: Shape` with one list item per variant: `- Circle: radius: int`, `- Empty`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Enum {
+    pub span: Span,
+    pub doc: Option<String>,
+    pub name: Ident,
+    pub variants: Vec<Variant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Variant {
+    pub span: Span,
+    /// Plain `>` comment lines directly above the variant.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<String>,
+    pub name: Ident,
+    /// Named fields; every one has a written type.
+    pub fields: Vec<Field>,
+}
+
+/// `# Type: Totals` with `- is: <type>`: another name for a type.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TypeAlias {
+    pub span: Span,
+    pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
+    pub name: Ident,
+    pub target: TypeExpr,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -438,6 +473,13 @@ pub enum StmtKind {
         otherwise: Option<Vec<Stmt>>,
     },
     Parallel(Vec<Stmt>),
+    /// `match shape:` with one branch per variant (SPEC 22.1).
+    Match {
+        scrutinee: Expr,
+        arms: Vec<MatchArm>,
+        /// `- otherwise:`, always the last branch.
+        otherwise: Option<Otherwise>,
+    },
     /// Layer 2 only (`agent_lower`): ask the model. `ask model with v: "p" as R -> x`.
     /// `model` is the driver string of the agent that wrote it (`claude:haiku`).
     ModelCall {
@@ -449,6 +491,31 @@ pub enum StmtKind {
     },
     /// Layer 2 only (`agent_lower`): a line for the trace.
     Trace(TraceEvent),
+}
+
+/// One branch of a `match`: `Circle c:`, `Shape.Empty:`, `some row:`, `none:`, `ok v:`, `error e:`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MatchArm {
+    pub span: Span,
+    /// Plain `>` comment lines directly above the branch.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<String>,
+    /// `Shape` of `Shape.Empty`.
+    pub qualifier: Option<Ident>,
+    /// The variant, or `some` / `none` / `ok` / `error`.
+    pub pattern: Ident,
+    /// The name the branch gives the value it carries.
+    pub bind: Option<Ident>,
+    pub body: Vec<Stmt>,
+}
+
+/// `- otherwise:` of a `match`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Otherwise {
+    pub span: Span,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<String>,
+    pub body: Vec<Stmt>,
 }
 
 /// What a [`StmtKind::Trace`] records (DESIGN 5.1).
@@ -521,6 +588,13 @@ pub enum ExprKind {
     },
     /// `{ id: invoice.id, net: x }`
     Record(Vec<RecordField>),
+    /// `Circle { radius: 3 }` or `Shape.Circle { radius: 3 }`: a variant with fields (SPEC 22.1).
+    /// A field-less variant is written as a plain [`ExprKind::Path`] (`Empty`, `Shape.Empty`).
+    Variant {
+        qualifier: Option<Ident>,
+        name: Ident,
+        fields: Vec<RecordField>,
+    },
     /// `count of rows`, `count of open invoices in crm.invoices`
     CountOf {
         rule: Option<Ident>,

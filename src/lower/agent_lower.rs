@@ -74,7 +74,9 @@ pub fn walk_expr_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
         | ExprKind::NoAmountsChanged(x) => walk_expr_mut(x, f),
         ExprKind::Matches { expr, .. } => walk_expr_mut(expr, f),
         ExprKind::Call { args, .. } => args.iter_mut().for_each(|a| walk_expr_mut(a, f)),
-        ExprKind::Record(fields) => fields.iter_mut().for_each(|r| walk_expr_mut(&mut r.value, f)),
+        ExprKind::Record(fields) | ExprKind::Variant { fields, .. } => {
+            fields.iter_mut().for_each(|r| walk_expr_mut(&mut r.value, f))
+        }
         ExprKind::CountOf { source, .. } => walk_expr_mut(source, f),
         ExprKind::FirstIn { source, cond, .. } => {
             walk_expr_mut(source, f);
@@ -524,6 +526,24 @@ impl Lw<'_> {
                 bind: bind.clone(),
                 then: self.stmts(then),
                 else_: self.stmts(else_),
+            },
+            StmtKind::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => StmtKind::Match {
+                scrutinee: self.expr(scrutinee),
+                arms: arms
+                    .iter()
+                    .map(|a| MatchArm {
+                        body: self.stmts(&a.body),
+                        ..a.clone()
+                    })
+                    .collect(),
+                otherwise: otherwise.as_ref().map(|o| Otherwise {
+                    body: self.stmts(&o.body),
+                    ..o.clone()
+                }),
             },
             StmtKind::Stop => StmtKind::Stop,
             StmtKind::Do { name, args, into } => {

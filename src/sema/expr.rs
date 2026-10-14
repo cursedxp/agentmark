@@ -178,6 +178,7 @@ impl Checker<'_> {
                         if t.is_maybe() {
                             self.maybe_error(cx, x.span, "written into text", &t);
                         }
+                        self.whole_enum_in_text(cx, x.span, &t);
                     }
                 }
                 Type::Text
@@ -185,6 +186,7 @@ impl Checker<'_> {
             ExprKind::Path(segs) => {
                 cx.unwrap_log.clear();
                 let t = self.path_expr(cx, segs, NodeKey::new(cx.file, e.span));
+                let t = self.payload_as_value(cx, segs, &t);
                 if !cx.unwrap_log.is_empty() {
                     let log = std::mem::take(&mut cx.unwrap_log);
                     self.unwraps.insert(NodeKey::new(cx.file, e.span), log);
@@ -198,6 +200,11 @@ impl Checker<'_> {
                 Type::Bool
             }
             ExprKind::Call { func, args } => self.call(cx, e, func, args),
+            ExprKind::Variant {
+                qualifier,
+                name,
+                fields,
+            } => self.variant_value(cx, e, qualifier, name, fields),
             ExprKind::Record(fields) => {
                 let mut out = Vec::new();
                 for f in fields {
@@ -421,6 +428,10 @@ impl Checker<'_> {
                 return self.chain(cx, t, segs, n, joined);
             }
         }
+        // a variant without fields: `Empty`, `Shape.Empty`
+        if let Some(t) = self.variant_path(cx, segs, key) {
+            return t;
+        }
         // a readable source of a tool: `crm.invoices`
         if segs.len() >= 2 {
             if let Some(def) = self.p.manifest.tool(&first.name).cloned() {
@@ -479,6 +490,8 @@ impl Checker<'_> {
         }
         let mut cands = cx.in_agent_names();
         cands.extend(self.scopes[cx.file].names_of(&[Kind::Constant]));
+        cands.extend(self.variant_candidates(cx.file));
+        cands.extend(self.scopes[cx.file].names_of(&[Kind::Enum]));
         cands.extend(self.p.manifest.tool_names().map(str::to_string));
         let d = Diagnostic::error(
             E_UNKNOWN_NAME,
@@ -548,6 +561,34 @@ impl Checker<'_> {
                             return Type::Unknown;
                         }
                     }
+                }
+                Type::Variant(en, vn) => {
+                    let fields = self.variant_fields(en, vn).unwrap_or_default();
+                    match fields.iter().find(|(n, _)| *n == seg.name) {
+                        Some((_, t)) => Some(t.clone()),
+                        None => {
+                            let d = Diagnostic::error(
+                                E_UNKNOWN_NAME,
+                                self.path(cx.file),
+                                seg.span,
+                                format!("The variant \"{vn}\" has no field \"{}\".", seg.name),
+                            )
+                            .suggesting(&seg.name, fields.iter().map(|(n, _)| n.as_str()));
+                            self.diags.push(d);
+                            return Type::Unknown;
+                        }
+                    }
+                }
+                Type::Enum(en) => {
+                    let d = Diagnostic::error(
+                        E_TYPE,
+                        self.path(cx.file),
+                        seg.span,
+                        format!("\"{key}\" is a {en}, which has no fields of its own, so \".{}\" cannot be read.", seg.name),
+                    )
+                    .with_help(format!("Use \"- match {key}:\" and read the fields inside the branch of the variant that has them."));
+                    self.diags.push(d);
+                    return Type::Unknown;
                 }
                 Type::Object(fields) => match fields.iter().find(|(n, _)| *n == seg.name) {
                     Some((_, t)) => Some(t.clone()),
@@ -772,6 +813,8 @@ impl Checker<'_> {
             Some(sig) => {
                 self.check_args(cx, e.span, &name, sig, args, &arg_types);
                 match &sig.out {
+                    // directly after `match`: the result itself is looked at (Q300)
+                    Some(Type::Result(t)) if cx.match_call == Some(e.span) => Type::Result(t.clone()),
                     Some(Type::Result(t)) => {
                         let d = Diagnostic::error(
                             E_CALL,

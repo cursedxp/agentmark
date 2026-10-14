@@ -8,7 +8,7 @@
 use serde::Serialize;
 
 pub use crate::manifest::ToolDef;
-pub use crate::sema::{EffectSet, Type};
+pub use crate::sema::{EffectSet, Pattern, Type};
 pub use crate::syntax::ast::{BinOp, DurationUnit, Effect, Weekday};
 
 pub mod build;
@@ -26,6 +26,8 @@ pub struct Program {
     /// `name` / `version` from `agentmark.toml`, if given.
     pub package: Package,
     pub records: Vec<Record>,
+    /// `# Enum`s (`# Type` aliases are gone: every type is already resolved).
+    pub enums: Vec<Enum>,
     /// Functions: user `# Function`s, former rules (`Fn(record) -> bool`) and former `## Do`
     /// blocks (named `<agent>__<block>`).
     pub functions: Vec<Fn>,
@@ -72,6 +74,21 @@ pub struct Record {
     pub doc: Option<String>,
     pub fields: Vec<RecordField>,
     pub source: SourceRef,
+}
+
+/// An enum (SPEC 22.1). Its JSON form is internally tagged: `{"kind":"Circle","radius":3}`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Enum {
+    pub name: String,
+    pub doc: Option<String>,
+    pub variants: Vec<Variant>,
+    pub source: SourceRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Variant {
+    pub name: String,
+    pub fields: Vec<RecordField>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -261,6 +278,13 @@ pub enum StmtKind {
     /// `append v to state.invoices`; `list` is a path to the list.
     Append { value: Expr, list: Expr },
     Parallel(Vec<Stmt>),
+    /// `match v:` over an enum, a `maybe` or a `result`. Without `otherwise` the arms cover every
+    /// case (sema checked). `scrutinee` is a `result` only as the call that makes it.
+    Match {
+        scrutinee: Expr,
+        arms: Vec<MatchArm>,
+        otherwise: Option<Vec<Stmt>>,
+    },
     /// `try s [otherwise: …]`. `defines` is the variable `stmt` introduces (`-> rows`): it is
     /// visible after the `try`, and `otherwise` may assign it. Without `otherwise` a failure
     /// stops the block and is traced as an `error`.
@@ -269,6 +293,17 @@ pub enum StmtKind {
         otherwise: Option<Vec<Stmt>>,
         defines: Option<LocalVar>,
     },
+}
+
+/// One branch of a [`StmtKind::Match`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    /// The name the branch gives its value: the fields of the variant (`Type::Variant`), the
+    /// `T` of `some` / `ok`, or the failure message (`text`) of `error`.
+    pub bind: Option<LocalVar>,
+    pub body: Vec<Stmt>,
+    pub source: SourceRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -404,6 +439,13 @@ pub enum ExprKind {
     },
     /// A record literal `{ id: x }` (its `ty` is `Type::Object`).
     Record(Vec<(String, Expr)>),
+    /// An enum value: `Circle { radius: 3 }`, `Empty`. Fields a `maybe` variant field leaves out
+    /// are not listed.
+    Variant {
+        enum_name: String,
+        variant: String,
+        fields: Vec<(String, Expr)>,
+    },
     /// `crm.invoices`: read a tool's collection.
     Source {
         tool: String,

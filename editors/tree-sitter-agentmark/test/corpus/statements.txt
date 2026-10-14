@@ -630,3 +630,183 @@ Rust block
         (fence_open)
         (code_content)
         (fence_close)))))
+
+====================
+Match over an enum, with qualified branches and otherwise
+====================
+
+# Function: describe
+- in: shape: Shape
+- out: text
+- effect: pure
+  - match shape:
+    - Circle c:
+      - return "circle {c.radius}"
+    - Shape.Empty:
+      - return "nothing"
+    - otherwise:
+      - return "other"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (identifier)))))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (match_statement
+        (identifier)))
+    (statement_line
+      (match_arm
+        (identifier)
+        (identifier)))
+    (statement_line
+      (return_statement
+        (string
+          (string_content)
+          (interpolation
+            (field_expression
+              (identifier)
+              (identifier))))))
+    (statement_line
+      (match_arm
+        (field_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (return_statement
+        (string
+          (string_content))))
+    (statement_line
+      (otherwise_statement))
+    (statement_line
+      (return_statement
+        (string
+          (string_content))))))
+
+====================
+Match over maybe and result
+====================
+
+## Run
+- match found:
+  - some row:
+    - print: "{row.id}"
+  - none:
+    - stop
+- match parse_age(text):
+  - ok value:
+    - set total = value
+  - error problem:
+    - print: "{problem}"
+
+--------------------
+
+(source_file
+  (trigger_block
+    (run_heading)
+    (statement_line
+      (match_statement
+        (identifier)))
+    (statement_line
+      (match_arm
+        (identifier)
+        (identifier)))
+    (statement_line
+      (print_statement
+        (string
+          (interpolation
+            (field_expression
+              (identifier)
+              (identifier))))))
+    (statement_line
+      (match_arm
+        (identifier)))
+    (statement_line
+      (stop_statement))
+    (statement_line
+      (match_statement
+        (call_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (match_arm
+        (identifier)
+        (identifier)))
+    (statement_line
+      (set_statement
+        (identifier)
+        (identifier)))
+    (statement_line
+      (match_arm
+        (identifier)
+        (identifier)))
+    (statement_line
+      (print_statement
+        (string
+          (interpolation
+            (identifier)))))))
+
+====================
+Enum values
+====================
+
+## Run
+- set a = Circle { radius: 3 }
+- set b = Shape.Rect { width: 1, height: 2 }
+- set c = Shape.Empty
+- set d = Empty
+
+--------------------
+
+(source_file
+  (trigger_block
+    (run_heading)
+    (statement_line
+      (set_statement
+        (identifier)
+        (variant_expression
+          (identifier)
+          (record_literal
+            (record_pair
+              (identifier)
+              (number))))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (variant_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (record_literal
+            (record_pair
+              (identifier)
+              (number))
+            (record_pair
+              (identifier)
+              (number))))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (field_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (identifier)))))

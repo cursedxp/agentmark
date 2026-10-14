@@ -15,6 +15,9 @@
 "##" @punctuation.special
 
 (record_declaration "record" @keyword.type)
+(enum_declaration "#" @punctuation.special)
+(enum_declaration "enum" @keyword.type)
+(enum_declaration name: (identifier) @type.definition)
 (import_declaration "import" @keyword.import)
 (import_target "crate" @keyword.import)
 (run_declaration "run" @keyword.type)
@@ -50,6 +53,7 @@
 ; ---- properties and fields --------------------------------------------------
 (property_key) @property
 (record_field name: (identifier) @property)
+(enum_variant name: (identifier) @constructor)
 (run_item name: (identifier) @module)
 (parameter name: (identifier) @variable.parameter)
 (driver) @string.special
@@ -65,7 +69,7 @@
 ; ---- statements -------------------------------------------------------------
 ["for" "each" "in" "if" "else" "otherwise" "parallel" "try" "return"
  "set" "guard" "do" "read" "append" "to" "respond" "print" "with" "as" "where"
- "first" "count" "of"] @keyword
+ "first" "count" "of" "match"] @keyword
 (ask_statement ["ask" "model"] @keyword)
 (no_amounts_changed ["no" "amounts" "changed" "in"] @keyword)
 (predicate ["is" "not" "empty" "some" "matches"] @keyword.operator)
@@ -74,6 +78,7 @@
 (statement_line "-" @punctuation.list_marker)
 (property "-" @punctuation.list_marker)
 (record_field "-" @punctuation.list_marker)
+(enum_variant "-" @punctuation.list_marker)
 (run_item "-" @punctuation.list_marker)
 (not_bound_item "-" @punctuation.list_marker)
 
@@ -92,6 +97,13 @@
 (record_pair key: (identifier) @property)
 (field_expression field: (identifier) @property)
 (predicate binding: (identifier) @variable)
+
+; enum variants: `Circle { radius: 3 }`, branches of a `match`
+(variant_expression variant: (identifier) @constructor)
+(variant_expression variant: (field_expression object: (identifier) @type field: (identifier) @constructor))
+(match_arm pattern: (identifier) @constructor)
+(match_arm pattern: (field_expression object: (identifier) @type field: (identifier) @constructor))
+(match_arm binding: (identifier) @variable)
 
 ; ---- expressions ------------------------------------------------------------
 (string) @string

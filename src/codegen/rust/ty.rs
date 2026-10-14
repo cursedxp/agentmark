@@ -19,6 +19,8 @@ pub fn rust_type(t: &Type, n: &Names) -> String {
         Type::Maybe(i) => format!("Option<{}>", rust_type(i, n)),
         Type::Result(i) => rust_type(i, n),
         Type::Record(r) => n.record(r),
+        Type::Enum(e) => n.enum_name(e),
+        Type::Variant(e, v) => n.variant_struct(e, v),
         Type::Object(_) | Type::Unknown => "serde_json::Value".into(),
     }
 }
@@ -47,6 +49,8 @@ pub fn default_expr(t: &Type, n: &Names) -> String {
         Type::Maybe(_) => "None".into(),
         Type::Result(i) => default_expr(i, n),
         Type::Record(r) => format!("{}::empty()", n.record(r)),
+        Type::Enum(e) => format!("{}::empty()", n.enum_name(e)),
+        Type::Variant(e, v) => format!("{}::empty()", n.variant_struct(e, v)),
         Type::Object(_) | Type::Unknown => "serde_json::Value::Null".into(),
     }
 }
@@ -65,7 +69,8 @@ pub fn schema_word(t: &Type) -> String {
         Type::List(i) => format!("list of {}", schema_word(i)),
         Type::Maybe(i) => format!("{} or null", schema_word(i)),
         Type::Result(i) => schema_word(i),
-        Type::Record(r) => r.clone(),
+        Type::Record(r) | Type::Enum(r) => r.clone(),
+        Type::Variant(e, v) => format!("{e}.{v}"),
         Type::Object(_) | Type::Unknown => "any".into(),
     }
 }

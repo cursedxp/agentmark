@@ -24,6 +24,10 @@ pub enum Head {
     Else,
     Otherwise,
     Parallel,
+    /// `match shape:`; the branches are the indented lines (see [`arm`]).
+    Match {
+        scrutinee: Expr,
+    },
     /// A statement that has no body of its own.
     Simple(Stmt),
     /// `try <statement>`; an `otherwise:` child line may follow.
@@ -48,6 +52,7 @@ const STATEMENT_WORDS: &[&str] = &[
     "append",
     "print",
     "otherwise",
+    "match",
 ];
 
 fn stmt_at<'a>(kind: StmtKind, e: &mut chumsky::input::MapExtra<'a, '_, &'a str, Ex<'a>>) -> Stmt {
@@ -308,6 +313,11 @@ pub fn head<'a>() -> P<'a, Head> {
     let else_head = kw("else").ignore_then(colon()).to(Head::Else);
     let otherwise = kw("otherwise").ignore_then(colon()).to(Head::Otherwise);
     let parallel = kw("parallel").ignore_then(colon()).to(Head::Parallel);
+    let match_head = kw("match")
+        .ignore_then(sp1())
+        .ignore_then(expr.clone())
+        .then_ignore(colon())
+        .map(|scrutinee| Head::Match { scrutinee });
     let try_head = kw("try")
         .ignore_then(sp1())
         .ignore_then(simple.clone())
@@ -315,6 +325,7 @@ pub fn head<'a>() -> P<'a, Head> {
 
     choice((
         for_each,
+        match_head,
         if_head,
         else_head,
         otherwise,
@@ -323,6 +334,39 @@ pub fn head<'a>() -> P<'a, Head> {
         simple.map(Head::Simple),
     ))
     .boxed()
+}
+
+/// A branch line of a `match`.
+#[derive(Debug, Clone)]
+pub enum Arm {
+    /// `Circle c:`, `Shape.Empty:`, `some row:`, `none:`, `ok v:`, `error e:`
+    Branch {
+        qualifier: Option<Ident>,
+        pattern: Ident,
+        bind: Option<Ident>,
+    },
+    /// `otherwise:`
+    Otherwise,
+}
+
+/// The grammar of one `match` branch line.
+pub fn arm<'a>() -> P<'a, Arm> {
+    let otherwise = kw("otherwise").ignore_then(colon()).to(Arm::Otherwise);
+    let branch = ident()
+        .separated_by(just('.'))
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .then(sp1().ignore_then(ident()).or_not())
+        .then_ignore(colon())
+        .map(|(mut path, bind)| {
+            let pattern = path.pop().expect("a path has a segment");
+            Arm::Branch {
+                qualifier: qualifier_of(&path),
+                pattern,
+                bind,
+            }
+        });
+    choice((otherwise, branch)).then_ignore(sp()).boxed()
 }
 
 /// A name that is not an expression keyword (for loop variables).

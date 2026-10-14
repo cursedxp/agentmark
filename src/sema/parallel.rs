@@ -25,6 +25,10 @@ pub fn writes(s: &Stmt, out: &mut Vec<(String, Span)>) {
         StmtKind::If { then, else_, .. } | StmtKind::IfSome { then, else_, .. } => {
             then.iter().chain(else_).for_each(|b| writes(b, out));
         }
+        StmtKind::Match { arms, otherwise, .. } => {
+            arms.iter().flat_map(|a| &a.body).for_each(|b| writes(b, out));
+            otherwise.iter().flat_map(|o| &o.body).for_each(|b| writes(b, out));
+        }
         StmtKind::Guard { else_: Some(e), .. } => writes(e, out),
         StmtKind::Try { stmt, otherwise } => {
             writes(stmt, out);

@@ -53,6 +53,14 @@ fn statements(project: &Project, file: usize) -> Vec<&Stmt> {
                 }
                 StmtKind::ForEach { body, .. } => walk(body, out),
                 StmtKind::Parallel(b) => walk(b, out),
+                StmtKind::Match { arms, otherwise, .. } => {
+                    for a in arms {
+                        walk(&a.body, out);
+                    }
+                    if let Some(o) = otherwise {
+                        walk(&o.body, out);
+                    }
+                }
                 StmtKind::Try { stmt, otherwise } => {
                     walk(std::slice::from_ref(stmt), out);
                     if let Some(o) = otherwise {

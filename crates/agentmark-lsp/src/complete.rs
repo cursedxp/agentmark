@@ -35,6 +35,8 @@ fn item(label: impl Into<String>, kind: CompletionItemKind, detail: impl Into<Op
 fn kind_of(k: Kind) -> CompletionItemKind {
     match k {
         Kind::Record => CompletionItemKind::STRUCT,
+        Kind::Enum => CompletionItemKind::ENUM,
+        Kind::TypeAlias => CompletionItemKind::TYPE_PARAMETER,
         Kind::Rule | Kind::Function | Kind::RustBlock => CompletionItemKind::FUNCTION,
         Kind::Constant => CompletionItemKind::CONSTANT,
         Kind::Binding => CompletionItemKind::MODULE,

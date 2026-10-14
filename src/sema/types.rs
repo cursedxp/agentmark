@@ -21,6 +21,11 @@ pub enum Type {
     Result(Box<Type>),
     /// A declared record, by its (project-unique) name.
     Record(String),
+    /// A declared `# Enum`, by its (project-unique) name (SPEC 22.1).
+    Enum(String),
+    /// What a `match` branch on an enum binds: the fields of one variant, as `(enum, variant)`.
+    /// Only its fields can be read (`c.radius`); it is not a value of the enum.
+    Variant(String, String),
     /// A record literal `{ id: x }`: field names and types, in written order.
     Object(Vec<(String, Type)>),
     /// The type of something that already produced an error; compatible with everything so one
@@ -101,7 +106,8 @@ impl fmt::Display for Type {
             Type::List(t) => write!(f, "list of {t}"),
             Type::Maybe(t) => write!(f, "maybe {t}"),
             Type::Result(t) => write!(f, "result of {t}"),
-            Type::Record(n) => f.write_str(n),
+            Type::Record(n) | Type::Enum(n) => f.write_str(n),
+            Type::Variant(e, v) => write!(f, "{e}.{v}"),
             Type::Object(fields) => {
                 let inner: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
                 write!(f, "{{ {} }}", inner.join(", "))

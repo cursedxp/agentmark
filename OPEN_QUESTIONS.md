@@ -564,3 +564,34 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q291 — Templates carry no copy of the reference (step 18)
 **Choice:** `templates/CLAUDE.md` and `templates/.cursorrules` tell the assistant to read `docs/reference.md` and, for a project outside the checkout, to keep a copy of it (suggested name `docs/agentmark-reference.md`). The templates themselves do not embed the reference, so there is one file to keep current (SPEC 20.6).
 **Why:** a pasted copy in two templates would drift; the test-suite pins that both templates name `docs/reference.md` and only show commands `agentmark --help` lists.
+
+## Q300 — `match` on a `result`: only at the call that makes it (step 20)
+- Question: SPEC 22.1 writes `match parsed:` with `parsed` a `result of T`, but a `result` is not a value in v0.2 (a call is an error outside `try`, and `try do f(x) -> h` already unwraps it), so no variable can hold one.
+- Choice: a function that returns `result of T` may be called directly after `match` (no `try`): `- match read_count(path):` with the branches `ok v` and `error e`; `v` is the `T`, `e` is the failure's message as `text`. Anywhere else a `result` is still an error, and a `match` on a `result` that is not a call (a parameter of type `result of T`) is E313. When the library functions of 22.3 (`number.parse`, ...) return results, step 22 only has to allow the call form there too.
+- Why: it keeps the rule "a failure has one source" (Q200), reuses the function call that already returns `Result<T, AgentError>` in the generated program, and needs no new value form.
+
+## Q301 — JSON form of an enum value (step 20)
+- Question: how is `Circle { radius: 3 }` written as JSON (`read file`, `read body`, `respond`, a record with an enum field)?
+- Choice: internally tagged, as the brief suggested: `{"kind":"Circle","radius":3}`; a variant without fields is `{"kind":"Empty"}`. Generated Rust: one struct per variant that has fields (`ShapeCircle`) and `#[derive(Serialize, Deserialize)] #[serde(tag = "kind")] enum Shape { Circle(ShapeCircle), ..., Empty }`. A variant field cannot be called `kind` (E303), because it would collide with the tag.
+- Why: the tag keeps the JSON self-describing and flat, the way people write it by hand; one struct per variant lets a branch's name (`c`) be a real value whose fields are read as `c.radius`, like a record.
+
+## Q302 — One namespace for records, enums and type aliases (step 20)
+- Choice: the three share one namespace (E300 on a clash), so `- shape: Shape` resolves unambiguously. A `# Type` is replaced by the type it names the moment it is written (`Checked::type_exprs` holds the result for every written type), so sema, the IR and the generated program never see an alias; an alias defined in terms of itself is E304. `Checked::aliases` keeps them for tools.
+- Why: SPEC 22.1 says an alias is "interchangeable with what it names"; resolving it eagerly is the simplest way to make that true everywhere (assignability, `=`, `match`).
+- Left for step 21: `- is: map of text to money` (the SPEC example) needs the `map of K to V` type that 22.2 introduces; until then an alias can name any type the language already has.
+
+## Q303 — Where a variant name is looked up (step 20)
+- Choice: in a value, a bare name resolves in this order: variable, bare field, constant, variant, tool source. `Shape.Empty` names the enum; `billing.Empty` and `billing.Shape.Empty` work through a module alias. A bare name that several visible enums have is E307, which lists the qualified spellings. In the branches of a `match` the name is looked up in the enum being matched, so `Empty:` needs no qualifier even when another enum has an `Empty` (a qualified branch whose qualifier is another enum is E309).
+- Why: SPEC 22.1 says clashes "are resolved by qualifying"; the matched enum is known, so asking for the qualifier again would only be noise. Variables and constants win because they existed first and a program that worked in v0.2 must not change meaning.
+
+## Q304 — What a branch's name holds, and the fixed branch words (step 20)
+- Choice: in `Circle c:` the name `c` has the type "the fields of Circle" (`Type::Variant`); only `c.radius` can be read, `c` itself cannot be stored, passed or written into text (it is not a value of the enum). `some x` / `ok x` bind the inner `T`, `error e` binds the failure message as `text`. `some`, `ok` and `error` must name their value (E312); `none` and a variant without fields must not (E312). A variant with fields may leave its name out when the branch does not need them. `some`, `none`, `ok`, `error` are only special in a `match` on a `maybe` or `result`; as variant names they stay usable in an enum.
+- Why: a branch that is not allowed to hand the payload around cannot build an invalid enum value, and the rules for `some` follow `is some x`.
+
+## Q305 — Exhaustiveness, `otherwise:` and nesting (step 20)
+- Choice: a `match` without `otherwise:` must have a branch for every variant (or both of `some`/`none`, `ok`/`error`); E310 names the missing ones. A misspelled branch is reported with its suggestion and the missing-variant error is then left out (it is almost always the same mistake). `otherwise:` must be last and only one; one that nothing can reach is the warning W300. An empty branch body is allowed (it does nothing). For the hard limits of 18.3 a `match` is one level of nesting, whatever the number of branches, and its branches' statements count towards the 25.
+- Why: SPEC 22.1 requires "every variant handled or an `- otherwise:` branch"; one cascade per typo is enough.
+
+## Q306 — Enum values in expressions (step 20)
+- Choice: `=` and `!=` work between two values of the same enum (derived equality). An enum value or a branch name cannot be written into text as a whole (E314), has no fields of its own (use `match`), cannot be the `as` of `ask model` (a model answers with a record) and has no `matches` check. In a record used as the `as` type of `ask model`, an enum field's JSON hint is just the enum's name.
+- Why: each of these would otherwise reach rustc as a trait error, which must never happen (SPEC 10); ordering and model output for enums need design that no v0.3 example asks for.

@@ -107,6 +107,7 @@ effects of their children instead of looking them up.
 | 18.7 | documentation page | `src/cli/docgen.rs` | `tests/cli.rs` |
 | 19 | model providers | `crates/agentmark-rt/src/model.rs` | `crates/agentmark-rt/tests/anthropic.rs` |
 | 20.3 | language server | `crates/agentmark-lsp/src/` (section 9 below) | `crates/agentmark-lsp/tests/` |
+| 22.1 | enums, type aliases, `match` | `src/syntax/parser.rs` (`enum_decl`, `match_arms`), `src/sema/enums.rs`, `src/ir/build.rs` (`Match`, `Variant`), `src/codegen/rust/body.rs`, `src/codegen/rust/files.rs` (`records_rs`) | `tests/user_types.rs`, `tests/user_types/shapes.agent.md` |
 
 The documentation is tested too: `tests/docs.rs` runs every sample in `docs/*.md`. Its header comment states which
 fenced blocks are complete programs and which are fragments, and the wrapper a fragment is parsed in.
