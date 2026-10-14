@@ -18,7 +18,7 @@ AgentMark is now a general-purpose programming language written as Markdown. Age
 - `read input` reads standard input.
 - Library handles. A Rust type with no AgentMark equivalent becomes `handle of <crate>.<Type>`, and the binder binds its constructors and methods. A handle owns what the Rust value borrows. Handles consumed by a method cannot be used again.
 - A `[crates]` table in `agentmark.toml` sets crate features for the binder and for the generated project.
-- Better `sha2` binding: 42 of the 81 items that v0.2 listed under `## Not bound` are now bound.
+- Better `sha2` binding. The binder now binds 42 of the 81 items it left unbound in v0.2. Example 05 keeps its approved v0.2 binding on purpose (Q369).
 - A `sqlx` binding that example 08 runs on, through the `sqlite` feature.
 - Wrappable binding items. An item that is not bound directly can be bound in a wrapped form.
 - `# Tool`: a tool written in AgentMark itself, with its declared effect checked against its body. `tools.toml` and `rust/connect.rs` are optional.
