@@ -437,6 +437,7 @@ Generated projects depended only on a fixed list plus imported crates (and `agen
 ## Q262 — Fragments and doc blocks must parse too (step 17)
 - Question: docs show `fragment` blocks (statements with no declaration, `## POST` with no `# Service`) and the `invalid` blocks.
 - Choice: the grammar accepts statement lines and `##` blocks before the first declaration, and the check script parses every `agentmark` fence in README.md and docs/*.md (including `fragment` and `invalid`, which are well-formed syntax).
+- Dash-less lines are accepted only for control statements (for each, if, else, otherwise, parallel, try; docs/reference.md shows a bare `for each`); any other dash-less prose line is an ERROR instead of a tool call.
 - Why: the grammar is for highlighting, not validation; an editor showing a half-written file must not paint it red.
 
 ## Q263 — Contextual words stay usable as names (step 17)

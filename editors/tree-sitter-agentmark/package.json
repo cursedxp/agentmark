@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "description": "tree-sitter grammar for AgentMark (.agent.md) files",
   "license": "MIT",
-  "main": "bindings/node",
   "keywords": ["parser", "tree-sitter", "agentmark"],
   "files": ["grammar.js", "tree-sitter.json", "queries/*", "src/**"],
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.0"
+  },
   "scripts": {
     "generate": "tree-sitter generate",
     "test": "tree-sitter test && scripts/check-examples.sh"

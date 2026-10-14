@@ -316,8 +316,23 @@ module.exports = grammar({
 
     // ---- statements ------------------------------------------------------
 
+    // Without a leading dash only control lines are statements, so stray
+    // prose is an ERROR rather than a tool call.
     statement_line: ($) =>
-      seq(optional('-'), $._statement, $._newline),
+      seq(
+        choice(
+          seq('-', $._statement),
+          choice(
+            $.for_each,
+            $.if_statement,
+            $.else_statement,
+            $.otherwise_statement,
+            $.parallel_statement,
+            $.try_statement,
+          ),
+        ),
+        $._newline,
+      ),
 
     _statement: ($) =>
       choice(

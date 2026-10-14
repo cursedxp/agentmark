@@ -57,7 +57,6 @@
 
 ; ---- types ----------------------------------------------------------------
 (type (identifier) @type)
-(type_phrase ["list" "maybe" "result" "of"] @type.builtin)
 ((identifier) @type.builtin
   (#any-of? @type.builtin "text" "int" "money" "date" "datetime" "duration" "bool" "bytes"))
 ((identifier) @type
@@ -98,14 +97,13 @@
 (string) @string
 (string_content) @string
 (escape_sequence) @string.escape
-(interpolation ["}"] @punctuation.special)
+(interpolation ["{" "}"] @punctuation.special)
 (interpolation) @embedded
 (number) @number
 (money) @number.money
 (date) @number.date
 (boolean) @boolean
 (builtin) @variable.builtin
-(binary_expression operator: ["and" "or"] @keyword.operator)
 (unary_expression "not" @keyword.operator)
 (binary_expression operator: _ @operator)
 (unary_expression "-" @operator)
@@ -117,3 +115,10 @@
 (fence_open) @punctuation.special
 (fence_close) @punctuation.special
 (code_content) @none
+
+; ---- specific overrides (after the generic lists above, priority raised so
+; Neovim (last wins) and Helix (first wins) agree) ----------------------------
+(type_phrase ["list" "maybe" "result" "of"] @type.builtin
+  (#set! priority 110))
+(binary_expression operator: ["and" "or"] @keyword.operator
+  (#set! priority 110))

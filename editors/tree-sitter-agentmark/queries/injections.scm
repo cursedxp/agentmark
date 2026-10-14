@@ -2,5 +2,5 @@
 ((code_fence
    (fence_open) @_lang
    (code_content) @injection.content)
- (#eq? @_lang "```rust")
+ (#match? @_lang "^`{3,}rust")
  (#set! injection.language "rust"))
