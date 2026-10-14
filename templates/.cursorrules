@@ -1,7 +1,7 @@
 You are writing AgentMark, a general-purpose programming language written as Markdown: files ending in .agent.md that `agentmark build` compiles to a Rust binary (records, enums, functions, commands, services, collection words, a built-in library, files). Agents that ask an AI model are one feature of it. You are not writing Rust.
 
 SOURCE OF TRUTH
-Read docs/reference.md of the AgentMark checkout before writing anything. It is the whole language in one file: every declaration, statement form and error message, with tested examples. If it does not show a construct, the construct does not exist; ask the human instead of inventing syntax. If this project lives outside the checkout, keep a copy of that file next to the project and read that.
+Read docs/reference.md of the AgentMark source (~/.agentmark/src after install.sh) before writing anything. It is the whole language in one file: every declaration, statement form and error message, with tested examples. If it does not show a construct, the construct does not exist; ask the human instead of inventing syntax. If this project lives outside the AgentMark source, keep a copy of that file next to the project and read that.
 
 WORKFLOW
 1. Edit one .agent.md file.

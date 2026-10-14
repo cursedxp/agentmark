@@ -58,18 +58,28 @@ The language is specified in [SPEC.md](SPEC.md) (section 22 is the part that mak
 
 ## Install
 
-You need a Rust toolchain (stable, edition 2021).
+You need git and a Rust toolchain (stable, edition 2021; get it from https://rustup.rs). On macOS and Linux one command installs the compiler and the language server:
 
 ```sh
-git clone <this repository> agentmark && cd agentmark
-cargo install --path .
+curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh
 ```
 
-`agentmark` ends up in `~/.cargo/bin`. Keep the checkout where it is: a generated project depends on `crates/agentmark-rt` of the checkout the compiler was built from, by absolute path (so builds work offline). Without installing, `cargo run -- <command> …` does the same.
+The script clones https://github.com/cursedxp/agentmark into `~/.agentmark/src`, runs `cargo install --locked` for `agentmark` and `agentmark-lsp`, and prints `agentmark --version`. Both binaries end up in `~/.cargo/bin`. Run the same command again to update. `AGENTMARK_HOME` moves the folder, `AGENTMARK_REF` picks a branch or tag, and `AGENTMARK_NO_LSP=1` skips the language server. To remove everything, run `sh ~/.agentmark/src/install.sh --uninstall`, or `curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh -s -- --uninstall`. If you installed with a custom `AGENTMARK_HOME`, set it again for the uninstall. It removes the binaries and the `src` folder only, and refuses a folder that is not an AgentMark checkout.
+
+Keep `~/.agentmark/src` where it is: a generated project depends on `crates/agentmark-rt` of the checkout the compiler was built from, by absolute path (so builds work offline). Moving or deleting that folder breaks `agentmark build`.
+
+From source, without the script:
+
+```sh
+git clone https://github.com/cursedxp/agentmark && cd agentmark
+cargo install --locked --path .
+```
+
+The same rule holds there: keep that checkout. Without installing, `cargo run -- <command> …` inside the checkout does the same.
 
 ## The commands
 
-Every command takes a `.agent.md` file or a project folder (a folder with an `agentmark.toml`, and a `tools.toml` when the program uses tools from outside). Exit code 0 is fine, 1 means the project has problems, 2 means the command itself could not run. Problems are printed as `file:line`, the source line, a caret and a plain-language message; a rustc error is never shown for an AgentMark mistake. The commands below are run from a checkout of this repository.
+Every command takes a `.agent.md` file or a project folder (a folder with an `agentmark.toml`, and a `tools.toml` when the program uses tools from outside). Exit code 0 is fine, 1 means the project has problems, 2 means the command itself could not run. Problems are printed as `file:line`, the source line, a caret and a plain-language message; a rustc error is never shown for an AgentMark mistake. The commands below are run from the AgentMark source (`~/.agentmark/src` after `install.sh`, or your own clone), so the paths under `examples/` exist.
 
 ### check
 
@@ -120,7 +130,7 @@ $ agentmark trace examples/10-log-analyzer -- fixtures/10-log-analyzer/input/app
 {"kind":"print","message":"  mail      2"}
 ```
 
-The trace is the behavior of the program, and the tests of this repository compare behavior, not generated source: the output of every example against `fixtures/<example>/`. A program that uses a model or tools from outside runs with `--mock --fixtures <folder>`, which answers those calls from files instead (see "Agents" below), so nothing touches the network.
+The trace is the behavior of the program, and the tests of AgentMark compare behavior, not generated source: the output of every example against `fixtures/<example>/`. A program that uses a model or tools from outside runs with `--mock --fixtures <folder>`, which answers those calls from files instead (see "Agents" below), so nothing touches the network.
 
 ### fmt and lint
 

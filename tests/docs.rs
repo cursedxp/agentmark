@@ -22,7 +22,7 @@
 //! * `name=<path>`: the block is the file `<path>` of the tutorial project. Later blocks of the same
 //!   doc see the latest version of every named file, so a tutorial can grow one file step by step.
 //! * `file=<repo path>`: the block must be byte-for-byte (modulo trailing blank lines) the content
-//!   of that file of this repository. This is how the docs quote `examples/` and `fixtures/`.
+//!   of that file in the AgentMark source. This is how the docs quote `examples/` and `fixtures/`.
 //! * `cwd=repo` (console blocks): run in the repository root instead of a scratch folder.
 //!
 //! A `console` block whose first line is `$ agentmark <args>` is **run**; its stdout (or stderr, when
@@ -750,7 +750,7 @@ fn check_json_doc_matches_the_real_output() {
 
 // ---------------------------------------------------------------- docs/editor.md and templates/
 
-/// Files a doc may name that live in the user's project or editor setup, not in this repository.
+/// Files a doc may name that live in the user's project or editor setup, not in the AgentMark source.
 const USER_SIDE_PATHS: [&str; 1] = ["languages/agentmark/"];
 
 /// Paths in the fenced shell commands of `text` (`sh`/`bash` blocks): every word with a `/` that is
@@ -920,7 +920,7 @@ fn templates_point_at_the_reference_and_show_real_commands() {
         for c in ["check", "fmt", "lint", "trace"] {
             assert!(text.contains(&format!("agentmark {c}")), "{path} must teach `agentmark {c}`");
         }
-        // the other paths are the user's project layout, not this repository's
+        // the other paths are the user's project layout, not the AgentMark source's
     }
     assert!(Path::new("docs/reference.md").exists());
 }
