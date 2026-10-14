@@ -1195,6 +1195,8 @@ The trace is JSON lines. Tests compare the parsed objects line by line, never ge
 
 ## 13. Core language: functions and modules (layer 2)
 
+Layer 2 has nothing to do with agents. It holds functions, modules, services and commands.
+
 ### 13.1 Function
 
 ```agentmark
@@ -1220,6 +1222,15 @@ The trace is JSON lines. Tests compare the parsed objects line by line, never ge
   - log: "{n} or {net_amount(invoice, 19)}"
 ```
 
+**Rules**
+- A function is called in an expression, as in `net_amount(invoice, 19)`, or as a statement, as in `- do net_amount(invoice, 19) -> n`.
+- `return <expr>` ends the function with a value.
+- A function with `out:` and no `return` is an error. `return` outside a function is an error, and so is `stop` inside one, per Q40.
+- Recursion is allowed. Closures are not allowed in v0.1.
+- Declared names are unique per project, whatever file they sit in, per Q31.
+
+**Lines of a function**
+
 | line | meaning |
 |---|---|
 | `- in: name: Type, other: Type` | parameters (optional) |
@@ -1227,15 +1238,11 @@ The trace is JSON lines. Tests compare the parsed objects line by line, never ge
 | `- effect: pure` | **mandatory**: `pure`, `local`, `network` or `model`. The checker verifies the body does not exceed it |
 | indented lines | the body, under the `effect` line (Q16) |
 
-* A function is called in an expression, `net_amount(invoice, 19)`, or as a statement, `- do net_amount(invoice, 19) -> n`.
-* `return <expr>` ends the function with a value. A function with `out:` and no `return` is an error; `return` outside a
-  function is an error, and so is `stop` inside one (Q40).
-* Recursion is allowed. Closures are not (v0.1).
-* Declared names are unique per project, whatever file they sit in (Q31).
+| code | message | fix |
+|---|---|---|
+| E210 | `"stop" ends a block, but this is a function.` | use `return <value>` to leave a function |
 
 ### 13.2 Module and import
-
-One file is one module; files in subfolders are nested modules. A file sees **only** what it imports.
 
 ```agentmark fragment
 # Import: ./billing/rules.agent.md as billing
@@ -1246,17 +1253,18 @@ One file is one module; files in subfolders are nested modules. A file sees **on
 # Import: crate reqwest as http_client
 ```
 
-* A name from an aliased import is written `billing.overdue(invoice)`: the checker looks up the full dotted name (Q37).
-  A file that needs a record from an aliased folder also imports the record file plainly, because the parser accepts
-  qualified names in expressions and calls but not in type positions.
-* Crate imports make the library available to `## Rust` blocks and to bindings (section 15).
-* Import cycles are an error with the cycle printed. Unused imports and unused declarations are warnings.
-* A crate import without a binding file is warning W004 ("run `agentmark bind sha2`"), never an error (Q36).
+**Rules**
+- One file is one module. Files in subfolders are nested modules.
+- A file sees only what it imports.
+- A name from an aliased import is written `billing.overdue(invoice)`. The checker looks up the full dotted name, per Q37.
+- A file that needs a record from an aliased folder also imports the record file plainly. The parser accepts qualified names in expressions and calls but not in type positions.
+- Crate imports make the library available to `## Rust` blocks and to bindings. See section [15](#15-library-access-automatic-bindings).
+- Import cycles are an error, and the cycle is printed. Unused imports and unused declarations are warnings.
+- A crate import without a binding file is warning W004 and never an error, per Q36. The warning says to run `agentmark bind sha2`.
 
 ### 13.3 Service and Command
 
-Two more top-level declarations turn AgentMark into a general application language. No model is involved
-unless the author writes `ask model`. This single file is a complete program with a service and a command:
+Two more top-level declarations turn AgentMark into a general application language. This single file is a complete program with a service and a command:
 
 ````agentmark
 > Non-agent example: an HTTP service plus a CLI command, using a crate binding.
@@ -1322,15 +1330,17 @@ unless the author writes `ask model`. This single file is a complete program wit
 - print: "Imported {count of rows} rows"
 ````
 
-A **service** has `listen:` (address and port) and `state:` (the record that holds its memory). Each `## METHOD /path`
-block is a route; `GET`, `POST`, `PUT`, `PATCH` and `DELETE` exist, and each `{name}` in the path becomes a text variable of
-the block. It lowers to an axum router over shared state.
+**Rules**
+- No model is involved unless the author writes `ask model`.
+- A **service** has `listen:` for the address and port and `state:` for the record that holds its memory.
+- Each `## METHOD /path` block is a route. `GET`, `POST`, `PUT`, `PATCH` and `DELETE` exist.
+- Each `{name}` in a path becomes a text variable of the block.
+- A service lowers to an axum router over shared state.
+- A **command** has `args:` and exactly one `## Run` block. Each argument is `name: Type` with an optional default `= value`.
+- A command lowers to a clap subcommand.
+- A command may use the `state` record of the project's single service. A second service with `state:` is error E218, per Q9 and Q41.
 
-A **command** has `args:` (`name: Type`, with an optional default `= value`) and exactly one `## Run` block. It lowers to a
-clap subcommand. A command may use the `state` record of the project's single service; a second service with `state:`
-is an error (Q9, Q41).
-
-Statements for services and commands:
+**Statements for services and commands**
 
 ```agentmark fragment
 ## POST /invoices
@@ -1358,9 +1368,11 @@ Statements for services and commands:
 
 Reading `state` is pure. In a mock run the state is seeded from `fixtures/<name>/state.<field>.json` when present.
 
+**Next:** [14. Errors](#14-errors)
+
 ## 14. Errors
 
-There is no exception mechanism. A statement that can fail is written with `try`:
+A statement that can fail is written with `try`. This agent falls back to a fixed text when a web call fails:
 
 ```agentmark
 # Record: Invoice
@@ -1380,12 +1392,16 @@ There is no exception mechanism. A statement that can fail is written with `try`
 - log: "Rates: {rates}"
 ```
 
-Without `otherwise`, a failed `try` stops the current block and records the error in the trace (`error` line). With
-`otherwise:` the indented lines run instead; `otherwise:` is the only child of its `try` line (Q18). The variable a
-`try ... -> x` introduces is visible after the `try`. When `otherwise` neither assigns it nor stops, the type's default
-value is used (Q94).
+**Rules**
+- There is no exception mechanism.
+- Without `otherwise`, a failed `try` stops the current block and records the error in the trace as an `error` line.
+- With `otherwise:`, the indented lines run instead. `otherwise:` is the only child of its `try` line, per Q18.
+- The variable that `try ... -> x` introduces is visible after the `try`.
+- When `otherwise` neither assigns it nor stops, the type's default value is used, per Q94.
 
-A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rust, and its callers must use `try`:
+**Functions that can fail**
+
+A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rust. Its callers must use `try`:
 
 ```agentmark
 # Function: half
@@ -1405,12 +1421,15 @@ A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rus
   - return h
 ```
 
-Inside a `result of T` function, `return v` takes a plain `T` (it is wrapped in `Ok`), and a `try` without `otherwise` that
-fails does not trace-and-stop as it does everywhere else: the error is handed to the caller. The caller writes
-`try do f(x) -> h`; afterwards `h` is a plain `T`, also when `otherwise` assigns it (Q200). Calling such a function
-without `try`, or inside an expression, is an error. A failure has exactly one source, a failing `try`.
+- Inside such a function, `return v` takes a plain `T`, which is wrapped in `Ok`.
+- A `try` without `otherwise` that fails does not trace and stop there, as it does everywhere else. The error is handed to the caller.
+- The caller writes `try do f(x) -> h`. Afterwards `h` is a plain `T`, also when `otherwise` assigns it, per Q200.
+- Calling such a function without `try`, or inside an expression, is an error.
+- A failure has exactly one source, a failing `try`.
 
-`maybe` values are unwrapped the same way, with `is some`:
+**Values that can be absent**
+
+A `maybe` value is unwrapped with `is some`:
 
 ```agentmark
 # Record: Lead
@@ -1429,15 +1448,21 @@ without `try`, or inside an expression, is an error. A failure has exactly one s
   - log: "unscored"
 ```
 
-Outside an `is some`, `is not empty` or `guard`, using a `maybe` value where a plain one is needed is an error.
-After `guard: x is not empty`, `x` counts as present for the rest of the block.
+- Outside an `is some`, an `is not empty` or a `guard`, using a `maybe` value where a plain one is needed is an error.
+- After `guard: x is not empty`, `x` counts as present for the rest of the block.
+
+**Errors**
+
+| code | message | fix |
+|---|---|---|
+| E204 | `This value can be empty (maybe T), so it cannot be used yet.` | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
+| E209 | `The function "f" can fail (it returns "result of T"), so it has to be called with "try".` | write `- try f(...) -> value`, optionally with an `otherwise:` branch |
+
+**Next:** [15. Library access](#15-library-access-automatic-bindings)
 
 ## 15. Library access: automatic bindings
 
-**Principle: using a library must never require writing Rust.** A user who writes `# Import: crate printpdf` gets
-statements such as `- pdf render doc -> bytes`. AgentMark generates and caches the **binding** itself. A binding is an
-ordinary layer-2 file: reviewable, diffable and editable by hand. This one is written in the same format as the
-generated ones:
+Using a library must never require writing Rust. You write `# Import: crate printpdf`, and AgentMark generates and caches the **binding** itself. This binding file is written in the same format as the generated ones:
 
 ````agentmark name=bindings/printpdf.agent.md
 > Invoice titles as PDF files.
@@ -1455,9 +1480,7 @@ generated ones:
 - save_to_file: takes a writer (printpdf::PdfDocument::save)
 ````
 
-A statement then reads `- pdf render title -> bytes`: the binding name, the item name, the arguments, the result.
-
-Used from a program, with the binding file above in place, the call is an ordinary statement:
+A statement then reads `- pdf render title -> bytes`: the binding name, the item name, the arguments, the result. With the binding file above in place, the call is an ordinary statement:
 
 ```agentmark
 # Import: crate printpdf
@@ -1477,7 +1500,10 @@ Used from a program, with the binding file above in place, the call is an ordina
   - log: "rendered {invoice.id}"
 ```
 
-The form is `- <binding> <item> <arguments> -> var`; the effect of the call is the binding's `- effect:` (here `local(pdf)`).
+**Rules**
+- A binding is an ordinary layer-2 file. It is reviewable, diffable and editable by hand.
+- The form of a call is `- <binding> <item> <arguments> -> var`.
+- The effect of the call is the binding's `- effect:`. Here it is `local(pdf)`.
 
 ### 15.1 Flow
 
@@ -1487,17 +1513,29 @@ The form is `- <binding> <item> <arguments> -> var`; the effect of the call is t
                                yes -> use it
 ```
 
-Bindings live in `bindings/<crate>.agent.md` (or `.agentmark/bindings/`). `agentmark bind <crate>` runs the binder
-explicitly; `agentmark bind --all` refreshes every binding. `check`, `build`, `run` and `trace` run it for a crate that has
-no binding file yet, so the workflow is `# Import`, `check`, approve one line. `docs/libraries.md` walks through it with real output.
+**Rules**
+- Bindings live in `bindings/<crate>.agent.md`, or in `.agentmark/bindings/`.
+- `agentmark bind <crate>` runs the binder explicitly. `agentmark bind --all` refreshes every binding.
+- `check`, `build`, `run` and `trace` run the binder for a crate that has no binding file yet. So the workflow is `# Import`, `check`, approve one line.
+- `docs/libraries.md` walks through it with real output.
 
 ### 15.2 The binder
 
-The binder is target-agnostic by design: `src/binder/rust/` reads the library's metadata (rustdoc JSON for Rust; a TypeScript
-target would read `.d.ts` files) and `src/binder/core/` turns it into AgentMark declarations. Three tiers apply, in order, to
-every public function and method. A public type of the library that AgentMark has no type for is a handle (15.4): its
-constructors and methods are bound too, by rules and confirmed by the type checker, so `&mut self` receivers are no longer a reason
-to skip.
+A statement against an item that the binding lists under `## Not bound` makes the binder write that item on demand:
+
+```text
+- sha2 sha224_digest payload -> digest
+```
+
+**Rules**
+- The binder is target-agnostic by design. `src/binder/rust/` reads the library's metadata, which is rustdoc JSON for Rust. A TypeScript target would read `.d.ts` files.
+- `src/binder/core/` turns the metadata into AgentMark declarations.
+- The first three tiers apply, in order, to every public function and method. The fourth runs on demand.
+- A public type that AgentMark has no type for is a handle, as section [15.4](#154-binding-file-format) shows. Its constructors and methods are bound too, by rules and confirmed by the type checker. So `&mut self` receivers are no longer a reason to skip.
+- The binder never silently drops an item. Everything is bound or listed as not bound.
+- The edge cases are decisions Q70 to Q82. For example, closures stay skipped because AgentMark has no function type, per Q75.
+
+**The tiers**
 
 | tier | condition | result |
 |---|---|---|
@@ -1506,16 +1544,22 @@ to skip.
 | skipped | traits with associated types, lifetimes in the public API, `unsafe`, closures, types AgentMark cannot hold, anything the assisted tier fails to type-check | listed under `## Not bound` with the reason |
 | on-demand | the user writes a plain statement against an item listed under `## Not bound` | the binder writes the body from the statement and the rustdoc, saves it as `unverified`, and continues |
 
-**The on-demand tier.** `check`, `build`, `run` and `trace` look for statements of the form `<library> <item> value ...`
-whose item the library's binding lists under `## Not bound`. For each such item (once, however many statements use it) the binder asks
-the model (the same `AGENTMARK_MODEL`) for the body, from the statement as written and the item's rustdoc. When the item has no
-AgentMark signature (it was skipped, not assisted) the model proposes one; its parameter count must match the values in the statement.
-The body is type-checked with the same checker as the assisted tier. Two attempts are made, the second told what was wrong with the first;
-each is one line on stderr: `binding sha2: writing sha224_digest on demand… done`, or `… failed`, the second try marked `(try 2 of 2)`.
-When every item succeeds, the binding file is rewritten once: the items move out of `## Not bound` into bound items (their `>` line ends in
-"Written on demand; not reviewed yet."), `- effect:` becomes `unverified` and `- proposed-effect:` never goes down. The previous file is kept
-as `.prev`. The build then continues under the rules of 15.3. When an item fails twice, the binding file is not touched, nothing is built, and
-the error is E220 at the item's name in the author's statement:
+**The on-demand tier**
+- `check`, `build`, `run` and `trace` look for statements of the form `<library> <item> value ...` whose item the library's binding lists under `## Not bound`. Only a statement in a file that imports the library counts, such as `# Import: crate sha2`.
+- The binder asks the model for the body of each such item, once however many statements use it. The model is the same `AGENTMARK_MODEL`, and it sees the statement as written and the item's rustdoc.
+- When the item has no AgentMark signature, because it was skipped and not assisted, the model proposes one. Its parameter count must match the values in the statement.
+- The body is type-checked with the same checker as the assisted tier.
+- Two attempts are made, and the second is told what was wrong with the first. Each is one line on standard error: `binding sha2: writing sha224_digest on demand… done` or `… failed`, with the second try marked `(try 2 of 2)`.
+- When every item succeeds, the binding file is rewritten once. The items move out of `## Not bound` into bound items, and their `>` line ends in "Written on demand; not reviewed yet."
+- `- effect:` becomes `unverified`, and `- proposed-effect:` never goes down. The previous file is kept as `.prev`, and the build continues under the rules of section [15.3](#153-effects-and-trust).
+- Several libraries are handled together. No binding file is changed unless every library succeeded.
+- A hand-written binding has no generated header. It is bound against the version in `Cargo.lock` next to `bindings/`, else against the rustdoc JSON supplied. If neither is known, the error says so and never guesses the newest.
+- If the tier cannot start at all, because there is no model or no rustdoc, the command prints `agentmark: cannot write the library code for "sha2" on demand: <why>` and stops with exit code 1. `check` goes on to report the unknown item.
+- Q230 to Q235 record the edge cases.
+
+**When an item fails twice**
+
+The binding file is not touched, nothing is built, and the error is E220 at the item's name in the author's statement:
 
 ```text
 fingerprint.agent.md:8
@@ -1525,46 +1569,61 @@ fingerprint.agent.md:8
   Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md. Details for a bug report: target/agentmark/ondemand-sha2-sha224_digest.log
 ```
 
-The middle sentence depends on the cause: "the code the model wrote did not pass the type check, twice." (shown), "the model could not be
-reached: <reason>." (API error, timeout, no answer), or "the signature the model chose does not fit your statement (1 value, 2 parameters)."
-Several libraries are handled together: no binding file is changed unless every library succeeded. Only a statement in a file that imports the
-library (`# Import: crate sha2`) counts. A hand-written binding (no generated header) is bound against the version in `Cargo.lock` next to
-`bindings/`, else the rustdoc JSON supplied; if neither is known the error says so, it never guesses the newest.
+| code | message | fix |
+|---|---|---|
+| E220 | `Could not bind "sha224_digest" of sha2 on demand: the code the model wrote did not pass the type check, twice.` | use a `## Rust` block for the item, or bind it by hand in `bindings/sha2.agent.md` |
+| E220 | `... on demand: the model could not be reached: <reason>.` The reason is an API error, a timeout or no answer. | run again when the model can be reached |
+| E220 | `... on demand: the signature the model chose does not fit your statement (1 value, 2 parameters).` | use a `## Rust` block, or bind it by hand |
 
-If the tier cannot start at all (no model, no rustdoc), the command prints `agentmark: cannot write the library code for "sha2" on demand: <why>`
-and stops with exit code 1 (`check` goes on to report the unknown item). Q230 to Q235 record the edge cases.
-
-A facade crate such as `sqlx` mostly re-exports other crates (`pub use sqlx_core::query::query`): the binder builds their rustdoc JSON too and merges it into the facade's, so what the facade exports is bound under the facade's name; a generic type with a concrete alias (`SqlitePool = Pool<Sqlite>`) is bound through the alias, and the type-erased `Any` driver is never the one instantiation (Q411, Q412). A binding item whose heading would pass 120 characters is written `## name` followed by `- in: a: T, b: U` lines (one per parameter when they do not fit together) and `- out: T`, the words of a `# Function`; an item that does not fit even so stays under `## Not bound` (Q416).
-
-The binder never silently drops an item: everything is bound or listed as not bound. The precise edge cases are
-decisions Q70 to Q82; for example, closures stay skipped because AgentMark has no function type (Q75).
+**Facade crates and long items**
+- A facade crate such as `sqlx` mostly re-exports other crates, as in `pub use sqlx_core::query::query`. The binder builds their rustdoc JSON too and merges it into the facade's, so what the facade exports is bound under the facade's name.
+- A generic type with a concrete alias, such as `SqlitePool = Pool<Sqlite>`, is bound through the alias. The type-erased `Any` driver is never the one instantiation, per Q411 and Q412.
+- A binding item whose heading would pass 120 characters is written `## name`, followed by `- in: a: T, b: U` lines and `- out: T`. These are the words of a `# Function`, with one parameter per line when they do not fit together.
+- An item that does not fit even so stays under `## Not bound`, per Q416.
 
 ### 15.3 Effects and trust
 
-A generated binding is born `- effect: unverified`, with the binder's guess as `- proposed-effect: network` (from
-heuristics: `std::fs` means `local`, `reqwest` or `tokio::net` means `network`, otherwise `pure`; Q81).
+A generated binding is born unverified, with the binder's guess beside it:
 
-* `agentmark check` lists every unverified binding and refuses to build a release while any remain; `--allow-unverified`
-  overrides for development: the library then counts as its `proposed-effect` for effect checks, with warning W008 (Q203).
-* A person approves by editing that one line to `- effect: pure` (or `local`, `network`). It is once per crate version.
-* A binding approved for version X is marked `unverified` again when the crate version changes.
+```text
+- effect: unverified
+- proposed-effect: network
+```
+
+**Rules**
+- The guess comes from heuristics. `std::fs` means `local`, `reqwest` or `tokio::net` means `network`, and anything else means `pure`, per Q81.
+- `agentmark check` lists every unverified binding and refuses to build a release while any remain.
+- `--allow-unverified` overrides this for development. The library then counts as its `proposed-effect` for effect checks, with warning W008, per Q203.
+- A person approves by editing that one line to `- effect: pure`, `local` or `network`. This is needed once per crate version.
+- A binding approved for version X is marked `unverified` again when the crate version changes.
 
 ### 15.4 Binding file format
 
-A binding is a layer-2 declaration whose bodies are layer 1 Rust. Every body is the body of
-`pub async fn <item>(<params>) -> Result<<ret>, Box<dyn std::error::Error + Send + Sync>>`: values arrive owned, the
-body ends in `Ok(value)`, may use `?` and `.await`, and names the library by full path (Q70). Above every bound item
-the binder writes one `>` line: the first sentence of the library's own documentation for it (Q80). The generated
-header lets the binder see staleness:
+A binding file starts with a generated header that lets the binder see staleness:
 
 ```text
 > generated by agentmark bind — printpdf 0.7.0 — 2026-10-13
 > edit freely; re-run `agentmark bind printpdf --force` to regenerate
 ```
 
-**Opaque handles (v0.3, SPEC 22.4).** A library type AgentMark has no equivalent for (a hasher, a client, a
-response) is a **handle**: `handle of <crate>.<Type>`. The binder declares it where it appears in a signature and binds the constructors and the methods around it, instead of
-skipping them (Q360 to Q369). The file shows how a call holds the handle:
+**Rules**
+- A binding is a layer-2 declaration whose bodies are layer 1 Rust.
+- Every body is the body of `pub async fn <item>(<params>) -> Result<<ret>, Box<dyn std::error::Error + Send + Sync>>`.
+- Values arrive owned. The body ends in `Ok(value)`, may use `?` and `.await`, and names the library by full path, per Q70.
+- Above every bound item the binder writes one `>` line, which is the first sentence of the library's own documentation for it, per Q80.
+- A Rust integer wider than `int`, such as `u64` or `usize`, converts with `try_from(..)?`, which fails the call on overflow.
+- The features a library is bound and built with come from `agentmark.toml`, for the binder and the generated `Cargo.toml` alike:
+
+```toml
+[crates]
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+```
+
+**Opaque handles**
+
+A library type that AgentMark has no equivalent for, such as a hasher, a client or a response, is a **handle**. It is written `handle of <crate>.<Type>`, as v0.3 section 22.4 describes. The binder declares it where it appears in a signature and binds the constructors and the methods around it, instead of skipping them, per Q360 to Q369.
+
+The file shows how a call holds the handle:
 
 ```text
 ## sha256_new() -> handle of sha2.Sha256
@@ -1580,9 +1639,9 @@ skipping them (Q360 to Q369). The file shows how a call holds the handle:
 | `consume handle of …` | `T` | uses it up |
 | `handle of …` (result) | `T` | hands you a new one |
 
-A parameter named `self` comes first and makes the item a **method** of that handle type; its Rust name in the body is `self_`
-(`self` is a keyword). A method is written with its own name (`update`) because the handle type tells methods apart; a constructor
-is an ordinary item (`sha256_new`) and is called on the library, `- sha2 sha256_new -> hasher`. A method is called on the variable:
+A parameter named `self` comes first and makes the item a **method** of that handle type. Its Rust name in the body is `self_`, because `self` is a keyword. A method is written with its own name, such as `update`, because the handle type tells methods apart.
+
+A constructor is an ordinary item such as `sha256_new`. It is called on the library, as in `- sha2 sha256_new -> hasher`. A method is called on the variable:
 
 ```text
 - sha2 sha256_new -> hasher
@@ -1591,24 +1650,34 @@ is an ordinary item (`sha256_new`) and is called on the library, `- sha2 sha256_
 - hasher finalize -> digest
 ```
 
-Rules (all compile errors, in the shape of section 10):
+**Handle rules**
 
-* A handle **moves**. A `consume` method, passing it to a function that uses it up or hands it back (`- do feed(hasher)`), and
-  `set other = hasher` use it up; a function that only calls borrowing methods on a handle it is given only lends it, and the caller
-  keeps it (Q414). Reading a used-up handle is E361 and names the line that used it up. A branch that only sometimes uses it up counts ("may have"); a handle that
-  lives outside a loop cannot be used up inside it.
-* It can be read only where something takes it: a method call, a function or binding argument, `set`, `return`. Printing,
-  `{interpolating}`, comparing, putting it in a record or a request, or tracing it is E362.
-* It is a single value: no `list of handle …`, `maybe handle …` or record field (E363). `try … -> h otherwise:` needs the
-  `otherwise` branch to leave, since there is no handle to put in its place (E366).
-* A function parameter or result of handle type owns the handle: the caller's variable is used up when it is passed. `mut` and
-  `consume` belong to binding parameters only (E365).
-* A library method that is `async` is awaited by the generated code: every binding body is the body of an `async fn`.
-* The effect of a method call is the binding's, like any other binding call (section 15.3).
-* A handle owns whatever the Rust value borrows. A library type with lifetimes (`Query<'q, DB>`), or with type parameters that
-  have one instantiation in the crate as configured (`DB = Sqlite` when only the `sqlite` feature is on), is still a handle: the
-  items around it go to the assisted tier, the model writes the glue (copying or leaking what the call borrows), and the binding
-  carries a block with the Rust type it stands for:
+All of these are compile errors, in the shape of section [10](#10-error-messages).
+- A handle **moves**. A `consume` method uses it up. So does passing it to a function that uses it up or hands it back, as in `- do feed(hasher)`, and so does `set other = hasher`.
+- A function that only calls borrowing methods on a handle it is given only lends it, and the caller keeps it, per Q414.
+- A branch that only sometimes uses a handle up counts as "may have". A handle that lives outside a loop cannot be used up inside it.
+- A handle can be read only where something takes it: a method call, a function or binding argument, `set` or `return`.
+- A handle is a single value. There is no `list of handle …`, `maybe handle …` or record field.
+- `try … -> h otherwise:` needs the `otherwise` branch to leave, since there is no handle to put in its place.
+- A function parameter or result of handle type owns the handle. The caller's variable is used up when it is passed.
+- `mut` and `consume` belong to binding parameters only.
+- A library method that is `async` is awaited by the generated code, because every binding body is the body of an `async fn`.
+- The effect of a method call is the binding's, like any other binding call. See section [15.3](#153-effects-and-trust).
+
+| code | message | fix |
+|---|---|---|
+| E360 | `A handle type is written with its crate, but "x" has none.` or `No binding declares the handle type "x".` | write it like `handle of sha2.Sha256`; handle types come from the bindings in `bindings/`, which `agentmark bind <crate>` writes |
+| E361 | `"x" was used up on line N, so it cannot be used again here.` The message names the line that used it up. | keep using it before that line, or stop using it after |
+| E362 | The handle is a library value that cannot be printed, interpolated, compared, put in a record or a request, saved, sent or traced. | store it in a variable with `... -> name` and use it with a call that takes it |
+| E363 | A handle cannot be in a list, a `maybe` or a record. | keep one variable per handle |
+| E365 | A mode word or `self` is in the wrong place, or a handle is given twice to one call. | write `mut` and `consume` only in a binding's parameter list, and `self` first, as `self: mut handle of sha2.Sha256` |
+| E366 | `"x" is a handle, and there is none to use when this step fails.` | end the `otherwise:` branch with `stop` or `return`, or drop it |
+
+**Handles that borrow**
+
+A handle owns whatever the Rust value borrows. This holds for a library type with lifetimes, such as `Query<'q, DB>`. It also holds for a type whose parameters have one instantiation in the crate as configured, such as `DB = Sqlite` when only the `sqlite` feature is on.
+
+The items around such a type go to the assisted tier. The model writes the glue, copying or leaking what the call borrows, and the binding carries a block with the Rust type it stands for:
 
 ````text
 ## Handle: sqlx.query.Query
@@ -1617,18 +1686,11 @@ Rules (all compile errors, in the shape of section 10):
   ```
 ````
 
-* A Rust integer wider than `int` (`u64`, `usize`) converts with `try_from(..)?`, which fails the call on overflow.
-* The features a library is bound and built with come from `agentmark.toml`, for the binder and the generated `Cargo.toml` alike:
-
-```toml
-[crates]
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
-```
-
 ### 15.5 Sharing
 
-Bindings are plain files, so a community registry is a git repository of `bindings/*.agent.md`. The file format needs
-no change for that. It is out of scope for v0.1.
+Bindings are plain files, so a community registry is a git repository of `bindings/*.agent.md`. The file format needs no change for that, and the registry is out of scope for v0.1.
+
+**Next:** [16. Concurrency](#16-concurrency)
 
 ## 16. Concurrency
 
