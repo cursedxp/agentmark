@@ -18,6 +18,7 @@ pub const W_INFERRED: &str = "W001";
 const E_BAD_AGENT: &str = "E215";
 const E_CONST: &str = "E216";
 const W_UNVERIFIED: &str = "W005";
+const W_ASSUMED: &str = "W008";
 
 impl Checker<'_> {
     /// Find a declaration visible in `file` under the name as written, marking it (and the
@@ -230,7 +231,10 @@ impl Checker<'_> {
                             let sig = Sig {
                                 params: self.params(fi, &it.params),
                                 out: it.out.as_ref().map(|t| self.resolve_type(fi, t)),
-                                effect: x.effect.value,
+                                effect: match (x.effect.value, &x.proposed_effect) {
+                                    (Effect::Unverified, Some(pe)) if self.p.assume_proposed => pe.value,
+                                    (e, _) => e,
+                                },
                                 file: fi,
                                 span: it.name.span,
                             };
@@ -239,7 +243,27 @@ impl Checker<'_> {
                                 sig,
                             });
                         }
-                        if x.effect.value == Effect::Unverified {
+                        if let (Effect::Unverified, Some(pe), true) = (x.effect.value, &x.proposed_effect, self.p.assume_proposed) {
+                            self.warn(
+                                W_ASSUMED,
+                                fi,
+                                x.effect.span,
+                                format!(
+                                    "The binding \"{}\" is unverified: its effect is assumed to be \"{}\" from the proposal (--allow-unverified).",
+                                    x.name.name,
+                                    effect_name(pe.value)
+                                ),
+                            );
+                            self.diags.last_mut().unwrap().help = Some(format!(
+                                "Approve it before a release build by changing the line to \"- effect: {}\" (or the right class).",
+                                effect_name(pe.value)
+                            ));
+                        }
+                        let assumed = x.effect.value == Effect::Unverified
+                            && x.proposed_effect.is_some()
+                            && self.p.assume_proposed;
+                        // W008 says it already; no second warning about the same binding
+                        if x.effect.value == Effect::Unverified && !assumed {
                             self.warn(
                                 W_UNVERIFIED,
                                 fi,
@@ -286,6 +310,7 @@ impl Checker<'_> {
                 for t in &a.tools {
                     if p.manifest.tool(&t.name).is_some()
                         || self.lookup(fi, &t.name, &[Kind::Binding]).is_some()
+                        || self.unbound_crate_tool(fi, &t.name)
                     {
                         continue;
                     }

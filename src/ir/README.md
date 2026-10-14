@@ -26,7 +26,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Entry` — `unit, label, trigger, param, timeout, memory_file, body, effect`; stop = return from the body.
 - `Trigger` — `Every(Duration) | DailyAt | Weekly | Event{tool,event} | Start`; `Duration {amount, unit}`.
 - `Service` / `Route` — `name, listen, state record`; route has `method, path, path_params (text vars), label ("GET /x"), body`. `state` is a variable of the state record.
-- `Command` — `name, args (with defaults), state (Q9: the project's service state record, variable `state`), body`.
+- `Command` — `name, args (with defaults), state (Q9: the project's service state record, variable `state`), body`; `source` = `# Command` heading, `run` = its `## Run` heading.
 - `RustFn` — `## Rust` block: verbatim `code`, `code_line`, declared `effect`; `BindingFn` — one binding item, verbatim `code`, `effect` (`Unverified` until approved).
 - `CrateImport` — `# Import: crate x` (`binding` = binding name if a binding file exists; versions live in the binding header).
 - `ToolDef` (re-export of `manifest::ToolDef`) — `tools.toml` entry, for one trait per tool.
@@ -38,7 +38,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Return(e)`; `Stop` = leave the enclosing Fn/entry/route/command (SPEC 4.1).
 - `Effect{call, into}` — an effect; `into` declares a fresh variable (shadows) for its result.
 - `Respond{status,body}`, `Append{value,list}` (list = path to a list, e.g. `state.invoices`), `Parallel(stmts)`.
-- `Try{stmt, otherwise, defines}` — `defines` is the variable `stmt` introduces; it is visible after the try and `otherwise` may assign it (declare it before, assign in both arms). No `otherwise`: on failure `ctx.trace_error` and stop. If `otherwise` falls through without assigning/stopping, codegen uses the type's default (Q94).
+- `Try{stmt, otherwise, defines}` — `defines` is the variable `stmt` introduces; it is visible after the try and `otherwise` may assign it (declare it before, assign in both arms). No `otherwise`: on failure `ctx.trace_error` and stop. If `otherwise` falls through without assigning/stopping, codegen uses the type's default (Q94). In a function whose `ret` is `Result(T)` a failing `try` without `otherwise` returns the error to the caller instead (Q200); `defines` of a `try do f()` on such a function is the plain `T`.
 
 ## Effect calls (`EffectCall`)
 - `Tool(ToolCall{tool, verb, target, payload})` — manifest tool; nothing left to resolve.

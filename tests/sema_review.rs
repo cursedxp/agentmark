@@ -134,7 +134,7 @@ fn calls_are_resolved_to_declared_names_even_through_an_alias() {
 
 #[test]
 fn unwraps_say_where_a_maybe_value_is_read_as_present() {
-    let c = sema::check(&Project::load("examples/05-invoice-service.agent.md")).unwrap();
+    let c = sema::check(&Project::load("examples/05-invoice-service")).unwrap();
     // `found.id` after `guard: found is not empty` unwraps segment 0; `respond 200 found` too
     assert!(c.unwraps.values().any(|v| v == &vec![0]), "{:?}", c.unwraps);
     let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- effect: pure\n  - if i.s is some v:\n    - return i.s\n  - return 0\n";
@@ -159,7 +159,7 @@ fn every_expression_has_a_type_and_an_effect() {
 
 #[test]
 fn reading_state_is_pure_and_appending_is_local_state() {
-    let c = sema::check(&Project::load("examples/05-invoice-service.agent.md")).unwrap();
+    let c = sema::check(&Project::load("examples/05-invoice-service")).unwrap();
     let get = c.blocks.iter().find(|b| b.label == "GET /invoices/{id}").unwrap();
     assert!(get.effect.is_pure());
     let post = c.blocks.iter().find(|b| b.label == "POST /invoices").unwrap();
@@ -356,4 +356,39 @@ fn function_signatures_know_where_they_are_declared() {
     let c = ok("# Function: five\n- out: int\n- effect: pure\n  - return 5\n\n# Function: g\n- out: int\n- effect: pure\n  - return five()\n");
     assert_eq!(c.functions["five"].span.line, 1);
     assert_eq!(c.functions["g"].span.line, 6);
+}
+
+// ------------------------------------------------------------------ result of T (step 10, Q200)
+
+const FALLIBLE: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n# Command: check\n- args: path: text\n\n## Run\n";
+
+#[test]
+fn a_result_function_accepts_a_plain_return_and_try_hands_back_the_plain_type() {
+    // `return n` (an int) is accepted for `result of int`; after `try`, `n` is an int again
+    ok(&format!("{FALLIBLE}- try do read_count(path) -> n\n  otherwise:\n    - stop\n- print: \"{{n + 1}}\"\n"));
+    // the otherwise branch assigns the plain type too
+    ok(&format!("{FALLIBLE}- try do read_count(path) -> n\n  otherwise:\n    - set n = 0\n- print: \"{{n}}\"\n"));
+}
+
+#[test]
+fn a_result_function_returning_the_wrong_type_is_still_an_error() {
+    let src = "# Function: f\n- in: path: text\n- out: result of int\n- effect: pure\n  - return \"x\"\n";
+    let e = first_error(src);
+    assert!(e.contains("This returns text, but the function says it returns \"int\"."), "{e}");
+}
+
+#[test]
+fn a_result_function_must_be_called_with_try() {
+    let e = first_error(&format!("{FALLIBLE}- do read_count(path) -> n\n- print: \"{{n}}\"\n"));
+    assert!(e.contains("can fail (it returns \"result of int\"), so it has to be called with \"try\""), "{e}");
+    assert!(e.contains("try do read_count"), "{e}");
+    // and not inside an expression
+    let e = first_error(&format!("{FALLIBLE}- set n = read_count(path)\n- print: \"{{n}}\"\n"));
+    assert!(e.contains("can fail") && e.contains("cannot be used inside an expression"), "{e}");
+}
+
+#[test]
+fn the_value_after_try_is_the_plain_type_not_a_result() {
+    let e = first_error(&format!("{FALLIBLE}- try do read_count(path) -> n\n  otherwise:\n    - stop\n- set n = \"text\"\n"));
+    assert!(e.contains("\"n\" holds int"), "{e}");
 }

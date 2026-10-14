@@ -35,3 +35,9 @@ All items are re-exported at the crate root (`use agentmark_rt::*;`). Every fall
 - `Schedule::every(chrono::Duration)`, `Schedule::every_day_at(hour, minute)`, `Schedule::weekly(weekday, hour, minute)` -> `Result<Schedule, RtError>` (interval > 0, hour < 24, minute < 60); `schedule.next_fire(after: NaiveDateTime) -> NaiveDateTime` (pure, strictly after `after`; pass the previous fire time).
 - `run_schedule(schedule, || async { ... }).await` - loop forever on tokio; `run_once(|| async { ... }).await` - `--once` mode.
 - `Weekday` is re-exported from chrono.
+
+## Helpers for generated code (step 6)
+- `ctx.ask_model_about(prompt, subject: Option<&Value>, schema_hint: Option<&str>).await -> Result<String, RtError>` - `ask_model` with the prompt followed by a blank line and the subject as compact JSON (without a subject the prompt is just the literal) and an optional answer-format hint; the `model` trace line reports `context` as `{"id": subject.id}` (the subject itself when it has no `id`), none without a subject. The matched fixture prefix is still the prompt's start.
+- `parse_model_json::<T>(text) -> Result<T, RtError>` - parse a model answer as JSON (tolerates a ```json fence or prose around the object); `RtError::Model` when it does not fit `T`.
+- `read_data::<T>(path) -> Result<T, RtError>` - `read file p as T`: `.csv` (header row = field names; cells are text, numbers/booleans only if the type refuses text) or JSON.
+- `ctx.with_model(id) -> Ctx` - copy that asks `id` (sent as `ModelRequest.model`); `Ctx.model_id` holds it. `MockModel` responses in model.json may carry an optional `"model"`: such a response only answers requests made for exactly that model id (a way to assert which agent used which model).

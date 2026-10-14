@@ -2,7 +2,7 @@
 //! crates), cycle detection.
 //!
 //! Two shapes are supported (DESIGN 3, SPEC 18.1):
-//! - a **single file** (`examples/02-lead-qualifier.agent.md`): the root is the file's directory,
+//! - a **single file** (`tests/errors/unit-mismatch.agent.md`): the root is the file's directory,
 //!   `tools.toml` sits next to the file, and the project is the file plus whatever it imports;
 //! - a **project folder** (`examples/01-invoice-chaser/`): every `*.agent.md` below the folder is
 //!   part of the project.
@@ -94,6 +94,9 @@ pub struct Project {
     pub sources: BTreeMap<String, String>,
     /// Problems found while loading. Non-empty means `check` stops here.
     pub load_diagnostics: Vec<Diagnostic>,
+    /// `--allow-unverified` (Q203): an unverified binding counts as its `- proposed-effect:` when
+    /// effects are checked. Set by the CLI after loading; never on in a release build.
+    pub assume_proposed: bool,
 }
 
 // ---------------------------------------------------------------------------------- file system
@@ -345,6 +348,7 @@ impl Project {
             entry_files,
             sources: b.sources,
             load_diagnostics: b.diags,
+            assume_proposed: false,
         }
     }
 
@@ -737,12 +741,12 @@ mod tests {
 
     #[test]
     fn single_file_reads_tools_next_to_it() {
-        let p = Project::load("examples/02-lead-qualifier.agent.md");
+        let p = Project::load("tests/errors/unit-mismatch.agent.md");
         assert_eq!(p.kind, ProjectKind::SingleFile);
         assert!(p.load_diagnostics.is_empty(), "{:?}", p.load_diagnostics);
         assert_eq!(p.files.len(), 1);
         assert!(p.manifest.tool("crm").is_some());
-        assert_eq!(p.root, "examples");
+        assert_eq!(p.root, "tests/errors");
     }
 
     #[test]

@@ -772,6 +772,17 @@ impl Checker<'_> {
             Some(sig) => {
                 self.check_args(cx, e.span, &name, sig, args, &arg_types);
                 match &sig.out {
+                    Some(Type::Result(t)) => {
+                        let d = Diagnostic::error(
+                            E_CALL,
+                            self.path(cx.file),
+                            e.span,
+                            format!("The function \"{name}\" can fail (it returns \"result of {t}\"), so it cannot be used inside an expression."),
+                        )
+                        .with_help(format!("Call it as a statement: \"- try do {name}(...) -> value\"."));
+                        self.diags.push(d);
+                        (**t).clone()
+                    }
                     Some(t) => t.clone(),
                     None => {
                         let d = Diagnostic::error(

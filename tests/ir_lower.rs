@@ -15,7 +15,7 @@ fn load(path: &str) -> (Project, Checked) {
 }
 
 fn mem(src: &str) -> (Project, Checked) {
-    let tools = std::fs::read_to_string("examples/tools.toml").unwrap();
+    let tools = std::fs::read_to_string("tests/errors/tools.toml").unwrap();
     let project = Project::from_str("t.agent.md", src, &tools);
     match sema::check(&project) {
         Ok(c) => (project, c),
@@ -131,7 +131,7 @@ fn example_01_lowers() {
 
 #[test]
 fn example_02_lowers() {
-    let (_, _, l, p) = lower_example("examples/02-lead-qualifier.agent.md");
+    let (_, _, l, p) = lower_example("examples/02-lead-qualifier");
     assert_no_agent_nodes(&l);
     assert_ir_clean(&p);
     assert_eq!(
@@ -154,7 +154,7 @@ fn example_02_lowers() {
 
 #[test]
 fn example_03_lowers() {
-    let (_, _, l, p) = lower_example("examples/03-support-triage.agent.md");
+    let (_, _, l, p) = lower_example("examples/03-support-triage");
     assert_no_agent_nodes(&l);
     assert_ir_clean(&p);
     assert_eq!(
@@ -170,7 +170,7 @@ fn example_03_lowers() {
 
 #[test]
 fn example_04_lowers() {
-    let (_, _, l, p) = lower_example("examples/04-daily-report.agent.md");
+    let (_, _, l, p) = lower_example("examples/04-daily-report");
     assert_no_agent_nodes(&l);
     assert_ir_clean(&p);
     assert_eq!(
@@ -191,7 +191,7 @@ fn example_04_lowers() {
 
 #[test]
 fn example_05_lowers_unchanged() {
-    let (project, c, l, p) = lower_example("examples/05-invoice-service.agent.md");
+    let (project, c, l, p) = lower_example("examples/05-invoice-service");
     for (lf, sf) in l.files.iter().zip(&project.files) {
         assert_eq!(lf.decls, sf.ast.decls, "agent_lower must not touch 05");
     }
@@ -203,13 +203,14 @@ fn example_05_lowers_unchanged() {
             ("api", "GET /invoices/{id}/net", "pure"),
             ("api", "POST /invoices", "local(state)"),
             ("import-csv", "Run", "local(file, print, state)"),
+            ("invoice_fingerprint", "invoice_fingerprint", "pure"),
             ("net_amount", "net_amount", "pure"),
         ]
         .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()))
     );
     assert_eq!(p.rust_fns.len(), 1);
     assert_eq!(p.rust_fns[0].name, "fingerprint");
-    assert!(p.rust_fns[0].code.contains("Sha256"));
+    assert!(p.rust_fns[0].code.contains("{:02x}"));
     assert_eq!(p.crates[0].name, "sha2");
     // guard … else respond 404: let tmp, trace, `if not tmp { respond 404 }`
     let route = &p.services[0].routes[0];
@@ -350,7 +351,7 @@ fn rule_named_like_a_function_does_not_collide() {
 
 #[test]
 fn unwrap_is_explicit_and_tool_targets_are_resolved() {
-    let (_, _, _, p) = lower_example("examples/03-support-triage.agent.md");
+    let (_, _, _, p) = lower_example("examples/03-support-triage");
     let json = serde_json::to_string(&p.entries[0].body).unwrap();
     // crm update ticket: priority = t.priority -> source "tickets", id from ticket.id
     assert!(json.contains("\"source\":\"tickets\""), "{json}");
@@ -393,7 +394,7 @@ fn sema_rejects_a_do_call_without_the_record() {
     let src = format!(
         "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\nfor each invoice in crm.invoices:\n  - do show\n- do show\n\n## Do show\n- log: \"{{customer}}\"\n"
     );
-    let tools = std::fs::read_to_string("examples/tools.toml").unwrap();
+    let tools = std::fs::read_to_string("tests/errors/tools.toml").unwrap();
     let project = Project::from_str("t.agent.md", &src, &tools);
     let err = sema::check(&project).expect_err("must be an error");
     assert!(err.iter().any(|d| d.message.contains("works on")), "{}", project.render(&err));
@@ -415,5 +416,25 @@ fn a_text_argument_to_a_bytes_binding_becomes_text_to_bytes() {
     let first = &prog.functions[0].body[0].kind;
     let IS::Effect { call: EffectCall::Binding { args, .. }, .. } = first else { panic!("{first:?}") };
     assert!(matches!(args[0].kind, IX::TextToBytes(_)));
+    assert_eq!(args[0].ty.to_string(), "bytes");
+}
+
+#[test]
+fn an_interpolated_string_argument_to_a_bytes_binding_becomes_text_to_bytes() {
+    let binding = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```\n";
+    let main = "# Import: crate hashing\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: pure\n  - hashing digest \"id-{t}\" -> b\n  - return b\n";
+    let p = Project::from_memory(
+        "app/main.agent.md",
+        vec![("app/main.agent.md", main), ("app/bindings/hashing.agent.md", binding)],
+    );
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    let l = agent_lower(&p, &c);
+    let prog = ir::build::build(&p, &c, &l);
+    let first = &prog.functions[0].body[0].kind;
+    let IS::Effect { call: EffectCall::Binding { args, .. }, .. } = first else { panic!("{first:?}") };
+    // the conversion wraps the whole interpolated text, not its parts
+    let IX::TextToBytes(inner) = &args[0].kind else { panic!("{:?}", args[0]) };
+    assert!(matches!(inner.kind, IX::Interp(_)), "{inner:?}");
+    assert_eq!(inner.ty.to_string(), "text");
     assert_eq!(args[0].ty.to_string(), "bytes");
 }

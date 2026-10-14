@@ -1,6 +1,8 @@
 //! Binder tests (PROMPT step 8): sha2, chrono and reqwest rustdoc fixtures, a canned
 //! `MockModel`, a fake type checker for most tests and the real `cargo check` for a few.
 
+mod support;
+
 use agentmark::binder::core::{
     freshness, run_tiers, BoundCrate, CheckRequest, Freshness, Tier, TypeChecker,
 };
@@ -38,11 +40,8 @@ impl TypeChecker for FakeChecker {
     }
 }
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentmark-binder-test-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+fn scratch(tag: &str) -> support::Tmp {
+    support::temp(&format!("binder-test-{tag}"))
 }
 
 fn opts(dir: &Path, c: &str, reject: Vec<&'static str>) -> BindOptions {
@@ -251,7 +250,14 @@ fn a_binding_for_another_version_is_stale_and_rebinding_re_marks_unverified() {
     assert_eq!(freshness(&first.path, "sha2", "0.9.0").unwrap(), Freshness::Fresh);
     assert_eq!(freshness(&dir.join("nope.agent.md"), "x", "1").unwrap(), Freshness::Missing);
 
-    let again = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    // plain `bind` keeps the version of the header (no silent jump to the newest release) ...
+    let kept = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    assert!(!kept.generated && kept.version == "0.9.0", "{kept:?}");
+    assert_eq!(std::fs::read_to_string(&first.path).unwrap(), old, "and writes nothing");
+    // ... moving needs `--version <v>` (or `--latest`)
+    let mut o = opts(&dir, "sha2", vec![]);
+    o.version = Some("0.10.9".into());
+    let again = bind("sha2", &o).unwrap();
     assert!(again.generated);
     assert_eq!(again.reason, Some(Regenerated::Stale { from: "0.9.0".into() }));
     assert_eq!(again.effect, "unverified");
@@ -359,7 +365,10 @@ fn fetch_builds_rustdoc_json_when_nightly_is_installed() {
     let mut spec = FetchSpec::new("sha2", Some("0.10.9"));
     spec.offline = true;
     let p = agentmark::binder::rust::fetch_rustdoc_json_with(&spec).unwrap();
-    let ci = read_crate(&std::fs::read_to_string(p).unwrap()).unwrap();
+    let json = std::fs::read_to_string(&p).unwrap();
+    // the JSON lives in the binder's scratch crate (<scratch>/target/doc/sha2.json): remove it
+    std::fs::remove_dir_all(p.ancestors().nth(3).unwrap()).unwrap();
+    let ci = read_crate(&json).unwrap();
     assert_eq!((ci.name.as_str(), ci.version.as_str()), ("sha2", "0.10.9"));
 }
 
@@ -572,7 +581,7 @@ fn a_one_to_one_foreign_trait_method_is_assisted_never_direct() {
     assert!(matches!(&it.shape, Shape::Assisted { why, .. } if why.contains("another crate")), "{:?}", it.shape);
 }
 
-fn demo_opts(tag: &str) -> (PathBuf, BindOptions) {
+fn demo_opts(tag: &str) -> (support::Tmp, BindOptions) {
     let (demo, _) = demo_and_ext();
     let dir = scratch(tag);
     let json = dir.join("demo-in.json");
@@ -646,6 +655,7 @@ fn freshly_bound_files_keep_every_line_within_the_limit_and_check_clean() {
 /// `## Not bound` entries of a binding file with their `  > ` continuation lines joined.
 fn entries(text: &str) -> std::collections::HashMap<String, String> {
     let mut m = std::collections::HashMap::new();
+    let mut pieces: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     let mut cur: Option<String> = None;
     let mut in_section = false;
     for l in text.lines() {
@@ -657,11 +667,14 @@ fn entries(text: &str) -> std::collections::HashMap<String, String> {
                 cur = Some(name.to_string());
                 m.insert(name.to_string(), reason.trim().to_string());
             } else if let (Some(rest), Some(c)) = (l.strip_prefix("  > "), &cur) {
-                let e = m.get_mut(c).unwrap();
-                e.push(' ');
-                e.push_str(rest);
+                pieces.entry(c.clone()).or_default().push(rest.to_string());
             }
         }
+    }
+    for (name, rest) in pieces {
+        let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
+        let joined = agentmark::syntax::parser::join_wrapped(&m[&name], &rest);
+        m.insert(name, joined);
     }
     m
 }
@@ -736,3 +749,59 @@ fn indented_comment_lines_continue_a_not_bound_reason() {
     let out = agentmark::fmt::format_source(src, "lib.agent.md").unwrap();
     assert!(out.contains("- a: first part second part third\n") && out.contains("> plain note"), "{out}");
 }
+
+#[test]
+fn bind_stays_on_the_header_version_force_regenerates_it_and_latest_moves() {
+    let dir = scratch("pinned");
+    let first = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    let old = std::fs::read_to_string(&first.path).unwrap().replace("sha2 0.10.9", "sha2 0.10.8").replace("- effect: unverified", "- effect: pure");
+    std::fs::write(&first.path, &old).unwrap();
+    // the header is the lock: the newer release the tooling knows about (0.10.9) is not taken
+    let kept = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    assert!(!kept.generated && kept.version == "0.10.8", "{kept:?}");
+    assert_eq!(std::fs::read_to_string(&first.path).unwrap(), old);
+    // `--latest` goes to what the tooling resolves (the JSON's 0.10.9) and re-marks unverified
+    let mut l = opts(&dir, "sha2", vec![]);
+    l.latest = true;
+    let moved = bind("sha2", &l).unwrap();
+    assert_eq!(moved.reason, Some(Regenerated::Stale { from: "0.10.8".into() }));
+    assert_eq!(moved.effect, "unverified");
+    // now the header says 0.10.9: plain bind is a cache hit, --force regenerates the SAME version
+    let hit = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    assert!(!hit.generated);
+    let mut f = opts(&dir, "sha2", vec![]);
+    f.force = true;
+    let forced = bind("sha2", &f).unwrap();
+    assert_eq!((forced.generated, forced.reason, forced.version.as_str()), (true, Some(Regenerated::Forced), "0.10.9"));
+}
+
+/// Wrap `reason` as a "Not bound" entry, parse the file, return the lines and the parsed reason.
+fn wrap_and_parse(reason: &str) -> (Vec<String>, String) {
+    let entry = agentmark::binder::core::writer::not_bound_entry("item", reason);
+    let text = format!("> generated by agentmark bind \u{2014} x 1.0.0 \u{2014} 2026-10-14\n# Binding: x\n- crate: x\n- effect: unverified\n\n## Not bound\n{entry}");
+    let f = agentmark::syntax::parser::parse_file("x.agent.md", &text).unwrap_or_else(|d| panic!("{}", agentmark::diag::render_all(&d, &text)));
+    let reason = binding(&f).not_bound[0].reason.clone().unwrap_or_default();
+    (entry.lines().map(String::from).collect(), reason)
+}
+
+#[test]
+fn a_word_longer_than_a_line_is_split_and_joined_back_without_a_space() {
+    let path: String = (0..145).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+    let reason = format!("see {path} for details");
+    let (lines, parsed) = wrap_and_parse(&reason);
+    assert!(lines.len() >= 2 && lines.iter().all(|l| l.chars().count() <= 120), "{lines:?}");
+    assert!(lines.iter().any(|l| l.ends_with('\\')), "the split is marked: {lines:?}");
+    assert_eq!(parsed, reason, "no space invented inside the word");
+}
+
+#[test]
+fn backslashes_survive_the_wrapping_also_at_line_ends() {
+    // a long path with many backslashes (Windows style), and words that end in a backslash exactly where a line wraps
+    let path = format!("C:{}", "\\folder".repeat(30));
+    for reason in [format!("path {path} end"), format!("{} {path}", "word\\ ".repeat(40)), "a\\ ".repeat(80), format!("x{}", "\\".repeat(150))] {
+        let (lines, parsed) = wrap_and_parse(&reason);
+        assert!(lines.iter().all(|l| l.chars().count() <= 120), "{lines:?}");
+        assert_eq!(parsed, reason.split_whitespace().collect::<Vec<_>>().join(" "));
+    }
+}
+

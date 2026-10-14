@@ -149,9 +149,10 @@ fn semantic_cases_parse_cleanly() {
 #[test]
 fn error_tests_have_a_tool_manifest() {
     assert!(Path::new("tests/errors/tools.toml").exists());
+    let body = |p: &str| std::fs::read_to_string(p).unwrap().lines().skip(1).collect::<Vec<_>>().join("\n");
     assert_eq!(
-        std::fs::read_to_string("tests/errors/tools.toml").unwrap(),
-        std::fs::read_to_string("examples/tools.toml").unwrap(),
-        "tests/errors/tools.toml must stay a copy of examples/tools.toml"
+        body("tests/errors/tools.toml"),
+        body("examples/01-invoice-chaser/tools.toml"),
+        "tests/errors/tools.toml must stay a copy of the example projects' tools.toml"
     );
 }

@@ -12,6 +12,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod bind;
+mod build;
 mod check;
 mod docgen;
 mod files;
@@ -71,9 +72,60 @@ pub enum Command {
         /// Refresh every `bindings/*.agent.md` of the project.
         #[arg(long, conflicts_with = "name")]
         all: bool,
+        /// Bind this exact version of the library (moves an existing binding to it).
+        #[arg(long, conflicts_with_all = ["all", "latest"])]
+        version: Option<String>,
+        /// Move an existing binding to the newest version (it stays on its own otherwise).
+        #[arg(long)]
+        latest: bool,
         /// Project folder whose `bindings/` is used.
         #[arg(long, default_value = ".")]
         project: String,
+    },
+    /// Generate the Cargo project of a file or project folder.
+    Build {
+        /// A `.agent.md` file or a project folder.
+        path: String,
+        /// Target language (only `rust` in v0.1).
+        #[arg(long, default_value = "rust")]
+        target: String,
+        /// Folder to write the Cargo project into.
+        #[arg(short = 'o', long = "out")]
+        out: String,
+        /// Build even while a library binding is not approved (development only).
+        #[arg(long)]
+        allow_unverified: bool,
+        /// Only write the files; do not run `cargo check` on them.
+        #[arg(long)]
+        no_check: bool,
+    },
+    /// Build the project and run every entry once.
+    Run {
+        /// A `.agent.md` file or a project folder.
+        path: String,
+        /// Use fixtures instead of real tools and models.
+        #[arg(long)]
+        mock: bool,
+        /// Folder with model.json and the tool fixtures (for --mock).
+        #[arg(long)]
+        fixtures: Option<String>,
+        /// Build even while a library binding is not approved (development only).
+        #[arg(long)]
+        allow_unverified: bool,
+    },
+    /// Like `run`, but print the trace (one JSON object per line) on stdout.
+    Trace {
+        /// A `.agent.md` file or a project folder.
+        path: String,
+        /// Use fixtures instead of real tools and models.
+        #[arg(long)]
+        mock: bool,
+        /// Folder with model.json and the tool fixtures (for --mock).
+        #[arg(long)]
+        fixtures: Option<String>,
+        /// Build even while a library binding is not approved (development only).
+        #[arg(long)]
+        allow_unverified: bool,
     },
 }
 
@@ -95,7 +147,10 @@ where
         Command::Fmt { path, check } => fmtlint::fmt(&path, check),
         Command::Lint { path } => fmtlint::lint(&path),
         Command::Doc { target, project } => docgen::run(target.as_deref(), &project),
-        Command::Bind { name, force, all, project } => bind::run(name.as_deref(), force, all, &project),
+        Command::Bind { name, force, all, version, latest, project } => bind::run(name.as_deref(), force, all, version, latest, &project),
+        Command::Build { path, target, out, allow_unverified, no_check } => build::build(&path, &target, &out, allow_unverified, no_check),
+        Command::Run { path, mock, fixtures, allow_unverified } => build::run(&path, mock, fixtures.as_deref(), allow_unverified),
+        Command::Trace { path, mock, fixtures, allow_unverified } => build::trace(&path, mock, fixtures.as_deref(), allow_unverified),
     };
     ExitCode::from(code)
 }
