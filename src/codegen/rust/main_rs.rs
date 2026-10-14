@@ -118,8 +118,8 @@ pub fn main_rs(c: &Ctxt) -> String {
     s.push_str("use std::path::PathBuf;\nuse std::process::ExitCode;\nuse std::sync::atomic::{AtomicBool, Ordering};\nuse std::sync::Arc;\n\n");
     let mut rt = vec!["Clock", "Ctx", "ModelClient", "ModelRequest", "ModelResponse", "RtError", "Trace"];
     if driver.is_some() {
-        rt.push("AnthropicModel");
-        rt.push("MockModel");
+        rt.push("ProviderConfig");
+        rt.push("Router");
     }
     let has_tasks = p.entries.iter().any(|e| !matches!(e.trigger, Trigger::Event { .. } | Trigger::Start));
     let has_start = p.entries.iter().any(|e| matches!(e.trigger, Trigger::Start));
@@ -140,13 +140,6 @@ pub fn main_rs(c: &Ctxt) -> String {
 
     // shared definitions
     s.push_str(SHARED);
-
-    if let Some(d) = &driver {
-        s.push_str(&format!(
-            "/// The model of a real run unless an agent says otherwise (`{d}`); agents with another `- model:` set theirs per block.\nconst MODEL: &str = {};\n\n",
-            lit(&super::model_id(d))
-        ));
-    }
 
     // command line
     s.push_str(CLI_HEAD);
@@ -182,7 +175,17 @@ pub fn main_rs(c: &Ctxt) -> String {
     // main
     s.push_str(MAIN);
     match &driver {
-        Some(_) => s.push_str("/// The model of a real run.\nfn real_model() -> Arc<dyn ModelClient> {\n    // AGENTMARK_MODEL=mock:<model.json> answers from a file, like the binder (no network, no key)\n    if let Some(path) = std::env::var(\"AGENTMARK_MODEL\").ok().and_then(|v| v.strip_prefix(\"mock:\").map(String::from)) {\n        return match MockModel::from_file(&path) {\n            Ok(m) => Arc::new(m),\n            Err(e) => Arc::new(NoModel(e.to_string())),\n        };\n    }\n    match AnthropicModel::from_env(MODEL) {\n        Ok(m) => Arc::new(m),\n        Err(e) => Arc::new(NoModel(e.to_string())),\n    }\n}\n\n"),
+        Some(_) => {
+            let envs: Vec<String> = c.o.models.iter().map(|(k, v)| format!("({}, {})", lit(k), lit(v))).collect();
+            let base = match &c.o.local_base_url {
+                Some(u) => format!("Some({})", lit(u)),
+                None => "None".to_string(),
+            };
+            s.push_str(&format!(
+                "/// The model of a real run: each agent's `- model:` unless `AGENTMARK_MODEL` or `AGENTMARK_ENV` (the\n/// `[models]` table of agentmark.toml) picks one for the whole program.\nfn real_model() -> Arc<dyn ModelClient> {{\n    let config = ProviderConfig::new(&[{}], {base});\n    match Router::from_env(config) {{\n        Ok(m) => Arc::new(m),\n        Err(e) => Arc::new(NoModel(e.to_string())),\n    }}\n}}\n\n",
+                envs.join(", ")
+            ));
+        }
         None => s.push_str("/// The model of a real run: this program never asks one.\nfn real_model() -> Arc<dyn ModelClient> {\n    Arc::new(NoModel(\"this program does not use a model\".into()))\n}\n\n"),
     }
 

@@ -16,6 +16,7 @@ use super::{
 pub const E_UNKNOWN_TYPE: &str = "E201";
 pub const W_INFERRED: &str = "W001";
 const E_BAD_AGENT: &str = "E215";
+const E_BAD_MODEL: &str = "E220";
 const E_CONST: &str = "E216";
 const W_UNVERIFIED: &str = "W005";
 const W_ASSUMED: &str = "W008";
@@ -307,6 +308,13 @@ impl Checker<'_> {
         for (fi, f) in p.files.iter().enumerate() {
             for d in &f.ast.decls {
                 let Decl::Agent(a) = d else { continue };
+                if let Err(e) = agentmark_rt::Driver::parse(&a.model.value) {
+                    let mut d = Diagnostic::error(E_BAD_MODEL, self.path(fi), a.model.span, e.to_string()).with_help(agentmark_rt::DRIVER_HELP);
+                    if let agentmark_rt::DriverError::Unknown(word) = &e {
+                        d = d.with_did_you_mean(super::scope::suggest(word, &agentmark_rt::PROVIDERS.map(String::from)));
+                    }
+                    self.diags.push(d);
+                }
                 for t in &a.tools {
                     if p.manifest.tool(&t.name).is_some()
                         || self.lookup(fi, &t.name, &[Kind::Binding]).is_some()

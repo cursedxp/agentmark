@@ -1,14 +1,13 @@
 //! `agentmark bind` (SPEC 15, 9): generate or refresh `<project>/bindings/<crate>.agent.md`.
 //!
-//! The model comes from `AGENTMARK_MODEL`: `claude` (default) or `claude:<model>` call the
-//! Anthropic API (`ANTHROPIC_API_KEY`); `mock:<path to model.json>` uses the canned `MockModel`
-//! (tests, offline work). `AGENTMARK_OFFLINE=1` passes `--offline` to every cargo call of the
+//! The model comes from `AGENTMARK_MODEL` (any driver string: `claude`, `claude:<model>`, `openai:<m>`,
+//! `local:<m>`, `mock:<path to model.json>`), else the `[models]` entry `AGENTMARK_ENV` names, else Claude. `AGENTMARK_OFFLINE=1` passes `--offline` to every cargo call of the
 //! binder. Rustdoc JSON can be supplied with `AGENTMARK_RUSTDOC_JSON` / `AGENTMARK_RUSTDOC_JSON_DIR`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use agentmark_rt::{AnthropicModel, MockModel, ModelClient};
+use agentmark_rt::{Driver, ModelClient, ProviderConfig, Router};
 use chrono::NaiveDate;
 
 use super::fail;
@@ -16,25 +15,35 @@ use crate::binder::{bind, BindError, BindOptions, BindOutcome, Regenerated};
 use crate::syntax::ast::{Decl, Effect};
 use crate::syntax::parser::parse_file;
 
-const DEFAULT_CLAUDE: &str = "claude-sonnet-4-5";
-
+/// Kept for callers without a project (no `[models]` table).
+#[allow(dead_code)]
 pub(crate) fn model_from_env() -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String> {
-    let spec = std::env::var("AGENTMARK_MODEL").unwrap_or_default();
-    let spec = if spec.is_empty() { "claude".to_string() } else { spec };
-    if let Some(path) = spec.strip_prefix("mock:") {
-        let m = MockModel::from_file(path).map_err(|e| format!("cannot load the mock model: {e}"))?;
-        let today = m.today();
-        return Ok((Arc::new(m), today));
+    model_for(ProviderConfig::default())
+}
+
+/// The binder's model: `AGENTMARK_MODEL`, else the `[models]` entry `AGENTMARK_ENV` names in the
+/// project's `agentmark.toml`, else Claude (Q240). Same driver strings as a program's `- model:`.
+pub(crate) fn model_for(config: ProviderConfig) -> Result<(Arc<dyn ModelClient>, Option<NaiveDate>), String> {
+    let router = Router::from_env(config).map_err(|e| {
+        format!("{e}. Set it, or point AGENTMARK_MODEL at a mock:<model.json> for offline use")
+    })?;
+    if router.forced().is_none() {
+        // nothing chose a model: Claude, which needs its key before any binding work starts
+        router.prepare(&Driver::Claude(None)).map_err(|e| {
+            format!("{e}. Set it, or point AGENTMARK_MODEL at a mock:<model.json> for offline use")
+        })?;
     }
-    let id = match spec.as_str() {
-        "claude" => DEFAULT_CLAUDE,
-        s => s.strip_prefix("claude:").ok_or_else(|| {
-            format!("AGENTMARK_MODEL=\"{s}\" is not supported here; use \"claude\", \"claude:<model>\" or \"mock:<path to model.json>\"")
-        })?,
-    };
-    let m = AnthropicModel::from_env(id)
-        .map_err(|e| format!("{e}. Set it, or point AGENTMARK_MODEL at a mock:<model.json> for offline use"))?;
-    Ok((Arc::new(m), None))
+    let today = router.mock_today();
+    Ok((Arc::new(router), today))
+}
+
+/// `[models]` of the project's `agentmark.toml`, for the router (a missing or bad file is plain defaults:
+/// `check` reports the file's own errors).
+pub(crate) fn provider_config(project: &crate::project::Project) -> ProviderConfig {
+    ProviderConfig {
+        environments: project.config.models.iter().cloned().collect(),
+        local_base_url: project.config.local_base_url.clone(),
+    }
 }
 
 /// Today's date from the system clock (UTC), without a timezone database.
@@ -48,7 +57,7 @@ pub(crate) fn system_today() -> NaiveDate {
 }
 
 pub(crate) fn run(name: Option<&str>, force: bool, all: bool, version: Option<String>, latest: bool, project: &str) -> u8 {
-    let (model, mock_today) = match model_from_env() {
+    let (model, mock_today) = match model_for(provider_config(&crate::project::Project::load(project))) {
         Ok(m) => m,
         Err(e) => return fail(e),
     };

@@ -45,6 +45,10 @@ pub struct Config {
     /// `[rust.dependencies]`: extra dependencies of the generated Cargo project, as
     /// `(crate name, TOML value)`, merged verbatim into its `[dependencies]` (Q222).
     pub rust_dependencies: Vec<(String, String)>,
+    /// `[models]`: environment name -> driver string (`production = "claude"`), chosen by `AGENTMARK_ENV` (Q240).
+    pub models: Vec<(String, String)>,
+    /// `[models.local] base_url`: the OpenAI-compatible server behind `local:<model>`.
+    pub local_base_url: Option<String>,
 }
 
 /// One import line, resolved.
@@ -387,7 +391,7 @@ struct Loader<'a> {
     failed: Vec<String>,
 }
 
-const CONFIG_KEYS: [&str; 5] = ["name", "version", "targets", "lint", "rust"];
+const CONFIG_KEYS: [&str; 6] = ["name", "version", "targets", "lint", "rust", "models"];
 
 impl Loader<'_> {
     fn config(&mut self) -> Config {
@@ -481,6 +485,44 @@ impl Loader<'_> {
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+                "models" => {
+                    let bad = |line: u32, msg: String| Diagnostic::error(E_CONFIG, &path, Span::new(line, 1, 1), msg);
+                    match value.as_table() {
+                        None => self.diags.push(bad(line, "\"models\" in agentmark.toml must be a table, like [models] test = \"mock\".".into())),
+                        Some(t) => {
+                            for (k, v) in t {
+                                if k == "local" && v.is_table() {
+                                    for (lk, lv) in v.as_table().into_iter().flatten() {
+                                        match (lk.as_str(), lv.as_str()) {
+                                            ("base_url", Some(u)) if u.starts_with("http://") || u.starts_with("https://") => {
+                                                cfg.local_base_url = Some(u.to_string())
+                                            }
+                                            ("base_url", _) => self.diags.push(bad(
+                                                line_of(lk),
+                                                "\"base_url\" under [models.local] must be a web address, like \"http://localhost:11434/v1\".".into(),
+                                            )),
+                                            _ => self.diags.push(
+                                                bad(line_of(lk), format!("Unknown key \"{lk}\" under [models.local] in agentmark.toml."))
+                                                    .with_help("[models.local] accepts: base_url."),
+                                            ),
+                                        }
+                                    }
+                                    continue;
+                                }
+                                match v.as_str() {
+                                    None => self.diags.push(bad(
+                                        line_of(k),
+                                        format!("\"{k}\" under [models] must be a model such as \"claude\" or \"local:kat-coder\"."),
+                                    )),
+                                    Some(d) => match agentmark_rt::Driver::parse(d) {
+                                        Ok(_) => cfg.models.push((k.clone(), d.to_string())),
+                                        Err(e) => self.diags.push(bad(line_of(k), format!("{k} = \"{d}\": {e}")).with_help(agentmark_rt::DRIVER_HELP)),
+                                    },
                                 }
                             }
                         }

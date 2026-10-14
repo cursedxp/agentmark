@@ -1353,7 +1353,7 @@ AgentMark is Markdown so that a person reads a program like a document, and the 
 
 ```text
 my-project/
-  agentmark.toml          name, version, targets, lint settings
+  agentmark.toml          name, version, targets, lint settings, models
   tools.toml              tool manifest (section 7)
   main.agent.md           entry point: imports + a single `# Run`
   records/                one # Record per file:  records/invoice.agent.md
@@ -1659,26 +1659,63 @@ language is unaware of which is in use.
 - log: "{kind}"
 ```
 
-| string | implementation | status in v0.1 |
-|---|---|---|
-| `claude`, `claude:<model>` | Anthropic Messages API (key from `ANTHROPIC_API_KEY`) | available |
-| `mock` | fixture-driven, for tests | available |
-| `openai:<model>` | OpenAI Chat Completions | planned (v0.2, step 14) |
-| `local:<model>` | any OpenAI-compatible local server (Ollama, LM Studio, vLLM); base URL from `agentmark.toml` | planned (v0.2) |
-| `azure:<deployment>`, `bedrock:<model>` | enterprise routes | planned (v0.2) |
+| string | implementation |
+|---|---|
+| `claude`, `claude:<model>` | Anthropic Messages API (key from `ANTHROPIC_API_KEY`; `haiku`, `sonnet`, `opus` or a full id) |
+| `openai:<model>` | OpenAI Chat Completions (key from `OPENAI_API_KEY`; `OPENAI_BASE_URL` points it at a proxy) |
+| `local:<model>` | any OpenAI-compatible local server (Ollama, LM Studio, vLLM); base URL from `agentmark.toml` |
+| `mock`, `mock:<path>` | fixture-driven, for tests: `model.json` in `$AGENTMARK_FIXTURES` (default: the current folder), or the file named |
+| `azure:<deployment>`, `bedrock:<model>` | enterprise routes: not supported in this version; `check` says so at the `- model:` line |
 
-`agentmark.toml` may map environments, `[models] production = "claude"`, `test = "mock"`, `dev = "local:kat-coder"`; that table is part of the
-v0.2 provider work and v0.1 rejects it as an unknown key. The binder and the on-demand tier use the same trait, so a company that forbids
-external APIs can run the whole toolchain on a local model. For `agentmark bind`, `AGENTMARK_MODEL` selects the client: unset or `claude` is
-Anthropic, `claude:<id>` picks the model, `mock:<path>` loads a canned `model.json`; the agent's own `model:` line describes the program, not the
-toolchain (Q115).
+```agentmark invalid
+> Enterprise routes are not supported in this version.
+# Agent: bank
+- model: azure:my-deployment
+- tools: log
+
+## On start
+- log: "hello"
+```
+
+`check` rejects a driver it does not know the same way (`Unknown model provider "opnai". Did you mean "openai"?`), and `openai:` or
+`local:` without a model name.
+
+### The `[models]` table and `AGENTMARK_ENV`
+
+`agentmark.toml` maps environments to drivers and says where the local server is:
+
+```toml
+[models]
+production = "claude"
+test = "mock"
+dev = "local:kat-coder"
+
+[models.local]
+base_url = "http://localhost:11434/v1"
+```
+
+Which model answers is decided at run time, strongest first (Q240):
+
+1. `AGENTMARK_MODEL=<driver>`: one driver for the whole program (`openai:gpt-4o`, `local:kat-coder`, `mock:<path to model.json>`).
+2. `AGENTMARK_ENV=<name>`: the `[models]` entry of that name, again one driver for every agent. `AGENTMARK_ENV=dev` runs
+   the program on the local model, `AGENTMARK_ENV=test` on `model.json`, without touching an `.agent.md` file. An environment that is not
+   in the table is an error that lists the ones that are; `production` without an entry means "no override".
+3. Otherwise each agent uses its own `- model:` line. Unset `AGENTMARK_ENV` is therefore not "production": nothing is overridden, so a
+   `- model: openai:gpt-4o` agent keeps OpenAI even if `production = "claude"`. A plain `claude` entry keeps an agent's own Claude model
+   (`claude:haiku` stays haiku) and moves agents of other providers to Claude.
+
+The generated program carries the table; the variables are read when it runs. `agentmark bind` and the on-demand tier use the same
+rules with the project's `agentmark.toml` (and Claude when nothing is set), so a company that forbids external APIs can run the
+whole toolchain on a local model. The local server's address is, strongest first, `AGENTMARK_LOCAL_BASE_URL`, `[models.local] base_url`,
+then `http://localhost:11434/v1` (Ollama); `LOCAL_API_KEY`, if set, is sent as a bearer token. The agent's own `model:` line
+describes the program, not the toolchain (Q115).
 
 ## 20. v0.2 scope: editor and tooling
 
 Nothing here changes the language. Built after v0.1 passes all its tests, in this order:
 
 1. The on-demand binding tier (section 15.2, last row).
-2. Model providers `openai`, `local`, `azure`, `bedrock` and the `[models]` table (section 19).
+2. Model providers `openai`, `local` and the `[models]` table (section 19; done). `azure` and `bedrock` stay unsupported.
 3. A language server, `agentmark-lsp`, in the same workspace, reusing the checker as a library: diagnostics with the same messages,
    completion, go-to-definition across imports, hover with a block's effect summary, format-on-save, code actions for the mechanical
    lint fixes.

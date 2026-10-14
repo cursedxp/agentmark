@@ -5,6 +5,7 @@
 #![deny(missing_docs)]
 
 mod ctx;
+mod driver;
 mod error;
 mod guard;
 mod model;
@@ -18,7 +19,10 @@ pub use chrono::Weekday;
 pub use ctx::{Clock, Ctx};
 pub use error::RtError;
 pub use guard::{extract_money, no_amounts_changed};
-pub use model::{AnthropicModel, MockModel, ModelClient, ModelRequest, ModelResponse};
+pub use driver::{claude_id, request_model_id, Driver, DriverError, ProviderConfig, Router, DEFAULT_CLAUDE, DRIVER_HELP, PROVIDERS};
+pub use model::{
+    AnthropicModel, LocalModel, MockModel, ModelClient, ModelRequest, ModelResponse, OpenAiModel, LOCAL_BASE_URL, OPENAI_BASE_URL,
+};
 pub use money::{Currency, Money, MoneyError};
 pub use schedule::{run_once, run_schedule, Schedule};
 pub use support::{parse_model_json, read_data};
