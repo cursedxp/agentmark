@@ -967,7 +967,9 @@ $ agentmark run invoice-chaser.agent.md --mock --fixtures fixtures
 
 **Watch out:** connecting the agent to your real systems, so that "send an email" really sends one, is a developer's job.
 
-It lives in one file of your project, `rust/connect.rs`. The first real run creates that file for them. The steps of your agent do not change. The details are in [Connecting real tools](connect.md).
+It lives in one file of your project, `rust/connect.rs`. The first real run creates that file for them.
+
+The steps of your agent do not change. The details are in [Connecting real tools](connect.md).
 
 **Next:** [Lesson 15: Read ten finished programs](#lesson-15-read-ten-finished-programs).
 

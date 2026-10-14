@@ -26,9 +26,9 @@ AgentMark files are Markdown, so any editor opens them. AgentMark is a Markdown 
 
 There are three pieces, and they work alone:
 
-* **`agentmark-lsp`** is a language server (`crates/agentmark-lsp`). It runs the same checker as `agentmark check`, so the messages are the same. Any editor with Language Server Protocol support can use it.
-* **The VS Code extension** (`editors/vscode`) gives highlighting, the language-server client, a schema for `agentmark.toml` and the touch panel.
-* **A tree-sitter grammar** (`editors/tree-sitter-agentmark`) highlights files in editors that use tree-sitter: Zed, Neovim and Helix.
+* **`agentmark-lsp`** is a language server. It lives in `crates/agentmark-lsp`. It runs the same checker as `agentmark check`, so the messages are the same. Any editor with Language Server Protocol support can use it.
+* **The VS Code extension** lives in `editors/vscode`. It gives highlighting, the language-server client, a schema for `agentmark.toml` and the touch panel.
+* **A tree-sitter grammar** lives in `editors/tree-sitter-agentmark`. It highlights files in editors that use tree-sitter: Zed, Neovim and Helix.
 
 ## Install the language server
 
@@ -280,12 +280,12 @@ After setup, open a `.agent.md` file and expect the same errors as `agentmark ch
 
 ## Tree-sitter grammar
 
-`editors/tree-sitter-agentmark` is a tree-sitter grammar for `.agent.md` files. The generated parser is committed (`src/parser.c`), so you do not need the tree-sitter CLI to use it.
+`editors/tree-sitter-agentmark` is a tree-sitter grammar for `.agent.md` files. The generated parser is committed as `src/parser.c`, so you do not need the tree-sitter CLI to use it.
 
 The grammar name is `agentmark`, its scope is `text.agentmark`, its file type is `agent.md`. It ships two query files in `queries/`:
 
 * `highlights.scm`, the highlighting;
-* `injections.scm`, which highlights a fenced `rust` block (a `## Rust` body) as Rust.
+* `injections.scm`, which highlights a fenced `rust` block as Rust. That block is the body of a `## Rust` heading.
 
 To change the grammar itself, edit `editors/tree-sitter-agentmark/grammar.js`. Then run these in that folder:
 

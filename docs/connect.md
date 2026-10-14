@@ -39,7 +39,9 @@ pub trait Crm: Send + Sync {
 }
 ```
 
-`Email` (`send`) and `Http` (`get`, `post`) are generated the same way. `log` has no verbs and is built in. It writes to stderr and the trace.
+`Email` and `Http` are generated the same way. `Email` has the verb `send`. `Http` has the verbs `get` and `post`.
+
+`log` has no verbs and is built in. It writes to stderr and the trace.
 
 `--mock` runs answer from fixtures. Mock and real runs share all other code.
 
@@ -47,7 +49,9 @@ pub trait Crm: Send + Sync {
 
 ## Write rust/connect.rs
 
-For a real run, the program uses `Connected { crm: Box<dyn Crm>, email: Box<dyn Email>, http: Box<dyn Http> }`. You build it in **`rust/connect.rs`**. The file sits in your project beside `agentmark.toml`. For a single file, put `rust/` next to it.
+For a real run, the program uses `Connected { crm: Box<dyn Crm>, email: Box<dyn Email>, http: Box<dyn Http> }`. You build it in **`rust/connect.rs`**. The file sits in your project beside `agentmark.toml`.
+
+For a single file, put `rust/` next to it.
 
 - `build`, `run` and `trace` create the file once, with a stub for every tool. Each stub fails with `not connected yet: implement Crm::list in rust/connect.rs`.
 - They never change the file again.
@@ -88,7 +92,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 ## Example: a CRM behind an HTTP API
 
-With the dependency above, `Crm::list` can be HTTP-backed. This is a complete `rust/connect.rs`. It reads `GET <base>/<source>` and takes the base URL from the environment. It leaves the other methods to implement.
+With the dependency above, `Crm::list` can be HTTP-backed. This is a complete `rust/connect.rs`. It reads `GET <base>/<source>` and takes the base URL from the environment.
+
+It leaves the other methods to implement.
 
 `build` compiles it. Nothing in the tests calls a network.
 
@@ -158,7 +164,9 @@ pub fn connect() -> Connected {
 
 ## Example: an in-memory CRM that runs offline
 
-This version is what `examples/01-invoice-chaser` needs to run end to end offline. It has an in-memory CRM with two invoices, updated in place. It also has an "email provider" that prints. `http` stays a stub because this program never calls it.
+This version is what `examples/01-invoice-chaser` needs to run end to end offline. It has an in-memory CRM with two invoices, updated in place. It also has an "email provider" that prints.
+
+`http` stays a stub because this program never calls it.
 
 ```rust file=rust/connect.rs
 //! Connect the tools to the real world (this file is yours; `build` never overwrites it).
@@ -254,7 +262,7 @@ pub fn connect() -> Connected {
 }
 ```
 
-With this file in `examples/01-invoice-chaser/rust/`, `agentmark run examples/01-invoice-chaser` reads the invoices from `MemoryCrm`. It asks the real model (set `ANTHROPIC_API_KEY`), prints the reminder through `PrintEmail` and updates the row.
+With this file in `examples/01-invoice-chaser/rust/`, `agentmark run examples/01-invoice-chaser` reads the invoices from `MemoryCrm`. It asks the real model. Set `ANTHROPIC_API_KEY` for that. The run prints the reminder through `PrintEmail` and updates the row.
 
 To try it without a key, point `AGENTMARK_MODEL` at a model file. `AGENTMARK_MODEL=mock:fixtures/01-invoice-chaser/model.json` makes the generated program answer from it, in the same syntax the binder uses. The program below is a copy of the example with that file in `rust/`:
 
