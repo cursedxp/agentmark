@@ -50,6 +50,10 @@ test("[models] matches the compiler: drivers, mock:<path>, local as string or ta
   ok(`[models]\ntest = "mock"\n[models.local]\nbase_url = "https://llm.internal/v1"\n`);
   bad(`[models]\nproduction = "azure:deploy"\n`);
   bad(`[models]\nproduction = "bedrock:model"\n`);
+  // Driver::parse trims the whole string and takes everything after the first colon as the name
+  ok(`[models]\nproduction = "  claude:haiku  "\ndev = "local:my model"\ntest = "mock:fixtures/my model.json"\n`);
+  bad(`[models]\nproduction = "openai:   "\n`);
+  bad(`[models]\nproduction = "claude: "\n`);
   bad(`[models]\nproduction = "openai:"\n`);
   bad(`[models]\nproduction = "local:"\n`);
   bad(`[models]\ndev = "gpt-4"\n`);

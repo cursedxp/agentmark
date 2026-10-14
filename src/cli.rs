@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-mod bind;
+pub mod bind;
 mod build;
 mod check;
 mod docgen;

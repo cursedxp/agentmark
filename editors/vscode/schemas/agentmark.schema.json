@@ -122,7 +122,7 @@
   "definitions": {
     "driver": {
       "type": "string",
-      "pattern": "^(claude(:\\S+)?|openai:\\S+|local:\\S+|mock(:\\S+)?)$",
+      "pattern": "^\\s*(claude(:.*\\S)?|openai:.*\\S|local:.*\\S|mock(:.*\\S)?)\\s*$",
       "description": "A model driver string: claude, claude:<model>, openai:<model>, local:<model>, mock or mock:<path>. azure and bedrock are not supported yet.",
       "examples": [
         "claude",

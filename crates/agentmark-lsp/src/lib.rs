@@ -14,7 +14,7 @@ pub mod workspace;
 use std::error::Error;
 use std::sync::Arc;
 
-use agentmark_rt::{AnthropicModel, MockModel, ModelClient};
+use agentmark_rt::ModelClient;
 use lsp_server::Connection;
 
 pub use actions::{apply, EXPLAIN_PROMPT, GUARD_PROMPT};
@@ -25,11 +25,10 @@ pub fn serve(conn: Connection, model: Option<Arc<dyn ModelClient>>) -> Result<()
     server::Server::new(conn, model).run()
 }
 
-/// The model of a real session: `AGENTMARK_MODEL=mock:<model.json>` (like generated programs), else
-/// Anthropic when `ANTHROPIC_API_KEY` is set, else none.
-pub fn model_from_env() -> Option<Arc<dyn ModelClient>> {
-    if let Some(path) = std::env::var("AGENTMARK_MODEL").ok().and_then(|v| v.strip_prefix("mock:").map(String::from)) {
-        return MockModel::from_file(path).ok().map(|m| Arc::new(m) as Arc<dyn ModelClient>);
-    }
-    AnthropicModel::from_env("claude-sonnet-4-5").ok().map(|m| Arc::new(m) as Arc<dyn ModelClient>)
+/// Serve one client on `conn` with the model of a real session: for each project, the one the binder
+/// uses (`AGENTMARK_MODEL`, else the `[models]` entry `AGENTMARK_ENV` names in that project's
+/// `agentmark.toml`, else Claude; Q240/Q256). Resolved when a model action runs, so edits to
+/// `agentmark.toml` count at once.
+pub fn serve_from_env(conn: Connection) -> Result<(), Box<dyn Error + Sync + Send>> {
+    server::Server::from_env(conn).run()
 }

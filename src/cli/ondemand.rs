@@ -124,7 +124,7 @@ pub(crate) fn resolve(project: &Project) -> Result<bool, Failure> {
     if found.is_empty() {
         return Ok(false);
     }
-    let (model, mock_today) = bind::model_from_env().map_err(Failure::Setup)?;
+    let (model, mock_today) = bind::model_for(bind::provider_config(project)).map_err(Failure::Setup)?;
     let offline = matches!(std::env::var("AGENTMARK_OFFLINE").as_deref(), Ok("1") | Ok("true"));
     let mut produced = Vec::new();
     let mut done: Vec<usize> = Vec::new();
