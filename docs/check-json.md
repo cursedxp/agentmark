@@ -12,7 +12,7 @@
 | key | meaning |
 |---|---|
 | `schema_version` | integer, 1 for this layout; bumped only for a breaking change |
-| `ok` | no error diagnostics **and** (no unverified bindings or `--allow-unverified` given) |
+| `ok` | no error diagnostics, **and** no unverified bindings unless `--allow-unverified` is given |
 | `diagnostics` | every error and warning, ordered by file and line; `severity` is `"error"` or `"warning"`; `line`/`column` are 1-based; `did_you_mean` and `help` may be `null` |
 | `units` | one entry per agent, service, command, function, rule and tool (`kind` = `agent`, `service`, `command`, `function`, `rule`, `tool`; the blocks of a tool are its verbs), in source order; `effects` is the union over its blocks; empty when the project has errors |
 | `units[].blocks[]` | one per trigger, `## Do`, route, command `## Run`, function or rule body, or tool verb; `label` is the heading text (for a function or rule the name) |
@@ -59,9 +59,10 @@ Unused imports and declarations (SPEC 18.2) are ordinary warnings in `diagnostic
   ]
 }
 ```
+
 ## Rules that never change
 
 - The command prints one JSON document on stdout, pretty-printed.
 - The exit code is 0 when `ok` is true and 1 otherwise.
 - The keys above are stable. New keys may be added. None are renamed or removed within v0.x.
-- The VS Code panel (step 16) reads this JSON. It is described in [the editor page](editor.md#what-can-this-program-touch).
+- The VS Code panel reads this JSON. The panel is described in [the editor page](editor.md#what-can-this-program-touch).

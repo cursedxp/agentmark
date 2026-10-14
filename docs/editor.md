@@ -7,7 +7,12 @@
 
 **Jump to:** [Pick your editor](#pick-your-editor) · [Install the language server](#install-the-language-server) · [Settings](#vs-code-settings) · [The touch panel](#what-can-this-program-touch) · [agentmark.toml](#agentmarktoml) · [What the server does](#what-the-language-server-does)
 
-AgentMark files are Markdown, so any editor opens them. AgentMark is a Markdown programming language, and the editor support covers all of it: records, enums, functions, commands, services, tools, the built-in library, library handles, and agents, which are one more kind of declaration.
+AgentMark files are Markdown, so any editor opens them. AgentMark is a Markdown programming language. The editor support covers all of it:
+
+* records, enums and functions;
+* commands, services and tools;
+* the built-in library and library handles;
+* agents, which are one more kind of declaration.
 
 ## Pick your editor
 
@@ -33,11 +38,11 @@ Otherwise you need a Rust toolchain and the AgentMark source. The source is `~/.
 
 1. Run the install command.
 
-```sh
-cargo install --locked --path crates/agentmark-lsp
-```
+   ```sh
+   cargo install --locked --path crates/agentmark-lsp
+   ```
 
-2. Expect `agentmark-lsp` in `~/.cargo/bin`, next to `agentmark` (see the README).
+2. Expect `agentmark-lsp` in `~/.cargo/bin`, next to `agentmark`. The README shows where `agentmark` lives.
 
 The server speaks the protocol on standard input and output and takes no arguments.
 
@@ -49,19 +54,19 @@ Needs Node.js and the language server above. The extension also works without th
 
 1. Go to the extension folder of the AgentMark source and build the package.
 
-```sh
-cd ~/.agentmark/src
-cd editors/vscode
-npm install
-npx @vscode/vsce package
-```
+   ```sh
+   cd ~/.agentmark/src
+   cd editors/vscode
+   npm install
+   npx @vscode/vsce package
+   ```
 
 2. Expect `agentmark-0.1.0.vsix` in the same folder.
-3. Install it from the command line, or from the Extensions view (the `...` menu, "Install from VSIX...").
+3. Install it from the command line, or from the Extensions view. In the view, open the `...` menu and pick "Install from VSIX...".
 
-```sh
-code --install-extension agentmark-0.1.0.vsix
-```
+   ```sh
+   code --install-extension agentmark-0.1.0.vsix
+   ```
 
 4. Open a folder that holds an `agentmark.toml`, or any `.agent.md` file.
 5. Expect the extension to start. Errors and warnings appear as you type.
@@ -70,7 +75,9 @@ code --install-extension agentmark-0.1.0.vsix
 
 ### VS Code settings
 
-Both settings are machine-scoped. A workspace cannot set them, and they are ignored in an untrusted workspace, so a downloaded project cannot make your editor run a program it brought along.
+Both settings are machine-scoped. A workspace cannot set them. They are ignored in an untrusted workspace.
+
+So a downloaded project cannot make your editor run a program it brought along.
 
 | setting | default | meaning |
 |---|---|---|
@@ -95,7 +102,7 @@ Two commands are in the command palette:
 
 ### What can this program touch
 
-The panel shows the answer to the first question a careful reviewer asks. It runs `agentmark check --json` on the project that holds the open file (the nearest folder with an `agentmark.toml`) and prints the result in plain words.
+The panel shows the answer to the first question a careful reviewer asks. It runs `agentmark check --json` on the project that holds the open file. That project is the nearest folder with an `agentmark.toml`. The panel prints the result in plain words.
 
 While the panel is open it refreshes whenever you save a `.agent.md` file, `agentmark.toml` or `tools.toml`. The JSON it reads is described in [docs/check-json.md](check-json.md).
 
@@ -140,12 +147,12 @@ Per command, service, function, tool, rule and agent, the panel shows:
 
 * the **effect class**: `pure` (computes only), `local` (this machine: logs, files), `network` (outside systems), `model` (asks an AI model) or `unverified` (a library nobody approved yet);
 * a plain sentence for each kind of access, for example "can reach the network: crm, email" or "asks the AI model";
-* the tools it can reach, and the same for each block, with a link to its line (a block is a trigger such as `Every day at 09:00`, or a `## Do` block);
+* the tools it can reach, and the same for each block, with a link to its line. A block is a trigger such as `Every day at 09:00`, or a `## Do` block;
 * **Needs your approval**: libraries whose binding still says `- effect: unverified`;
 * **Trusted Rust blocks**: every `## Rust` block, because the compiler cannot verify those;
 * **Problems**: the errors and warnings of `check`, each linked to its line.
 
-A reviewer reads this page before approving an agent. Nothing here was written by hand. It is computed from the code.
+A reviewer reads this page before approving an agent. It shows that the program did not ask for anything it does not need. Nothing here was written by hand. It is computed from the code.
 
 ## Neovim
 
@@ -153,42 +160,44 @@ Needs Neovim 0.11 or newer and the language server above.
 
 1. Add this to your config.
 
-```lua
-vim.filetype.add({ pattern = { [".*%.agent%.md"] = "agentmark" } })
-vim.lsp.config("agentmark", {
-  cmd = { "agentmark-lsp" },
-  filetypes = { "agentmark" },
-  root_markers = { "agentmark.toml" },
-})
-vim.lsp.enable("agentmark")
-```
+   ```lua
+   vim.filetype.add({ pattern = { [".*%.agent%.md"] = "agentmark" } })
+   vim.lsp.config("agentmark", {
+     cmd = { "agentmark-lsp" },
+     filetypes = { "agentmark" },
+     root_markers = { "agentmark.toml" },
+   })
+   vim.lsp.enable("agentmark")
+   ```
 
 2. Open a `.agent.md` file inside a folder that holds `agentmark.toml`.
 3. Expect errors, completion and formatting from the server.
 
-For colours, add the tree-sitter grammar. This needs `nvim-treesitter`, `main` branch. Config files do not expand `~`, so the path below is written as `/Users/you/.agentmark/src`. Write your own absolute path there, or the path of your clone if you did not use the script.
+For colours, add the tree-sitter grammar. This needs `nvim-treesitter`, `main` branch.
+
+Config files do not expand `~`, so the path below is written as `/Users/you/.agentmark/src`. Write your own absolute path there. Use the path of your clone if you did not use the script.
 
 4. Register the parser.
 
-```lua
-vim.api.nvim_create_autocmd("User", {
-  pattern = "TSUpdate",
-  callback = function()
-    require("nvim-treesitter.parsers").agentmark = {
-      install_info = { path = "/Users/you/.agentmark/src/editors/tree-sitter-agentmark" },
-    }
-  end,
-})
-vim.treesitter.language.register("agentmark", "agentmark")
-vim.api.nvim_create_autocmd("FileType", { pattern = "agentmark", callback = function() vim.treesitter.start() end })
-```
+   ```lua
+   vim.api.nvim_create_autocmd("User", {
+     pattern = "TSUpdate",
+     callback = function()
+       require("nvim-treesitter.parsers").agentmark = {
+         install_info = { path = "/Users/you/.agentmark/src/editors/tree-sitter-agentmark" },
+       }
+     end,
+   })
+   vim.treesitter.language.register("agentmark", "agentmark")
+   vim.api.nvim_create_autocmd("FileType", { pattern = "agentmark", callback = function() vim.treesitter.start() end })
+   ```
 
 5. From `~/.agentmark/src`, copy the queries to where Neovim looks for them.
 
-```sh
-mkdir -p ~/.config/nvim/queries/agentmark
-cp editors/tree-sitter-agentmark/queries/*.scm ~/.config/nvim/queries/agentmark/
-```
+   ```sh
+   mkdir -p ~/.config/nvim/queries/agentmark
+   cp editors/tree-sitter-agentmark/queries/*.scm ~/.config/nvim/queries/agentmark/
+   ```
 
 6. Run `:TSInstall agentmark` and reopen the file.
 7. Expect coloured headings, statements and strings. A fenced `rust` block is coloured as Rust.
@@ -201,17 +210,17 @@ Needs the language server above.
 
 1. Add the server and the language to `languages.toml`.
 
-```toml
-[language-server.agentmark-lsp]
-command = "agentmark-lsp"
+   ```toml
+   [language-server.agentmark-lsp]
+   command = "agentmark-lsp"
 
-[[language]]
-name = "agentmark"
-scope = "text.agentmark"
-file-types = [{ glob = "*.agent.md" }]
-roots = ["agentmark.toml"]
-language-servers = ["agentmark-lsp"]
-```
+   [[language]]
+   name = "agentmark"
+   scope = "text.agentmark"
+   file-types = [{ glob = "*.agent.md" }]
+   roots = ["agentmark.toml"]
+   language-servers = ["agentmark-lsp"]
+   ```
 
 2. Open a `.agent.md` file. Expect errors, completion and formatting.
 
@@ -219,19 +228,19 @@ For colours, add the tree-sitter grammar. Use your own absolute path in place of
 
 3. Declare the grammar next to the language entry.
 
-```toml
-[[grammar]]
-name = "agentmark"
-source = { path = "/Users/you/.agentmark/src/editors/tree-sitter-agentmark" }
-```
+   ```toml
+   [[grammar]]
+   name = "agentmark"
+   source = { path = "/Users/you/.agentmark/src/editors/tree-sitter-agentmark" }
+   ```
 
 4. From `~/.agentmark/src`, build it and copy the queries into Helix's runtime folder.
 
-```sh
-hx --grammar build
-mkdir -p ~/.config/helix/runtime/queries/agentmark
-cp editors/tree-sitter-agentmark/queries/*.scm ~/.config/helix/runtime/queries/agentmark/
-```
+   ```sh
+   hx --grammar build
+   mkdir -p ~/.config/helix/runtime/queries/agentmark
+   cp editors/tree-sitter-agentmark/queries/*.scm ~/.config/helix/runtime/queries/agentmark/
+   ```
 
 5. Reopen the file. Expect coloured headings and statements.
 
@@ -243,17 +252,17 @@ Zed starts a language server from an extension, not from a settings file. So thi
 
 1. Make a folder for the extension. Put an `extension.toml` in it that names the grammar. Use your own absolute path in place of `/Users/you/.agentmark/src`.
 
-```toml
-id = "agentmark"
-name = "AgentMark"
-version = "0.1.0"
-schema_version = 1
+   ```toml
+   id = "agentmark"
+   name = "AgentMark"
+   version = "0.1.0"
+   schema_version = 1
 
-[grammars.agentmark]
-repository = "file:///Users/you/.agentmark/src"
-rev = "HEAD"
-path = "editors/tree-sitter-agentmark"
-```
+   [grammars.agentmark]
+   repository = "file:///Users/you/.agentmark/src"
+   rev = "HEAD"
+   path = "editors/tree-sitter-agentmark"
+   ```
 
 2. Add a language folder `languages/agentmark/` in the extension.
 3. Put a `config.toml` in it: `name = "AgentMark"`, `grammar = "agentmark"`, `path_suffixes = ["agent.md"]`.
@@ -263,7 +272,9 @@ path = "editors/tree-sitter-agentmark"
 
 ## Other editors
 
-Point any LSP client at the `agentmark-lsp` binary for files ending in `.agent.md`. Set the project root to the folder that holds `agentmark.toml`. The Neovim and Helix examples above show the shape. Adjust them to the version of your editor.
+Point any LSP client at the `agentmark-lsp` binary for files ending in `.agent.md`. Set the project root to the folder that holds `agentmark.toml`. The Neovim and Helix examples above show the shape.
+
+Adjust them to the version of your editor.
 
 After setup, open a `.agent.md` file and expect the same errors as `agentmark check`.
 
