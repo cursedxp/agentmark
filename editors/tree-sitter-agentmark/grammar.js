@@ -242,7 +242,7 @@ module.exports = grammar({
     // functions) carry properties and/or a fenced Rust body.
     code_block: ($) =>
       seq(
-        choice($.rust_heading, $.binding_heading, $.handle_heading),
+        choice($.rust_heading, $.binding_heading, $.wrapped_heading, $.handle_heading),
         repeat($._body_line),
       ),
 
@@ -266,6 +266,10 @@ module.exports = grammar({
         optional(seq('->', field('type', $.type))),
         $._newline,
       ),
+
+    // `## execute` with `- in:` / `- out:` lines under it: a binding item whose one-line heading would be
+    // longer than 120 characters (Q416)
+    wrapped_heading: ($) => seq('##', field('name', $.identifier), $._newline),
 
     // `## Handle: sqlx.query.Query` gives the Rust type of a handle (SPEC 22.4, Q370)
     handle_heading: ($) =>

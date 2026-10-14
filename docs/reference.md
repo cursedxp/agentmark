@@ -658,7 +658,7 @@ field, constant, and only with a dot a tool source `crm.invoices` (Q41).
 | `12 EUR + 3 days` | error: "Cannot add a duration to money" |
 | `money / money`, `money * money`, `text + text` | error; use interpolation for text |
 
-**Negative numbers.** A `-` written directly before the digits makes a negative `int` or `money` literal (`-5`, `-12.50 EUR`, `number.round(x, -1)`); a `-` directly before a name or a parenthesis negates it, and means `x * -1` (`-n`, `-(a + b)`). Subtraction keeps its spaces (`a - b`); `a -1` is not a subtraction (Q408).
+**Negative numbers.** A `-` written directly before the digits makes a negative `int` or `money` literal (`-5`, `-12.50 EUR`, `number.round(x, -1)`); a `-` directly before a name or a parenthesis negates it, and means `x * -1` (`-n`, `-(a + b)`). Subtraction keeps its spaces (`a - b`); `a -1` is not a subtraction (Q408). `agentmark fmt` prints a negation as written (Q419).
 
 **Text holes hold single values.** A list, a map or a record cannot be written into text as a whole: E400, with the way out ("join" a list of text, write a map entry by entry, name the record's fields) (Q409).
 
@@ -1344,7 +1344,7 @@ library (`# Import: crate sha2`) counts. A hand-written binding (no generated he
 If the tier cannot start at all (no model, no rustdoc), the command prints `agentmark: cannot write the library code for "sha2" on demand: <why>`
 and stops with exit code 1 (`check` goes on to report the unknown item). Q230 to Q235 record the edge cases.
 
-A facade crate such as `sqlx` mostly re-exports other crates (`pub use sqlx_core::query::query`): the binder builds their rustdoc JSON too and merges it into the facade's, so what the facade exports is bound under the facade's name; a generic type with a concrete alias (`SqlitePool = Pool<Sqlite>`) is bound through the alias, and the type-erased `Any` driver is never the one instantiation (Q411, Q412). A `## name(...)` heading of a binding is generated and cannot wrap, so it is exempt from the 120-character limit (Q413).
+A facade crate such as `sqlx` mostly re-exports other crates (`pub use sqlx_core::query::query`): the binder builds their rustdoc JSON too and merges it into the facade's, so what the facade exports is bound under the facade's name; a generic type with a concrete alias (`SqlitePool = Pool<Sqlite>`) is bound through the alias, and the type-erased `Any` driver is never the one instantiation (Q411, Q412). A binding item whose heading would pass 120 characters is written `## name` followed by `- in: a: T, b: U` lines (one per parameter when they do not fit together) and `- out: T`, the words of a `# Function`; an item that does not fit even so stays under `## Not bound` (Q416).
 
 The binder never silently drops an item: everything is bound or listed as not bound. The precise edge cases are
 decisions Q70 to Q82; for example, closures stay skipped because AgentMark has no function type (Q75).

@@ -960,6 +960,10 @@
         {
           "type": "statement_line",
           "named": true
+        },
+        {
+          "type": "wrapped_heading",
+          "named": true
         }
       ]
     }
@@ -5393,6 +5397,22 @@
         ]
       },
       "tool": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wrapped_heading",
+    "named": true,
+    "fields": {
+      "name": {
         "multiple": false,
         "required": true,
         "types": [

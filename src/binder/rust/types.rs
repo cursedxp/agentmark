@@ -400,6 +400,9 @@ pub struct Lifter<'a> {
     pub pending: RefCell<BTreeMap<String, String>>,
     /// Type parameters already known (an impl for `Pool<DB>` reached through the alias `SqlitePool`).
     pub fixed: HashMap<String, RT>,
+    /// Type parameters found free in a handle's type arguments and taken as text (Q418); the rest of
+    /// the item (`fn fetch_one(self) -> O`) reads them the same way.
+    pub adopted: RefCell<HashMap<String, RT>>,
 }
 
 fn utc() -> RT {
@@ -454,6 +457,9 @@ impl Lifter<'_> {
 
     fn generic(&self, name: &str) -> Result<RT, String> {
         if let Some(t) = self.fixed.get(name) {
+            return Ok(t.clone());
+        }
+        if let Some(t) = self.adopted.borrow().get(name) {
             return Ok(t.clone());
         }
         let bounds = self
@@ -563,10 +569,11 @@ impl Lifter<'_> {
             let mut r = self.resolve(a);
             // a type parameter of a handle that nothing but markers constrains (`query_scalar::<DB, O>`:
             // the column read) is text, the AgentMark value that stands for any (Q418)
-            if let RT::Generic(n) = &r {
-                let free = self.bounds.iter().filter(|(x, _)| x == n).all(|(_, b)| b.iter().all(|b| b.marker));
+            if let RT::Generic(n) = r.clone() {
+                let free = self.bounds.iter().filter(|(x, _)| *x == n).all(|(_, b)| b.iter().all(|b| b.marker));
                 if self.catchall && free {
                     r = std_path("String", vec![]);
+                    self.adopted.borrow_mut().insert(n, r.clone());
                 }
             }
             if has_generic(&r) {
@@ -831,7 +838,7 @@ mod tests {
             vec![Bound { name: "AsRef".into(), full: vec![], args: vec![p("str")], output: None, marker: false }],
         )];
         let ctx = LiftCtx::default();
-        let l = Lifter { bounds: &bounds, ctx: &ctx, catchall: false, pending: Default::default(), fixed: Default::default() };
+        let l = Lifter { bounds: &bounds, ctx: &ctx, catchall: false, pending: Default::default(), fixed: Default::default(), adopted: Default::default() };
         assert_eq!(l.value(&RT::Generic("S".into())), Ok(Ty::Text));
         assert!(l.value(&RT::Generic("T".into())).is_err());
     }

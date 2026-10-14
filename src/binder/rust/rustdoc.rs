@@ -917,7 +917,7 @@ impl<'a> Walk<'a> {
         let borrow_reason = if hz.lifetimes { "lifetimes in the public API" } else { "associated types in the signature" };
         let fail = |msg: String| skipped(if borrowy { borrow_reason.to_string() } else { msg });
         let build = |catchall: bool| -> (Shape, Option<String>, BTreeMap<String, String>) {
-        let lifter = Lifter { bounds: &bounds, ctx: &ctx, catchall, pending: RefCell::new(BTreeMap::new()), fixed: owner.as_ref().map(|o| o.fixed.clone()).unwrap_or_default() };
+        let lifter = Lifter { bounds: &bounds, ctx: &ctx, catchall, pending: RefCell::new(BTreeMap::new()), fixed: owner.as_ref().map(|o| o.fixed.clone()).unwrap_or_default(), adopted: Default::default() };
         // a method of a handle type is written with its method name; the handle tells methods apart
         let recv_handle = match recv {
             Recv::None | Recv::Other => None,

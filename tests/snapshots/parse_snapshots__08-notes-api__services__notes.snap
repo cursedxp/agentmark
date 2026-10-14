@@ -8,20 +8,6 @@ imports:
   - span:
       line: 1
       col: 3
-      len: 18
-    doc: ~
-    kind:
-      Crate:
-        name:
-          name: sqlx
-          span:
-            line: 1
-            col: 17
-            len: 4
-        alias: ~
-  - span:
-      line: 2
-      col: 3
       len: 29
     doc: ~
     kind:
@@ -29,7 +15,7 @@ imports:
         path: "../constants.agent.md"
         alias: ~
   - span:
-      line: 3
+      line: 2
       col: 3
       len: 43
     doc: ~
@@ -38,7 +24,7 @@ imports:
         path: "../functions/ensure-schema.agent.md"
         alias: ~
   - span:
-      line: 4
+      line: 3
       col: 3
       len: 36
     doc: ~
@@ -47,13 +33,27 @@ imports:
         path: "../records/new-note.agent.md"
         alias: ~
   - span:
-      line: 5
+      line: 4
       col: 3
       len: 32
     doc: ~
     kind:
       File:
         path: "../records/note.agent.md"
+        alias: ~
+  - span:
+      line: 5
+      col: 3
+      len: 18
+    doc: ~
+    kind:
+      Crate:
+        name:
+          name: sqlx
+          span:
+            line: 5
+            col: 17
+            len: 4
         alias: ~
 decls:
   - Service:

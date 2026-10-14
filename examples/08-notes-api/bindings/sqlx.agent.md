@@ -3,7 +3,6 @@
 # Binding: sqlx
 - crate: sqlx
 - effect: local
-- proposed-effect: local
 
 > Calls `sqlx::any::AnyQueryResult::rows_affected`.
 ## rows_affected(self: handle of sqlx.any.AnyQueryResult) -> int
@@ -67,7 +66,9 @@
   ```
 
 > Execute the query and return the total number of rows affected.
-## execute(self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool) -> handle of sqlx.sqlite.SqliteQueryResult
+## execute
+- in: self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool
+- out: handle of sqlx.sqlite.SqliteQueryResult
   ```rust
   Ok(self_.execute(executor).await?)
   ```
@@ -127,7 +128,9 @@
   ```
 
 > Calls `sqlx::migrate::MigrationType::infer`.
-## migrate_migration_type_infer(migrator: handle of sqlx.migrate.Migrator, reversible: bool) -> handle of sqlx.migrate.MigrationType
+## migrate_migration_type_infer
+- in: migrator: handle of sqlx.migrate.Migrator, reversible: bool
+- out: handle of sqlx.migrate.MigrationType
   ```rust
   Ok(sqlx::migrate::MigrationType::infer(migrator, reversible))
   ```
@@ -210,97 +213,131 @@
   ```
 
 > Sets the name of the database file.
-## filename(self: consume handle of sqlx.sqlite.SqliteConnectOptions, filename: text) -> handle of sqlx.sqlite.SqliteConnectOptions
+## filename
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, filename: text
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.filename(filename))
   ```
 
 > Set the enforcement of foreign key constraints.
-## foreign_keys(self: consume handle of sqlx.sqlite.SqliteConnectOptions, on: bool) -> handle of sqlx.sqlite.SqliteConnectOptions
+## foreign_keys
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, on: bool
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.foreign_keys(on))
   ```
 
 > Set the `SQLITE_OPEN_MEMORY` flag.
-## in_memory(self: consume handle of sqlx.sqlite.SqliteConnectOptions, in_memory: bool) -> handle of sqlx.sqlite.SqliteConnectOptions
+## in_memory
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, in_memory: bool
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.in_memory(in_memory))
   ```
 
 > Set the `SQLITE_OPEN_SHAREDCACHE` flag.
-## shared_cache(self: consume handle of sqlx.sqlite.SqliteConnectOptions, on: bool) -> handle of sqlx.sqlite.SqliteConnectOptions
+## shared_cache
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, on: bool
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.shared_cache(on))
   ```
 
 > Sets the journal mode for the database connection.
-## journal_mode(self: consume handle of sqlx.sqlite.SqliteConnectOptions, mode: consume handle of sqlx.sqlite.SqliteJournalMode) -> handle of sqlx.sqlite.SqliteConnectOptions
+## journal_mode
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, mode: consume handle of sqlx.sqlite.SqliteJournalMode
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.journal_mode(mode))
   ```
 
 > Sets the locking mode for the database connection.
-## locking_mode(self: consume handle of sqlx.sqlite.SqliteConnectOptions, mode: consume handle of sqlx.sqlite.SqliteLockingMode) -> handle of sqlx.sqlite.SqliteConnectOptions
+## locking_mode
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, mode: consume handle of sqlx.sqlite.SqliteLockingMode
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.locking_mode(mode))
   ```
 
 > Sets the access mode to open the database for read-only access.
-## read_only(self: consume handle of sqlx.sqlite.SqliteConnectOptions, read_only: bool) -> handle of sqlx.sqlite.SqliteConnectOptions
+## read_only
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, read_only: bool
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.read_only(read_only))
   ```
 
 > Sets the access mode to create the database file if the file does not exist.
-## create_if_missing(self: consume handle of sqlx.sqlite.SqliteConnectOptions, create: bool) -> handle of sqlx.sqlite.SqliteConnectOptions
+## create_if_missing
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, create: bool
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.create_if_missing(create))
   ```
 
 > Sets the capacity of the connection's statement cache in a number of stored distinct statements.
-## statement_cache_capacity(self: consume handle of sqlx.sqlite.SqliteConnectOptions, capacity: int) -> handle of sqlx.sqlite.SqliteConnectOptions
+## statement_cache_capacity
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, capacity: int
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.statement_cache_capacity(usize::try_from(capacity)?))
   ```
 
 > Sets the synchronous setting for the database connection.
-## synchronous(self: consume handle of sqlx.sqlite.SqliteConnectOptions, synchronous: consume handle of sqlx.sqlite.SqliteSynchronous) -> handle of sqlx.sqlite.SqliteConnectOptions
+## synchronous
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions
+- in: synchronous: consume handle of sqlx.sqlite.SqliteSynchronous
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.synchronous(synchronous))
   ```
 
 > Sets the auto_vacuum setting for the database connection.
-## auto_vacuum(self: consume handle of sqlx.sqlite.SqliteConnectOptions, auto_vacuum: consume handle of sqlx.sqlite.SqliteAutoVacuum) -> handle of sqlx.sqlite.SqliteConnectOptions
+## auto_vacuum
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions
+- in: auto_vacuum: consume handle of sqlx.sqlite.SqliteAutoVacuum
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.auto_vacuum(auto_vacuum))
   ```
 
 > Sets the page_size setting for the database connection.
-## page_size(self: consume handle of sqlx.sqlite.SqliteConnectOptions, page_size: int) -> handle of sqlx.sqlite.SqliteConnectOptions
+## page_size
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, page_size: int
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.page_size(u32::try_from(page_size)?))
   ```
 
 > Set to `true` to signal to SQLite that the database file is on read-only media.
-## immutable(self: consume handle of sqlx.sqlite.SqliteConnectOptions, immutable: bool) -> handle of sqlx.sqlite.SqliteConnectOptions
+## immutable
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, immutable: bool
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.immutable(immutable))
   ```
 
 > Sets the threading mode for the database connection.
-## serialized(self: consume handle of sqlx.sqlite.SqliteConnectOptions, serialized: bool) -> handle of sqlx.sqlite.SqliteConnectOptions
+## serialized
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, serialized: bool
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.serialized(serialized))
   ```
 
 > Set the maximum number of commands to buffer for the worker thread before backpressure is applied.
-## command_buffer_size(self: consume handle of sqlx.sqlite.SqliteConnectOptions, size: int) -> handle of sqlx.sqlite.SqliteConnectOptions
+## command_buffer_size
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, size: int
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.command_buffer_size(usize::try_from(size)?))
   ```
 
 > Set the maximum number of rows to buffer back to the calling task when a query is executed.
-## row_buffer_size(self: consume handle of sqlx.sqlite.SqliteConnectOptions, size: int) -> handle of sqlx.sqlite.SqliteConnectOptions
+## row_buffer_size
+- in: self: consume handle of sqlx.sqlite.SqliteConnectOptions, size: int
+- out: handle of sqlx.sqlite.SqliteConnectOptions
   ```rust
   Ok(self_.row_buffer_size(usize::try_from(size)?))
   ```
@@ -381,17 +418,20 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
 - any_encode_by_ref: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode: assisted tier: mock model has no response for any_decode (sqlx::Any::decode)
+- any_decode: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_type_info_2: rule-written body failed type-check: src/lib.rs:4:24: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
 - any_encode_by_ref_2: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode_2: assisted tier: mock model has no response for any_decode_2 (sqlx::Any::decode)
+- any_decode_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_type_info_3: rule-written body failed type-check: src/lib.rs:4:24: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
 - any_encode_by_ref_3: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode_3: assisted tier: mock model has no response for any_decode_3 (sqlx::Any::decode)
+- any_decode_3: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_type_info_4: rule-written body failed type-check: src/lib.rs:4:24: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
@@ -409,7 +449,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::compatible)
 - any_encode_by_ref_6: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode_6: assisted tier: mock model has no response for any_decode_6 (sqlx::Any::decode)
+- any_decode_6: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_type_info_7: rule-written body failed type-check: src/lib.rs:4:24: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
@@ -417,7 +458,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::compatible)
 - any_encode_by_ref_7: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode_7: assisted tier: mock model has no response for any_decode_7 (sqlx::Any::decode)
+- any_decode_7: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_type_info_8: rule-written body failed type-check: src/lib.rs:4:24: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
@@ -425,35 +467,38 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::compatible)
 - any_encode_by_ref_8: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode_8: assisted tier: mock model has no response for any_decode_8 (sqlx::Any::decode)
+- any_decode_8: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_type_info_9: rule-written body failed type-check: src/lib.rs:4:24: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
 - any_encode: lifetimes in the public API (sqlx::Any::encode)
 - any_encode_by_ref_9: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode_9: assisted tier: mock model has no response for any_decode_9 (sqlx::Any::decode)
+- any_decode_9: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_type_info_10: rule-written body failed type-check: src/lib.rs:4:24: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `sqlx::Any: sqlx::Type<_>`
   > is not satisfied: the trait `sqlx::Type<_>` is not implemented for `sqlx::Any` (sqlx::Any::type_info)
 - any_encode_by_ref_10: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_decode_10: assisted tier: mock model has no response for any_decode_10 (sqlx::Any::decode)
+- any_decode_10: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Any::decode)
 - any_create_database: lifetimes in the public API (sqlx::Any::create_database)
 - any_database_exists: lifetimes in the public API (sqlx::Any::database_exists)
 - any_drop_database: lifetimes in the public API (sqlx::Any::drop_database)
 - any_force_drop_database: lifetimes in the public API (sqlx::Any::force_drop_database)
 - any_encode_by_ref_11: lifetimes in the public API (sqlx::Any::encode_by_ref)
-- any_any_arguments_reserve: assisted tier: mock model has no response for any_any_arguments_reserve
-  > (sqlx::any::AnyArguments::reserve)
-- any_any_arguments_add: assisted tier: mock model has no response for any_any_arguments_add
-  > (sqlx::any::AnyArguments::add)
-- any_any_arguments_len: assisted tier: mock model has no response for any_any_arguments_len
-  > (sqlx::any::AnyArguments::len)
-- any_any_arguments_into_arguments: assisted tier: mock model has no response for any_any_arguments_into_arguments
-  > (sqlx::any::AnyArguments::into_arguments)
-- any_any_connect_options_from_url: assisted tier: mock model has no response for any_any_connect_options_from_url
-  > (sqlx::any::AnyConnectOptions::from_url)
-- any_any_connect_options_to_url_lossy: assisted tier: mock model has no response for
-  > any_any_connect_options_to_url_lossy (sqlx::any::AnyConnectOptions::to_url_lossy)
+- any_any_arguments_reserve: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::any::AnyArguments::reserve)
+- any_any_arguments_add: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::any::AnyArguments::add)
+- any_any_arguments_len: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::any::AnyArguments::len)
+- any_any_arguments_into_arguments: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::any::AnyArguments::into_arguments)
+- any_any_connect_options_from_url: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::any::AnyConnectOptions::from_url)
+- any_any_connect_options_to_url_lossy: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::any::AnyConnectOptions::to_url_lossy)
 - any_any_connect_options_connect: lifetimes in the public API (sqlx::any::AnyConnectOptions::connect)
 - any_any_connect_options_log_statements: parameter `level`: `log::LevelFilter` has no AgentMark type
   > (sqlx::any::AnyConnectOptions::log_statements)
@@ -463,12 +508,14 @@
   > (sqlx::any::AnyRow::columns)
 - any_any_row_try_get_raw: associated types in the signature (sqlx::any::AnyRow::try_get_raw)
 - any_any_row_try_get: lifetimes in the public API (sqlx::any::AnyRow::try_get)
-- any_any_row_index: assisted tier: mock model has no response for any_any_row_index (sqlx::any::AnyRow::index)
-- any_any_row_index_2: assisted tier: mock model has no response for any_any_row_index_2 (sqlx::any::AnyRow::index)
-- any_any_statement_to_owned: assisted tier: mock model has no response for any_any_statement_to_owned
-  > (sqlx::any::AnyStatement::to_owned)
-- any_any_statement_sql: assisted tier: mock model has no response for any_any_statement_sql
-  > (sqlx::any::AnyStatement::sql)
+- any_any_row_index: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::any::AnyRow::index)
+- any_any_row_index_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::any::AnyRow::index)
+- any_any_statement_to_owned: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::any::AnyStatement::to_owned)
+- any_any_statement_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::any::AnyStatement::sql)
 - any_any_statement_parameters: lifetimes in the public API (sqlx::any::AnyStatement::parameters)
 - any_any_statement_columns: lifetimes in the public API (sqlx::any::AnyStatement::columns)
 - any_any_statement_query: lifetimes in the public API (sqlx::any::AnyStatement::query)
@@ -477,19 +524,20 @@
 - any_any_statement_query_as_with: lifetimes in the public API (sqlx::any::AnyStatement::query_as_with)
 - any_any_statement_query_scalar: lifetimes in the public API (sqlx::any::AnyStatement::query_scalar)
 - any_any_statement_query_scalar_with: lifetimes in the public API (sqlx::any::AnyStatement::query_scalar_with)
-- any_any_statement_index: assisted tier: mock model has no response for any_any_statement_index
-  > (sqlx::any::AnyStatement::index)
-- any_any_statement_index_2: assisted tier: mock model has no response for any_any_statement_index_2
-  > (sqlx::any::AnyStatement::index)
-- any_any_value_as_ref: assisted tier: mock model has no response for any_any_value_as_ref (sqlx::any::AnyValue::as_ref)
-- any_any_value_type_info: assisted tier: mock model has no response for any_any_value_type_info
-  > (sqlx::any::AnyValue::type_info)
+- any_any_statement_index: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::any::AnyStatement::index)
+- any_any_statement_index_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::any::AnyStatement::index)
+- any_any_value_as_ref: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::any::AnyValue::as_ref)
+- any_any_value_type_info: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::any::AnyValue::type_info)
 - any_any_value_ref_to_owned: lifetimes in the public API (sqlx::any::AnyValueRef::to_owned)
 - any_any_value_ref_type_info: lifetimes in the public API (sqlx::any::AnyValueRef::type_info)
-- any_any_value_ref_is_null: assisted tier: mock model has no response for any_any_value_ref_is_null
-  > (sqlx::any::AnyValueRef::is_null)
-- types_text_into_inner: assisted tier: mock model has no response for types_text_into_inner
-  > (sqlx::types::Text::into_inner)
+- any_any_value_ref_is_null: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::any::AnyValueRef::is_null)
+- types_text_into_inner: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::types::Text::into_inner)
 - query_map_map: takes a closure and AgentMark has no function type (sqlx::query::Map::map)
 - query_map_try_map: takes a closure and AgentMark has no function type (sqlx::query::Map::try_map)
 - query_map_fetch: takes a closure and AgentMark has no function type (sqlx::query::Map::fetch)
@@ -501,8 +549,8 @@
 - query_map_statement: lifetimes in the public API (sqlx::query::Map::statement)
 - query_map_take_arguments: mutates its receiver (&mut self) (sqlx::query::Map::take_arguments)
 - query_map_persistent: lifetimes in the public API (sqlx::query::Map::persistent)
-- query_query_try_bind: assisted tier: mock model has no response for query_query_try_bind
-  > (sqlx::query::Query::try_bind)
+- query_query_try_bind: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::query::Query::try_bind)
 - query_query_persistent: lifetimes in the public API (sqlx::query::Query::persistent)
 - query_query_map: takes a closure and AgentMark has no function type (sqlx::query::Query::map)
 - query_query_try_map: takes a closure and AgentMark has no function type (sqlx::query::Query::try_map)
@@ -510,45 +558,48 @@
 - query_query_fetch: lifetimes in the public API (sqlx::query::Query::fetch)
 - query_query_fetch_many: lifetimes in the public API (sqlx::query::Query::fetch_many)
 - query_query_fetch_all: lifetimes in the public API (sqlx::query::Query::fetch_all)
-- query_query_fetch_one: assisted tier: mock model has no response for query_query_fetch_one
-  > (sqlx::query::Query::fetch_one)
+- query_query_fetch_one: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::query::Query::fetch_one)
 - query_query_fetch_optional: lifetimes in the public API (sqlx::query::Query::fetch_optional)
-- query_query_sql: assisted tier: mock model has no response for query_query_sql (sqlx::query::Query::sql)
+- query_query_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::query::Query::sql)
 - query_query_statement: lifetimes in the public API (sqlx::query::Query::statement)
 - query_query_take_arguments: mutates its receiver (&mut self) (sqlx::query::Query::take_arguments)
-- query_query_persistent_2: assisted tier: mock model has no response for query_query_persistent_2
-  > (sqlx::query::Query::persistent)
-- query_query_as_bind: assisted tier: mock model has no response for query_query_as_bind (sqlx::query::QueryAs::bind)
+- query_query_persistent_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::query::Query::persistent)
+- query_query_as_bind: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::query::QueryAs::bind)
 - query_query_as_persistent: lifetimes in the public API (sqlx::query::QueryAs::persistent)
 - query_query_as_fetch: lifetimes in the public API (sqlx::query::QueryAs::fetch)
 - query_query_as_fetch_many: lifetimes in the public API (sqlx::query::QueryAs::fetch_many)
 - query_query_as_fetch_all: lifetimes in the public API (sqlx::query::QueryAs::fetch_all)
 - query_query_as_fetch_one: lifetimes in the public API (sqlx::query::QueryAs::fetch_one)
 - query_query_as_fetch_optional: lifetimes in the public API (sqlx::query::QueryAs::fetch_optional)
-- query_query_as_sql: assisted tier: mock model has no response for query_query_as_sql (sqlx::query::QueryAs::sql)
+- query_query_as_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::query::QueryAs::sql)
 - query_query_as_statement: lifetimes in the public API (sqlx::query::QueryAs::statement)
 - query_query_as_take_arguments: mutates its receiver (&mut self) (sqlx::query::QueryAs::take_arguments)
-- query_query_as_persistent_2: assisted tier: mock model has no response for query_query_as_persistent_2
-  > (sqlx::query::QueryAs::persistent)
+- query_query_as_persistent_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::query::QueryAs::persistent)
 - query_query_scalar_persistent: lifetimes in the public API (sqlx::query::QueryScalar::persistent)
 - query_query_scalar_fetch: lifetimes in the public API (sqlx::query::QueryScalar::fetch)
 - query_query_scalar_fetch_many: lifetimes in the public API (sqlx::query::QueryScalar::fetch_many)
-- query_query_scalar_fetch_all: assisted tier: mock model has no response for query_query_scalar_fetch_all
-  > (sqlx::query::QueryScalar::fetch_all)
-- query_query_scalar_sql: assisted tier: mock model has no response for query_query_scalar_sql
-  > (sqlx::query::QueryScalar::sql)
+- query_query_scalar_fetch_all: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::query::QueryScalar::fetch_all)
+- query_query_scalar_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::query::QueryScalar::sql)
 - query_query_scalar_statement: lifetimes in the public API (sqlx::query::QueryScalar::statement)
 - query_query_scalar_take_arguments: mutates its receiver (&mut self) (sqlx::query::QueryScalar::take_arguments)
-- query_query_scalar_persistent_2: assisted tier: mock model has no response for query_query_scalar_persistent_2
-  > (sqlx::query::QueryScalar::persistent)
-- pool_pool_connection_close: assisted tier: mock model has no response for pool_pool_connection_close
-  > (sqlx::pool::PoolConnection::close)
-- pool_pool_connection_close_on_drop: assisted tier: mock model has no response for pool_pool_connection_close_on_drop
-  > (sqlx::pool::PoolConnection::close_on_drop)
-- pool_pool_connection_detach: assisted tier: mock model has no response for pool_pool_connection_detach
-  > (sqlx::pool::PoolConnection::detach)
-- pool_pool_connection_leak: assisted tier: mock model has no response for pool_pool_connection_leak
-  > (sqlx::pool::PoolConnection::leak)
+- query_query_scalar_persistent_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::query::QueryScalar::persistent)
+- pool_pool_connection_close: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::pool::PoolConnection::close)
+- pool_pool_connection_close_on_drop: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::pool::PoolConnection::close_on_drop)
+- pool_pool_connection_detach: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::pool::PoolConnection::detach)
+- pool_pool_connection_leak: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::pool::PoolConnection::leak)
 - pool_pool_connection_acquire: lifetimes in the public API (sqlx::pool::PoolConnection::acquire)
 - pool_pool_connection_begin: lifetimes in the public API (sqlx::pool::PoolConnection::begin)
 - pool_close_event_do_until: associated types in the signature (sqlx::pool::CloseEvent::do_until)
@@ -556,25 +607,29 @@
   > or crate `futures_core` in this scope: use of unresolved module or unlinked crate `futures_core`
   > (sqlx::pool::CloseEvent::is_terminated)
 - query_with: lifetimes in the public API (sqlx::query_with)
-- query_as: assisted tier: mock model has no response for query_as (sqlx::query_as)
+- query_as: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a model
+  > (sqlx::query_as)
 - query_as_with: lifetimes in the public API (sqlx::query_as_with)
-- query_builder_new: assisted tier: mock model has no response for query_builder_new (sqlx::QueryBuilder::new)
+- query_builder_new: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::QueryBuilder::new)
 - query_builder_with_arguments: lifetimes in the public API (sqlx::QueryBuilder::with_arguments)
 - query_builder_push: mutates its receiver (&mut self) (sqlx::QueryBuilder::push)
 - query_builder_push_bind: mutates its receiver (&mut self) (sqlx::QueryBuilder::push_bind)
-- query_builder_separated: assisted tier: mock model has no response for query_builder_separated
-  > (sqlx::QueryBuilder::separated)
+- query_builder_separated: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::QueryBuilder::separated)
 - query_builder_push_values: takes a closure and AgentMark has no function type (sqlx::QueryBuilder::push_values)
 - query_builder_push_tuples: takes a closure and AgentMark has no function type (sqlx::QueryBuilder::push_tuples)
-- query_builder_build: assisted tier: mock model has no response for query_builder_build (sqlx::QueryBuilder::build)
-- query_builder_build_query_as: assisted tier: mock model has no response for query_builder_build_query_as
-  > (sqlx::QueryBuilder::build_query_as)
-- query_builder_build_query_scalar: assisted tier: mock model has no response for query_builder_build_query_scalar
-  > (sqlx::QueryBuilder::build_query_scalar)
+- query_builder_build: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::QueryBuilder::build)
+- query_builder_build_query_as: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::QueryBuilder::build_query_as)
+- query_builder_build_query_scalar: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::QueryBuilder::build_query_scalar)
 - query_builder_reset: mutates its receiver (&mut self) (sqlx::QueryBuilder::reset)
-- query_builder_sql: assisted tier: mock model has no response for query_builder_sql (sqlx::QueryBuilder::sql)
-- query_builder_into_sql: assisted tier: mock model has no response for query_builder_into_sql
-  > (sqlx::QueryBuilder::into_sql)
+- query_builder_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::QueryBuilder::sql)
+- query_builder_into_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::QueryBuilder::into_sql)
 - query_builder_separated_push: mutates its receiver (&mut self) (sqlx::query_builder::Separated::push)
 - query_builder_separated_push_unseparated: mutates its receiver (&mut self)
   > (sqlx::query_builder::Separated::push_unseparated)
@@ -582,7 +637,8 @@
 - query_builder_separated_push_bind_unseparated: mutates its receiver (&mut self)
   > (sqlx::query_builder::Separated::push_bind_unseparated)
 - query_scalar_with: lifetimes in the public API (sqlx::query_scalar_with)
-- raw_sql: assisted tier: mock model has no response for raw_sql (sqlx::raw_sql)
+- raw_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a model
+  > (sqlx::raw_sql)
 - raw_sql_execute: lifetimes in the public API (sqlx::RawSql::execute)
 - raw_sql_execute_many: lifetimes in the public API (sqlx::RawSql::execute_many)
 - raw_sql_fetch: lifetimes in the public API (sqlx::RawSql::fetch)
@@ -590,25 +646,29 @@
 - raw_sql_fetch_all: lifetimes in the public API (sqlx::RawSql::fetch_all)
 - raw_sql_fetch_one: lifetimes in the public API (sqlx::RawSql::fetch_one)
 - raw_sql_fetch_optional: lifetimes in the public API (sqlx::RawSql::fetch_optional)
-- raw_sql_sql: assisted tier: mock model has no response for raw_sql_sql (sqlx::RawSql::sql)
+- raw_sql_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::RawSql::sql)
 - raw_sql_statement: lifetimes in the public API (sqlx::RawSql::statement)
 - raw_sql_take_arguments: lifetimes in the public API (sqlx::RawSql::take_arguments)
-- raw_sql_persistent: assisted tier: mock model has no response for raw_sql_persistent (sqlx::RawSql::persistent)
-- transaction_commit: assisted tier: mock model has no response for transaction_commit (sqlx::Transaction::commit)
-- transaction_rollback: assisted tier: mock model has no response for transaction_rollback (sqlx::Transaction::rollback)
+- raw_sql_persistent: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::RawSql::persistent)
+- transaction_commit: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::Transaction::commit)
+- transaction_rollback: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::Transaction::rollback)
 - transaction_acquire: lifetimes in the public API (sqlx::Transaction::acquire)
 - transaction_begin: lifetimes in the public API (sqlx::Transaction::begin)
 - error_into_database_error: return type: `dyn DatabaseError` has no AgentMark type (sqlx::Error::into_database_error)
 - error_as_database_error: return type: `dyn DatabaseError` has no AgentMark type (sqlx::Error::as_database_error)
 - error_mismatched_types: associated types in the signature (sqlx::error::mismatched_types)
-- migrate_migration_new: assisted tier: mock model has no response for migrate_migration_new
-  > (sqlx::migrate::Migration::new)
-- migrate_migration_type_label: assisted tier: mock model has no response for migrate_migration_type_label
-  > (sqlx::migrate::MigrationType::label)
-- migrate_migration_type_suffix: assisted tier: mock model has no response for migrate_migration_type_suffix
-  > (sqlx::migrate::MigrationType::suffix)
-- migrate_migration_type_file_content: assisted tier: mock model has no response for migrate_migration_type_file_content
-  > (sqlx::migrate::MigrationType::file_content)
+- migrate_migration_new: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::migrate::Migration::new)
+- migrate_migration_type_label: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::migrate::MigrationType::label)
+- migrate_migration_type_suffix: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::migrate::MigrationType::suffix)
+- migrate_migration_type_file_content: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::migrate::MigrationType::file_content)
 - migrate_migrator_new: lifetimes in the public API (sqlx::migrate::Migrator::new)
 - migrate_migrator_set_ignore_missing: return type: `&sqlx_core::migrate::migrator::Migrator` borrows a handle, and a
   > borrow cannot be returned or stored (sqlx::migrate::Migrator::set_ignore_missing)
@@ -617,14 +677,14 @@
 - migrate_migrator_iter: lifetimes in the public API (sqlx::migrate::Migrator::iter)
 - migrate_migrator_run: lifetimes in the public API (sqlx::migrate::Migrator::run)
 - migrate_migrator_undo: lifetimes in the public API (sqlx::migrate::Migrator::undo)
-- sqlite_sqlite_arguments_reserve: assisted tier: mock model has no response for sqlite_sqlite_arguments_reserve
-  > (sqlx::sqlite::SqliteArguments::reserve)
-- sqlite_sqlite_arguments_add: assisted tier: mock model has no response for sqlite_sqlite_arguments_add
-  > (sqlx::sqlite::SqliteArguments::add)
-- sqlite_sqlite_arguments_len: assisted tier: mock model has no response for sqlite_sqlite_arguments_len
-  > (sqlx::sqlite::SqliteArguments::len)
-- sqlite_sqlite_arguments_into_arguments: assisted tier: mock model has no response for
-  > sqlite_sqlite_arguments_into_arguments (sqlx::sqlite::SqliteArguments::into_arguments)
+- sqlite_sqlite_arguments_reserve: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteArguments::reserve)
+- sqlite_sqlite_arguments_add: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteArguments::add)
+- sqlite_sqlite_arguments_len: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteArguments::len)
+- sqlite_sqlite_arguments_into_arguments: not bound yet: no model answer when this file was generated; run `agentmark
+  > bind sqlx --force` with a model (sqlx::sqlite::SqliteArguments::into_arguments)
 - sqlite_sqlite_column_type_info: return type: `&sqlx_sqlite::type_info::SqliteTypeInfo` borrows a handle, and a borrow
   > cannot be returned or stored (sqlx::sqlite::SqliteColumn::type_info)
 - sqlite_locked_sqlite_handle_as_raw_handle: return type:
@@ -642,12 +702,12 @@
   > (sqlx::sqlite::LockedSqliteHandle::set_rollback_hook)
 - sqlite_locked_sqlite_handle_last_error: return type: `handle of sqlx.sqlite.SqliteError` cannot be in a maybe
   > (sqlx::sqlite::LockedSqliteHandle::last_error)
-- sqlite_connection_serialize: assisted tier: mock model has no response for sqlite_connection_serialize
-  > (sqlx::SqliteConnection::serialize)
-- sqlite_connection_deserialize: assisted tier: mock model has no response for sqlite_connection_deserialize
-  > (sqlx::SqliteConnection::deserialize)
-- sqlite_connection_lock_handle: assisted tier: mock model has no response for sqlite_connection_lock_handle
-  > (sqlx::SqliteConnection::lock_handle)
+- sqlite_connection_serialize: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqliteConnection::serialize)
+- sqlite_connection_deserialize: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqliteConnection::deserialize)
+- sqlite_connection_lock_handle: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqliteConnection::lock_handle)
 - sqlite_connection_fetch_many: lifetimes in the public API (sqlx::SqliteConnection::fetch_many)
 - sqlite_connection_fetch_optional: lifetimes in the public API (sqlx::SqliteConnection::fetch_optional)
 - sqlite_connection_prepare_with: lifetimes in the public API (sqlx::SqliteConnection::prepare_with)
@@ -668,8 +728,8 @@
 - sqlite_connection_start_rollback: rule-written body failed type-check: src/lib.rs:4:28: error[E0433]: cannot find
   > module or crate `sqlx_core` in this scope: use of unresolved module or unlinked crate `sqlx_core`
   > (sqlx::SqliteConnection::start_rollback)
-- sqlite_connection_get_transaction_depth: assisted tier: mock model has no response for
-  > sqlite_connection_get_transaction_depth (sqlx::SqliteConnection::get_transaction_depth)
+- sqlite_connection_get_transaction_depth: not bound yet: no model answer when this file was generated; run `agentmark
+  > bind sqlx --force` with a model (sqlx::SqliteConnection::get_transaction_depth)
 - sqlite_connection_shrink_buffers_2: rule-written body failed type-check: src/lib.rs:4:28: error[E0433]: cannot find
   > module or crate `sqlx_core` in this scope: use of unresolved module or unlinked crate `sqlx_core`
   > (sqlx::SqliteConnection::shrink_buffers)
@@ -690,12 +750,12 @@
 - sqlite_connection_revert: lifetimes in the public API (sqlx::SqliteConnection::revert)
 - sqlite_connection_acquire: lifetimes in the public API (sqlx::SqliteConnection::acquire)
 - sqlite_connection_begin_3: lifetimes in the public API (sqlx::SqliteConnection::begin)
-- sqlite_param_type_for_id: assisted tier: mock model has no response for sqlite_param_type_for_id
-  > (sqlx::Sqlite::param_type_for_id)
-- sqlite_return_type_for_id: assisted tier: mock model has no response for sqlite_return_type_for_id
-  > (sqlx::Sqlite::return_type_for_id)
-- sqlite_get_feature_gate: assisted tier: mock model has no response for sqlite_get_feature_gate
-  > (sqlx::Sqlite::get_feature_gate)
+- sqlite_param_type_for_id: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::Sqlite::param_type_for_id)
+- sqlite_return_type_for_id: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::Sqlite::return_type_for_id)
+- sqlite_get_feature_gate: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::Sqlite::get_feature_gate)
 - sqlite_fmt_value_debug: lifetimes in the public API (sqlx::Sqlite::fmt_value_debug)
 - sqlite_type_info: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
@@ -704,7 +764,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode: assisted tier: mock model has no response for sqlite_decode (sqlx::Sqlite::decode)
+- sqlite_decode: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Sqlite::decode)
 - sqlite_type_info_2: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -712,7 +773,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_2: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_2: assisted tier: mock model has no response for sqlite_decode_2 (sqlx::Sqlite::decode)
+- sqlite_decode_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Sqlite::decode)
 - sqlite_type_info_3: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -721,7 +783,8 @@
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode: lifetimes in the public API (sqlx::Sqlite::encode)
 - sqlite_encode_by_ref_3: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_3: assisted tier: mock model has no response for sqlite_decode_3 (sqlx::Sqlite::decode)
+- sqlite_decode_3: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Sqlite::decode)
 - sqlite_type_info_4: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -730,7 +793,8 @@
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_2: lifetimes in the public API (sqlx::Sqlite::encode)
 - sqlite_encode_by_ref_4: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_4: assisted tier: mock model has no response for sqlite_decode_4 (sqlx::Sqlite::decode)
+- sqlite_decode_4: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Sqlite::decode)
 - sqlite_type_info_5: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -748,7 +812,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_7: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_7: assisted tier: mock model has no response for sqlite_decode_7 (sqlx::Sqlite::decode)
+- sqlite_decode_7: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Sqlite::decode)
 - sqlite_type_info_8: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -756,7 +821,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_8: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_8: assisted tier: mock model has no response for sqlite_decode_8 (sqlx::Sqlite::decode)
+- sqlite_decode_8: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Sqlite::decode)
 - sqlite_type_info_9: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -764,7 +830,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_9: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_9: assisted tier: mock model has no response for sqlite_decode_9 (sqlx::Sqlite::decode)
+- sqlite_decode_9: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with a
+  > model (sqlx::Sqlite::decode)
 - sqlite_type_info_10: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -772,28 +839,34 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_10: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_10: assisted tier: mock model has no response for sqlite_decode_10 (sqlx::Sqlite::decode)
-- sqlite_type_info_11: assisted tier: mock model has no response for sqlite_type_info_11 (sqlx::Sqlite::type_info)
-- sqlite_compatible_9: assisted tier: mock model has no response for sqlite_compatible_9 (sqlx::Sqlite::compatible)
+- sqlite_decode_10: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
+- sqlite_type_info_11: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::Sqlite::type_info)
+- sqlite_compatible_9: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_11: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
 - sqlite_decode_11: lifetimes in the public API (sqlx::Sqlite::decode)
 - sqlite_type_info_12: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
 - sqlite_encode_by_ref_12: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_12: assisted tier: mock model has no response for sqlite_decode_12 (sqlx::Sqlite::decode)
+- sqlite_decode_12: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_type_info_13: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
 - sqlite_encode_3: lifetimes in the public API (sqlx::Sqlite::encode)
 - sqlite_encode_by_ref_13: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_13: assisted tier: mock model has no response for sqlite_decode_13 (sqlx::Sqlite::decode)
+- sqlite_decode_13: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_type_info_14: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
 - sqlite_encode_4: lifetimes in the public API (sqlx::Sqlite::encode)
 - sqlite_encode_by_ref_14: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_14: assisted tier: mock model has no response for sqlite_decode_14 (sqlx::Sqlite::decode)
+- sqlite_decode_14: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_type_info_15: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -802,11 +875,15 @@
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_5: lifetimes in the public API (sqlx::Sqlite::encode)
 - sqlite_encode_by_ref_15: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_15: assisted tier: mock model has no response for sqlite_decode_15 (sqlx::Sqlite::decode)
-- sqlite_type_info_16: assisted tier: mock model has no response for sqlite_type_info_16 (sqlx::Sqlite::type_info)
-- sqlite_compatible_11: assisted tier: mock model has no response for sqlite_compatible_11 (sqlx::Sqlite::compatible)
+- sqlite_decode_15: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
+- sqlite_type_info_16: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::Sqlite::type_info)
+- sqlite_compatible_11: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_16: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_16: assisted tier: mock model has no response for sqlite_decode_16 (sqlx::Sqlite::decode)
+- sqlite_decode_16: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_type_info_17: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -814,7 +891,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_17: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_17: assisted tier: mock model has no response for sqlite_decode_17 (sqlx::Sqlite::decode)
+- sqlite_decode_17: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_type_info_18: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -822,7 +900,8 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_18: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_18: assisted tier: mock model has no response for sqlite_decode_18 (sqlx::Sqlite::decode)
+- sqlite_decode_18: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_type_info_19: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
@@ -830,14 +909,16 @@
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
 - sqlite_encode_by_ref_19: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
-- sqlite_decode_19: assisted tier: mock model has no response for sqlite_decode_19 (sqlx::Sqlite::decode)
+- sqlite_decode_19: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_type_info_20: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::type_info)
 - sqlite_compatible_15: rule-written body failed type-check: src/lib.rs:4:27: error[E0107]: missing generics for trait
   > `sqlx::Type`: expected 1 generic argument; src/lib.rs:4:5: error[E0277]: the trait bound `Sqlite: sqlx::Type<_>` is
   > not satisfied: the trait `sqlx::Type<_>` is not implemented for `Sqlite` (sqlx::Sqlite::compatible)
-- sqlite_decode_20: assisted tier: mock model has no response for sqlite_decode_20 (sqlx::Sqlite::decode)
+- sqlite_decode_20: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::Sqlite::decode)
 - sqlite_create_database: lifetimes in the public API (sqlx::Sqlite::create_database)
 - sqlite_database_exists: lifetimes in the public API (sqlx::Sqlite::database_exists)
 - sqlite_drop_database: lifetimes in the public API (sqlx::Sqlite::drop_database)
@@ -850,10 +931,10 @@
 - sqlite_encode_6: lifetimes in the public API (sqlx::Sqlite::encode)
 - sqlite_encode_by_ref_20: lifetimes in the public API (sqlx::Sqlite::encode_by_ref)
 - sqlite_size_hint: lifetimes in the public API (sqlx::Sqlite::size_hint)
-- sqlite_sqlite_error_code: assisted tier: mock model has no response for sqlite_sqlite_error_code
-  > (sqlx::sqlite::SqliteError::code)
-- sqlite_sqlite_connect_options_get_filename: assisted tier: mock model has no response for
-  > sqlite_sqlite_connect_options_get_filename (sqlx::sqlite::SqliteConnectOptions::get_filename)
+- sqlite_sqlite_error_code: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteError::code)
+- sqlite_sqlite_connect_options_get_filename: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqliteConnectOptions::get_filename)
 - sqlite_sqlite_connect_options_busy_timeout: parameter `timeout`: `core::time::Duration` has no AgentMark type
   > (sqlx::sqlite::SqliteConnectOptions::busy_timeout)
 - sqlite_sqlite_connect_options_pragma: lifetimes in the public API (sqlx::sqlite::SqliteConnectOptions::pragma)
@@ -869,10 +950,10 @@
   > obvious instantiation (sqlx::sqlite::SqliteConnectOptions::optimize_on_close)
 - sqlite_sqlite_connect_options_analysis_limit: parameter `limit`: bound `Into<Option<u32>>` has no single obvious
   > instantiation (sqlx::sqlite::SqliteConnectOptions::analysis_limit)
-- sqlite_sqlite_connect_options_from_url: assisted tier: mock model has no response for
-  > sqlite_sqlite_connect_options_from_url (sqlx::sqlite::SqliteConnectOptions::from_url)
-- sqlite_sqlite_connect_options_to_url_lossy: assisted tier: mock model has no response for
-  > sqlite_sqlite_connect_options_to_url_lossy (sqlx::sqlite::SqliteConnectOptions::to_url_lossy)
+- sqlite_sqlite_connect_options_from_url: not bound yet: no model answer when this file was generated; run `agentmark
+  > bind sqlx --force` with a model (sqlx::sqlite::SqliteConnectOptions::from_url)
+- sqlite_sqlite_connect_options_to_url_lossy: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqliteConnectOptions::to_url_lossy)
 - sqlite_sqlite_connect_options_connect: lifetimes in the public API (sqlx::sqlite::SqliteConnectOptions::connect)
 - sqlite_sqlite_connect_options_log_statements: parameter `level`: `log::LevelFilter` has no AgentMark type
   > (sqlx::sqlite::SqliteConnectOptions::log_statements)
@@ -881,14 +962,14 @@
 - sqlite_sqlite_row_columns: return type: `handle of sqlx.sqlite.SqliteColumn` cannot be in a list
   > (sqlx::sqlite::SqliteRow::columns)
 - sqlite_sqlite_row_try_get_raw: lifetimes in the public API (sqlx::sqlite::SqliteRow::try_get_raw)
-- sqlite_sqlite_row_index: assisted tier: mock model has no response for sqlite_sqlite_row_index
-  > (sqlx::sqlite::SqliteRow::index)
-- sqlite_sqlite_row_index_2: assisted tier: mock model has no response for sqlite_sqlite_row_index_2
-  > (sqlx::sqlite::SqliteRow::index)
-- sqlite_sqlite_statement_to_owned: assisted tier: mock model has no response for sqlite_sqlite_statement_to_owned
-  > (sqlx::sqlite::SqliteStatement::to_owned)
-- sqlite_sqlite_statement_sql: assisted tier: mock model has no response for sqlite_sqlite_statement_sql
-  > (sqlx::sqlite::SqliteStatement::sql)
+- sqlite_sqlite_row_index: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteRow::index)
+- sqlite_sqlite_row_index_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteRow::index)
+- sqlite_sqlite_statement_to_owned: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::sqlite::SqliteStatement::to_owned)
+- sqlite_sqlite_statement_sql: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteStatement::sql)
 - sqlite_sqlite_statement_parameters: lifetimes in the public API (sqlx::sqlite::SqliteStatement::parameters)
 - sqlite_sqlite_statement_columns: lifetimes in the public API (sqlx::sqlite::SqliteStatement::columns)
 - sqlite_sqlite_statement_query: lifetimes in the public API (sqlx::sqlite::SqliteStatement::query)
@@ -898,43 +979,48 @@
 - sqlite_sqlite_statement_query_scalar: lifetimes in the public API (sqlx::sqlite::SqliteStatement::query_scalar)
 - sqlite_sqlite_statement_query_scalar_with: lifetimes in the public API
   > (sqlx::sqlite::SqliteStatement::query_scalar_with)
-- sqlite_sqlite_statement_index: assisted tier: mock model has no response for sqlite_sqlite_statement_index
-  > (sqlx::sqlite::SqliteStatement::index)
-- sqlite_sqlite_statement_index_2: assisted tier: mock model has no response for sqlite_sqlite_statement_index_2
-  > (sqlx::sqlite::SqliteStatement::index)
-- sqlite_sqlite_value_as_ref: assisted tier: mock model has no response for sqlite_sqlite_value_as_ref
-  > (sqlx::sqlite::SqliteValue::as_ref)
-- sqlite_sqlite_value_type_info: assisted tier: mock model has no response for sqlite_sqlite_value_type_info
-  > (sqlx::sqlite::SqliteValue::type_info)
-- sqlite_sqlite_value_ref_to_owned: assisted tier: mock model has no response for sqlite_sqlite_value_ref_to_owned
-  > (sqlx::sqlite::SqliteValueRef::to_owned)
-- sqlite_sqlite_value_ref_type_info: assisted tier: mock model has no response for sqlite_sqlite_value_ref_type_info
-  > (sqlx::sqlite::SqliteValueRef::type_info)
-- sqlite_sqlite_value_ref_is_null: assisted tier: mock model has no response for sqlite_sqlite_value_ref_is_null
-  > (sqlx::sqlite::SqliteValueRef::is_null)
-- sqlite_pool_connect_with: assisted tier: mock model has no response for sqlite_pool_connect_with
-  > (sqlx::SqlitePool::connect_with)
-- sqlite_pool_connect_lazy: assisted tier: mock model has no response for sqlite_pool_connect_lazy
-  > (sqlx::SqlitePool::connect_lazy)
-- sqlite_pool_connect_lazy_with: assisted tier: mock model has no response for sqlite_pool_connect_lazy_with
-  > (sqlx::SqlitePool::connect_lazy_with)
-- sqlite_pool_acquire: assisted tier: mock model has no response for sqlite_pool_acquire (sqlx::SqlitePool::acquire)
+- sqlite_sqlite_statement_index: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteStatement::index)
+- sqlite_sqlite_statement_index_2: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteStatement::index)
+- sqlite_sqlite_value_as_ref: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteValue::as_ref)
+- sqlite_sqlite_value_type_info: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteValue::type_info)
+- sqlite_sqlite_value_ref_to_owned: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::sqlite::SqliteValueRef::to_owned)
+- sqlite_sqlite_value_ref_type_info: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::sqlite::SqliteValueRef::type_info)
+- sqlite_sqlite_value_ref_is_null: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqliteValueRef::is_null)
+- sqlite_pool_connect_with: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqlitePool::connect_with)
+- sqlite_pool_connect_lazy: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqlitePool::connect_lazy)
+- sqlite_pool_connect_lazy_with: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqlitePool::connect_lazy_with)
+- sqlite_pool_acquire: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::SqlitePool::acquire)
 - sqlite_pool_try_acquire: return type: `handle of sqlx.pool.PoolConnection` cannot be in a maybe
   > (sqlx::SqlitePool::try_acquire)
-- sqlite_pool_begin: assisted tier: mock model has no response for sqlite_pool_begin (sqlx::SqlitePool::begin)
+- sqlite_pool_begin: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::SqlitePool::begin)
 - sqlite_pool_try_begin: lifetimes in the public API (sqlx::SqlitePool::try_begin)
 - sqlite_pool_begin_with: lifetimes in the public API (sqlx::SqlitePool::begin_with)
 - sqlite_pool_try_begin_with: lifetimes in the public API (sqlx::SqlitePool::try_begin_with)
-- sqlite_pool_close: assisted tier: mock model has no response for sqlite_pool_close (sqlx::SqlitePool::close)
-- sqlite_pool_is_closed: assisted tier: mock model has no response for sqlite_pool_is_closed
-  > (sqlx::SqlitePool::is_closed)
-- sqlite_pool_close_event: assisted tier: mock model has no response for sqlite_pool_close_event
-  > (sqlx::SqlitePool::close_event)
-- sqlite_pool_size: assisted tier: mock model has no response for sqlite_pool_size (sqlx::SqlitePool::size)
-- sqlite_pool_num_idle: assisted tier: mock model has no response for sqlite_pool_num_idle (sqlx::SqlitePool::num_idle)
+- sqlite_pool_close: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::SqlitePool::close)
+- sqlite_pool_is_closed: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::SqlitePool::is_closed)
+- sqlite_pool_close_event: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqlitePool::close_event)
+- sqlite_pool_size: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force` with
+  > a model (sqlx::SqlitePool::size)
+- sqlite_pool_num_idle: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx --force`
+  > with a model (sqlx::SqlitePool::num_idle)
 - sqlite_pool_connect_options: associated types in the signature (sqlx::SqlitePool::connect_options)
-- sqlite_pool_set_connect_options: assisted tier: mock model has no response for sqlite_pool_set_connect_options
-  > (sqlx::SqlitePool::set_connect_options)
+- sqlite_pool_set_connect_options: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::SqlitePool::set_connect_options)
 - sqlite_pool_options: return type: `&sqlx_core::pool::options::PoolOptions<DB>` borrows a handle, and a borrow cannot
   > be returned or stored (sqlx::SqlitePool::options)
 - sqlite_pool_fetch_many: lifetimes in the public API (sqlx::SqlitePool::fetch_many)
@@ -942,16 +1028,16 @@
 - sqlite_pool_prepare_with: lifetimes in the public API (sqlx::SqlitePool::prepare_with)
 - sqlite_pool_acquire_2: lifetimes in the public API (sqlx::SqlitePool::acquire)
 - sqlite_pool_begin_2: lifetimes in the public API (sqlx::SqlitePool::begin)
-- sqlite_sqlite_pool_options_new: assisted tier: mock model has no response for sqlite_sqlite_pool_options_new
-  > (sqlx::sqlite::SqlitePoolOptions::new)
-- sqlite_sqlite_pool_options_max_connections: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_max_connections (sqlx::sqlite::SqlitePoolOptions::max_connections)
-- sqlite_sqlite_pool_options_get_max_connections: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_get_max_connections (sqlx::sqlite::SqlitePoolOptions::get_max_connections)
-- sqlite_sqlite_pool_options_min_connections: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_min_connections (sqlx::sqlite::SqlitePoolOptions::min_connections)
-- sqlite_sqlite_pool_options_get_min_connections: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_get_min_connections (sqlx::sqlite::SqlitePoolOptions::get_min_connections)
+- sqlite_sqlite_pool_options_new: not bound yet: no model answer when this file was generated; run `agentmark bind sqlx
+  > --force` with a model (sqlx::sqlite::SqlitePoolOptions::new)
+- sqlite_sqlite_pool_options_max_connections: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::max_connections)
+- sqlite_sqlite_pool_options_get_max_connections: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::get_max_connections)
+- sqlite_sqlite_pool_options_min_connections: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::min_connections)
+- sqlite_sqlite_pool_options_get_min_connections: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::get_min_connections)
 - sqlite_sqlite_pool_options_acquire_time_level: parameter `level`: `log::LevelFilter` has no AgentMark type
   > (sqlx::sqlite::SqlitePoolOptions::acquire_time_level)
 - sqlite_sqlite_pool_options_acquire_slow_level: parameter `level`: `log::LevelFilter` has no AgentMark type
@@ -972,24 +1058,24 @@
   > obvious instantiation (sqlx::sqlite::SqlitePoolOptions::idle_timeout)
 - sqlite_sqlite_pool_options_get_idle_timeout: return type: `core::time::Duration` has no AgentMark type
   > (sqlx::sqlite::SqlitePoolOptions::get_idle_timeout)
-- sqlite_sqlite_pool_options_test_before_acquire: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_test_before_acquire (sqlx::sqlite::SqlitePoolOptions::test_before_acquire)
-- sqlite_sqlite_pool_options_get_test_before_acquire: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_get_test_before_acquire (sqlx::sqlite::SqlitePoolOptions::get_test_before_acquire)
+- sqlite_sqlite_pool_options_test_before_acquire: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::test_before_acquire)
+- sqlite_sqlite_pool_options_get_test_before_acquire: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::get_test_before_acquire)
 - sqlite_sqlite_pool_options_after_connect: takes a closure and AgentMark has no function type
   > (sqlx::sqlite::SqlitePoolOptions::after_connect)
 - sqlite_sqlite_pool_options_before_acquire: takes a closure and AgentMark has no function type
   > (sqlx::sqlite::SqlitePoolOptions::before_acquire)
 - sqlite_sqlite_pool_options_after_release: takes a closure and AgentMark has no function type
   > (sqlx::sqlite::SqlitePoolOptions::after_release)
-- sqlite_sqlite_pool_options_connect: assisted tier: mock model has no response for sqlite_sqlite_pool_options_connect
-  > (sqlx::sqlite::SqlitePoolOptions::connect)
-- sqlite_sqlite_pool_options_connect_with: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_connect_with (sqlx::sqlite::SqlitePoolOptions::connect_with)
-- sqlite_sqlite_pool_options_connect_lazy: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_connect_lazy (sqlx::sqlite::SqlitePoolOptions::connect_lazy)
-- sqlite_sqlite_pool_options_connect_lazy_with: assisted tier: mock model has no response for
-  > sqlite_sqlite_pool_options_connect_lazy_with (sqlx::sqlite::SqlitePoolOptions::connect_lazy_with)
+- sqlite_sqlite_pool_options_connect: not bound yet: no model answer when this file was generated; run `agentmark bind
+  > sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::connect)
+- sqlite_sqlite_pool_options_connect_with: not bound yet: no model answer when this file was generated; run `agentmark
+  > bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::connect_with)
+- sqlite_sqlite_pool_options_connect_lazy: not bound yet: no model answer when this file was generated; run `agentmark
+  > bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::connect_lazy)
+- sqlite_sqlite_pool_options_connect_lazy_with: not bound yet: no model answer when this file was generated; run
+  > `agentmark bind sqlx --force` with a model (sqlx::sqlite::SqlitePoolOptions::connect_lazy_with)
 - any_connection_fetch_many: lifetimes in the public API (sqlx::AnyConnection::fetch_many)
 - any_connection_fetch_optional: lifetimes in the public API (sqlx::AnyConnection::fetch_optional)
 - any_connection_prepare_with: lifetimes in the public API (sqlx::AnyConnection::prepare_with)

@@ -384,12 +384,21 @@ impl Printer {
         self.group(from);
         for item in &b.items {
             self.blank();
-            let mut h = format!("## {}({})", item.name.name, params_text(&item.params));
-            if let Some(o) = &item.out {
-                h.push_str(" -> ");
-                h.push_str(&type_text(o));
+            // the one-line heading, or `## name` with `- in:` / `- out:` lines when it would pass 120 (Q416)
+            let params: Vec<String> = item.params.iter().map(|p| params_text(std::slice::from_ref(p))).collect();
+            let out = item.out.as_ref().map(type_text);
+            let lines = crate::binder::core::model::item_lines(&item.name.name, &params, out.as_deref()).unwrap_or_else(|| {
+                let mut h = format!("## {}({})", item.name.name, params.join(", "));
+                if let Some(o) = &out {
+                    h.push_str(&format!(" -> {o}"));
+                }
+                vec![h]
+            });
+            let mut lines = lines.into_iter();
+            self.heading(&item.doc, item.span.line, lines.next().unwrap());
+            for l in lines {
+                self.push(0, 0, l);
             }
-            self.heading(&item.doc, item.span.line, h);
             self.fence(1, &item.rust);
         }
         for h in &b.handles {

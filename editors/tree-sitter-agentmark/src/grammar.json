@@ -1283,6 +1283,10 @@
             },
             {
               "type": "SYMBOL",
+              "name": "wrapped_heading"
+            },
+            {
+              "type": "SYMBOL",
               "name": "handle_heading"
             }
           ]
@@ -1442,6 +1446,27 @@
               "type": "BLANK"
             }
           ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_newline"
+        }
+      ]
+    },
+    "wrapped_heading": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "##"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
         },
         {
           "type": "SYMBOL",

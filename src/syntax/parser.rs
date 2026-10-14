@@ -661,6 +661,17 @@ impl<'l> Builder<'l> {
         allowed: &[&str],
         what: &str,
     ) -> Vec<Prop<'n, 'l>> {
+        self.props_with(nodes, allowed, &[], what)
+    }
+
+    /// [`Self::props`] where the keys in `repeatable` may be given more than once.
+    fn props_with<'n>(
+        &mut self,
+        nodes: &'n [Node<'l>],
+        allowed: &[&str],
+        repeatable: &[&str],
+        what: &str,
+    ) -> Vec<Prop<'n, 'l>> {
         let mut out: Vec<Prop<'n, 'l>> = Vec::new();
         for n in nodes {
             if n.fence.is_some() {
@@ -696,7 +707,7 @@ impl<'l> Builder<'l> {
                 self.rejected_prop = true;
                 continue;
             }
-            if out.iter().any(|p| p.key.name == key.name) {
+            if !repeatable.contains(&key.name.as_str()) && out.iter().any(|p| p.key.name == key.name) {
                 self.error(
                     E_DUP_PROP,
                     key.span,
@@ -1376,9 +1387,11 @@ impl<'l> Builder<'l> {
                 }
                 continue;
             }
-            let Some((iname, params, out)) =
+            let Some((iname, params, out)) = (if h2.text.contains('(') {
                 self.parse(|g| &g.binding_item, &h2.text, h2.line_no, h2.col)
-            else {
+            } else {
+                self.wrapped_item(h2, &nodes)
+            }) else {
                 continue;
             };
             let Some(rust) = self.fence_in(&nodes, h2, &iname.name) else {
@@ -1405,6 +1418,19 @@ impl<'l> Builder<'l> {
             handles,
             not_bound,
         }))
+    }
+
+    /// A binding item whose signature does not fit on one line (Q416): `## name`, then `- in:` lines
+    /// (they add up) and `- out:`, the words of a `# Function`, then the fenced code.
+    fn wrapped_item(&mut self, h2: &'l Line, nodes: &[Node<'l>]) -> Option<(Ident, Vec<Param>, Option<TypeExpr>)> {
+        let name = self.parse(|g| &g.single_name, &h2.text, h2.line_no, h2.col)?;
+        let props = self.props_with(nodes, &["in", "out"], &["in"], "a binding item");
+        let mut params = Vec::new();
+        for p in props.iter().filter(|p| p.key.name == "in") {
+            params.extend(self.value(|g| &g.params, p).unwrap_or_default());
+        }
+        let out = props.iter().find(|p| p.key.name == "out").and_then(|p| self.value(|g| &g.ty, p));
+        Some((name, params, out))
     }
 
     /// Does the heading match `pick` (without reporting a failure)?

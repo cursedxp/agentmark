@@ -8,6 +8,15 @@ imports:
   - span:
       line: 1
       col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
       len: 18
     doc: ~
     kind:
@@ -15,18 +24,9 @@ imports:
         name:
           name: sqlx
           span:
-            line: 1
+            line: 2
             col: 17
             len: 4
-        alias: ~
-  - span:
-      line: 2
-      col: 3
-      len: 29
-    doc: ~
-    kind:
-      File:
-        path: "../constants.agent.md"
         alias: ~
 decls:
   - Function:
@@ -72,11 +72,11 @@ decls:
           col: 8
           len: 14
       effect:
-        value: Network
+        value: Local
         span:
           line: 9
           col: 11
-          len: 7
+          len: 5
       body:
         - span:
             line: 10

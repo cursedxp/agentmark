@@ -62,7 +62,42 @@ pub struct Sig {
     pub ret: Option<Ty>,
 }
 
+/// SPEC 18.3: no line over 120 characters.
+pub const MAX_LINE: usize = 120;
+
+/// The lines of a binding item above its code (Q416): the one-line heading `## name(a: T) -> R` when it fits in
+/// 120 characters; otherwise `## name` followed by `- in: a: T, b: U` (one `- in:` line per parameter when the
+/// parameters together do not fit) and `- out: R`, the words of a `# Function`. `None` when even that does not fit.
+pub fn item_lines(name: &str, params: &[String], out: Option<&str>) -> Option<Vec<String>> {
+    let one = match out {
+        Some(r) => format!("## {name}({}) -> {r}", params.join(", ")),
+        None => format!("## {name}({})", params.join(", ")),
+    };
+    if one.chars().count() <= MAX_LINE {
+        return Some(vec![one]);
+    }
+    let mut lines = vec![format!("## {name}")];
+    let joined = format!("- in: {}", params.join(", "));
+    if params.is_empty() {
+    } else if joined.chars().count() <= MAX_LINE {
+        lines.push(joined);
+    } else {
+        lines.extend(params.iter().map(|p| format!("- in: {p}")));
+    }
+    if let Some(r) = out {
+        lines.push(format!("- out: {r}"));
+    }
+    lines.iter().all(|l| l.chars().count() <= MAX_LINE).then_some(lines)
+}
+
 impl Sig {
+    /// The lines of this item above its code (see [`item_lines`]).
+    pub fn heading_lines(&self, name: &str) -> Option<Vec<String>> {
+        let params: Vec<String> = self.params.iter().map(|p| format!("{}: {}", p.name, p.ty)).collect();
+        let ret = self.ret.as_ref().map(|r| r.to_string());
+        item_lines(name, &params, ret.as_deref())
+    }
+
     /// `name(a: text, b: int) -> bytes`, the text after `## ` in a binding file.
     pub fn heading(&self, name: &str) -> String {
         let params: Vec<String> = self

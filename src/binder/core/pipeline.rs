@@ -70,6 +70,16 @@ pub async fn run_tiers(
         handle_types: Default::default(),
     };
     for item in &ci.items {
+        let too_long = match &item.shape {
+            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => heading_too_long(item, sig),
+            Shape::Skipped { .. } => None,
+        };
+        if let Some(reason) = too_long {
+            out.not_bound.push((item.name.clone(), with_path(item, &reason)));
+            out.counts.skipped += 1;
+            out.placements.push((item.name.clone(), Tier::Skipped));
+            continue;
+        }
         let tier = match &item.shape {
             Shape::Direct { sig, body, verify } => {
                 let checked = if *verify {
@@ -135,6 +145,14 @@ pub async fn run_tiers(
         }
     }
     out
+}
+
+/// SPEC 18.3: no line over 120 characters. A heading that does not fit is written over several lines (Q416);
+/// an item whose signature does not fit even then is listed as not bound (Q110).
+fn heading_too_long(item: &Item, sig: &Sig) -> Option<String> {
+    sig.heading_lines(item.heading.as_deref().unwrap_or(&item.name))
+        .is_none()
+        .then(|| format!("its signature does not fit in {} characters even over several lines (SPEC 18.3)", super::model::MAX_LINE))
 }
 
 fn push_bound(out: &mut BoundCrate, item: &Item, sig: &Sig, body: String, tier: Tier) {

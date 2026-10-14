@@ -228,7 +228,12 @@ pub fn render_item(it: &BoundItem, code_lang: &str) -> String {
         doc_line(&it.summary)
     };
     o.push_str(&one_line_doc(&doc));
-    o.push_str(&format!("## {}\n", it.sig.heading(it.heading.as_deref().unwrap_or(&it.name))));
+    // the pipeline only binds an item whose lines fit (Q416)
+    let lines = it.sig.heading_lines(it.heading.as_deref().unwrap_or(&it.name)).unwrap_or_else(|| vec![format!("## {}", it.sig.heading(&it.name))]);
+    for l in lines {
+        o.push_str(&l);
+        o.push('\n');
+    }
     o.push_str(&format!("  ```{code_lang}\n"));
     for l in it.body.lines() {
         if l.is_empty() {

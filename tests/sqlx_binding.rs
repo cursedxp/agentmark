@@ -53,7 +53,9 @@ fn example_08_binding_is_what_the_binder_makes_of_sqlx() {
     let d = temp("sqlx-bind");
     let made = generate(&d);
     let kept = std::fs::read_to_string(format!("{ROOT}/examples/08-notes-api/bindings/sqlx.agent.md")).unwrap();
-    assert_eq!(kept, made.replace("- effect: unverified", "- effect: local"));
+    // approving a binding is editing its effect line; the approved sha2 file has no proposed-effect line either
+    let approved: String = made.replace("- effect: unverified", "- effect: local").lines().filter(|l| !l.starts_with("- proposed-effect:")).map(|l| format!("{l}\n")).collect();
+    assert_eq!(kept, approved);
 }
 
 #[test]
@@ -67,7 +69,6 @@ fn the_items_example_08_calls_are_bound_as_the_example_writes_them() {
         "## query_scalar(sql: text) -> handle of sqlx.query.QueryScalar",
         "## bind(self: consume handle of sqlx.query.Query, value: text) -> handle of sqlx.query.Query",
         "## bind(self: consume handle of sqlx.query.QueryScalar, value: text) -> handle of sqlx.query.QueryScalar",
-        "## execute(self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool) -> handle of sqlx.sqlite.SqliteQueryResult",
         "## fetch_one(self: consume handle of sqlx.query.QueryScalar, executor: handle of sqlx.SqlitePool) -> text",
         "## fetch_optional(self: consume handle of sqlx.query.QueryScalar, executor: handle of sqlx.SqlitePool) -> maybe text",
         "## last_insert_rowid(self: handle of sqlx.sqlite.SqliteQueryResult) -> int",
@@ -75,6 +76,11 @@ fn the_items_example_08_calls_are_bound_as_the_example_writes_them() {
     ] {
         assert!(made.lines().any(|l| l == want), "missing {want}");
     }
+    // a heading over 120 characters is written over lines, never longer than the limit (Q416)
+    assert!(made.contains(
+        "## execute\n- in: self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool\n- out: handle of sqlx.sqlite.SqliteQueryResult\n"
+    ));
+    assert!(made.lines().all(|l| l.chars().count() <= 120));
     // the instantiation is Sqlite, never the type-erased Any driver
     assert!(made.contains("sqlx::query::Query<'static, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'static>>"));
     assert!(made.contains("sqlx::query::QueryScalar<'static, sqlx::Sqlite, String, sqlx::sqlite::SqliteArguments<'static>>"));
