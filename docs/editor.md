@@ -128,6 +128,9 @@ deny = ["prompt-in-loop", "missing-doc"]
 [rust.dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+[crates]
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+
 [lsp]
 model_actions = false
 
@@ -146,6 +149,7 @@ base_url = "http://localhost:11434/v1"
 | `targets` | `["rust"]`, the only target in v0.1 |
 | `[lint] deny` | lint rules that are errors instead of warnings: `long-file`, `magic-value`, `unnamed-guard`, `duplicate-rule`, `prompt-in-loop`, `missing-doc`, `vague-name` (see section 18.4 of [the reference](reference.md)) |
 | `[rust.dependencies]` | copied into the `[dependencies]` of the generated `Cargo.toml` |
+| `[crates]` | extra Rust crates a `## Rust` block or binding may use (section 22.4 of [the reference](reference.md)): a version string, or a table with `version` and optional `features` |
 | `[lsp] model_actions` | `true` turns on the optional model-backed code actions below; off by default |
 | `[models]` | environment name to model driver, picked by `AGENTMARK_ENV` (section 19 of [the reference](reference.md)); `[models.local] base_url` is the server for `local:<model>` drivers |
 
