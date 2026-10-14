@@ -38,7 +38,11 @@ fn copy_dir(from: &Path, to: &Path) {
 
 #[test]
 fn the_vscode_extension_builds_tests_and_packages() {
-    let tmp = tempfile::tempdir().unwrap();
+    // vsce mishandles a working copy under a path segment that starts with `-` (a TMPDIR such as
+    // /private/tmp/-x/), so the copy lives inside the worktree's target folder, removed afterwards
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("target");
+    std::fs::create_dir_all(&base).unwrap();
+    let tmp = tempfile::Builder::new().prefix(&format!("vscode-ext-{}-", std::process::id())).tempdir_in(&base).unwrap();
     let scratch = tmp.path().join("scratch");
     std::fs::create_dir_all(&scratch).unwrap();
     let npm = Command::new("npm")

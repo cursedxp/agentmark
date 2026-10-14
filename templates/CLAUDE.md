@@ -23,7 +23,8 @@ Run `check` after every edit, not at the end. A file that was green five edits a
 
 * Never write Rust, except inside a `## Rust: <name>` block when the human asked for it or no bound library does the job. Never edit generated code under `target/` or an `-o` output folder; change the `.agent.md` source.
 * Never edit `rust/connect.rs` beyond filling in the tool implementations the human asked for.
-* Effect lines are for humans. Never change `- effect: unverified` to anything else in a `bindings/*.agent.md` file, never write an `- effect:` line on a `## Rust` block to make an error go away, and never loosen a block's tools to silence `check`. Show the human what the library or block can touch and let them approve it. `--allow-unverified` is for exploring, not for finishing.
+* Effect lines in `bindings/*.agent.md` are for humans to approve. Never change `- effect: unverified` there, and never loosen a block's tools to silence `check`. Show the human what the library can touch and let them approve it. `--allow-unverified` is for exploring, not for finishing.
+* A `## Rust` block needs an `- effect:` line. Declare the honest class (never a weaker one to pass `check`) and tell the human, because that line is trusted, not verified.
 * Keep a block small: one statement per line, at most 120 characters, at most 3 levels of nesting (`check` enforces this). Put a `>` description above every agent, record, rule and function.
 * Tools come from `tools.toml`. Do not call a tool or a verb that is not listed there; add it to the manifest only when the human asks.
 * Follow every `ask model` with a `guard:` on its answer (the lint `prompt-in-loop` wants it inside a `for each`). Name a money, duration or URL literal used more than once as a `# Constant` (the examples keep them in `constants.agent.md`).

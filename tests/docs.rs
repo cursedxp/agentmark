@@ -753,6 +753,35 @@ fn check_json_doc_matches_the_real_output() {
 /// Files a doc may name that live in the user's project or editor setup, not in this repository.
 const USER_SIDE_PATHS: [&str; 1] = ["languages/agentmark/"];
 
+/// Paths in the fenced shell commands of `text` (`sh`/`bash` blocks): every word with a `/` that is
+/// not an option, a variable, a home path, an absolute path or a placeholder.
+fn shell_paths(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_sh = false;
+    let mut in_fence = false;
+    for line in text.lines() {
+        if let Some((_, info)) = fence_len(line) {
+            in_fence = !in_fence;
+            in_sh = in_fence && matches!(info.split_whitespace().next(), Some("sh" | "bash"));
+            continue;
+        }
+        if !in_sh {
+            continue;
+        }
+        for w in line.split_whitespace() {
+            let w = w.trim_matches(|c| c == '"' || c == '\'');
+            if w.contains('/') && !w.starts_with(['-', '~', '/', '$', '<', '@']) && !w.contains("://") {
+                // `dir/*.scm` names the folder
+                let w = w.split('*').next().unwrap();
+                out.push(w.to_string());
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Every path-looking token of `text` with a `/` in it must exist in the repository, in the
 /// tree-sitter folder (the queries are named relative to it), or be a known user-side path.
 fn missing_paths(text: &str) -> Vec<String> {
@@ -767,7 +796,10 @@ fn missing_paths(text: &str) -> Vec<String> {
 fn editor_doc_mentions_only_files_that_exist() {
     let text = read_doc("editor");
     assert!(path_tokens(&text).len() >= 8, "docs/editor.md should name the files it talks about");
-    let missing = missing_paths(&text);
+    let mut missing = missing_paths(&text);
+    let shell = shell_paths(&text);
+    assert!(shell.len() >= 3, "docs/editor.md should show shell commands with paths, found {shell:?}");
+    missing.extend(shell.into_iter().filter(|t| !Path::new(t).exists()));
     assert!(missing.is_empty(), "docs/editor.md names files that do not exist: {missing:?}");
     // the markdown links resolve too
     for rest in text.split("](").skip(1) {
@@ -893,14 +925,37 @@ fn templates_point_at_the_reference_and_show_real_commands() {
     assert!(Path::new("docs/reference.md").exists());
 }
 
-/// Every flag a template teaches exists on the command.
+/// Every `--flag` a template teaches exists in the `--help` of some command.
 #[test]
 fn template_flags_exist() {
-    for (cmd, flags) in [("check", vec!["--allow-unverified"]), ("fmt", vec!["--check"]), ("trace", vec!["--mock", "--fixtures"])] {
-        let out = Command::new(env!("CARGO_BIN_EXE_agentmark")).args([cmd, "--help"]).output_locked();
-        let help = String::from_utf8_lossy(&out.stdout).to_string();
+    let exe = env!("CARGO_BIN_EXE_agentmark");
+    let mut help = String::from_utf8_lossy(&Command::new(exe).arg("--help").output_locked().stdout).to_string();
+    for cmd in ["check", "fmt", "lint", "doc", "bind", "build", "run", "trace"] {
+        help.push_str(&String::from_utf8_lossy(&Command::new(exe).args([cmd, "--help"]).output_locked().stdout));
+    }
+    for path in TEMPLATES {
+        let text = std::fs::read_to_string(path).unwrap();
+        let flags: Vec<String> = text
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+            .filter(|w| w.starts_with("--") && w.len() > 2)
+            .map(str::to_string)
+            .collect();
+        assert!(flags.len() >= 3, "{path} should teach some flags, found {flags:?}");
         for f in flags {
-            assert!(help.contains(f), "`agentmark {cmd} --help` has no {f}");
+            assert!(help.contains(&f), "{path} teaches {f}, which no `agentmark <command> --help` lists");
         }
+    }
+}
+
+/// SPEC 17: the effect line of a `## Rust` block is mandatory, so the templates must not forbid it.
+#[test]
+fn templates_do_not_forbid_the_mandatory_rust_effect_line() {
+    for path in TEMPLATES {
+        let text = std::fs::read_to_string(path).unwrap().to_lowercase();
+        for bad in ["never add an `- effect:`", "never write an `- effect:`", "add an `- effect:` line to a rust block"] {
+            assert!(!text.contains(bad), "{path} says \"{bad}\", which contradicts SPEC 17");
+        }
+        assert!(text.contains("a `## rust` block needs an `- effect:` line"), "{path} must say the Rust block needs an effect line");
+        assert!(text.contains("trusted, not verified"), "{path} must say the effect line is trusted, not verified");
     }
 }

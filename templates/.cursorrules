@@ -14,7 +14,8 @@ WORKFLOW
 RULES
 - Never write Rust, except inside a `## Rust: <name>` block the human asked for. Never edit generated code (target/ or an -o output folder); change the .agent.md source.
 - Do not edit rust/connect.rs beyond the tool implementations the human asked for.
-- Effect lines are for humans to approve. Never change `- effect: unverified` in bindings/*.agent.md, never add an `- effect:` line to a Rust block or loosen a block's tools just to silence `check`. Show the human what it can touch and let them decide. --allow-unverified is for exploring, not for finishing.
+- Effect lines in bindings/*.agent.md are for humans to approve. Never change `- effect: unverified` there, and never loosen a block's tools to silence `check`. Show the human what the library can touch and let them approve it. --allow-unverified is for exploring, not for finishing.
+- A `## Rust` block needs an `- effect:` line. Declare the honest class (never a weaker one to pass `check`) and tell the human, because that line is trusted, not verified.
 - One statement per line, at most 120 characters, at most 3 levels of nesting. Put a `>` description above every agent, record, rule and function.
 - Follow every `ask model` with a `guard:` on its answer. Name a money, duration or URL literal used more than once as a `# Constant`.
 - Tools come from tools.toml. Do not use a tool or verb that is not listed there.

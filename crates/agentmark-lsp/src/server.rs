@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -52,6 +53,9 @@ pub struct Server {
     runner: Option<Rc<ModelRunner>>,
     /// No fixed model: each project's own (binder's choice) is resolved when an action runs (Q256).
     from_env: bool,
+    /// Resolved models per (project root, AGENTMARK_MODEL, AGENTMARK_ENV, [models] content), so a code action
+    /// does not rebuild a client and a tokio runtime every time.
+    resolved: RefCell<HashMap<String, Rc<ModelRunner>>>,
     dirty: bool,
     /// The client understands snippet text edits (`experimental.snippetTextEdit`, Q255).
     snippets: bool,
@@ -96,7 +100,7 @@ fn cast<P: DeserializeOwned>(v: Value) -> Result<P, String> {
 impl Server {
     pub fn new(conn: Connection, model: Option<Arc<dyn ModelClient>>) -> Server {
         let runner = model.and_then(|m| ModelRunner::new(m).ok()).map(Rc::new);
-        Server { conn, docs: Docs::new(), cache: HashMap::new(), goods: HashMap::new(), published: HashSet::new(), runner, from_env: false, dirty: false, snippets: false }
+        Server { conn, docs: Docs::new(), cache: HashMap::new(), goods: HashMap::new(), published: HashSet::new(), runner, from_env: false, resolved: RefCell::new(HashMap::new()), dirty: false, snippets: false }
     }
 
     /// A server whose model is the binder's choice for each project (`AGENTMARK_MODEL`, `AGENTMARK_ENV` + `[models]`).
@@ -112,10 +116,17 @@ impl Server {
         if !self.from_env {
             return Err((ErrorCode::InvalidRequest, "no model is configured".to_string()));
         }
-        let (model, _) = agentmark::cli::bind::model_for(agentmark::cli::bind::provider_config(&a.project))
+        let config = agentmark::cli::provider_config(&a.project);
+        let var = |k: &str| std::env::var(k).unwrap_or_default();
+        let key = format!("{}\0{}\0{}\0{:?}", a.project.root, var("AGENTMARK_MODEL"), var("AGENTMARK_ENV"), config);
+        if let Some(r) = self.resolved.borrow().get(&key) {
+            return Ok(r.clone());
+        }
+        let (model, _) = agentmark::cli::model_for(config)
             .map_err(|e| (ErrorCode::InvalidRequest, format!("no model is configured: {e}")))?;
-        let runner = ModelRunner::new(model).map_err(|e| (ErrorCode::InternalError, e.to_string()))?;
-        Ok(Rc::new(runner))
+        let runner = Rc::new(ModelRunner::new(model).map_err(|e| (ErrorCode::InternalError, e.to_string()))?);
+        self.resolved.borrow_mut().insert(key, runner.clone());
+        Ok(runner)
     }
 
     /// Do the `initialize` handshake and serve until `exit`.

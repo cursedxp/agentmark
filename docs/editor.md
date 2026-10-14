@@ -63,7 +63,7 @@ Two commands are in the command palette:
 
 ## 3. What can this agent touch
 
-The panel runs `agentmark check --json` on the project that holds the open file (the nearest folder with an `agentmark.toml`) and shows the answer in plain words. It refreshes whenever you save an AgentMark or TOML file. The JSON it reads is described in [docs/check-json.md](check-json.md).
+The panel runs `agentmark check --json` on the project that holds the open file (the nearest folder with an `agentmark.toml`) and shows the answer in plain words. While the panel is open it refreshes whenever you save a `.agent.md` file, `agentmark.toml` or `tools.toml`. The JSON it reads is described in [docs/check-json.md](check-json.md).
 
 Per agent, service, command, rule and function it shows:
 
@@ -86,7 +86,7 @@ Effects (what each block can touch)
 ok: 0 errors, 0 warnings.
 ```
 
-and the panel shows, as text:
+and the panel shows, as text (the real panel prints the absolute path of the project where the sample says `examples/01-invoice-chaser`):
 
 ```text
 What can this agent touch
@@ -160,8 +160,8 @@ What `agentmark-lsp` offers, in any editor:
 | go to definition | from a name to its declaration, across `# Import:` lines |
 | hover | on a heading: the effect summary of the block or of the whole agent; on a record field: its type, and whether the type was inferred from the name |
 | formatting | `textDocument/formatting` returns the canonical style (same as `agentmark fmt`) |
-| code actions | quick fixes for the mechanical lint warnings (add a description above an agent, record, rule or function; add a comment above a guard; extract a repeated literal into a `# Constant`) and for "did you mean" suggestions |
-| model actions | only with `[lsp] model_actions = true` and a model available (`ANTHROPIC_API_KEY`): "Explain this block" and "Suggest a guard for this answer" on an `ask model` line |
+| code actions | quick fixes for the mechanical lint warnings (add a description above an agent, service or command, which is what `missing-doc` asks for; add a comment above a guard; extract a repeated literal into a `# Constant`) and for "did you mean" suggestions |
+| model actions | only with `[lsp] model_actions = true` and a model available: `AGENTMARK_MODEL` if set, else the `[models]` entry that `AGENTMARK_ENV` names, else Claude with `ANTHROPIC_API_KEY` (section 19 of [the reference](reference.md)). The actions are "Explain this block" and "Suggest a guard for this answer" on an `ask model` line |
 
 The server reads the project from disk and the open buffers from the editor, so unsaved edits are checked too. It never writes a file by itself: every fix is an edit the editor applies and you can undo.
 
