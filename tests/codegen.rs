@@ -1,72 +1,15 @@
 //! Rust codegen, build/run/trace (PROMPT steps 6 and 7): the generated programs are built with cargo
 //! and judged by their traces, never by their text.
 
+mod support;
+
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Stdio};
 
 use serde_json::{json, Value};
 
-const ROOT: &str = env!("CARGO_MANIFEST_DIR");
-
-/// All generated projects share one target folder, so dependencies compile once.
-fn gen_target() -> String {
-    format!("{ROOT}/target/gen")
-}
-
-fn agentmark(args: &[&str]) -> Command {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_agentmark"));
-    c.args(args).current_dir(ROOT);
-    c.env("CARGO_TARGET_DIR", gen_target())
-        .env("AGENTMARK_OFFLINE", "1")
-        .env_remove("AGENTMARK_MODEL")
-        .env_remove("AGENTMARK_RUSTDOC_JSON")
-        .env_remove("AGENTMARK_RUSTDOC_JSON_DIR")
-        .env_remove("ANTHROPIC_API_KEY");
-    c
-}
-
-fn bind_env(c: &mut Command) {
-    c.env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
-        .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))
-        .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"));
-}
-
-/// A unique temp folder, removed when dropped (so reruns never meet leftovers).
-struct Tmp(tempfile::TempDir);
-
-impl std::ops::Deref for Tmp {
-    type Target = Path;
-    fn deref(&self) -> &Path {
-        self.0.path()
-    }
-}
-
-fn temp(tag: &str) -> Tmp {
-    Tmp(tempfile::Builder::new().prefix(&format!("agentmark-codegen-{tag}-")).tempdir().unwrap())
-}
-
-fn write(dir: &Path, rel: &str, text: &str) {
-    let p = dir.join(rel);
-    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-    std::fs::write(p, text).unwrap();
-}
-
-fn s(p: &Path) -> &str {
-    p.to_str().unwrap()
-}
-
-fn stdout(o: &Output) -> String {
-    String::from_utf8_lossy(&o.stdout).to_string()
-}
-
-fn stderr(o: &Output) -> String {
-    String::from_utf8_lossy(&o.stderr).to_string()
-}
-
-fn parse_lines(text: &str) -> Vec<Value> {
-    text.lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("not JSON: {l}: {e}"))).collect()
-}
+use support::*;
 
 /// `agentmark trace <path> --mock --fixtures <dir>`: the trace lines.
 fn trace_of(path: &str, fixtures: &Path) -> Vec<Value> {
@@ -149,26 +92,6 @@ fn mock_without_fixtures_is_asked_for_them() {
 
 // ---------------------------------------------------------------------------------- fixtures
 
-/// Every fixture folder (and its `variants/<case>/`) with an `expected.trace.jsonl`: the program's
-/// trace must equal it, line by line.
-fn fixture_dirs() -> Vec<(String, PathBuf)> {
-    let mut out = Vec::new();
-    let mut names: Vec<_> = std::fs::read_dir(format!("{ROOT}/fixtures")).unwrap().flatten().map(|e| e.path()).collect();
-    names.sort();
-    for dir in names.into_iter().filter(|p| p.is_dir()) {
-        let name = dir.file_name().unwrap().to_string_lossy().to_string();
-        if dir.join("expected.trace.jsonl").is_file() {
-            out.push((name.clone(), dir.clone()));
-        }
-        let mut vs: Vec<_> = std::fs::read_dir(dir.join("variants")).into_iter().flatten().flatten().map(|e| e.path()).collect();
-        vs.sort();
-        for v in vs.into_iter().filter(|v| v.join("expected.trace.jsonl").is_file()) {
-            out.push((name.clone(), v));
-        }
-    }
-    out
-}
-
 #[test]
 fn every_example_reproduces_the_expected_trace_of_every_fixture() {
     let fixtures = fixture_dirs();
@@ -243,21 +166,6 @@ fn build_binds_missing_crates_and_refuses_unapproved_ones() {
     assert!(stderr(&o).contains("binding sha2: cached"));
 }
 
-fn copy_dir(from: &Path, to: &Path) {
-    for e in std::fs::read_dir(from).unwrap().flatten() {
-        let t = to.join(e.file_name());
-        if e.path().is_dir() {
-            std::fs::create_dir_all(&t).unwrap();
-            copy_dir(&e.path(), &t);
-        } else {
-            std::fs::copy(e.path(), t).unwrap();
-        }
-    }
-}
-
-fn gen_bin(name: &str) -> PathBuf {
-    PathBuf::from(gen_target()).join("debug").join(name)
-}
 
 
 #[test]
@@ -411,14 +319,6 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
 
 // ---------------------------------------------------------------------------------- review fixes
 
-fn cargo_build_in(out: &Path) -> Output {
-    Command::new("cargo")
-        .args(["build", "--offline", "--manifest-path"])
-        .arg(out.join("Cargo.toml"))
-        .env("CARGO_TARGET_DIR", gen_target())
-        .output()
-        .unwrap()
-}
 
 #[test]
 fn every_example_compiles_without_a_single_warning() {
