@@ -38,18 +38,23 @@ fn copy_dir(from: &Path, to: &Path) {
 
 #[test]
 fn the_vscode_extension_builds_tests_and_packages() {
-    if Command::new("npm").arg("--version").output().map(|o| !o.status.success()).unwrap_or(true) {
+    let tmp = tempfile::tempdir().unwrap();
+    let scratch = tmp.path().join("scratch");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let npm = Command::new("npm")
+        .arg("--version")
+        .env("TMPDIR", &scratch)
+        .env("NODE_COMPILE_CACHE", scratch.join("node-compile-cache"))
+        .output();
+    if npm.map(|o| !o.status.success()).unwrap_or(true) {
         eprintln!("SKIPPED: npm is not installed, so editors/vscode was not built");
         return;
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let tmp = tempfile::tempdir().unwrap();
     // the tests read ../../examples and the schema, so keep the editors/vscode depth
     let dir = tmp.path().join("editors/vscode");
     copy_dir(&root.join("editors/vscode"), &dir);
     copy_dir(&root.join("examples"), &tmp.path().join("examples"));
-    let scratch = tmp.path().join("scratch");
-    std::fs::create_dir_all(&scratch).unwrap();
     let out = tmp.path().join("vsix");
     std::fs::create_dir_all(&out).unwrap();
     run(&dir, &scratch, "npm", &["ci", "--no-audit", "--no-fund"]);

@@ -6,15 +6,23 @@
 //! test says so and passes: the grammar is an editor add-on, not part of the
 //! compiler.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn grammar_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("editors/tree-sitter-agentmark")
 }
 
-fn have(cmd: &str, args: &[&str]) -> bool {
-    Command::new(cmd)
+/// Runs node-based tools with TMPDIR and node's compile cache inside `scratch` (the test's own temp
+/// dir), so nothing is left behind in the real TMPDIR.
+fn tool(cmd: &str, scratch: &Path) -> Command {
+    let mut c = Command::new(cmd);
+    c.env("TMPDIR", scratch).env("NODE_COMPILE_CACHE", scratch.join("node-compile-cache"));
+    c
+}
+
+fn have(scratch: &Path, cmd: &str, args: &[&str]) -> bool {
+    tool(cmd, scratch)
         .args(args)
         .output()
         .map(|o| o.status.success())
@@ -23,15 +31,17 @@ fn have(cmd: &str, args: &[&str]) -> bool {
 
 #[test]
 fn tree_sitter_grammar_parses_examples_and_docs() {
-    if !have("npx", &["--version"]) || !have("node", &["--version"]) || !have("bash", &["-c", "true"]) {
+    let scratch = tempfile::tempdir().unwrap();
+    let scratch = scratch.path();
+    if !have(scratch, "npx", &["--version"]) || !have(scratch, "node", &["--version"]) || !have(scratch, "bash", &["-c", "true"]) {
         eprintln!("skipped: npx/node/bash not found, so the tree-sitter grammar was not checked");
         return;
     }
-    if !have("npx", &["--yes", "tree-sitter-cli@0.25", "--version"]) {
+    if !have(scratch, "npx", &["--yes", "tree-sitter-cli@0.25", "--version"]) {
         eprintln!("skipped: tree-sitter-cli@0.25 is not available (offline?), so the grammar was not checked");
         return;
     }
-    let out = Command::new("bash")
+    let out = tool("bash", scratch)
         .arg(grammar_dir().join("scripts/check-examples.sh"))
         .output()
         .expect("run check-examples.sh");
