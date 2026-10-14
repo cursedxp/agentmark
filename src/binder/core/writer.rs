@@ -102,7 +102,7 @@ pub fn render_binding(
         } else {
             doc_line(&it.summary)
         };
-        o.push_str(&format!("> {doc}\n"));
+        o.push_str(&one_line_doc(&doc));
         o.push_str(&format!("## {}\n", it.sig.heading(&it.name)));
         o.push_str(&format!("  ```{code_lang}\n"));
         for l in it.body.lines() {
@@ -121,11 +121,75 @@ pub fn render_binding(
             if r.is_empty() {
                 o.push_str(&format!("- {name}\n"));
             } else {
-                o.push_str(&format!("- {name}: {r}\n"));
+                o.push_str(&not_bound_entry(name, &r));
             }
         }
     }
     o
+}
+
+/// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). Nothing is
+/// cut (SPEC 15.2: never silently drop): a long reason continues on `  > ` comment lines under
+/// the entry, each at most 120 characters.
+pub fn not_bound_entry(name: &str, reason: &str) -> String {
+    const MAX: usize = 120;
+    let first = format!("- {name}:");
+    let mut lines = vec![first];
+    let mut width = lines[0].chars().count();
+    let mut fresh = true; // nothing but the prefix on the current line yet
+    for word in reason.split_whitespace() {
+        let mut word = word.to_string();
+        loop {
+            let cur = lines.last_mut().unwrap();
+            let room = MAX.saturating_sub(width + 1);
+            if word.chars().count() <= room {
+                cur.push(' ');
+                cur.push_str(&word);
+                width += 1 + word.chars().count();
+                fresh = false;
+                break;
+            }
+            if fresh {
+                // a single word longer than a line: split it, losing nothing
+                let take: String = word.chars().take(room.max(1)).collect();
+                word = word.chars().skip(take.chars().count()).collect();
+                cur.push(' ');
+                cur.push_str(&take);
+                fresh = false;
+                if word.is_empty() {
+                    width += 1 + take.chars().count();
+                    break;
+                }
+            }
+            lines.push("  >".to_string());
+            width = 3;
+            fresh = true;
+        }
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
+/// One `> ` line (PROMPT step 12): the summary, shortened at a word boundary with `…` when it
+/// would pass 118 characters.
+fn one_line_doc(doc: &str) -> String {
+    let flat = doc.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= 118 {
+        return format!("> {flat}\n");
+    }
+    let mut out = String::new();
+    for w in flat.split(' ') {
+        let add = if out.is_empty() { w.chars().count() } else { out.chars().count() + 1 + w.chars().count() };
+        if add > 115 {
+            break;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(w);
+    }
+    format!("> {}…\n", out.trim_end_matches([',', ';', ':', ' ']))
 }
 
 #[cfg(test)]

@@ -1176,6 +1176,25 @@ impl<'l> Builder<'l> {
                         });
                     }
                 }
+                // `  > ` lines directly under an entry continue its reason (Q24, Q110)
+                let mut last: Option<usize> = None;
+                for l in &lines {
+                    match l.kind {
+                        LineKind::Item => {
+                            last = not_bound.iter().position(|n| n.span.line == l.line_no);
+                        }
+                        LineKind::Comment if l.indent >= 1 => {
+                            if let (Some(i), false) = (last, l.text.is_empty()) {
+                                let r = not_bound[i].reason.get_or_insert_with(String::new);
+                                if !r.is_empty() {
+                                    r.push(' ');
+                                }
+                                r.push_str(&l.text);
+                            }
+                        }
+                        _ => last = None,
+                    }
+                }
                 continue;
             }
             let Some((iname, params, out)) =

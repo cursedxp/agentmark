@@ -72,6 +72,8 @@ struct Printer {
     out: Vec<Out>,
     /// Source lines whose attached comments the AST holds (statements, fields, properties).
     attached: HashSet<u32>,
+    /// `## Not bound` entries (source line): their `  > ` continuation lines are part of the reason.
+    nb_items: HashSet<u32>,
     /// Heading lines whose documentation was printed.
     docs: HashSet<u32>,
     file_doc: bool,
@@ -367,11 +369,19 @@ impl Printer {
             });
             self.push(nb, 0, "## Not bound");
             for n in &b.not_bound {
-                let text = match &n.reason {
-                    Some(r) => format!("- {}: {}", n.item, r),
-                    None => format!("- {}", n.item),
+                self.nb_items.insert(n.span.line);
+                let Some(r) = &n.reason else {
+                    self.push(n.span.line, 0, format!("- {}", n.item));
+                    continue;
                 };
-                self.push(n.span.line, 0, text);
+                // the same wrapping `agentmark bind` writes: long reasons continue on `  > ` lines
+                let entry = crate::binder::core::writer::not_bound_entry(&n.item, r);
+                for (i, l) in entry.lines().enumerate() {
+                    match l.strip_prefix("  > ").or_else(|| l.strip_prefix("  >")) {
+                        Some(c) if i > 0 => self.push(0, 1, comment_text(c.trim_start())),
+                        _ => self.push(if i == 0 { n.span.line } else { 0 }, 0, l.to_string()),
+                    }
+                }
             }
         }
     }
@@ -623,7 +633,11 @@ fn find_orphans(lines: &[Line], p: &Printer) -> Vec<Orphan> {
                 i += 1;
             }
             let next = lines.get(i);
-            let accounted = match next.map(|l| &l.kind) {
+            let continuation = start > 0
+                && p.nb_items.contains(&lines[start - 1].line_no)
+                && lines[start..i].iter().all(|l| l.indent >= 1);
+            let accounted = continuation
+                || match next.map(|l| &l.kind) {
                 Some(LineKind::Heading1 | LineKind::Heading2) => {
                     next.is_some_and(|n| p.docs.contains(&n.line_no))
                 }

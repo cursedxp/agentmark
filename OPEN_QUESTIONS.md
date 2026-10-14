@@ -259,3 +259,27 @@ Sema lets `x` be used after the `try` whatever `otherwise` does. **Choice:** IR 
 
 ## Q95 — Binding payloads and unknown result types (step 4)
 **Choice:** a binding call takes only its target words/values as arguments (sema ignores a payload there; the IR drops it). A tool result sema cannot type keeps `Type::Unknown` (JSON value).
+
+## Q110 — Binder `## Not bound` lines versus the 120-character limit
+Generated bindings list unbound items as `- name: reason (library::path)`; real reasons regularly exceed 120 characters, and SPEC 18.3 says the limits cannot be disabled (sema stays strict). SPEC 15.2 says the binder never silently drops anything, so text is never cut either. **Choice:** (1) a long reason continues on `  > ` comment lines under the entry, each at most 120 characters (`core/writer.rs::not_bound_entry`; a single word longer than a line is split, nothing lost); long rustdoc summaries wrap onto further `> ` doc lines. (2) Entries are one per item: `self` methods of a foreign trait get one entry per method and alias (`sha256_finalize_reset: takes \`self\`, AgentMark cannot hold the value (...)`), never a list. (3) Alias entries read `` `crate::path::Type<…>` from crate digest; its methods live there `` (generic arguments elided). (4) Model and type-check causes are kept whole (no length cap in `pipeline.rs`). The parser appends `  > ` comment lines (indented, directly under an entry) to that entry's reason, space-joined, so the reason is the whole text (this extends Q24); `fmt` re-wraps entries with the same function, so a generated binding is canonical byte for byte. Rustdoc summaries stay one `>` line, shortened at a word boundary with `…` over 118 characters. A canned model without an answer says "mock model has no response for <item>" (no prompt fragments). Tests: `tests/binder.rs` (every method its own entry, "from crate", long type-check error across continuation lines, no line over 120, files check clean).
+
+## Q111 — `fmt` and `lint` skip `bindings/`
+Generated bindings are rewritten by `agentmark bind` (and carry the lines Q110 describes); linting them reports `vague-name` for parameters like `data` that mirror the library, and formatting would only fight the binder. **Choice:** the folder walk of `fmt` and the file set of `lint` skip every path with a `bindings` component. `check` still loads and checks them. Passing one binding file to `fmt` by path formats it.
+
+## Q112 — What `--allow-unverified` means on `check`
+SPEC 15.3: `check` lists unverified bindings and the release build refuses them. The brief gives `check` the flag. **Choice:** `check` exits 1 while any binding is `unverified` (the listing says which line to change) unless `--allow-unverified` is passed; the listing is printed either way. Rationale: `check` is the CI gate, and an unapproved library must not pass it silently. Sema keeps W005 a warning; the gate is in the CLI. `build` (codegen task) reuses the same rule.
+
+## Q113 — Exit codes and streams
+**Choice:** 0 = ok; 1 = the user's project has problems (errors, denied lints, non-canonical files with `--check`, unapproved libraries, a bind that failed); 2 = the command itself cannot run (bad arguments, missing path for `fmt`, no model for `bind`). Diagnostics go to stderr in the SPEC 10 format; reports and the final count go to stdout. `check --json` prints only JSON on stdout. A path that does not exist, or a file that is not `.agent.md` (e.g. `tools.toml`), is exit 2 with one plain message for every command (`check`, `fmt`, `lint`, `doc`); `fmt` writes through a temp file and rename.
+
+## Q114 — `doc <target>`: project or library?
+`agentmark doc [<dir>]` (SPEC 18.7) and `agentmark doc <crate>` (brief) share one argument. **Choice:** if the argument exists on disk it is a project (file or folder); otherwise it is a library name looked up as `<project>/bindings/<name>.agent.md` (`--project`, default `.`; also `.agentmark/bindings/`). No argument = the current folder. A library whose name equals a local folder must be asked for with `--project`.
+
+## Q115 — Model and clock for `bind`
+**Choice:** `AGENTMARK_MODEL` selects the `ModelClient`: unset or `claude` = `AnthropicModel` with model id `claude-sonnet-4-5` and `ANTHROPIC_API_KEY`; `claude:<id>` picks the id; `mock:<path>` loads a `MockModel` `model.json` (tests, offline). Anything else (`openai:…`, `local:…`) is refused with a plain message until those drivers exist (SPEC 19). `AGENTMARK_OFFLINE=1` passes `--offline` to every cargo call of the binder. The header date is the mock's `today` when it has one, else the system date (UTC). The agent's own `- model:` line and `[models]` environments are not consulted: they describe the program, not the toolchain.
+
+## Q116 — Effect summary lines for functions and rules
+SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **Choice:** agents, services and commands print `unit / heading: effects` (heading as written, `GET /invoices/{id}`, `Run`); functions and rules, which have no heading, print `function name: effects` / `rule name: effects`. In JSON both are `units[]` with `kind`.
+
+## Q117 — `bind --all` and a binding file with another name
+`bind` always writes `<crate>.agent.md`. For a file whose `- crate:` differs from its name, `--all` would create a second file. **Choice:** it refuses that entry with a message asking to rename the file (exit 1); the other bindings are still refreshed. `bind <crate>` and `--all` are mutually exclusive.

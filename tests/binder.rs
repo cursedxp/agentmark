@@ -196,7 +196,7 @@ fn a_body_that_fails_the_type_check_is_skipped_with_the_reason() {
 fn an_item_the_model_has_no_body_for_is_skipped_not_dropped() {
     let (_, b) = tiered("chrono", vec![]);
     let (_, why) = b.not_bound.iter().find(|(n, _)| n == "date_time_hour").expect("no canned body");
-    assert!(why.contains("model gave no body"), "{why}");
+    assert!(why.contains("mock model has no response for date_time_hour"), "{why}");
 }
 
 #[test]
@@ -377,8 +377,13 @@ fn sha2_hashing_comes_from_the_reexported_digest_trait() {
     // Receiver-less methods only; `self` methods are one aggregated line.
     assert!(b.not_bound.iter().any(|(n, r)| n == "sha256_new" && r.contains("no AgentMark type")));
     assert!(!b.items.iter().any(|i| i.name.contains("finalize") || i.name.ends_with("_update")));
-    let (_, r) = b.not_bound.iter().find(|(n, _)| n == "digest_methods_with_self").unwrap();
-    assert!(r.contains("finalize") && r.contains("take `self`"), "{r}");
+    // ... each one its own entry, never a list (SPEC 15.2)
+    assert!(!b.not_bound.iter().any(|(n, _)| n.contains("methods_with_self")));
+    for m in ["update", "chain_update", "finalize", "finalize_into", "finalize_reset", "finalize_into_reset", "reset"] {
+        let name = format!("sha256_{m}");
+        let (_, r) = b.not_bound.iter().find(|(n, _)| *n == name).unwrap_or_else(|| panic!("{name} listed"));
+        assert!(r.contains("takes `self`") && r.contains(&format!("Digest::{m} on sha2::Sha256")), "{r}");
+    }
     // Without digest's rustdoc the re-export stays a listed non-callable.
     let j = std::fs::read_to_string(fixture("sha2")).unwrap();
     assert_eq!(agentmark::binder::rust::foreign_crates(&j).unwrap(), vec!["digest".to_string()]);
@@ -583,10 +588,11 @@ fn a_failing_dependency_rustdoc_build_is_reported_in_the_reexport_line() {
     let (_dir, mut o) = demo_opts("foreign-fail");
     o.foreign_fetch = Some(Arc::new(|c| Err(format!("cargo exploded for {c}"))));
     let out = bind("demo", &o).unwrap();
+    let r = entries(&std::fs::read_to_string(&out.path).unwrap()).remove("reexport_ext_size").expect("re-export listed");
+    // long reasons continue on `  > ` lines (Q110): the whole cause survives
+    assert!(r.contains("re-export of `ext::Size`") && r.contains("from another crate"), "{r}");
+    assert!(r.contains("cargo exploded for ext"), "{r}");
     let f = parse(&out.path);
-    let n = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").expect("re-export listed");
-    let r = n.reason.as_deref().unwrap();
-    assert!(r.contains("not bound") && r.contains("cargo exploded for ext"), "{r}");
     assert!(binding(&f).not_bound.iter().all(|n| n.item != "w_size"));
 }
 
@@ -600,13 +606,133 @@ fn a_dependency_json_directory_replaces_the_nightly_build() {
     std::env::set_var("AGENTMARK_RUSTDOC_JSON_DIR", &jd);
     let out = bind("demo", &o);
     std::env::remove_var("AGENTMARK_RUSTDOC_JSON_DIR");
-    let f = parse(&out.unwrap().path);
+    let out = out.unwrap();
+    let f = parse(&out.path);
     // No canned model body for it, but the item exists and was tiered (skipped by the model).
     let n = binding(&f).not_bound.iter().find(|n| n.item == "w_size").expect("w_size tiered");
-    assert!(n.reason.as_deref().unwrap().contains("model gave no body"));
+    assert!(n.reason.as_deref().unwrap().contains("mock model has no response for"));
     // Without the directory the missing JSON is named in the re-export line.
     let (_d2, o2) = demo_opts("foreign-none");
-    let f = parse(&bind("demo", &o2).unwrap().path);
-    let r = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").unwrap().reason.clone().unwrap();
+    let r = entries(&std::fs::read_to_string(bind("demo", &o2).unwrap().path).unwrap())
+        .remove("reexport_ext_size")
+        .unwrap();
     assert!(r.contains("AGENTMARK_RUSTDOC_JSON_DIR"), "{r}");
+}
+
+#[test]
+fn freshly_bound_files_keep_every_line_within_the_limit_and_check_clean() {
+    // SPEC 18.3: the limits apply to generated files too (Q110).
+    for (c, _) in CRATES {
+        let dir = scratch(&format!("limit-{c}"));
+        let out = bind(c, &opts(&dir, c, vec![])).unwrap();
+        let text = std::fs::read_to_string(&out.path).unwrap();
+        for (i, l) in text.lines().enumerate() {
+            assert!(l.chars().count() <= 120, "{c}:{}: {} chars: {l}", i + 1, l.chars().count());
+        }
+        // still names the library path of what was not bound
+        assert!(text.contains("## Not bound"), "{c}");
+        let project = agentmark::project::Project::load(dir.to_str().unwrap());
+        match agentmark::sema::check(&project) {
+            Ok(_) => {}
+            Err(d) => {
+                let errors: Vec<_> =
+                    d.into_iter().filter(|x| x.severity == agentmark::diag::Severity::Error).collect();
+                assert!(errors.is_empty(), "{c}:\n{}", project.render(&errors));
+            }
+        }
+    }
+}
+
+/// `## Not bound` entries of a binding file with their `  > ` continuation lines joined.
+fn entries(text: &str) -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    let mut cur: Option<String> = None;
+    let mut in_section = false;
+    for l in text.lines() {
+        if l.starts_with('#') {
+            in_section = l.trim_end() == "## Not bound";
+        } else if in_section {
+            if let Some(rest) = l.strip_prefix("- ") {
+                let (name, reason) = rest.split_once(':').unwrap_or((rest, ""));
+                cur = Some(name.to_string());
+                m.insert(name.to_string(), reason.trim().to_string());
+            } else if let (Some(rest), Some(c)) = (l.strip_prefix("  > "), &cur) {
+                let e = m.get_mut(c).unwrap();
+                e.push(' ');
+                e.push_str(rest);
+            }
+        }
+    }
+    m
+}
+
+#[test]
+fn long_not_bound_causes_continue_on_comment_lines_and_survive_in_full() {
+    let dir = scratch("limit-full");
+    let out = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    let text = std::fs::read_to_string(&out.path).unwrap();
+    let e = entries(&text);
+    let r = &e["sha224_output_size"];
+    assert!(r.starts_with("assisted tier: mock model has no response for sha224_output_size"), "{r}");
+    assert!(!r.contains("prompt") && !r.contains("bind <"), "no prompt fragments: {r}");
+    assert!(r.ends_with("(<sha2::Sha224 as sha2::Digest>::output_size)"), "{r}");
+    // a long type-check error is kept whole
+    let long = "error[E0308]: mismatched types: expected `Vec<u8>`, found `GenericArray<u8, <CoreWrapper<CtVariableCoreWrapper<Sha256VarCore, U32, OidSha256>> as OutputSizeUser>::OutputSize>` at line 3";
+    struct Long(&'static str);
+    impl TypeChecker for Long {
+        fn check(&self, req: &CheckRequest<'_>) -> Result<(), String> {
+            if req.name == "sha256_digest" { Err(self.0.to_string()) } else { Ok(()) }
+        }
+    }
+    let dir = scratch("limit-typeerr");
+    let mut o = opts(&dir, "sha2", vec![]);
+    o.checker = Some(Box::new(Long(Box::leak(long.to_string().into_boxed_str()))));
+    let out = bind("sha2", &o).unwrap();
+    let text = std::fs::read_to_string(&out.path).unwrap();
+    assert!(text.lines().all(|l| l.chars().count() <= 120));
+    let r = &entries(&text)["sha256_digest"];
+    assert!(r.contains(long), "{r}");
+    // and the file still parses
+    let f = parse(&out.path);
+    // the parser joins the continuation lines: the reason is the whole text
+    let n = binding(&f).not_bound.iter().find(|n| n.item == "sha256_digest").unwrap();
+    assert_eq!(n.reason.as_deref().unwrap(), r.as_str());
+    assert!(r.ends_with("(<sha2::Sha256 as sha2::Digest>::digest)"), "{r}");
+    // and so does `agentmark doc <crate>`
+    let sheet = doc_cheatsheet(&out.path).unwrap();
+    assert!(sheet.contains(long) && sheet.contains("::Digest>::digest)"), "{sheet}");
+}
+
+#[test]
+fn generated_files_round_trip_through_fmt_byte_for_byte() {
+    for (c, _) in CRATES {
+        let dir = scratch(&format!("fmt-{c}"));
+        let out = bind(c, &opts(&dir, c, vec![])).unwrap();
+        let text = std::fs::read_to_string(&out.path).unwrap();
+        assert!(text.contains("\n  > "), "{c}: has wrapped entries");
+        let f = out.path.display().to_string();
+        assert_eq!(agentmark::fmt::format_source(&text, &f).unwrap(), text, "{c}");
+    }
+}
+
+#[test]
+fn alias_lines_say_which_crate_and_no_generic_noise() {
+    let dir = scratch("alias");
+    let out = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    let e = entries(&std::fs::read_to_string(&out.path).unwrap());
+    let (n, r) = e.iter().find(|(_, r)| r.contains("is a type alias for")).expect("alias entry");
+    assert!(r.contains(" from crate digest; its methods live there"), "{n}: {r}");
+    assert!(r.contains("<…>") && !r.contains("U32"), "{r}");
+}
+
+#[test]
+fn indented_comment_lines_continue_a_not_bound_reason() {
+    let src = "# Binding: lib\n- crate: lib\n- effect: pure\n\n## Not bound\n- a: first part\n  > second part\n  > third\n- b: alone\n> plain note\n- c:\n  > only continuation\n";
+    let f = agentmark::syntax::parser::parse_file("lib.agent.md", src).unwrap();
+    let nb = &binding(&f).not_bound;
+    let r = |i: usize| nb[i].reason.as_deref();
+    assert_eq!((r(0), r(1), r(2)), (Some("first part second part third"), Some("alone"), Some("only continuation")));
+    // fmt joins what fits on one line and keeps the plain note
+    let out = agentmark::fmt::format_source(src, "lib.agent.md").unwrap();
+    assert!(out.contains("- a: first part second part third\n") && out.contains("> plain note"), "{out}");
 }
