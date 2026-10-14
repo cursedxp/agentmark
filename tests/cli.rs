@@ -1,9 +1,12 @@
 //! Process-level tests of the `agentmark` binary (PROMPT step 7 part 2, step 8 wiring).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
+mod support;
+
 use serde_json::Value;
+use support::{copy_dir, Tmp};
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -11,7 +14,7 @@ fn agentmark(args: &[&str]) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_agentmark"));
     c.args(args).current_dir(ROOT);
     // tests never talk to a real model or to the network
-    c.env_remove("AGENTMARK_MODEL")
+    c.env("TMPDIR", support::compiler_tmp()).env_remove("AGENTMARK_MODEL")
         .env_remove("AGENTMARK_RUSTDOC_JSON")
         .env_remove("AGENTMARK_RUSTDOC_JSON_DIR")
         .env_remove("ANTHROPIC_API_KEY");
@@ -34,10 +37,15 @@ fn code(o: &Output) -> i32 {
     o.status.code().unwrap()
 }
 
-fn temp(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentmark-cli-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
+fn temp(tag: &str) -> Tmp {
+    support::temp(&format!("cli-{tag}"))
+}
+
+/// Example 05 without its approved sha2 binding (the crate is then unbound: a warning).
+fn unbound_05(tag: &str) -> Tmp {
+    let d = temp(tag);
+    copy_dir(Path::new("examples/05-invoice-service"), &d);
+    std::fs::remove_file(d.join("bindings/sha2.agent.md")).unwrap();
     d
 }
 
@@ -61,18 +69,18 @@ fn check_every_example_prints_its_effect_summary() {
             "invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)\n",
         ),
         (
-            "examples/02-lead-qualifier.agent.md",
+            "examples/02-lead-qualifier",
             "lead-qualifier / When crm receives lead: model, network(crm, email), local(log)\n",
         ),
         (
-            "examples/03-support-triage.agent.md",
+            "examples/03-support-triage",
             "support-triage / Every 15 minutes: model, network(crm, http), local(log)\n",
         ),
         (
-            "examples/04-daily-report.agent.md",
+            "examples/04-daily-report",
             "daily-report / Every Monday at 08:00: model, network(crm, email), local(log)\n",
         ),
-        ("examples/05-invoice-service.agent.md", "api / POST /invoices: local(state)\n"),
+        ("examples/05-invoice-service", "api / POST /invoices: local(state)\n"),
     ];
     for (path, line) in cases {
         let o = run(&["check", path]);
@@ -84,13 +92,18 @@ fn check_every_example_prints_its_effect_summary() {
 
 #[test]
 fn check_lists_rust_blocks_and_prints_warnings_in_the_spec_10_format() {
-    let o = run(&["check", "examples/05-invoice-service.agent.md"]);
-    let (so, se) = (out(&o), err(&o));
+    let o = run(&["check", "examples/05-invoice-service"]);
+    let so = out(&o);
+    assert_eq!(code(&o), 0, "{so}{}", err(&o));
     assert!(so.contains("Rust blocks (trusted, not checked by AgentMark)"), "{so}");
-    assert!(so.contains("fingerprint in net_amount: declared pure (examples/05-invoice-service.agent.md:"), "{so}");
-    // unused/unbound warnings: file:line, the source line, a caret
-    assert!(se.contains("examples/05-invoice-service.agent.md:4\n  # Import: crate sha2\n"), "{se}");
-    assert!(se.contains("The crate \"sha2\" has no binding yet."), "{se}");
+    assert!(so.contains("fingerprint in invoice_fingerprint: declared pure (examples/05-invoice-service/functions/invoice-fingerprint.agent.md:"), "{so}");
+    // without the binding: file:line, the source line, a caret, the plain-language message
+    let d = unbound_05("check05");
+    let o = run(&["check", s(&d)]);
+    let se = err(&o);
+    let f = format!("{}/functions/invoice-fingerprint.agent.md", s(&d));
+    assert!(se.contains(&format!("{f}:2\n  # Import: crate sha2\n")), "{se}");
+    assert!(se.contains("The crate \"sha2\" has no binding yet"), "{se}");
     assert!(!se.to_lowercase().contains("rustc"));
 }
 
@@ -136,7 +149,7 @@ fn check_missing_path_is_an_error() {
 #[test]
 fn a_file_that_is_not_agentmark_source_is_refused_plainly() {
     for cmd in ["check", "fmt", "lint", "doc"] {
-        let o = run(&[cmd, "examples/tools.toml"]);
+        let o = run(&[cmd, "tests/errors/tools.toml"]);
         assert_eq!(code(&o), 2, "{cmd}");
         assert!(err(&o).contains("is not an AgentMark file"), "{cmd}: {}", err(&o));
         assert_eq!(err(&o).lines().count(), 1, "one message: {}", err(&o));
@@ -271,7 +284,7 @@ fn fmt_of_a_missing_path_is_a_usage_error() {
 
 const UNDOCUMENTED: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n";
 
-fn lint_project(tag: &str, toml: &str) -> PathBuf {
+fn lint_project(tag: &str, toml: &str) -> Tmp {
     let d = temp(tag);
     write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
     write(&d, "agentmark.toml", toml);
@@ -318,7 +331,7 @@ fn doc_collects_descriptions_and_effects() {
 
 #[test]
 fn doc_of_a_service_lists_routes_with_their_effects() {
-    let o = run(&["doc", "examples/05-invoice-service.agent.md"]);
+    let o = run(&["doc", "examples/05-invoice-service"]);
     let t = out(&o);
     assert!(t.contains("## Services\n\n### api\n"), "{t}");
     assert!(t.contains("**POST /invoices** (can touch: local(state))"), "{t}");
@@ -360,7 +373,7 @@ fn bind(project: &Path, extra: &[&str]) -> Output {
 
 const USES_SHA2: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha256_digest payload -> digest\n- print: \"done\"\n";
 
-fn sha2_project(tag: &str) -> PathBuf {
+fn sha2_project(tag: &str) -> Tmp {
     let d = temp(tag);
     write(&d, "agentmark.toml", "name = \"p\"\n");
     write(&d, "main.agent.md", "# Import: ./fingerprint.agent.md\n\n# Run\n- fingerprint\n");
@@ -544,9 +557,9 @@ fn review_fixes_text_layout() {
     // effects are indented like the other sections
     let o = run(&["check", "examples/01-invoice-chaser"]);
     assert!(out(&o).contains("\n  invoice-chaser / Every day at 09:00: model,"), "{}", out(&o));
-    // single-file doc: title is the file stem; pure units are not called "pure effects"
-    let o = run(&["doc", "examples/05-invoice-service.agent.md"]);
-    assert!(out(&o).starts_with("# 05-invoice-service\n"), "{}", out(&o));
+    // folder doc: title is the project name; pure units are not called "pure effects"
+    let o = run(&["doc", "examples/05-invoice-service"]);
+    assert!(out(&o).starts_with("# invoice-service\n"), "{}", out(&o));
     assert!(out(&o).contains("- can touch: nothing outside itself (pure)"), "{}", out(&o));
     // the author's doc comes before the generated line of a rule
     let d = temp("ruledoc");
@@ -650,7 +663,7 @@ fn binding_without_supplied_rustdoc_leaves_no_scratch_crates_behind() {
     // scratch crates under $TMPDIR; whatever the outcome, nothing may stay
     for args in [vec!["check", s(&d)], vec!["bind", "sha2", "--project", s(&d)]] {
         let _ = agentmark(&args)
-            .env("TMPDIR", &tmp)
+            .env("TMPDIR", s(&tmp))
             .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
             .env("AGENTMARK_OFFLINE", "1")
             .output()

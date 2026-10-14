@@ -134,7 +134,7 @@ fn calls_are_resolved_to_declared_names_even_through_an_alias() {
 
 #[test]
 fn unwraps_say_where_a_maybe_value_is_read_as_present() {
-    let c = sema::check(&Project::load("examples/05-invoice-service.agent.md")).unwrap();
+    let c = sema::check(&Project::load("examples/05-invoice-service")).unwrap();
     // `found.id` after `guard: found is not empty` unwraps segment 0; `respond 200 found` too
     assert!(c.unwraps.values().any(|v| v == &vec![0]), "{:?}", c.unwraps);
     let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- effect: pure\n  - if i.s is some v:\n    - return i.s\n  - return 0\n";
@@ -159,7 +159,7 @@ fn every_expression_has_a_type_and_an_effect() {
 
 #[test]
 fn reading_state_is_pure_and_appending_is_local_state() {
-    let c = sema::check(&Project::load("examples/05-invoice-service.agent.md")).unwrap();
+    let c = sema::check(&Project::load("examples/05-invoice-service")).unwrap();
     let get = c.blocks.iter().find(|b| b.label == "GET /invoices/{id}").unwrap();
     assert!(get.effect.is_pure());
     let post = c.blocks.iter().find(|b| b.label == "POST /invoices").unwrap();

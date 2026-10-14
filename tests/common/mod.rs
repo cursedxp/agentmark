@@ -5,7 +5,7 @@ use agentmark::diag::Severity;
 use agentmark::project::Project;
 use agentmark::sema::{self, Checked};
 
-pub const TOOLS: &str = include_str!("../../examples/tools.toml");
+pub const TOOLS: &str = include_str!("../errors/tools.toml");
 
 pub fn project(src: &str) -> Project {
     Project::from_str("t.agent.md", src, TOOLS)

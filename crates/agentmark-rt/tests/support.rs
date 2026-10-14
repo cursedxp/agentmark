@@ -34,7 +34,7 @@ struct Row {
 #[test]
 fn reads_csv_with_quotes_and_typed_cells() {
     let dir = tempdir();
-    let p = dir.join("rows.csv");
+    let p = dir.path().join("rows.csv");
     std::fs::write(&p, "id,amount,qty,paid\r\n\"A,1\",12.50 EUR,3,true\n\nB2,\"1200.00 EUR\",4,false\n").unwrap();
     let rows: Vec<Row> = read_data(p.to_str().unwrap()).unwrap();
     assert_eq!(rows.len(), 2);
@@ -51,7 +51,7 @@ fn csv_cells_stay_text_when_the_type_wants_text() {
         id: String,
     }
     let dir = tempdir();
-    let p = dir.join("t.csv");
+    let p = dir.path().join("t.csv");
     std::fs::write(&p, "id\n007\n").unwrap();
     let rows: Vec<T> = read_data(p.to_str().unwrap()).unwrap();
     assert_eq!(rows[0].id, "007");
@@ -60,37 +60,27 @@ fn csv_cells_stay_text_when_the_type_wants_text() {
 #[test]
 fn reads_json_and_reports_bad_files() {
     let dir = tempdir();
-    let p = dir.join("r.json");
+    let p = dir.path().join("r.json");
     std::fs::write(&p, r#"[{"score":1,"reason":"x"}]"#).unwrap();
     let rows: Vec<Q> = read_data(p.to_str().unwrap()).unwrap();
     assert_eq!(rows[0].score, 1);
     assert!(read_data::<Vec<Q>>("/no/such/file.json").is_err());
 }
 
-/// A temp folder that is removed when the test ends (also when it fails).
-struct Dir(tempfile::TempDir);
-
-impl std::ops::Deref for Dir {
-    type Target = std::path::Path;
-    fn deref(&self) -> &std::path::Path {
-        self.0.path()
-    }
-}
-
-fn tempdir() -> Dir {
-    Dir(tempfile::Builder::new().prefix("agentmark-rt-support-").tempdir().unwrap())
+fn tempdir() -> tempfile::TempDir {
+    tempfile::Builder::new().prefix("agentmark-rt-support-").tempdir().unwrap()
 }
 
 #[tokio::test]
 async fn ask_model_about_adds_context_and_traces_id() {
     let dir = tempdir();
     std::fs::write(
-        dir.join("model.json"),
+        dir.path().join("model.json"),
         r#"{"today":"2026-10-13","responses":[{"prompt_prefix":"Write","response":"hi"}]}"#,
     )
     .unwrap();
     let trace = Trace::memory();
-    let ctx = Ctx::mock(&*dir, trace.clone()).unwrap().enter("a", "b");
+    let ctx = Ctx::mock(dir.path(), trace.clone()).unwrap().enter("a", "b");
     let out = ctx
         .ask_model_about("Write it.", Some(&json!({"id": "INV-1", "x": 1})), Some("Answer with JSON."))
         .await
@@ -111,11 +101,11 @@ async fn ask_model_about_adds_context_and_traces_id() {
 async fn a_mock_response_with_a_model_only_answers_that_model() {
     let dir = tempdir();
     std::fs::write(
-        dir.join("model.json"),
+        dir.path().join("model.json"),
         r#"{"today":"2026-10-13","responses":[{"prompt_prefix":"Q","response":"small","model":"m-small"},{"prompt_prefix":"Q","response":"any"}]}"#,
     )
     .unwrap();
-    let ctx = Ctx::mock(&*dir, Trace::memory()).unwrap().enter("a", "b");
+    let ctx = Ctx::mock(dir.path(), Trace::memory()).unwrap().enter("a", "b");
     assert_eq!(ctx.with_model("m-small").ask_model("Q", None).await.unwrap(), "small");
     assert_eq!(ctx.with_model("m-big").ask_model("Q", None).await.unwrap(), "any");
     assert_eq!(ctx.ask_model("Q", None).await.unwrap(), "any");
