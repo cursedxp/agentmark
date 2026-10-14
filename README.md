@@ -163,7 +163,9 @@ Ten example projects live in `examples/`. `fixtures/` holds the input files, mod
 
 ## The commands
 
-Every command takes a `.agent.md` file or a project folder. A project folder has an `agentmark.toml`, and a `tools.toml` when the program uses tools from outside. The examples below run from the AgentMark source. That is `~/.agentmark/src` after `install.sh`, or your own clone. The paths under `examples/` exist there.
+Every command takes a `.agent.md` file or a project folder. A project folder has an `agentmark.toml`, and a `tools.toml` when the program uses tools from outside.
+
+The examples below run from the AgentMark source. That is `~/.agentmark/src` after `install.sh`, or your own clone. The paths under `examples/` exist there.
 
 | Exit code | Meaning |
 |---|---|
@@ -306,9 +308,11 @@ effect: pure
 
 `file` is a built-in tool that needs no `tools.toml` entry. Its verbs are `file read`, `write`, `append`, `list`, `rename`, `exists` and `delete`. Reading standard input is `- read input -> text`.
 
-**Any Rust crate.** The rest of the Rust ecosystem is available through the binder (`agentmark bind`, above) and three lines in your program.
+**Any Rust crate.** The rest of the Rust ecosystem is available through the binder and three lines in your program. The binder is the `agentmark bind` command from the table above.
 
-Objects a crate hands you are **handles**. A hasher and a database pool are examples. You create a handle with a statement and call methods on it, and the checker knows which method uses it up. A handle cannot be printed, compared or stored in a record.
+Objects a crate hands you are **handles**. A hasher and a database pool are examples.
+
+You create a handle with a statement and call methods on it, and the checker knows which method uses it up. A handle cannot be printed, compared or stored in a record.
 
 [docs/libraries.md](docs/libraries.md) has the whole story.
 

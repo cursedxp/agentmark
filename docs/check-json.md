@@ -23,7 +23,7 @@
 | `unverified_bindings` | libraries whose `- effect:` line nobody approved; `line` is that line, `proposed_effect` the binder's suggestion (or `null`) |
 | `rust_blocks` | every `## Rust` block with its declared (trusted) `effect`; `parent` is the declaration it was written under or `null` |
 
-Unused imports and declarations (SPEC 18.2) are ordinary warnings in `diagnostics`.
+Unused imports and declarations are ordinary warnings in `diagnostics`. They are defined in SPEC 18.2.
 
 **Next:** see the [example](#example) for the full shape.
 

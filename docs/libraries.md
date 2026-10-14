@@ -30,7 +30,7 @@ Check this table first. AgentMark has many modules built in, listed in `docs/ref
 | pattern matching | built in: `regex` |
 | numbers and rounding | built in: `number` |
 | amounts of money | built in: `money` |
-| dates, times, durations | built in: `date` |
+| parse a date, format a date, days between two dates | built in: `date` |
 | file paths | built in: `path` |
 | JSON | built in: `json` |
 | CSV | built in: `csv` |
@@ -324,6 +324,8 @@ The rules:
 * The `- out:` line holds the result type. Leave it out when the item returns nothing.
 * The binder writes this form and `agentmark fmt` keeps it. The meaning is the same as the one-line heading.
 
+An item that does not fit even so stays under `## Not bound`.
+
 ### Handles and project settings
 
 Which features of a crate are switched on is a project setting. It lives in the `[crates]` table of `agentmark.toml`, for example `sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }`. The binder and the generated `Cargo.toml` both read it. The handles you get, such as `handle of sqlx.SqlitePool`, are the ones for the database you configured.
@@ -555,7 +557,11 @@ This section is for tools that live outside the program: a CRM, a mail provider,
 
 In a real run, something has to talk to your CRM and your mail server. That something is the **one file** you write, `rust/connect.rs`, beside `agentmark.toml`. In a single-file project it sits next to the source file.
 
-`agentmark build`, `run` and `trace` create it from a stub when it is missing, and never overwrite it. They copy it into the generated project on every build, so you can delete the output folder without losing it. It is the only place plain Rust is expected of you, and the right place to use the crates of this page, such as `reqwest` for an HTTP API or an SMTP crate for mail. This is the committed stub of the invoice chaser:
+`agentmark build`, `run` and `trace` create it from a stub when it is missing, and never overwrite it. They copy it into the generated project on every build, so you can delete the output folder without losing it.
+
+It is the only place plain Rust is expected of you. It is the right place to use the crates of this page, such as `reqwest` for an HTTP API or an SMTP crate for mail.
+
+This is the committed stub of the invoice chaser:
 
 ```rust file=examples/01-invoice-chaser/rust/connect.rs
 //! Connect the tools to the real world.

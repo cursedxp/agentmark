@@ -40,7 +40,7 @@ Details of each pass are in [The pass pipeline in detail](#the-pass-pipeline-in-
 
 ## Ground rules
 
-AgentMark is a general-purpose programming language written as Markdown (`SPEC.md` section 22). Agents are one feature built on its core.
+AgentMark is a general-purpose programming language written as Markdown. Its definition is `SPEC.md` section 22. Agents are one feature built on its core.
 
 The implementation reflects that. The front end, the checker, the IR and the Rust generator know these things:
 
@@ -58,7 +58,7 @@ Three documents define the project:
 * `DESIGN.md` defines the architecture.
 * `OPEN_QUESTIONS.md` holds every choice the specification left open, as a numbered `Q` entry.
 
-When you change behaviour, change the code, a test, and the doc that describes it (`docs/reference.md`). Add a `Q` entry when you had to decide something.
+When you change behaviour, change the code, a test, and the doc that describes it. That doc is `docs/reference.md`. Add a `Q` entry when you had to decide something.
 
 Working rules:
 
@@ -107,7 +107,7 @@ let l2      = agentmark::lower::agent_lower(&project, checked.as_ref().unwrap())
 let program = agentmark::ir::build::build(&project, checked.as_ref().unwrap(), &l2);
 ```
 
-`Project::from_str` and `Project::from_memory` build in-memory projects (tests, editor buffers).
+`Project::from_str` and `Project::from_memory` build in-memory projects. Tests and editor buffers use them.
 
 ### Why the semantic check is side tables, not a new tree
 
@@ -303,7 +303,7 @@ To move to a newer rustdoc format, re-run `tests/binder/regen.sh`. Then check `S
 
 ## Add a target
 
-The IR is target-independent. A target is a consumer of `ir::Program` (and `Checked` for names). Adding one means adding files, not changing passes.
+The IR is target-independent. A target is a consumer of `ir::Program`. It also reads `Checked` for names. Adding one means adding files, not changing passes.
 
 **Checklist:**
 
