@@ -7,6 +7,8 @@
 
 use std::collections::HashMap;
 
+mod user_tools;
+
 use crate::ir::{self, Callee, EffectSet, Type};
 use crate::lower::{guard_text, is_synthetic, Lowered};
 use crate::project::{Project, ResolvedImport};
@@ -80,6 +82,7 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
                         p.handle_rust.insert(h.name.clone(), h.rust.code.trim().to_string());
                     }
                 }
+                Decl::Tool(t) => b.tool(t, &mut p.functions, &mut p.rust_fns),
                 Decl::Run(r) => p.run.extend(r.items.iter().map(|i| i.name.clone())),
                 Decl::Constant(_) => {} // inlined at every use
                 Decl::Agent(_) | Decl::Rule(_) => {
@@ -224,6 +227,7 @@ impl<'a> Builder<'a> {
                             },
                         );
                     }
+                    Decl::Tool(t) => self.collect_tool(t),
                     Decl::Service(s) => {
                         if let (Some(st), None) = (&s.state, &self.state_record) {
                             self.state_record = Some(st.name.clone());
@@ -1008,6 +1012,7 @@ impl<'a> Builder<'a> {
                     ret,
                 )
             }
+            ToolKind::User => return self.user_tool_stmt(&tr, tool, target, payload, into),
             ToolKind::Manifest => {
                 let def = self
                     .checked
@@ -1633,6 +1638,7 @@ fn kids_effect(kind: &ir::StmtKind) -> EffectSet {
                 ir::IoCall::Print { message } => e.merge(&message.effect),
             },
             ir::EffectCall::Trace(ir::TraceEvent::Guard { ok, .. }) => e.merge(&ok.effect),
+            ir::EffectCall::Trace(ir::TraceEvent::ToolCall { .. }) => {}
         },
         S::Respond { body, .. } => {
             if let Some(b) = body {

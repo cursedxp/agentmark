@@ -179,6 +179,57 @@ pub struct Names {
     pub item_idents: HashSet<String>,
     /// Handle name -> its Rust type when that is not `<crate>::<Type>`.
     pub handle_rust: HashMap<String, String>,
+    /// Functions that can call themselves, directly or through others: their calls are boxed, because
+    /// an `async fn` cannot await itself (rustc E0733).
+    pub recursive: HashSet<String>,
+}
+
+/// Names of the functions called anywhere inside a serialised IR node.
+fn called(v: &serde_json::Value, out: &mut Vec<String>) {
+    match v {
+        serde_json::Value::Object(m) => {
+            if let Some(f) = m.get("Fn").and_then(|f| f.get("name")).and_then(|n| n.as_str()) {
+                out.push(f.to_string());
+            }
+            if let Some(c) = m.get("Call").filter(|c| c.get("callee").and_then(|x| x.as_str()) == Some("Fn")) {
+                if let Some(n) = c.get("name").and_then(|n| n.as_str()) {
+                    out.push(n.to_string());
+                }
+            }
+            m.values().for_each(|x| called(x, out));
+        }
+        serde_json::Value::Array(a) => a.iter().for_each(|x| called(x, out)),
+        _ => {}
+    }
+}
+
+fn recursive_functions(p: &Program) -> HashSet<String> {
+    let calls: HashMap<&str, Vec<String>> = p
+        .functions
+        .iter()
+        .map(|f| {
+            let mut out = Vec::new();
+            called(&serde_json::to_value(&f.body).unwrap_or_default(), &mut out);
+            (f.name.as_str(), out)
+        })
+        .collect();
+    let mut rec = HashSet::new();
+    for f in calls.keys() {
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut todo: Vec<&str> = calls[f].iter().map(String::as_str).collect();
+        while let Some(g) = todo.pop() {
+            if g == *f {
+                rec.insert(f.to_string());
+                break;
+            }
+            if seen.insert(g) {
+                if let Some(next) = calls.get(g) {
+                    todo.extend(next.iter().map(String::as_str));
+                }
+            }
+        }
+    }
+    rec
 }
 
 impl Names {
@@ -229,9 +280,11 @@ impl Names {
 
         // entries first (they read like headings), then the functions of each module
         let mut per_module: HashMap<String, Namespace> = HashMap::new();
-        per_module.insert("rules".into(), Namespace::default());
+        // `say` and `log` are the helpers every module may import
+        let fresh = || Namespace::with(&["say", "log"]);
+        per_module.insert("rules".into(), fresh());
         for (_, m) in &n.units {
-            per_module.insert(m.clone(), Namespace::default());
+            per_module.insert(m.clone(), fresh());
         }
         for e in &p.entries {
             let module = n.module_of_unit(&e.unit).to_string();
@@ -279,6 +332,7 @@ impl Names {
             n.tools.insert(t.name.clone(), tools_ns.take(&camel(&t.name)));
         }
 
+        n.recursive = recursive_functions(p);
         for f in n.fns.values() {
             n.item_idents.insert(f.ident.clone());
         }

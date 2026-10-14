@@ -116,6 +116,7 @@ pub fn check(ck: &mut Checker<'_>) {
                     | Kind::Constant
                     | Kind::RustBlock
                     | Kind::Binding
+                    | Kind::Tool
             ) && !ck.used.contains(&e.key())
         })
         .cloned()

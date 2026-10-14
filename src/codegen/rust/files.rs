@@ -688,13 +688,14 @@ pub fn tools_rs(c: &Ctxt) -> String {
 /// `src/connect.rs`: written once, owned by the user afterwards.
 pub fn connect_rs(c: &Ctxt) -> String {
     let with_verbs = tools_with_verbs(c);
+    if with_verbs.is_empty() {
+        // SPEC 22.5: tools written in AgentMark and the built-in `file` tool need no connection, so the
+        // project has no `rust/connect.rs` and none is asked for (Q384)
+        return String::from("//! Nothing to connect: this program has no tool that lives outside it (the tools written in\n//! AgentMark and the built-in `file` tool need no connection).\n\nuse crate::tools::Connected;\n\n/// The tools of a real run.\npub fn connect() -> Connected {\n    Connected {}\n}\n");
+    }
     let mut s = String::from(
         "//! Connect the tools to the real world.\n//!\n//! This file is yours: it lives in your project as `rust/connect.rs` (beside agentmark.toml);\n//! `agentmark build` creates it once, when it is missing, and never changes it again. Every\n//! build copies it to `src/connect.rs` of the generated project, so edit THIS one. Implement the traits of `tools.rs` for your systems and return them from `connect()`.\n//! A real run (without --mock) uses what `connect()` returns. If tools.toml gains a tool, add it here.\n\n",
     );
-    if with_verbs.is_empty() {
-        s.push_str("use crate::tools::Connected;\n\n/// The tools of a real run (this program has none that need connecting).\npub fn connect() -> Connected {\n    Connected {}\n}\n");
-        return s;
-    }
     s.push_str("use agentmark_rt::RtError;\nuse async_trait::async_trait;\nuse serde_json::Value;\n\n");
     let traits: Vec<&str> = with_verbs.iter().map(|t| c.n.tools[&t.name].as_str()).collect();
     s.push_str(&format!("use crate::tools::{{Connected, {}}};\n\n", traits.join(", ")));

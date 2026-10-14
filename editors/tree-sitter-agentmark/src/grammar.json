@@ -701,6 +701,18 @@
           },
           "named": false,
           "value": "type"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PATTERN",
+              "value": "[tT][oO][oO][lL]"
+            }
+          },
+          "named": false,
+          "value": "tool"
         }
       ]
     },

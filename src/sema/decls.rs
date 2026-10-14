@@ -392,14 +392,14 @@ impl Checker<'_> {
                 }
                 for t in &a.tools {
                     if p.manifest.tool(&t.name).is_some()
-                        || self.lookup(fi, &t.name, &[Kind::Binding]).is_some()
+                        || self.lookup(fi, &t.name, &[Kind::Binding, Kind::Tool]).is_some()
                         || self.unbound_crate_tool(fi, &t.name)
                     {
                         continue;
                     }
                     let mut cands: Vec<String> =
                         p.manifest.tool_names().map(str::to_string).collect();
-                    cands.extend(self.scopes[fi].names_of(&[Kind::Binding]));
+                    cands.extend(self.scopes[fi].names_of(&[Kind::Binding, Kind::Tool]));
                     let d = Diagnostic::error(
                         E_BAD_AGENT,
                         self.path(fi),

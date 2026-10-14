@@ -29,6 +29,7 @@ pub fn decl_name(d: &Decl) -> Option<(Kind, &Ident, Option<&String>)> {
         Decl::Binding(r) => (Kind::Binding, &r.name, r.doc.as_ref()),
         Decl::Constant(r) => (Kind::Constant, &r.name, r.doc.as_ref()),
         Decl::RustBlock(r) => (Kind::RustBlock, &r.name, r.doc.as_ref()),
+        Decl::Tool(r) => (Kind::Tool, &r.name, r.doc.as_ref()),
         Decl::Run(_) | Decl::Entry(_) => return None,
     })
 }

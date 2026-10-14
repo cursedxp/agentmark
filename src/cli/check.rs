@@ -26,11 +26,13 @@ fn kind_word(k: Option<Kind>, b: BlockKind) -> &'static str {
         Some(Kind::Command) => "command",
         Some(Kind::Function) => "function",
         Some(Kind::Rule) => "rule",
+        Some(Kind::Tool) => "tool",
         _ => match b {
             BlockKind::Function => "function",
             BlockKind::Rule => "rule",
             BlockKind::Route => "service",
             BlockKind::Command => "command",
+            BlockKind::Tool => "tool",
             _ => "agent",
         },
     }

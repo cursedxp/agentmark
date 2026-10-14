@@ -5901,6 +5901,10 @@
     "named": false
   },
   {
+    "type": "tool",
+    "named": false
+  },
+  {
     "type": "tools",
     "named": false
   },

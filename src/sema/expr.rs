@@ -828,6 +828,9 @@ impl Checker<'_> {
             .collect();
         let Some((kind, decl)) = self.lookup(cx.file, &name, &[Kind::Function, Kind::RustBlock])
         else {
+            if let Some(ty) = self.user_tool_expr(cx, e, func, args, &arg_types) {
+                return ty;
+            }
             if func.len() == 2 && crate::stdlib::is_module(&func[0].name) {
                 let ok = cx.std_ok == Some(e.span) || cx.match_call == Some(e.span);
                 return self.std_call(cx, &super::stdlib::StdCall { e, func, args, types: &arg_types }, None, ok);

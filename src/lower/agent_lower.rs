@@ -276,6 +276,16 @@ impl Lw<'_> {
                 c.body = self.stmts(&c.body);
                 out.push(Decl::Command(c));
             }
+            Decl::Tool(t) => {
+                let mut t = t.clone();
+                for v in &mut t.verbs {
+                    v.params = self.params(&v.params);
+                    if let ToolBody::Stmts(body) = &mut v.body {
+                        *body = self.stmts(body);
+                    }
+                }
+                out.push(Decl::Tool(t));
+            }
             Decl::Constant(c) => {
                 let mut c = c.clone();
                 c.value = self.expr(&c.value);

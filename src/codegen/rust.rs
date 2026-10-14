@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 
 mod body;
+mod default_cmd;
 mod files;
 mod main_rs;
 pub mod names;

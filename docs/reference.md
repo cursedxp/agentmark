@@ -2258,6 +2258,137 @@ for a CSV cell, `cannot read "x.txt": it does not exist`). Error codes: E340 unk
 `try`, E342 `json.parse` / `csv.parse` without a usable `as` type, E343 a literal pattern that cannot work, E344 unknown
 `file` verb, E345 a `file` statement with a missing or extra part, E347 `[file]` in `tools.toml`.
 
+### 22.5 User-defined tools
+
+A tool can be written in AgentMark itself. `# Tool: name` has an `- effect:` line and one `## verb(params) -> type` block
+per verb; the block holds the statements of the verb. The tool is called like any tool, as a statement, or, when it is
+`pure`, as an expression:
+
+```agentmark
+> Words for file names.
+# Tool: slugger
+- effect: pure
+
+> Lower case, dashes between words: "Hello World" becomes "hello-world".
+## slug(title: text) -> text
+- set lowered = text.lower(title)
+- return regex.replace(lowered, "[^a-z0-9]+", "-")
+
+> Prints the file name of a title, twice: as an expression and as a statement.
+# Command: file-name
+- args: title: text
+
+## Run
+- print: "{slugger.slug(title)}.md"
+- slugger slug title -> same
+- print: "{same}.md"
+```
+
+How a call is written:
+
+| form | when |
+|---|---|
+| `- tool verb a b -> result` | any tool. The words and values after the verb are the arguments, in the order of the parameters; `-> result` is optional. One more value may follow a colon (`- notes save "a.txt": body`). |
+| `tool.verb(a, b)` | an expression, only for a `pure` tool whose verb returns a value. A tool of an imported folder is written with its module name (`tools.slugger.slug(title)`); the statement form takes the module too (`- tools.ledger add title`). |
+
+The declared effect is checked against the body exactly like a `# Function`: a verb may not do more than its tool says, and
+a call has the effect of what the body does, at least the effect the tool declares. `check` lists one line per verb
+(`ledger / add: local(file)`). A verb with a `rust` fence instead of statements is Layer 1, like a `## Rust` block: its
+effect is the declared one and is trusted:
+
+````agentmark
+> A plain text ledger in the working directory.
+# Tool: ledger
+- effect: local
+
+## add(entry: text)
+- file append "ledger.txt": entry
+
+> The same entry twice: a verb may call the verbs of its own tool.
+## add_twice(entry: text, mark: text)
+- ledger add entry
+- ledger add "{mark} {entry}"
+
+# Tool: caps
+- effect: pure
+
+> Written in Rust, which is what a verb may do when AgentMark has no word for it.
+## shout(word: text) -> text
+  ```rust
+  word.to_uppercase()
+  ```
+
+> Writes the shouted title to the ledger.
+# Command: record
+- args: title: text
+
+## Run
+- set loud = caps.shout(title)
+- ledger add_twice loud "again"
+````
+
+A tool that only uses other `# Tool` declarations and the built-in `file` tool needs no `tools.toml` and no
+`rust/connect.rs`: both stay for tools implemented outside the program (a real CRM, an email provider), and a name cannot
+be used by both. Every call is written to the trace, before the body runs, like a tool call:
+
+```json
+{"kind":"tool","tool":"ledger","verb":"add","args":{"entry":"HELLO"}}
+```
+
+`args` holds the verb's parameters by name. A tool can be listed in an agent's `- tools:` like any other.
+
+A verb that exceeds the effect of its tool is an error on the line that does it:
+
+```agentmark invalid
+> A pure tool cannot print.
+# Tool: greeter
+- effect: pure
+
+## greet(name: text)
+- print: "hello {name}"
+```
+
+```text
+greeter.agent.md:6
+  - print: "hello {name}"
+    ^^^^^^^^^^^^^^^^^^^^^
+  The tool "greeter" says "- effect: pure", but this line has the effect local (print).
+  Change the tool to "- effect: local", or move this line out of the tool.
+```
+
+Error codes: E380 a tool named like a tool of `tools.toml`, like `file` or like a binding, E381 a verb twice in one tool, E382
+an expression call of a tool that is not `pure`, E383 an unknown verb (or none), E384 `field = value` after a tool
+statement, E385 the result of a verb that returns nothing, E386 a verb that says it returns a value and never does, E387 an argument of the default command named like a flag every program has (`--once`, `--mock`, …). A tool named like a library module is warned about (W380); a tool also cannot be named like an agent, command, service or binding (E380). The
+effect error is E206, as for functions.
+
+### 22.6 Programs
+
+A project whose `# Run` lists a single `# Command` (and no agent or service) makes that command the binary's default:
+`my-tool <args>` runs it without a subcommand name. Each argument is positional, in the order it is declared, or
+`--name value`, and the two mix: the positional values go, in declared order, to the arguments not given by name. A `bool` argument is the flag `--name`. Too many values (including one for an argument already given by name) is a usage error. `text`, `int`, `money` (`"12.50 EUR"`), `date` and `datetime` arguments are written as they are; any other value (a list `["a","b"]`, an enum `{"kind":"Empty"}`, a record) is written as JSON. A name written with underscores also takes dashes (`--dry-run`,
+`--dry_run`). An argument with a default may be left out:
+
+```agentmark
+> Says how many copies of a title it would print: `label <title> [<copies>] [--dry-run]`.
+# Command: label
+- args: title: text, copies: int = 1, dry_run: bool = false
+
+## Run
+- if dry_run:
+  - print: "would print {title} x{copies}"
+  - stop
+- print: "{title} x{copies}"
+
+# Run
+- label
+```
+
+`label "Hello" 3`, `label --copies 3 --title Hello` and `label Hello --copies 3` do the same; `label Hello --dry-run`
+sets `dry_run`. A missing argument without a default is a usage error (exit code 2) that shows the usage line. With
+several commands, or an agent or service next to the command, the commands stay subcommands (`my-tool import-csv …`).
+`agentmark run <project> -- <arguments>` and `agentmark trace <project> -- <arguments>` build the project and give the
+arguments after `--` to the program.
+
 ## Appendix A. Statement index
 
 Every statement form of the language, with where it is explained:
@@ -2307,3 +2438,4 @@ The choices made while implementing, by topic. Each is written out in `OPEN_QUES
 | command line | Q113 to Q115 |
 | fixtures | Q150 to Q158 |
 | the built-in library and the `file` tool | Q340 to Q349 |
+| tools written in AgentMark and the default command | Q380 to Q389 |

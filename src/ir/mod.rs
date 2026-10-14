@@ -431,6 +431,13 @@ pub enum TraceEvent {
     /// One `guard` line. `name` is the guard's source text with constants inlined and `ok` the
     /// already evaluated result (`bool`).
     Guard { name: String, ok: Expr },
+    /// A user tool was called (SPEC 22.5): traced like a tool, `{"kind":"tool","tool":…,"verb":…,
+    /// "args":{param: value}}`. `args` are the verb's parameters (handles are left out).
+    ToolCall {
+        tool: String,
+        verb: String,
+        args: Vec<(String, Expr)>,
+    },
 }
 
 // ---------------------------------------------------------------------------------- expressions

@@ -55,7 +55,7 @@ impl Checker<'_> {
             return;
         }
         let mut cands: Vec<String> = self.p.manifest.tool_names().map(str::to_string).collect();
-        cands.extend(self.scopes[cx.file].names_of(&[Kind::Binding]));
+        cands.extend(self.scopes[cx.file].names_of(&[Kind::Binding, Kind::Tool]));
         // a typo in the name of a handle variable (`- hashr update data`)
         cands.extend(
             cx.frames
@@ -236,6 +236,10 @@ impl Checker<'_> {
         }
         if let Some((_, bname)) = self.lookup(cx.file, &tool.name, &[Kind::Binding]) {
             self.binding_call(cx, sk, &bname, tool, verb, target, payload, into, None);
+            return;
+        }
+        if let Some((_, tname)) = self.lookup(cx.file, &tool.name, &[Kind::Tool]) {
+            self.user_tool_call(cx, s, &tname, tool, verb, target, payload, into);
             return;
         }
         self.unknown_tool(cx, tool);

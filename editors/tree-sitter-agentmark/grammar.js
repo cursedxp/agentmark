@@ -14,6 +14,11 @@ function ci(word) {
   return alias(token(prec(2, new RegExp(re))), word.toLowerCase());
 }
 
+/** `Tool`: `tool` is a prefix of the property key `tools`, so this keyword takes no lexical precedence and the longer word wins. */
+function ciTool() {
+  return alias(token(/[tT][oO][oO][lL]/), 'tool');
+}
+
 const PREC = {
   or: 1,
   and: 2,
@@ -152,6 +157,7 @@ module.exports = grammar({
         ci('constant'),
         ci('binding'),
         ci('type'),
+        ciTool(),
       ),
 
     // A line that may appear in a declaration body or a block.

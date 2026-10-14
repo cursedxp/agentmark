@@ -19,6 +19,7 @@ pub enum DeclKind {
     Service,
     Command,
     Binding,
+    Tool,
     Constant,
 }
 
@@ -34,6 +35,7 @@ impl DeclKind {
             DeclKind::Service => "Service",
             DeclKind::Command => "Command",
             DeclKind::Binding => "Binding",
+            DeclKind::Tool => "Tool",
             DeclKind::Constant => "Constant",
         }
     }
@@ -41,7 +43,7 @@ impl DeclKind {
 
 /// Every word that may follow `# `.
 pub const HEADING_WORDS: &[&str] = &[
-    "Agent", "Record", "Enum", "Type", "Rule", "Function", "Service", "Command", "Binding",
+    "Agent", "Record", "Enum", "Type", "Rule", "Function", "Service", "Command", "Binding", "Tool",
     "Constant", "Run", "Import",
 ];
 
@@ -127,6 +129,7 @@ pub fn h1<'a>() -> P<'a, H1> {
         decl("service", DeclKind::Service),
         decl("command", DeclKind::Command),
         decl("binding", DeclKind::Binding),
+        decl("tool", DeclKind::Tool),
         decl("constant", DeclKind::Constant),
         run,
         import,

@@ -55,6 +55,8 @@ pub struct FnCx {
     pub declared: Effect,
     /// An "exceeds its effect" error was already reported for this function.
     pub reported: bool,
+    /// What messages call it: `function`, or `tool` for a verb of a user tool.
+    pub noun: &'static str,
 }
 
 pub struct Cx {
@@ -247,6 +249,12 @@ pub enum BodyKey {
         file: usize,
         decl: usize,
     },
+    /// One verb of a `# Tool`.
+    ToolVerb {
+        file: usize,
+        decl: usize,
+        verb: usize,
+    },
 }
 
 pub enum Memo {
@@ -337,6 +345,11 @@ impl Checker<'_> {
                     Decl::Command(_) => {
                         self.ensure_body(BodyKey::Command { file: fi, decl: di });
                     }
+                    Decl::Tool(t) => {
+                        for vi in 0..t.verbs.len() {
+                            self.ensure_body(BodyKey::ToolVerb { file: fi, decl: di, verb: vi });
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -380,6 +393,9 @@ impl Checker<'_> {
             return EffectSet::pure();
         };
         let declared = sig.effect;
+        if kind == Kind::Tool {
+            return self.tool_verb_effect(name);
+        }
         let mut set = match (kind, self.reg.get(kind, name).cloned()) {
             (Kind::Function, Some(ent)) => self.ensure_body(BodyKey::Function {
                 file: ent.file,
@@ -396,6 +412,7 @@ impl Checker<'_> {
     fn check_body(&mut self, key: BodyKey) -> EffectSet {
         let p = self.p;
         match key {
+            BodyKey::ToolVerb { file, decl, verb } => self.check_verb_body(file, decl, verb),
             BodyKey::Function { file, decl } => {
                 let Decl::Function(f) = &p.files[file].ast.decls[decl] else {
                     return EffectSet::pure();
@@ -422,6 +439,7 @@ impl Checker<'_> {
                     out: out.clone(),
                     declared,
                     reported: false,
+                    noun: "function",
                 });
                 self.stmts(&mut cx, &f.body);
                 self.end_of_body(&mut cx);

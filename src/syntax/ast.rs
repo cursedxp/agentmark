@@ -125,6 +125,8 @@ pub enum Decl {
     Service(Service),
     Command(Command),
     Binding(Binding),
+    /// `# Tool: name` written in AgentMark (SPEC 22.5).
+    Tool(Tool),
     Constant(Constant),
     Run(Run),
     /// A `## Rust: name` block, hoisted to module level (OPEN_QUESTIONS Q2).
@@ -304,6 +306,36 @@ pub struct Function {
     pub out: Option<TypeExpr>,
     pub effect: Spanned<Effect>,
     pub body: Vec<Stmt>,
+}
+
+/// `# Tool: name` with `- effect:` and one `## verb(params) -> type` block per verb (SPEC 22.5).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Tool {
+    pub span: Span,
+    pub doc: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prop_comments: Vec<PropComment>,
+    pub name: Ident,
+    pub effect: Spanned<Effect>,
+    pub verbs: Vec<ToolVerb>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ToolVerb {
+    /// The `## verb(...)` heading line.
+    pub span: Span,
+    pub doc: Option<String>,
+    pub name: Ident,
+    pub params: Vec<Param>,
+    pub out: Option<TypeExpr>,
+    pub body: ToolBody,
+}
+
+/// What a tool verb does: AgentMark statements or a fenced `rust` block (Layer 1).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum ToolBody {
+    Stmts(Vec<Stmt>),
+    Rust(RustCode),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

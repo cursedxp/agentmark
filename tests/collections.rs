@@ -65,8 +65,9 @@ fn the_project_is_canonical_and_checks_clean() {
     }
 }
 
-fn run_bin(bin: &Path, fx: &Path, command: &str) -> std::process::Output {
-    Command::new(bin).args(["--mock", "--fixtures", s(fx), "--trace", "-", command]).output().unwrap()
+/// `command` is `None` for a program whose one command is its default (SPEC 22.6: no subcommand name).
+fn run_bin(bin: &Path, fx: &Path, command: Option<&str>) -> std::process::Output {
+    Command::new(bin).args(["--mock", "--fixtures", s(fx), "--trace", "-"]).args(command).output().unwrap()
 }
 
 fn built() -> (Tmp, PathBuf) {
@@ -81,7 +82,7 @@ fn built() -> (Tmp, PathBuf) {
 fn every_word_gives_the_documented_result() {
     let (_d, bin) = built();
     let fx = PathBuf::from(format!("{ROOT}/tests/collections/fx"));
-    let o = run_bin(&bin, &fx, "words");
+    let o = run_bin(&bin, &fx, Some("words"));
     assert!(o.status.success(), "{}", stderr(&o));
     let lines: Vec<String> = parse_lines(&stdout(&o))
         .iter()
@@ -94,7 +95,7 @@ fn every_word_gives_the_documented_result() {
     assert_eq!(lines.join("\n"), want.trim_end());
 
     // the sum of two currencies is an error in the trace, not a guess
-    let o = run_bin(&bin, &fx, "mixed");
+    let o = run_bin(&bin, &fx, Some("mixed"));
     assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
     let t = parse_lines(&stdout(&o));
     assert_eq!(t.len(), 1, "{t:#?}");
@@ -546,7 +547,7 @@ fn unused_loop_variables_and_element_names_build_warning_free() {
     let bin = build_bin(&d.join("out"), "quiet");
     let fx = d.join("fx");
     write(&fx, "model.json", r#"{"today":"2026-10-14","responses":[]}"#);
-    let o = run_bin(&bin, &fx, "quiet");
+    let o = run_bin(&bin, &fx, None);
     assert!(o.status.success(), "{}", stderr(&o));
     let lines: Vec<String> = parse_lines(&stdout(&o)).iter().map(|t| t["message"].as_str().unwrap().to_string()).collect();
     assert_eq!(

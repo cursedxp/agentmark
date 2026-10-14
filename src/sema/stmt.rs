@@ -55,13 +55,14 @@ impl Checker<'_> {
         f.reported = true;
         let declared = super::effects::effect_name(f.declared);
         let name = f.name.clone();
+        let noun = f.noun;
         let have = cx.acc.detail();
         let class = super::effects::effect_name(cx.acc.class());
         let d = Diagnostic::error(
             E_EXCEEDS,
             self.path(cx.file),
             s.span,
-            format!("The function \"{name}\" says \"- effect: {declared}\", but this line has the effect {have}."),
+            format!("The {noun} \"{name}\" says \"- effect: {declared}\", but this line has the effect {have}."),
         )
         .with_help(if cx.acc.class() == Effect::Unverified {
             // `unverified` is not an effect a function can declare (SPEC 13.1)
@@ -70,7 +71,7 @@ impl Checker<'_> {
                 cx.acc.unverified.join(", ")
             )
         } else {
-            format!("Change the function to \"- effect: {class}\", or move this line out of the function.")
+            format!("Change the {noun} to \"- effect: {class}\", or move this line out of the {noun}.")
         });
         self.diags.push(d);
     }
@@ -248,7 +249,9 @@ impl Checker<'_> {
                 self.check_limit(cx, s);
             }
             StmtKind::ToolCall { .. } => {
+                cx.in_try = in_try;
                 self.tool_call(cx, s);
+                cx.in_try = false;
                 self.check_limit(cx, s);
             }
             StmtKind::Guard { cond, else_ } => {

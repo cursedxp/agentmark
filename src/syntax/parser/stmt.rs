@@ -299,7 +299,16 @@ pub fn head<'a>() -> P<'a, Head> {
             let stop = kw("stop").map_with(|_, e| stmt_at(StmtKind::Stop, e));
 
             // <tool> [verb [target...]] [: payload] [-> var]
-            let tool = name().filter(|id: &Ident| !STATEMENT_WORDS.contains(&id.name.as_str()));
+            // (a tool of an aliased import is written with its module: `tools.ledger add x`)
+            let tool = name()
+                .filter(|id: &Ident| !STATEMENT_WORDS.contains(&id.name.as_str()))
+                .then(just('.').ignore_then(name()).repeated().collect::<Vec<_>>())
+                .map(|(first, rest)| {
+                    let Some(last) = rest.last() else { return first };
+                    let span = first.span.to(last.span);
+                    let name = std::iter::once(first.name).chain(rest.into_iter().map(|i| i.name)).collect::<Vec<_>>().join(".");
+                    Ident { name, span }
+                });
             let tool_call =
                 tool.then(tool_call_tail)
                     .map_with(|(tool, (verb, target, payload, into)), e| {

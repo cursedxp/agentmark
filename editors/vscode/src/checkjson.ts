@@ -37,7 +37,7 @@ export interface Block {
 
 export interface Unit {
   name: string;
-  kind: "agent" | "service" | "command" | "function" | "rule";
+  kind: "agent" | "service" | "command" | "function" | "rule" | "tool";
   file: string;
   effects: Effects;
   blocks: Block[];

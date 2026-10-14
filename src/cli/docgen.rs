@@ -118,6 +118,18 @@ fn page(project: &Project, c: &Checked) -> String {
         let _ = writeln!(out, "- can touch: {}\n", touch(&c.unit_effect(&x.name.name)));
         true
     });
+    section(&mut out, "Tools", &files, |out, d| {
+        let Decl::Tool(t) = d else { return false };
+        let _ = writeln!(out, "### {}\n", t.name.name);
+        doc_block(out, &t.doc);
+        let _ = writeln!(out, "- declared effect: {}", crate::sema::effects::effect_name(t.effect.value));
+        for v in &t.verbs {
+            let params: Vec<String> = v.params.iter().map(|p| p.name.name.clone()).collect();
+            let _ = writeln!(out, "- **{}**({}) (can touch: {})", v.name.name, params.join(", "), block_effect(c, &t.name.name, &v.name.name));
+        }
+        out.push('\n');
+        true
+    });
     section(&mut out, "Records", &files, |out, d| {
         let Decl::Record(r) = d else { return false };
         let _ = writeln!(out, "### {}\n", r.name.name);

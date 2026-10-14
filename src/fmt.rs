@@ -188,6 +188,7 @@ impl Printer {
             Decl::Service(s) => self.service(s),
             Decl::Command(c) => self.command(c),
             Decl::Binding(b) => self.binding(b),
+            Decl::Tool(t) => self.tool(t),
             Decl::Constant(c) => self.constant(c),
             Decl::Run(r) => self.run(r),
             Decl::RustBlock(r) => self.rust_block(r),
@@ -418,6 +419,26 @@ impl Printer {
                         _ => self.push(if i == 0 { n.span.line } else { 0 }, 0, l.to_string()),
                     }
                 }
+            }
+        }
+    }
+
+    fn tool(&mut self, t: &Tool) {
+        self.heading(&t.doc, t.span.line, format!("# Tool: {}", t.name.name));
+        let from = self.out.len();
+        self.prop(&t.prop_comments, "effect", effect_word(t.effect.value), t.effect.span.line);
+        self.group(from);
+        for v in &t.verbs {
+            self.blank();
+            let mut h = format!("## {}({})", v.name.name, params_text(&v.params));
+            if let Some(o) = &v.out {
+                h.push_str(" -> ");
+                h.push_str(&type_text(o));
+            }
+            self.heading(&v.doc, v.span.line, h);
+            match &v.body {
+                ToolBody::Stmts(body) => self.stmts(body, 0),
+                ToolBody::Rust(rust) => self.fence(1, rust),
             }
         }
     }
