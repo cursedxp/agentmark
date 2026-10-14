@@ -204,8 +204,9 @@
     },
     "control": {
       "patterns": [
-        { "match": "\\b(for each|if|else|stop|do|set|return|respond|read|print)\\b", "name": "keyword.control.agentmark" },
-        { "match": "\\b(in|as|with|from|and|or|not|is|matches|else)\\b", "name": "keyword.operator.word.agentmark" },
+        { "match": "\\b(for each|if|else|stop|do|set|return|respond|read|print|append|put|remove)\\b", "name": "keyword.control.agentmark" },
+        { "match": "\\b(in|as|with|from|and|or|not|is|matches|else|index)\\b", "name": "keyword.operator.word.agentmark" },
+        { "match": "\\b(?:(?:list|map|keys|values|sum|min|max|first|last|count) of|empty (?:list|map) of|sort|group|take|skip|unique|join|where|by|descending|at|to)\\b", "name": "support.function.collection.agentmark" },
         { "match": "->", "name": "keyword.operator.arrow.agentmark" }
       ]
     },
@@ -224,7 +225,7 @@
         { "match": "\\b\\d+(?:\\.\\d+)?\\s*(?:[A-Z]{3})\\b", "name": "constant.numeric.money.agentmark" },
         { "match": "\\b\\d+\\s*(?:second|minute|hour|day|week|month|year)s?\\b", "name": "constant.numeric.duration.agentmark" },
         { "match": "\\b\\d+(?:\\.\\d+)?\\b", "name": "constant.numeric.agentmark" },
-        { "match": "\\b(true|false|today|now|count of)\\b", "name": "constant.language.agentmark" },
+        { "match": "\\b(true|false|today|now)\\b", "name": "constant.language.agentmark" },
         { "match": "<=|>=|!=|=|<|>|\\+|-|\\*|/", "name": "keyword.operator.agentmark" }
       ]
     },

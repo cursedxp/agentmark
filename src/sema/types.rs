@@ -16,6 +16,8 @@ pub enum Type {
     Bool,
     Bytes,
     List(Box<Type>),
+    /// `map of K to V` (SPEC 22.2): iteration and printing follow the key order.
+    Map(Box<Type>, Box<Type>),
     Maybe(Box<Type>),
     /// `result of T` (SPEC 14).
     Result(Box<Type>),
@@ -106,6 +108,7 @@ impl fmt::Display for Type {
             Type::Bool => f.write_str("bool"),
             Type::Bytes => f.write_str("bytes"),
             Type::List(t) => write!(f, "list of {t}"),
+            Type::Map(k, v) => write!(f, "map of {k} to {v}"),
             Type::Maybe(t) => write!(f, "maybe {t}"),
             Type::Result(t) => write!(f, "result of {t}"),
             Type::Record(n) => f.write_str(n),
@@ -137,6 +140,9 @@ pub fn assignable(
         (f, Type::Maybe(t)) if !f.is_maybe() => assignable(f, t, field_of),
         (Type::Maybe(f), Type::Maybe(t)) => assignable(f, t, field_of),
         (Type::List(f), Type::List(t)) => assignable(f, t, field_of),
+        (Type::Map(fk, fv), Type::Map(tk, tv)) => {
+            assignable(fk, tk, field_of) && assignable(fv, tv, field_of)
+        }
         (Type::Object(fields), Type::Record(r)) => match field_of(r) {
             // every key must exist with a fitting type, and every field that is not `maybe`
             // must be given

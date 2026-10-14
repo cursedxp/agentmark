@@ -1,0 +1,49 @@
+eu rows: 2
+amounts 6, sum 31.75 EUR
+line totals 107.75 EUR
+1. EU 10.00 EUR
+2. EU 7.25 EUR
+3. US 5.50 EUR
+4. FR 5.50 EUR
+5. US 2.50 EUR
+6. DE 1.00 EUR
+cheapest DE,US,US,FR,EU,EU
+by region DE EU EU FR US US
+big 4
+top 2, rest 2
+none left 0, nothing 0
+first EU
+last FR
+first of nothing is empty
+min 1.00 EUR
+max qty 9
+max region US
+min of nothing is empty
+sum of nothing 0.00 EUR
+regions EU, US, DE, FR
+distinct 5
+no regions []
+numbers 6
+min 1
+sorted a+b+c
+not a bc
+shouted b! a! c!
+4 names
+last d
+nobody is empty: true
+distinct words xy
+grown 4, still 3
+sums 6,4
+inner item 1
+DE: 1 sales, 1.00 EUR
+EU: 2 sales, 17.25 EUR
+FR: 1 sales, 5.50 EUR
+US: 2 sales, 8.00 EUR
+EU has 2
+no ES
+qty groups 1,2,3,4,9
+ann 31
+ann is 32
+cy is 40
+keys ann,cy, ages sum 72
+nobody is empty: true, 0 keys

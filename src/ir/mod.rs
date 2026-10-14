@@ -12,6 +12,7 @@ pub use crate::sema::{EffectSet, Type};
 pub use crate::syntax::ast::{BinOp, DurationUnit, Effect, HandleMode, Weekday};
 
 pub mod build;
+pub mod collections;
 
 /// `agent_lower` then [`build::build`]: the whole front-to-IR step for a checked project.
 pub fn lower(project: &crate::project::Project, checked: &crate::sema::Checked) -> Program {
@@ -277,6 +278,8 @@ pub enum StmtKind {
     /// `append v to state.invoices`; `list` is a path to the list.
     Append { value: Expr, list: Expr },
     Parallel(Vec<Stmt>),
+    /// `put`, `remove` and the loops with an index or over a map (SPEC 22.2).
+    Coll(collections::CollStmt),
     /// `try s [otherwise: …]`. `defines` is the variable `stmt` introduces (`-> rows`): it is
     /// visible after the `try`, and `otherwise` may assign it. Without `otherwise` a failure
     /// stops the block and is traced as an `error`.
@@ -476,6 +479,8 @@ pub enum ExprKind {
     /// prompt of the model call that wrote `output`; `output` itself when it did not come from
     /// a model call, which makes the check trivially true).
     NoAmountsChanged { output: Box<Expr>, input: Box<Expr> },
+    /// A collection word (SPEC 22.2).
+    Coll(Box<collections::CollOp>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

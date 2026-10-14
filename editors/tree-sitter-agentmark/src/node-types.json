@@ -24,6 +24,10 @@
             "named": true
           },
           {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
             "type": "count_expression",
             "named": true
           },
@@ -112,6 +116,10 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
           "named": true
         },
         {
@@ -210,6 +218,10 @@
             "named": true
           },
           {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
             "type": "count_expression",
             "named": true
           },
@@ -297,6 +309,10 @@
           },
           {
             "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
             "named": true
           },
           {
@@ -413,6 +429,10 @@
           },
           {
             "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
             "named": true
           },
           {
@@ -557,6 +577,10 @@
           },
           {
             "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
             "named": true
           },
           {
@@ -729,6 +753,10 @@
           "named": true
         },
         {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
           "type": "count_expression",
           "named": true
         },
@@ -875,6 +903,168 @@
         },
         {
           "type": "fence_open",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "collection_expression",
+    "named": true,
+    "fields": {
+      "source": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "date",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "field_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "module_call",
+            "named": true
+          },
+          {
+            "type": "money",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "record_literal",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "binary_expression",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "builtin",
+          "named": true
+        },
+        {
+          "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
+          "type": "count_expression",
+          "named": true
+        },
+        {
+          "type": "date",
+          "named": true
+        },
+        {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "field_expression",
+          "named": true
+        },
+        {
+          "type": "first_expression",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
+          "named": true
+        },
+        {
+          "type": "money",
+          "named": true
+        },
+        {
+          "type": "no_amounts_changed",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        },
+        {
+          "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "predicate",
+          "named": true
+        },
+        {
+          "type": "record_literal",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        },
+        {
+          "type": "unary_expression",
           "named": true
         }
       ]
@@ -1107,6 +1297,10 @@
           "named": true
         },
         {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
           "type": "count_expression",
           "named": true
         },
@@ -1264,6 +1458,10 @@
             "named": true
           },
           {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
             "type": "count_expression",
             "named": true
           },
@@ -1348,10 +1546,6 @@
         "required": true,
         "types": [
           {
-            "type": "binary_expression",
-            "named": true
-          },
-          {
             "type": "boolean",
             "named": true
           },
@@ -1364,15 +1558,7 @@
             "named": true
           },
           {
-            "type": "count_expression",
-            "named": true
-          },
-          {
             "type": "date",
-            "named": true
-          },
-          {
-            "type": "decode_expression",
             "named": true
           },
           {
@@ -1384,15 +1570,7 @@
             "named": true
           },
           {
-            "type": "first_expression",
-            "named": true
-          },
-          {
             "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "length_expression",
             "named": true
           },
           {
@@ -1404,19 +1582,7 @@
             "named": true
           },
           {
-            "type": "no_amounts_changed",
-            "named": true
-          },
-          {
             "type": "number",
-            "named": true
-          },
-          {
-            "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "predicate",
             "named": true
           },
           {
@@ -1425,10 +1591,6 @@
           },
           {
             "type": "string",
-            "named": true
-          },
-          {
-            "type": "unary_expression",
             "named": true
           }
         ]
@@ -1439,6 +1601,16 @@
     "type": "for_each",
     "named": true,
     "fields": {
+      "index": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
       "rule": {
         "multiple": false,
         "required": false,
@@ -1470,6 +1642,10 @@
             "named": true
           },
           {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
             "type": "count_expression",
             "named": true
           },
@@ -1535,6 +1711,16 @@
           },
           {
             "type": "unary_expression",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]
@@ -1573,6 +1759,10 @@
           },
           {
             "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
             "named": true
           },
           {
@@ -1674,7 +1864,15 @@
             "named": true
           },
           {
+            "type": "put_statement",
+            "named": true
+          },
+          {
             "type": "read_statement",
+            "named": true
+          },
+          {
+            "type": "remove_statement",
             "named": true
           },
           {
@@ -1723,6 +1921,10 @@
           },
           {
             "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
             "named": true
           },
           {
@@ -1890,6 +2092,10 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
           "named": true
         },
         {
@@ -2068,6 +2274,10 @@
           "named": true
         },
         {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
           "type": "count_expression",
           "named": true
         },
@@ -2239,6 +2449,10 @@
             "named": true
           },
           {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
             "type": "count_expression",
             "named": true
           },
@@ -2352,6 +2566,10 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
           "named": true
         },
         {
@@ -2471,6 +2689,10 @@
           "named": true
         },
         {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
           "type": "count_expression",
           "named": true
         },
@@ -2563,6 +2785,10 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
           "named": true
         },
         {
@@ -2696,6 +2922,10 @@
           "named": true
         },
         {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
           "type": "count_expression",
           "named": true
         },
@@ -2769,6 +2999,200 @@
         },
         {
           "type": "type_phrase",
+          "named": true
+        },
+        {
+          "type": "unary_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "put_statement",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
+            "type": "count_expression",
+            "named": true
+          },
+          {
+            "type": "date",
+            "named": true
+          },
+          {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "field_expression",
+            "named": true
+          },
+          {
+            "type": "first_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
+            "named": true
+          },
+          {
+            "type": "money",
+            "named": true
+          },
+          {
+            "type": "no_amounts_changed",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "predicate",
+            "named": true
+          },
+          {
+            "type": "record_literal",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "binary_expression",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "builtin",
+          "named": true
+        },
+        {
+          "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
+          "type": "count_expression",
+          "named": true
+        },
+        {
+          "type": "date",
+          "named": true
+        },
+        {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "field_expression",
+          "named": true
+        },
+        {
+          "type": "first_expression",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
+          "named": true
+        },
+        {
+          "type": "money",
+          "named": true
+        },
+        {
+          "type": "no_amounts_changed",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        },
+        {
+          "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "predicate",
+          "named": true
+        },
+        {
+          "type": "record_literal",
+          "named": true
+        },
+        {
+          "type": "string",
           "named": true
         },
         {
@@ -2958,6 +3382,10 @@
             "named": true
           },
           {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
             "type": "count_expression",
             "named": true
           },
@@ -3027,6 +3455,200 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "remove_statement",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
+            "type": "count_expression",
+            "named": true
+          },
+          {
+            "type": "date",
+            "named": true
+          },
+          {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "field_expression",
+            "named": true
+          },
+          {
+            "type": "first_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
+            "named": true
+          },
+          {
+            "type": "money",
+            "named": true
+          },
+          {
+            "type": "no_amounts_changed",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "predicate",
+            "named": true
+          },
+          {
+            "type": "record_literal",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "binary_expression",
+          "named": true
+        },
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "builtin",
+          "named": true
+        },
+        {
+          "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
+          "named": true
+        },
+        {
+          "type": "count_expression",
+          "named": true
+        },
+        {
+          "type": "date",
+          "named": true
+        },
+        {
+          "type": "decode_expression",
+          "named": true
+        },
+        {
+          "type": "duration",
+          "named": true
+        },
+        {
+          "type": "field_expression",
+          "named": true
+        },
+        {
+          "type": "first_expression",
+          "named": true
+        },
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "length_expression",
+          "named": true
+        },
+        {
+          "type": "module_call",
+          "named": true
+        },
+        {
+          "type": "money",
+          "named": true
+        },
+        {
+          "type": "no_amounts_changed",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        },
+        {
+          "type": "parenthesized_expression",
+          "named": true
+        },
+        {
+          "type": "predicate",
+          "named": true
+        },
+        {
+          "type": "record_literal",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "unary_expression",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3121,6 +3743,10 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
           "named": true
         },
         {
@@ -3365,6 +3991,10 @@
             "named": true
           },
           {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
             "type": "count_expression",
             "named": true
           },
@@ -3545,7 +4175,15 @@
           "named": true
         },
         {
+          "type": "put_statement",
+          "named": true
+        },
+        {
           "type": "read_statement",
+          "named": true
+        },
+        {
+          "type": "remove_statement",
           "named": true
         },
         {
@@ -3678,6 +4316,10 @@
           },
           {
             "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
             "named": true
           },
           {
@@ -3910,7 +4552,15 @@
           "named": true
         },
         {
+          "type": "put_statement",
+          "named": true
+        },
+        {
           "type": "read_statement",
+          "named": true
+        },
+        {
+          "type": "remove_statement",
           "named": true
         },
         {
@@ -3960,7 +4610,7 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
@@ -3996,6 +4646,10 @@
         },
         {
           "type": "call_expression",
+          "named": true
+        },
+        {
+          "type": "collection_expression",
           "named": true
         },
         {
@@ -4221,6 +4875,10 @@
     "named": false
   },
   {
+    "type": "by",
+    "named": false
+  },
+  {
     "type": "changed",
     "named": false
   },
@@ -4254,6 +4912,10 @@
   },
   {
     "type": "day",
+    "named": false
+  },
+  {
+    "type": "descending",
     "named": false
   },
   {
@@ -4317,7 +4979,15 @@
     "named": false
   },
   {
+    "type": "from",
+    "named": false
+  },
+  {
     "type": "function",
+    "named": false
+  },
+  {
+    "type": "group",
     "named": false
   },
   {
@@ -4353,7 +5023,23 @@
     "named": false
   },
   {
+    "type": "index",
+    "named": false
+  },
+  {
     "type": "is",
+    "named": false
+  },
+  {
+    "type": "join",
+    "named": false
+  },
+  {
+    "type": "keys",
+    "named": false
+  },
+  {
+    "type": "last",
     "named": false
   },
   {
@@ -4369,7 +5055,15 @@
     "named": false
   },
   {
+    "type": "map",
+    "named": false
+  },
+  {
     "type": "matches",
+    "named": false
+  },
+  {
+    "type": "max",
     "named": false
   },
   {
@@ -4378,6 +5072,10 @@
   },
   {
     "type": "memory",
+    "named": false
+  },
+  {
+    "type": "min",
     "named": false
   },
   {
@@ -4441,6 +5139,10 @@
     "named": false
   },
   {
+    "type": "put",
+    "named": false
+  },
+  {
     "type": "read",
     "named": false
   },
@@ -4454,6 +5156,10 @@
   },
   {
     "type": "record",
+    "named": false
+  },
+  {
+    "type": "remove",
     "named": false
   },
   {
@@ -4497,7 +5203,15 @@
     "named": false
   },
   {
+    "type": "skip",
+    "named": false
+  },
+  {
     "type": "some",
+    "named": false
+  },
+  {
+    "type": "sort",
     "named": false
   },
   {
@@ -4517,7 +5231,15 @@
     "named": true
   },
   {
+    "type": "sum",
+    "named": false
+  },
+  {
     "type": "sunday",
+    "named": false
+  },
+  {
+    "type": "take",
     "named": false
   },
   {
@@ -4557,7 +5279,15 @@
     "named": false
   },
   {
+    "type": "unique",
+    "named": false
+  },
+  {
     "type": "value",
+    "named": false
+  },
+  {
+    "type": "values",
     "named": false
   },
   {

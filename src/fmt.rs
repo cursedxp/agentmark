@@ -41,6 +41,8 @@ pub fn is_canonical(src: &str, path: &str) -> Result<bool, Vec<Diagnostic>> {
 
 /// Print a parsed file. `lines` is the lexed source of the same file (used to keep comments the
 /// AST does not hold).
+mod collections;
+
 fn format_file(file: &File, lines: &[Line]) -> String {
     let mut p = Printer {
         src_lines: lines
@@ -487,6 +489,7 @@ impl Printer {
                     self.stmts(o, indent + 2);
                 }
             }
+            StmtKind::Coll(c) => self.coll_stmt(c, line, indent),
             _ => self.push(line, indent, format!("- {}", simple_text(s))),
         }
     }
@@ -753,6 +756,7 @@ pub(crate) fn type_text(t: &TypeExpr) -> String {
         TypeKind::List(i) => format!("list of {}", type_text(i)),
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
+        TypeKind::Map(k, v) => format!("map of {} to {}", type_text(k), type_text(v)),
         TypeKind::Handle { name, mode } => match mode.word() {
             Some(w) => format!("{w} handle of {name}"),
             None => format!("handle of {name}"),
@@ -766,7 +770,7 @@ fn params_text(ps: &[Param]) -> String {
             let mut s = format!("{}: {}", p.name.name, type_text(&p.ty));
             if let Some(d) = &p.default {
                 s.push_str(" = ");
-                s.push_str(&expr_text(d));
+                s.push_str(&at_least(d, 1));
             }
             s
         })
@@ -835,7 +839,7 @@ fn simple_text(s: &Stmt) -> String {
                 Some(Payload::Assign(assigns)) => {
                     let a: Vec<String> = assigns
                         .iter()
-                        .map(|a| format!("{} = {}", a.field.name, expr_text(&a.value)))
+                        .map(|a| format!("{} = {}", a.field.name, at_least(&a.value, 1)))
                         .collect();
                     t.push_str(": ");
                     t.push_str(&a.join(", "));
@@ -894,6 +898,7 @@ fn simple_text(s: &Stmt) -> String {
             format!("{}{} -> {}", if *via_do { "do " } else { "" }, expr_text(call), into.name)
         }
         StmtKind::Print(e) => format!("print: {}", expr_text(e)),
+        StmtKind::Coll(c) => collections::simple(c).unwrap_or_else(|| "stop".to_string()),
         // Statements with a body never reach here from the parser; print the head if they do.
         StmtKind::ForEach { .. }
         | StmtKind::If { .. }
@@ -908,7 +913,8 @@ fn simple_text(s: &Stmt) -> String {
 // ---------------------------------------------------------------------------------- expressions
 
 fn exprs_text(es: &[Expr]) -> String {
-    es.iter().map(expr_text).collect::<Vec<_>>().join(", ")
+    // a list or map literal would take the commas that follow it, so it is parenthesised here
+    es.iter().map(|e| at_least(e, 1)).collect::<Vec<_>>().join(", ")
 }
 
 /// Binding strength, weakest first. `first ... where` swallows the rest of the line, so it counts
@@ -926,6 +932,7 @@ fn prec(e: &Expr) -> u8 {
         ExprKind::Not(_) => 3,
         ExprKind::IsEmpty(_) | ExprKind::IsNotEmpty(_) | ExprKind::Matches { .. } => 4,
         ExprKind::Length(_) => 7,
+        ExprKind::Coll(c) => collections::prec(c),
         _ => 9,
     }
 }
@@ -1008,7 +1015,7 @@ fn raw_expr(e: &Expr) -> String {
             } else {
                 let f: Vec<String> = fields
                     .iter()
-                    .map(|f| format!("{}: {}", f.name.name, expr_text(&f.value)))
+                    .map(|f| format!("{}: {}", f.name.name, at_least(&f.value, 1)))
                     .collect();
                 format!("{{ {} }}", f.join(", "))
             }
@@ -1037,6 +1044,7 @@ fn raw_expr(e: &Expr) -> String {
         ExprKind::NoAmountsChanged(x) => {
             format!("no amounts changed in {}", at_least(x, 9))
         }
+        ExprKind::Coll(c) => collections::expr(c),
     }
 }
 

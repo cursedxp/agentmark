@@ -140,6 +140,41 @@ test("every example file tokenizes, and every heading gets a specific scope", as
   }
 });
 
+test("collection words (SPEC 22.2) get their own scope", async () => {
+  const g = await loadGrammar();
+  const src = [
+    "  - set big = sales where amount > 5 EUR",
+    "  - set ranked = sort sales by amount descending",
+    '  - set regions = join (unique region in sales) with ", "',
+    "  - set by_region = group sales by region",
+    "  - set total = sum of amount in sales",
+    '  - put 1 at "EU" in totals',
+    '  - remove "US" from totals',
+    "  - for each row in ranked with index i:",
+    "  - for each region, rows in by_region:",
+    "  - set names = keys of by_region",
+    "  - set none = empty list of text",
+  ].join("\n");
+  const t = tokens(g, src);
+  assert.ok(has(t[0], "where", "support.function.collection"));
+  assert.ok(has(t[1], "sort", "support.function.collection"));
+  assert.ok(has(t[1], "by", "support.function.collection"));
+  assert.ok(has(t[1], "descending", "support.function.collection"));
+  assert.ok(has(t[2], "unique", "support.function.collection"));
+  assert.ok(has(t[2], "join", "support.function.collection"));
+  assert.ok(has(t[3], "group", "support.function.collection"));
+  assert.ok(has(t[4], "sum of", "support.function.collection"));
+  assert.ok(has(t[5], "put", "keyword.control"));
+  assert.ok(has(t[5], "at", "support.function.collection"));
+  assert.ok(has(t[6], "remove", "keyword.control"));
+  assert.ok(has(t[7], "index", "keyword.operator.word"));
+  assert.ok(has(t[9], "keys of", "support.function.collection"));
+  assert.ok(has(t[10], "empty list of", "support.function.collection"));
+  // words inside a string stay string
+  const s2 = tokens(g, '  - print: "sort the list by name"');
+  assert.ok(!s2[0].some((x) => x.scopes.some((sc) => sc.includes("support.function.collection"))));
+});
+
 test("handle types in a binding heading", async () => {
   const g = await loadGrammar();
   const t = tokens(g, "## update(self: mut handle of sha2.Sha256, data: bytes)\n## sha256_new() -> handle of sha2.Sha256");

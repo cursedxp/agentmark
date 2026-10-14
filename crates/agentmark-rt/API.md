@@ -45,6 +45,12 @@ All items are re-exported at the crate root (`use agentmark_rt::*;`). Every fall
 - `read_data::<T>(path) -> Result<T, RtError>` - `read file p as T`: `.csv` (header row = field names; cells are text, numbers/booleans only if the type refuses text) or JSON.
 - `ctx.with_model(id) -> Ctx` - copy that asks `id` (sent as `ModelRequest.model`); `Ctx.model_id` holds it. `MockModel` responses in model.json may carry an optional `"model"`: such a response only answers requests made for exactly that model id (a way to assert which agent used which model).
 
+## Collection words (step 21, `agentmark_rt::collections`)
+- `sorted(Vec<(K, T)>, descending) -> Result<Vec<T>, RtError>` - stable sort by key; equal keys keep their order in both directions. `K: SortKey` (`i64`, `String`, `bool`, `NaiveDate`, `DateTime<Utc>`, `Duration`, `Money`).
+- `extreme(Vec<K>, max) -> Result<Option<K>, RtError>` - smallest or largest, the first of equals; `None` when empty.
+- `sum_money(Vec<Money>) -> Result<Money, RtError>` - one currency; two currencies are `RtError::Money(CurrencyMismatch)`; an empty list is `0 EUR`. Money keys of different currencies also make `sorted` and `extreme` fail instead of guessing.
+- `unique(Vec<T: PartialEq + Serialize>) -> Vec<T>` - first occurrence kept; linear (values are compared by their JSON form).
+
 ## Built-in library (step 22, SPEC 22.3)
 - `agentmark_rt::stdlib::{text, regex, number, money, date, path, json, csv, file}` plus `stdlib::read_input()`. Pure functions take `&str`/values and return values; the ones the language types as `result of T` (`number::parse`, `money::parse`, `date::parse`, `json::parse::<T>`, `csv::parse::<T>` -> `Vec<T>`) return `Result<_, RtError>` with `RtError::Lib(plain message)`; `regex::*`, `number::{round,min,max,abs}`, `json::encode`, `csv::encode` return `Result` too (bad pattern, currency mismatch, too large, unencodable) and generated code writes `?`.
 - `number::{round,min,max,abs}` are generic over `number::Num` (`i64` and `Money`); `date::format` over `date::DateLike` (`NaiveDate`, `DateTime<Utc>`); patterns: strftime when they contain `%`, else `YYYY MM DD HH mm ss MMM MMMM ddd dddd`, `[literal]` (`date::to_strftime`, `date::check`, `regex::check` give the compiler its compile-time check).

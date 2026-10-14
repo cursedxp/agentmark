@@ -382,7 +382,7 @@ pub fn main_rs(c: &Ctxt) -> String {
         for (i, cmd) in p.commands.iter().enumerate() {
             let variant = super::names::camel(&cmd.name);
             let names: Vec<String> = cmd.args.iter().map(|a| c.n.local(&a.name)).collect();
-            let pat = if names.is_empty() { String::new() } else { format!(" {{ {} }}", names.join(", ")) };
+            let pat = if names.is_empty() { " {}".to_string() } else { format!(" {{ {} }}", names.join(", ")) };
             let args = if names.is_empty() { String::new() } else { format!(", {}", names.join(", ")) };
             s.push_str(&format!(
                 "        Cmd::{variant}{pat} => {{\n            {}::run(ctx{args}{}).await.map_err(|e| command_failed(ctx, {}, e))?;\n        }}\n",
@@ -572,6 +572,7 @@ const START_HEAD: &str = r#"    let fixtures = match &cli.fixtures {
 "#;
 
 const COMMAND_ARG: &str = r#"/// One argument of `command.json`: by name (`dry_run` or `dry-run`), else its default.
+#[allow(dead_code)]
 fn command_arg<T: serde::de::DeserializeOwned>(args: &serde_json::Value, name: &str, default: Option<T>) -> Result<T, AgentError> {
     match args.get(name).or_else(|| args.get(name.replace('_', "-"))) {
         Some(v) => Ok(serde_json::from_value(v.clone())?),
