@@ -76,7 +76,7 @@ fn trace_of(path: &str, fixtures: &Path) -> Vec<Value> {
 }
 
 fn tools_toml() -> String {
-    std::fs::read_to_string(format!("{ROOT}/examples/tools.toml")).unwrap()
+    std::fs::read_to_string(format!("{ROOT}/tests/errors/tools.toml")).unwrap()
 }
 
 /// A single-file project (`name.agent.md` + tools.toml) in a temp folder; returns the file path.

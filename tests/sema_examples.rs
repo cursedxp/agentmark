@@ -1,6 +1,5 @@
-//! All five examples check clean (zero errors), as single files and as a project folder.
+//! All five examples check clean (zero errors), as project folders.
 
-use agentmark::diag::Severity;
 use agentmark::project::Project;
 use agentmark::sema::{self, Checked};
 
@@ -50,10 +49,8 @@ fn invoice_chaser_folder_checks_with_no_diagnostics() {
 
 #[test]
 fn lead_qualifier_checks() {
-    let (p, c) = check("examples/02-lead-qualifier.agent.md");
-    // the model prompt makes line 17 longer than 120 characters (Q35): a warning, not an error
-    assert!(c.warnings.iter().all(|w| w.code == "W007"), "{}", warnings(&p, &c));
-    assert_eq!(c.warnings.len(), 1);
+    let (p, c) = check("examples/02-lead-qualifier");
+    assert!(c.warnings.is_empty(), "{}", warnings(&p, &c));
     let b = c
         .blocks
         .iter()
@@ -67,14 +64,13 @@ fn lead_qualifier_checks() {
 
 #[test]
 fn support_triage_checks() {
-    let (p, c) = check("examples/03-support-triage.agent.md");
-    assert!(c.warnings.iter().all(|w| w.code == "W007"), "{}", warnings(&p, &c));
-    assert_eq!(c.warnings.len(), 1);
+    let (p, c) = check("examples/03-support-triage");
+    assert!(c.warnings.is_empty(), "{}", warnings(&p, &c));
 }
 
 #[test]
 fn daily_report_checks() {
-    let (p, c) = check("examples/04-daily-report.agent.md");
+    let (p, c) = check("examples/04-daily-report");
     assert!(c.warnings.is_empty(), "{}", warnings(&p, &c));
     let b = c
         .blocks
@@ -88,14 +84,9 @@ fn daily_report_checks() {
 }
 
 #[test]
-fn invoice_service_checks_with_the_unbound_crate_and_single_file_warnings() {
-    let (p, c) = check("examples/05-invoice-service.agent.md");
-    let w = warnings(&p, &c);
-    let codes: Vec<_> = c.warnings.iter().map(|d| d.code).collect();
-    assert_eq!(codes, ["W004", "W006"], "{w}");
-    assert!(w.contains("The crate \"sha2\" has no binding yet."), "{w}");
-    assert!(w.contains("single-file draft"), "{w}");
-    assert!(c.warnings.iter().all(|d| d.severity == Severity::Warning));
+fn invoice_service_checks_clean_with_its_approved_binding() {
+    let (p, c) = check("examples/05-invoice-service");
+    assert!(c.warnings.is_empty(), "{}", warnings(&p, &c));
     assert_eq!(c.rust_blocks.len(), 1);
     assert_eq!(c.rust_blocks[0].name, "fingerprint");
     let net = c.blocks.iter().find(|b| b.label == "net_amount").unwrap();

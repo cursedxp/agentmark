@@ -41,6 +41,25 @@ fn temp(tag: &str) -> PathBuf {
     d
 }
 
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap().flatten() {
+        if e.path().is_dir() {
+            copy_dir(&e.path(), &to.join(e.file_name()));
+        } else {
+            std::fs::copy(e.path(), to.join(e.file_name())).unwrap();
+        }
+    }
+}
+
+/// Example 05 without its approved sha2 binding (the crate is then unbound: a warning).
+fn unbound_05(tag: &str) -> PathBuf {
+    let d = temp(tag);
+    copy_dir(Path::new("examples/05-invoice-service"), &d);
+    std::fs::remove_file(d.join("bindings/sha2.agent.md")).unwrap();
+    d
+}
+
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -61,18 +80,18 @@ fn check_every_example_prints_its_effect_summary() {
             "invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)\n",
         ),
         (
-            "examples/02-lead-qualifier.agent.md",
+            "examples/02-lead-qualifier",
             "lead-qualifier / When crm receives lead: model, network(crm, email), local(log)\n",
         ),
         (
-            "examples/03-support-triage.agent.md",
+            "examples/03-support-triage",
             "support-triage / Every 15 minutes: model, network(crm, http), local(log)\n",
         ),
         (
-            "examples/04-daily-report.agent.md",
+            "examples/04-daily-report",
             "daily-report / Every Monday at 08:00: model, network(crm, email), local(log)\n",
         ),
-        ("examples/05-invoice-service.agent.md", "api / POST /invoices: local(state)\n"),
+        ("examples/05-invoice-service", "api / POST /invoices: local(state)\n"),
     ];
     for (path, line) in cases {
         let o = run(&["check", path]);
@@ -84,14 +103,20 @@ fn check_every_example_prints_its_effect_summary() {
 
 #[test]
 fn check_lists_rust_blocks_and_prints_warnings_in_the_spec_10_format() {
-    let o = run(&["check", "examples/05-invoice-service.agent.md"]);
-    let (so, se) = (out(&o), err(&o));
+    let o = run(&["check", "examples/05-invoice-service"]);
+    let so = out(&o);
+    assert_eq!(code(&o), 0, "{so}{}", err(&o));
     assert!(so.contains("Rust blocks (trusted, not checked by AgentMark)"), "{so}");
-    assert!(so.contains("fingerprint in net_amount: declared pure (examples/05-invoice-service.agent.md:"), "{so}");
-    // unused/unbound warnings: file:line, the source line, a caret
-    assert!(se.contains("examples/05-invoice-service.agent.md:4\n  # Import: crate sha2\n"), "{se}");
+    assert!(so.contains("fingerprint in invoice_fingerprint: declared pure (examples/05-invoice-service/functions/invoice-fingerprint.agent.md:"), "{so}");
+    // without the binding: file:line, the source line, a caret, the plain-language message
+    let d = unbound_05("check05");
+    let o = run(&["check", s(&d)]);
+    let se = err(&o);
+    let f = format!("{}/functions/invoice-fingerprint.agent.md", s(&d));
+    assert!(se.contains(&format!("{f}:2\n  # Import: crate sha2\n")), "{se}");
     assert!(se.contains("The crate \"sha2\" has no binding yet."), "{se}");
     assert!(!se.to_lowercase().contains("rustc"));
+    std::fs::remove_dir_all(d).unwrap();
 }
 
 #[test]
@@ -136,7 +161,7 @@ fn check_missing_path_is_an_error() {
 #[test]
 fn a_file_that_is_not_agentmark_source_is_refused_plainly() {
     for cmd in ["check", "fmt", "lint", "doc"] {
-        let o = run(&[cmd, "examples/tools.toml"]);
+        let o = run(&[cmd, "tests/errors/tools.toml"]);
         assert_eq!(code(&o), 2, "{cmd}");
         assert!(err(&o).contains("is not an AgentMark file"), "{cmd}: {}", err(&o));
         assert_eq!(err(&o).lines().count(), 1, "one message: {}", err(&o));
@@ -186,11 +211,16 @@ fn check_json_has_the_documented_keys() {
 
 #[test]
 fn check_json_reports_rust_blocks_and_diagnostics() {
-    let o = run(&["check", "examples/05-invoice-service.agent.md", "--json"]);
+    let o = run(&["check", "examples/05-invoice-service", "--json"]);
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
     let rb = &v["rust_blocks"][0];
     assert_eq!((rb["name"].as_str(), rb["effect"].as_str()), (Some("fingerprint"), Some("pure")));
     assert_eq!(keys(rb), ["effect", "file", "line", "name", "parent"]);
+    assert!(v["diagnostics"].as_array().unwrap().is_empty());
+    let d = unbound_05("json05");
+    let o = run(&["check", s(&d), "--json"]);
+    std::fs::remove_dir_all(&d).unwrap();
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
     let d = &v["diagnostics"][0];
     assert_eq!(d["severity"], "warning");
     assert_eq!(keys(d), ["code", "column", "did_you_mean", "file", "help", "length", "line", "message", "severity"]);
@@ -301,7 +331,7 @@ fn doc_collects_descriptions_and_effects() {
 
 #[test]
 fn doc_of_a_service_lists_routes_with_their_effects() {
-    let o = run(&["doc", "examples/05-invoice-service.agent.md"]);
+    let o = run(&["doc", "examples/05-invoice-service"]);
     let t = out(&o);
     assert!(t.contains("## Services\n\n### api\n"), "{t}");
     assert!(t.contains("**POST /invoices** (can touch: local(state))"), "{t}");
@@ -507,9 +537,9 @@ fn review_fixes_text_layout() {
     // effects are indented like the other sections
     let o = run(&["check", "examples/01-invoice-chaser"]);
     assert!(out(&o).contains("\n  invoice-chaser / Every day at 09:00: model,"), "{}", out(&o));
-    // single-file doc: title is the file stem; pure units are not called "pure effects"
-    let o = run(&["doc", "examples/05-invoice-service.agent.md"]);
-    assert!(out(&o).starts_with("# 05-invoice-service\n"), "{}", out(&o));
+    // folder doc: title is the project name; pure units are not called "pure effects"
+    let o = run(&["doc", "examples/05-invoice-service"]);
+    assert!(out(&o).starts_with("# invoice-service\n"), "{}", out(&o));
     assert!(out(&o).contains("- can touch: nothing outside itself (pure)"), "{}", out(&o));
     // the author's doc comes before the generated line of a rule
     let d = temp("ruledoc");

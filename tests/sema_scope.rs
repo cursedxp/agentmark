@@ -345,7 +345,7 @@ fn a_missing_tools_toml_means_no_tools() {
 #[test]
 fn the_example_folder_and_single_files_load_the_right_manifest() {
     let folder = Project::load("examples/01-invoice-chaser");
-    let single = Project::load("examples/02-lead-qualifier.agent.md");
+    let single = Project::load("examples/02-lead-qualifier");
     assert_eq!(
         folder.manifest.tools.keys().collect::<Vec<_>>(),
         single.manifest.tools.keys().collect::<Vec<_>>()

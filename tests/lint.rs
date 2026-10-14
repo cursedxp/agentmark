@@ -325,11 +325,10 @@ fn the_invoice_chaser_project_is_clean_under_its_own_deny_list() {
 
 #[test]
 fn the_support_triage_example_guards_its_model_answer_inside_the_loop() {
-    let src = std::fs::read_to_string("examples/03-support-triage.agent.md").unwrap();
-    let file = parse("examples/03-support-triage.agent.md", &src);
+    let src = std::fs::read_to_string("examples/03-support-triage/agents/support-triage.agent.md").unwrap();
+    let file = parse("examples/03-support-triage/agents/support-triage.agent.md", &src);
     let d = lint_file(&file, &LintConfig::new(["prompt-in-loop"]));
     assert!(d.iter().all(|d| d.code != "prompt-in-loop"));
-    assert!(d.iter().any(|d| d.code == "missing-doc"));
 }
 
 #[test]

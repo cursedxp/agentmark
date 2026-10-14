@@ -153,7 +153,7 @@ fn run_declaration() {
 
 #[test]
 fn record_fields_with_and_without_types() {
-    let f = read("examples/02-lead-qualifier.agent.md");
+    let f = read("examples/02-lead-qualifier/records/lead.agent.md");
     let Decl::Record(r) = &f.decls[0] else {
         panic!()
     };
@@ -173,7 +173,7 @@ fn record_fields_with_and_without_types() {
 
 #[test]
 fn lead_qualifier_event_trigger_and_if_else() {
-    let f = read("examples/02-lead-qualifier.agent.md");
+    let f = read("examples/02-lead-qualifier/agents/lead-qualifier.agent.md");
     let a = agent(&f);
     let b = &a.blocks[0];
     assert!(
@@ -201,7 +201,7 @@ fn lead_qualifier_event_trigger_and_if_else() {
 
 #[test]
 fn support_triage_nesting_and_stop() {
-    let f = read("examples/03-support-triage.agent.md");
+    let f = read("examples/03-support-triage/agents/support-triage.agent.md");
     let a = agent(&f);
     assert!(
         matches!(&a.blocks[0].trigger, Trigger::Every(d) if d.amount == 15 && d.unit == DurationUnit::Minute)
@@ -243,7 +243,7 @@ fn support_triage_nesting_and_stop() {
 
 #[test]
 fn daily_report_weekly_trigger_and_counts() {
-    let f = read("examples/04-daily-report.agent.md");
+    let f = read("examples/04-daily-report/agents/daily-report.agent.md");
     let a = agent(&f);
     assert!(matches!(
         &a.blocks[0].trigger,
@@ -268,31 +268,33 @@ fn daily_report_weekly_trigger_and_counts() {
 
 #[test]
 fn invoice_service_layer_two_and_one() {
-    let f = read("examples/05-invoice-service.agent.md");
-    assert!(f.doc.as_deref().unwrap().starts_with("Non-agent example"));
+    // the function file: a crate import, a Function and the `## Rust:` block hoisted right after it
+    let f = read("examples/05-invoice-service/functions/invoice-fingerprint.agent.md");
     assert!(
-        matches!(&f.imports[0].kind, ImportKind::Crate { name, alias: None } if name.name == "sha2")
+        matches!(&f.imports[1].kind, ImportKind::Crate { name, alias: None } if name.name == "sha2")
     );
-
     let names: Vec<&str> = f
         .decls
         .iter()
         .map(|d| match d {
-            Decl::Record(_) => "record",
             Decl::Function(_) => "function",
             Decl::RustBlock(_) => "rust",
-            Decl::Service(_) => "service",
-            Decl::Command(_) => "command",
             _ => "other",
         })
         .collect();
-    // the `## Rust:` block is hoisted right after the Function it was written under
-    assert_eq!(
-        names,
-        ["record", "record", "function", "rust", "service", "command"]
-    );
+    assert_eq!(names, ["function", "rust"]);
+    let Decl::RustBlock(r) = &f.decls[1] else {
+        panic!()
+    };
+    assert_eq!(r.name.name, "fingerprint");
+    assert_eq!(r.parent.as_ref().unwrap().name, "invoice_fingerprint");
+    assert_eq!(r.effect.value, Effect::Pure);
+    assert_eq!(r.params[0].name.name, "digest");
+    assert_eq!(r.rust.code, "digest.iter().map(|b| format!(\"{:02x}\", b)).collect::<String>()");
+    assert_eq!(r.rust.line, 17);
 
-    let Decl::Function(func) = &f.decls[2] else {
+    let f = read("examples/05-invoice-service/functions/net-amount.agent.md");
+    let Decl::Function(func) = &f.decls[0] else {
         panic!()
     };
     assert_eq!(func.params.len(), 2);
@@ -301,20 +303,8 @@ fn invoice_service_layer_two_and_one() {
     assert_eq!(func.body.len(), 1);
     assert!(matches!(&func.body[0].kind, StmtKind::Return(_)));
 
-    let Decl::RustBlock(r) = &f.decls[3] else {
-        panic!()
-    };
-    assert_eq!(r.name.name, "fingerprint");
-    assert_eq!(r.parent.as_ref().unwrap().name, "net_amount");
-    assert_eq!(r.effect.value, Effect::Pure);
-    assert_eq!(r.params[0].name.name, "invoice");
-    assert_eq!(
-        r.rust.code,
-        "use sha2::{Digest, Sha256};\nformat!(\"{:x}\", Sha256::digest(format!(\"{}{}\", invoice.id, invoice.amount).as_bytes()))"
-    );
-    assert_eq!(r.rust.line, 26);
-
-    let Decl::Service(s) = &f.decls[4] else {
+    let f = read("examples/05-invoice-service/services/api.agent.md");
+    let Decl::Service(s) = &f.decls[0] else {
         panic!()
     };
     assert_eq!(s.listen.as_ref().unwrap().value, "0.0.0.0:8080");
@@ -343,7 +333,8 @@ fn invoice_service_layer_two_and_one() {
         StmtKind::ReadBody { .. }
     ));
 
-    let Decl::Command(c) = &f.decls[5] else {
+    let f = read("examples/05-invoice-service/commands/import-csv.agent.md");
+    let Decl::Command(c) = &f.decls[0] else {
         panic!()
     };
     assert_eq!(c.args.len(), 2);
