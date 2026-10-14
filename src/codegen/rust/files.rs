@@ -223,7 +223,11 @@ pub fn agent_rs(c: &Ctxt, unit: &str, module: &str) -> String {
 fn entry_fn(c: &Ctxt, module: &str, idx: usize, e: &Entry) -> String {
     let ident = &c.n.entries[idx];
     let mut b = Body::new(c.p, c.n, &c.o.root, module, Kind::Unit, None);
-    b.raw_line(&format!("let ctx = &ctx.enter({}, {});", lit(&e.unit), lit(&e.label)));
+    let with_model = match unit_driver(c.p, &e.unit) {
+        Some(d) => format!(".with_model({})", lit(&super::model_id(&d))),
+        None => String::new(),
+    };
+    b.raw_line(&format!("let ctx = &ctx.enter({}, {}){with_model};", lit(&e.unit), lit(&e.label)));
     b.function_body(&e.body);
     let src = b.src_comment(&e.source);
     let text = b.finish();
@@ -239,6 +243,27 @@ fn entry_fn(c: &Ctxt, module: &str, idx: usize, e: &Entry) -> String {
         "/// {}{when}\n{src}\npub async fn {ident}(ctx: &Ctx{param}) -> Result<(), AgentError> {{\n{text}\n}}\n",
         e.label
     )
+}
+
+/// The `- model:` of an agent: the driver of the first `ask model` in its blocks.
+pub fn unit_driver(p: &Program, unit: &str) -> Option<String> {
+    let mut found: Option<String> = None;
+    let mut look = |stmts: &[Stmt]| {
+        super::body::visit_stmts(stmts, &mut |s| {
+            if let StmtKind::Effect { call: EffectCall::Model(m), .. } = &s.kind {
+                if found.is_none() {
+                    found = m.model.clone();
+                }
+            }
+        });
+    };
+    for e in p.entries.iter().filter(|e| e.unit == unit) {
+        look(&e.body);
+    }
+    for f in p.functions.iter().filter(|f| f.display.as_ref().is_some_and(|(u, _)| u == unit)) {
+        look(&f.body);
+    }
+    found
 }
 
 // ---------------------------------------------------------------------------------- services
@@ -332,8 +357,10 @@ pub fn service_rs(c: &Ctxt, idx: usize, s: &Service) -> String {
             let first = chain.is_empty();
             let head = if first { format!("routing::{m}") } else { format!(".{m}") };
             let h = format!(
-                "{head}(|{}| async move {{\n                let result = {ident}(&app.ctx{state_arg}{args}).await;\n                reply(&app.ctx, {}, &uri, result)\n            }})",
+                "{head}(|{}| async move {{\n                let result = {ident}(&app.ctx{state_arg}{args}).await;\n                reply(&app.ctx, {}, {}, {}, &uri, result)\n            }})",
                 extractors.join(", "),
+                lit(&s.name),
+                lit(&route.label),
                 lit(method)
             );
             chain.push_str(&h);
@@ -420,12 +447,19 @@ impl Reply {
     }
 }
 
-/// Turn a route's result into the HTTP response and record the `http` trace line.
-fn reply(ctx: &Ctx, method: &str, uri: &Uri, result: Result<Reply, AgentError>) -> Response {
+/// Turn a route's result into the HTTP response and record the `http` trace line. A failure is
+/// traced as an `error`; the caller only sees "internal error".
+fn reply(ctx: &Ctx, unit: &str, label: &str, method: &str, uri: &Uri, result: Result<Reply, AgentError>) -> Response {
     let (status, body) = match result {
         Ok(r) => (r.status, r.body),
         Err(e) if e.downcast_ref::<BadRequest>().is_some() => (400, Some(serde_json::json!({ "error": e.to_string() }))),
-        Err(e) => (500, Some(serde_json::json!({ "error": e.to_string() }))),
+        Err(e) => {
+            eprintln!("{unit} / {label}: {e}");
+            if let Err(t) = ctx.enter(unit, label).trace_error(&e.to_string()) {
+                eprintln!("trace: {t}");
+            }
+            (500, Some(serde_json::json!({ "error": "internal error" })))
+        }
     };
     if let Err(e) = ctx.trace_http(method, uri.path(), status) {
         eprintln!("trace: {e}");
@@ -445,7 +479,7 @@ pub fn command_rs(c: &Ctxt, idx: usize, cmd: &Command) -> String {
     let mut b = Body::new(c.p, c.n, &c.o.root, module, Kind::Unit, None);
     b.raw_line(&format!("let ctx = &ctx.enter({}, \"Run\");", lit(&cmd.name)));
     b.function_body(&cmd.body);
-    let src = b.src_comment(&cmd.source);
+    let src = b.src_comment(&cmd.run);
     let text = b.finish();
     let params: String = cmd
         .args
@@ -511,18 +545,23 @@ pub fn records_rs(c: &Ctxt) -> String {
 
 // ---------------------------------------------------------------------------------- tools
 
+fn tools_with_verbs<'a>(c: &'a Ctxt) -> Vec<&'a ToolDef> {
+    c.p.tools.iter().filter(|t| !t.verbs.is_empty()).collect()
+}
+
 pub fn tools_rs(c: &Ctxt) -> String {
+    let with_verbs = tools_with_verbs(c);
     let mut body = String::new();
-    for t in &c.p.tools {
+    for t in &with_verbs {
         let tr = &c.n.tools[&t.name];
         let verbs: Vec<String> = t.verbs.iter().map(|v| value_ident(v)).collect();
-        body.push_str(&format!("/// The `{}` tool ({:?}).\n", t.name, t.effect));
-        body.push_str(&format!("#[async_trait]\npub trait {tr} {{\n"));
+        body.push_str(&format!("/// The `{}` tool ({:?}): implement it in `src/connect.rs`.\n", t.name, t.effect));
+        body.push_str(&format!("#[async_trait]\npub trait {tr}: Send + Sync {{\n"));
         for v in &verbs {
             body.push_str(&format!("    async fn {v}(&self, args: Value) -> Result<Value, RtError>;\n"));
         }
         body.push_str("}\n\n");
-        body.push_str(&format!("#[async_trait]\nimpl<T: Tools + ?Sized> {tr} for T {{\n"));
+        body.push_str(&format!("/// Mock runs: the fixtures answer.\n#[async_trait]\nimpl {tr} for MockTools {{\n"));
         for (v, raw) in verbs.iter().zip(&t.verbs) {
             body.push_str(&format!(
                 "    async fn {v}(&self, args: Value) -> Result<Value, RtError> {{\n        self.call({}, {}, &args).await\n    }}\n",
@@ -532,12 +571,69 @@ pub fn tools_rs(c: &Ctxt) -> String {
         }
         body.push_str("}\n\n");
     }
+    // the adapter real runs use
+    body.push_str("/// The tools of a real run: one implementation per tool, chosen in `src/connect.rs`.\npub struct Connected {\n");
+    for t in &with_verbs {
+        body.push_str(&format!("    pub {}: Box<dyn {}>,\n", value_ident(&t.name), c.n.tools[&t.name]));
+    }
+    body.push_str("}\n\n");
+    let args = if with_verbs.is_empty() { "_args" } else { "args" };
+    body.push_str(&format!(
+        "#[async_trait]\nimpl Tools for Connected {{\n    async fn call(&self, tool: &str, verb: &str, {args}: &Value) -> Result<Value, RtError> {{\n        match (tool, verb) {{\n"
+    ));
+    for t in &with_verbs {
+        for v in &t.verbs {
+            body.push_str(&format!(
+                "            ({}, {}) => self.{}.{}(args.clone()).await,\n",
+                lit(&t.name),
+                lit(v),
+                value_ident(&t.name),
+                value_ident(v)
+            ));
+        }
+    }
+    body.push_str("            _ => Err(RtError::Tool(format!(\"{tool} {verb}: this program has no such tool or verb\"))),\n        }\n    }\n}\n\n");
     body.push_str(
         "/// Read a tool's collection (`crm.invoices`) as typed values.\npub async fn read_source<T: DeserializeOwned>(ctx: &Ctx, tool: &str, source: &str) -> Result<T, AgentError> {\n    let rows = ctx.tools.call(tool, \"list\", &json!({ \"source\": source })).await?;\n    Ok(serde_json::from_value(rows)?)\n}\n",
     );
+    let mock = if with_verbs.is_empty() { "" } else { "MockTools, " };
     format!(
-        "//! One trait per tool of tools.toml; anything that implements `agentmark_rt::Tools` (the mock\n//! included) implements them all.\n#![allow(dead_code)]\n\nuse agentmark_rt::{{Ctx, RtError, Tools}};\nuse async_trait::async_trait;\nuse serde::de::DeserializeOwned;\nuse serde_json::{{json, Value}};\n\nuse crate::AgentError;\n\n{body}"
+        "//! One trait per tool of tools.toml. Mock runs answer from fixtures; a real run uses the\n//! implementations `src/connect.rs` returns, wrapped in `Connected`.\n#![allow(dead_code)]\n\nuse agentmark_rt::{{Ctx, {mock}RtError, Tools}};\nuse async_trait::async_trait;\nuse serde::de::DeserializeOwned;\nuse serde_json::{{json, Value}};\n\nuse crate::AgentError;\n\n{body}"
     )
+}
+
+/// `src/connect.rs`: written once, owned by the user afterwards.
+pub fn connect_rs(c: &Ctxt) -> String {
+    let with_verbs = tools_with_verbs(c);
+    let mut s = String::from(
+        "//! Connect the tools to the real world.\n//!\n//! This file is yours: `agentmark build` writes it once, when it is missing, and never changes\n//! it again. Implement the traits of `tools.rs` for your systems and return them from `connect()`.\n//! A real run (without --mock) uses what `connect()` returns. If tools.toml gains a tool, add it here.\n\n",
+    );
+    if with_verbs.is_empty() {
+        s.push_str("use crate::tools::Connected;\n\n/// The tools of a real run (this program has none that need connecting).\npub fn connect() -> Connected {\n    Connected {}\n}\n");
+        return s;
+    }
+    s.push_str("use agentmark_rt::RtError;\nuse async_trait::async_trait;\nuse serde_json::Value;\n\n");
+    let traits: Vec<&str> = with_verbs.iter().map(|t| c.n.tools[&t.name].as_str()).collect();
+    s.push_str(&format!("use crate::tools::{{Connected, {}}};\n\n", traits.join(", ")));
+    s.push_str("/// A tool nobody has connected yet: every call says what to implement.\nstruct NotConnected;\n\n");
+    for t in &with_verbs {
+        let tr = &c.n.tools[&t.name];
+        s.push_str(&format!("#[async_trait]\nimpl {tr} for NotConnected {{\n"));
+        for v in &t.verbs {
+            s.push_str(&format!(
+                "    async fn {}(&self, _args: Value) -> Result<Value, RtError> {{\n        Err(RtError::Tool({}.into()))\n    }}\n",
+                value_ident(v),
+                lit(&format!("not connected yet: implement {tr}::{} in src/connect.rs", value_ident(v)))
+            ));
+        }
+        s.push_str("}\n\n");
+    }
+    s.push_str("/// The tools of a real run.\npub fn connect() -> Connected {\n    Connected {\n");
+    for t in &with_verbs {
+        s.push_str(&format!("        {}: Box::new(NotConnected),\n", value_ident(&t.name)));
+    }
+    s.push_str("    }\n}\n");
+    s
 }
 
 // ---------------------------------------------------------------------------------- bindings
@@ -568,7 +664,7 @@ pub fn bindings_rs(c: &Ctxt) -> String {
             .join(", ");
         let ret = r.ret.as_ref().map_or("()".to_string(), |t| rust_type(t, c.n));
         body.push_str(&format!(
-            "/// Rust block `{}` (declared effect: {}).\n// {file}:{}\n#[allow(unused)]\npub fn {f}({params}) -> {ret} {{\n{}}}\n\n",
+            "/// Rust block `{}` (declared effect: {}).\n// agentmark:block {file}:{}\n#[allow(unused)]\npub fn {f}({params}) -> {ret} {{\n{}}}\n\n",
             r.name,
             r.effect,
             r.source.line,
@@ -600,7 +696,7 @@ pub fn bindings_rs(c: &Ctxt) -> String {
             let ret = it.ret.as_ref().map_or("()".to_string(), |t| rust_type(t, c.n));
             body.push_str(&doc_lines(&it.doc).lines().map(|l| format!("    {l}\n")).collect::<String>());
             body.push_str(&format!(
-                "    // {file}:{}\n    pub async fn {m}({params}) -> Result<{ret}, Box<dyn std::error::Error + Send + Sync>> {{\n{}    }}\n\n",
+                "    // agentmark:block {file}:{}\n    pub async fn {m}({params}) -> Result<{ret}, Box<dyn std::error::Error + Send + Sync>> {{\n{}    }}\n\n",
                 it.source.line,
                 user_code(&it.code, &file, it.code_line, "        ")
             ));

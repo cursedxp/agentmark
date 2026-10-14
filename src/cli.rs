@@ -89,6 +89,9 @@ pub enum Command {
         /// Build even while a library binding is not approved (development only).
         #[arg(long)]
         allow_unverified: bool,
+        /// Only write the files; do not run `cargo check` on them.
+        #[arg(long)]
+        no_check: bool,
     },
     /// Build the project and run every entry once.
     Run {
@@ -139,7 +142,7 @@ where
         Command::Lint { path } => fmtlint::lint(&path),
         Command::Doc { target, project } => docgen::run(target.as_deref(), &project),
         Command::Bind { name, force, all, project } => bind::run(name.as_deref(), force, all, &project),
-        Command::Build { path, target, out, allow_unverified } => build::build(&path, &target, &out, allow_unverified),
+        Command::Build { path, target, out, allow_unverified, no_check } => build::build(&path, &target, &out, allow_unverified, no_check),
         Command::Run { path, mock, fixtures, allow_unverified } => build::run(&path, mock, fixtures.as_deref(), allow_unverified),
         Command::Trace { path, mock, fixtures, allow_unverified } => build::trace(&path, mock, fixtures.as_deref(), allow_unverified),
     };

@@ -99,3 +99,17 @@ async fn ask_model_about_adds_context_and_traces_id() {
     assert_eq!(l[1]["context"], json!("plain"));
     assert!(l[2].get("context").is_none());
 }
+
+#[tokio::test]
+async fn a_mock_response_with_a_model_only_answers_that_model() {
+    let dir = tempdir();
+    std::fs::write(
+        dir.join("model.json"),
+        r#"{"today":"2026-10-13","responses":[{"prompt_prefix":"Q","response":"small","model":"m-small"},{"prompt_prefix":"Q","response":"any"}]}"#,
+    )
+    .unwrap();
+    let ctx = Ctx::mock(&dir, Trace::memory()).unwrap().enter("a", "b");
+    assert_eq!(ctx.with_model("m-small").ask_model("Q", None).await.unwrap(), "small");
+    assert_eq!(ctx.with_model("m-big").ask_model("Q", None).await.unwrap(), "any");
+    assert_eq!(ctx.ask_model("Q", None).await.unwrap(), "any");
+}

@@ -367,7 +367,23 @@ impl<'a> Builder<'a> {
             effect: ir::union_effects(&body),
             body,
             source: self.src(c.span.line),
+            run: self.src(self.run_line(c.span.line)),
         }
+    }
+
+    /// Line of the `## Run` heading after the `# Command` heading at `from` (the heading itself if
+    /// it cannot be found).
+    fn run_line(&self, from: u32) -> u32 {
+        self.project.files[self.fi]
+            .text
+            .lines()
+            .enumerate()
+            .skip(from as usize)
+            .find(|(_, l)| {
+                let t = l.trim_start();
+                t.len() >= 6 && t.is_char_boundary(6) && t[..6].eq_ignore_ascii_case("## run") && !t[6..].starts_with(|c: char| c.is_alphanumeric() || c == ':')
+            })
+            .map_or(from, |(i, _)| i as u32 + 1)
     }
 
     fn rust_fn(&mut self, r: &ast::RustBlock) -> ir::RustFn {

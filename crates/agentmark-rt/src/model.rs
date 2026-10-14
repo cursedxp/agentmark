@@ -42,13 +42,13 @@ pub trait ModelClient: Send + Sync {
 #[derive(Debug, Clone, Default)]
 pub struct MockModel {
     today: Option<NaiveDate>,
-    responses: Vec<(String, String)>,
+    responses: Vec<(String, String, Option<String>)>,
 }
 
 impl MockModel {
     /// Build from an optional fixed date and `(prompt_prefix, response)` pairs.
     pub fn new(today: Option<NaiveDate>, responses: Vec<(String, String)>) -> MockModel {
-        MockModel { today, responses }
+        MockModel { today, responses: responses.into_iter().map(|(p, r)| (p, r, None)).collect() }
     }
 
     /// Load `model.json` (`{"today": "...", "responses": [{"prompt_prefix", "response"}]}`).
@@ -66,7 +66,7 @@ impl MockModel {
             let p = r.get("prompt_prefix").and_then(Value::as_str);
             let t = r.get("response").and_then(Value::as_str);
             match (p, t) {
-                (Some(p), Some(t)) => responses.push((p.to_string(), t.to_string())),
+                (Some(p), Some(t)) => responses.push((p.to_string(), t.to_string(), r.get("model").and_then(Value::as_str).map(String::from))),
                 _ => return Err(err("each response needs prompt_prefix and response strings".into())),
             }
         }
@@ -82,14 +82,16 @@ impl MockModel {
 #[async_trait]
 impl ModelClient for MockModel {
     async fn complete(&self, req: &ModelRequest) -> Result<ModelResponse, RtError> {
-        let mut best: Option<&(String, String)> = None;
+        let mut best: Option<&(String, String, Option<String>)> = None;
         for r in &self.responses {
-            if req.prompt.starts_with(&r.0) && best.is_none_or(|b| r.0.len() > b.0.len()) {
+            // a response with a "model" only answers requests made for that model
+            let model_ok = r.2.is_none() || r.2 == req.model;
+            if model_ok && req.prompt.starts_with(&r.0) && best.is_none_or(|b| r.0.len() > b.0.len()) {
                 best = Some(r);
             }
         }
         match best {
-            Some((p, t)) => Ok(ModelResponse { text: t.clone(), matched_prefix: Some(p.clone()) }),
+            Some((p, t, _)) => Ok(ModelResponse { text: t.clone(), matched_prefix: Some(p.clone()) }),
             None => Err(RtError::NoMockResponse { prompt: req.prompt.chars().take(60).collect() }),
         }
     }

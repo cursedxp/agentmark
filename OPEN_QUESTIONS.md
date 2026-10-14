@@ -304,13 +304,13 @@ SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **C
 **Choice:** every generated function returns `Result<T, AgentError>` (`AgentError = Box<dyn Error + Send + Sync>`); `result of T` is `T` there. A `try` without `otherwise` traces `error` and stops the block. A failure that escapes (no `try`, a timeout) is printed on stderr, traced as `error`, the run continues with the next entry and exits with code 1.
 **Why:** one error type means `?` everywhere, binding errors (Q70) and runtime errors alike.
 
-## Q135 — Tool traits and real runs (step 6)
-**Choice:** each tool gets a trait whose methods are blanket-implemented for every `agentmark_rt::Tools` (the mock, and any type the user writes). A run without `--mock` has no real tools yet: every call fails with a message saying so; only the `log` tool works (stderr). `print` goes to stdout unless the trace owns stdout.
-**Why:** the brief asks for typed traits plus an impl for `MockTools`; real backends are the user's.
+## Q135 — Tool traits, `Connected` and `src/connect.rs` (step 6; controller decision)
+**Choice:** `tools.rs` has one `#[async_trait]` trait per tool that has verbs (`Crm`, `Email`, …), **without** blanket impls, an impl of each for `agentmark_rt::MockTools` (fixtures answer), and `struct Connected { crm: Box<dyn Crm>, … }` which implements `agentmark_rt::Tools` by dispatching `(tool, verb)` to the field. Generated blocks call `ctx.tools.call(tool, verb, args)`, so mock and real runs share all code. `src/connect.rs` is created by `build` only when it is missing (its header says it is the user's and never overwritten) and returns `Connected` made of `NotConnected` stubs that fail with "not connected yet: implement Crm::list in src/connect.rs"; a real run (no `--mock`) uses `connect::connect()`. The `log` tool is built in (stderr + trace); `print` goes to stdout unless the trace owns stdout. A rustc error in `connect.rs` is reported as the user's own file, not as an internal error.
+**Why:** SPEC 7: "the user provides real implementations"; a seam in a file the compiler never rewrites.
 
-## Q136 — Which model a real run uses (step 6)
-**Choice:** the first `model:` driver found in the program (`claude`, `claude:haiku`, `claude:<id>`) is used for every `ask model`; `claude` = `claude-sonnet-4-5`. The request is the prompt, a blank line and the `with` value as JSON; for `as Record` an answer-format sentence follows.
-**Why:** `Ctx` holds one model; per-agent models need a `Ctx` per agent.
+## Q136 — Which model a block uses (step 6)
+**Choice:** each agent's blocks use that agent's `- model:` (`claude` = `claude-sonnet-4-5`, `claude:haiku` = `claude-haiku-4-5`, `claude:<id>` = `<id>`): the entry runs on `ctx.with_model(id)` and the id travels in `ModelRequest.model`. A real run's default model is the first driver of the program. A mock response in model.json may carry `"model": "<id>"` and then answers only that model (tests use it to assert the driver). The request is the prompt, a blank line and the `with` value as JSON; for `as Record` an answer-format sentence follows.
+**Why:** `Ctx` holds one provider; the request carries the model.
 
 ## Q137 — Auto-binding on `build` (step 6)
 **Choice:** `build`/`run`/`trace` run the binder only for imported crates that have no binding file; an existing file is reported as `cached` without checking the crate version (that is `agentmark bind`'s job, SPEC 15.1 "stale"). The generated `Cargo.toml` pins each bound crate to `=<version of the binding header>`; a hand-written binding without a header gets `*`.
@@ -318,11 +318,11 @@ SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **C
 **Reconciled with Q155:** the header version IS the pin, so an existing binding is never stale on build; staleness (SPEC 15.3) only arises when the user changes the version and re-runs `agentmark bind`, which re-marks it `unverified`.
 
 ## Q138 — Entry knobs (step 6)
-**Choice:** `timeout:` is enforced per run of an entry (the trace gets an `error` line); `memory: file` has no effect in v0.1. In `--once` mode event entries run once per item of `<tool>.<event>s.json`; in schedule mode they are announced as needing a real tool connection. Blocks run one at a time (a global lock), as SPEC 3 says.
+**Choice:** `timeout:` is enforced per run of an entry (the trace gets an `error` line); `memory: file` has no effect in v0.1 and `build` says so (`warning: …: \`memory: file\` is not supported in v0.1 and is ignored.`). In `--once` mode event entries run once per item of `<tool>.<event>s.json`; in schedule mode they are announced as needing a real tool connection (exit 0), and `build` notes agents that have only event entries. Blocks run one at a time (a global lock), as SPEC 3 says.
 **Why:** nothing in the spec defines the memory file's format or a real event source.
 
 ## Q139 — `parallel:` (step 6)
-**Choice:** a list of two or more effect statements runs together (`tokio::try_join!`, the first error wins); any other content runs in order.
+**Choice:** a list of two or more effect statements runs together (`tokio::try_join!`, the first error wins); any other content (one statement, or non-effect statements that share variables) runs in order, and `build` prints a note for each such block so nobody expects concurrency there.
 **Why:** SPEC 16 allows the opt-in; non-effect statements share variables.
 
 ## Q140 — `read file p as T` (step 6)
@@ -351,6 +351,7 @@ Written into `fixtures/05-invoice-service/`: (a) the `http` line's `path` is the
 
 ## Q156 — Prompt that reaches the model with `ask model with v`
 **Choice:** the request prompt is the literal prompt text, then `"\n\n"`, then the context JSON (`{"id": v.id}`); without `with` it is the literal alone. `MockModel` matches by prefix, so the fixture keys (the literal, or its interpolated form as in 04) stay valid, and `prompt_prefix` in the trace is the matched key.
+**Amended (step 6 review):** implemented as: the literal prompt, `"\n\n"`, then the compact JSON of the whole `with` value (the record, so the model sees the data); the trace `context` stays `{"id": v.id}`. Without `with` the prompt is the literal alone. Answer-format hints for `as Record` follow the context.
 
 ## Q157 — Unparseable reply for `as <Record>`
 **Choice:** a reply that is not valid JSON for the record (not JSON, missing field, wrong type) is not a runtime error: `<var> matches <Record>` evaluates to false, so the guard line is traced with result `fail` and the block stops. The variable then holds no usable value, but nothing reads it after the guard. Fixture: `fixtures/02-lead-qualifier/variants/bad-json`.

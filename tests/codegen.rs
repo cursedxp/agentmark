@@ -32,13 +32,18 @@ fn bind_env(c: &mut Command) {
         .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"));
 }
 
-fn temp(tag: &str) -> PathBuf {
-    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let d = std::env::temp_dir().join(format!("agentmark-codegen-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+/// A unique temp folder, removed when dropped (so reruns never meet leftovers).
+struct Tmp(tempfile::TempDir);
+
+impl std::ops::Deref for Tmp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+fn temp(tag: &str) -> Tmp {
+    Tmp(tempfile::Builder::new().prefix(&format!("agentmark-codegen-{tag}-")).tempdir().unwrap())
 }
 
 fn write(dir: &Path, rel: &str, text: &str) {
@@ -75,11 +80,12 @@ fn tools_toml() -> String {
 }
 
 /// A single-file project (`name.agent.md` + tools.toml) in a temp folder; returns the file path.
-fn single(tag: &str, name: &str, source: &str) -> (PathBuf, PathBuf) {
+fn single(tag: &str, name: &str, source: &str) -> (Tmp, PathBuf) {
     let d = temp(tag);
     write(&d, name, source);
     write(&d, "tools.toml", &tools_toml());
-    (d.clone(), d.join(name))
+    let file = d.join(name);
+    (d, file)
 }
 
 fn model_json(responses: &[(&str, &str)]) -> String {
@@ -105,7 +111,7 @@ fn example_01_reproduces_the_expected_trace() {
 #[test]
 fn build_writes_the_spec_layout_and_the_project_compiles_warning_free() {
     let out = temp("layout");
-    let o = agentmark(&["build", &format!("{ROOT}/examples/01-invoice-chaser"), "--target", "rust", "-o", s(&out)]).output().unwrap();
+    let o = agentmark(&["build", &format!("{ROOT}/examples/01-invoice-chaser"), "--target", "rust", "-o", s(&out), "--no-check"]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     for f in ["Cargo.toml", "src/main.rs", "src/records.rs", "src/rules.rs", "src/tools.rs", "src/bindings.rs", "src/agent_invoice_chaser.rs"] {
         assert!(out.join(f).is_file(), "missing {f}");
@@ -191,9 +197,9 @@ fn a_missing_model_answer_is_reported_not_swallowed() {
 // ---------------------------------------------------------------------------------- 05
 
 /// Example 05 as it is in the repository (its sha2 binding is approved), built with cargo.
-fn built_05() -> (PathBuf, PathBuf) {
+fn built_05() -> (Tmp, PathBuf) {
     let d = temp("p05");
-    let o = agentmark(&["build", &format!("{ROOT}/examples/05-invoice-service"), "-o", s(&d.join("out"))]).output().unwrap();
+    let o = agentmark(&["build", &format!("{ROOT}/examples/05-invoice-service"), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("binding sha2: cached"), "{}", stderr(&o));
     let cargo = std::fs::read_to_string(d.join("out/Cargo.toml")).unwrap();
@@ -219,19 +225,20 @@ fn build_binds_missing_crates_and_refuses_unapproved_ones() {
     let d = temp("bind05");
     copy_dir(Path::new(&format!("{ROOT}/examples/05-invoice-service")), &d);
     std::fs::remove_file(d.join("bindings/sha2.agent.md")).unwrap();
-    let mut c = agentmark(&["build", s(&d), "-o", s(&d.join("../out-bind05"))]);
+    let out = temp("out-bind05");
+    let mut c = agentmark(&["build", s(&d), "-o", s(&out.join("p")), "--no-check"]);
     bind_env(&mut c);
     let o = c.output().unwrap();
     assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
     let e = stderr(&o);
     assert!(e.contains("binding sha2: generated"), "{e}");
     assert!(e.contains("unverified") && e.contains("- effect: pure"), "{e}");
-    assert!(!d.join("../out-bind05").exists(), "nothing is written for a refused build");
+    assert!(!out.join("p").exists(), "nothing is written for a refused build");
     // approving the one line is all it takes
     let p = d.join("bindings/sha2.agent.md");
     let t = std::fs::read_to_string(&p).unwrap().replace("- effect: unverified", "- effect: pure");
     std::fs::write(p, t).unwrap();
-    let o = agentmark(&["build", s(&d), "-o", s(&d.join("../out-bind05"))]).output().unwrap();
+    let o = agentmark(&["build", s(&d), "-o", s(&out.join("p")), "--no-check"]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("binding sha2: cached"));
 }
@@ -400,4 +407,204 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     assert!(e.contains("loud.len_of_it()"), "shows the source line:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
     assert!(!e.contains("internal compiler error"), "{e}");
+}
+
+// ---------------------------------------------------------------------------------- review fixes
+
+fn cargo_build_in(out: &Path) -> Output {
+    Command::new("cargo")
+        .args(["build", "--offline", "--manifest-path"])
+        .arg(out.join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", gen_target())
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn every_example_compiles_without_a_single_warning() {
+    for name in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
+        let out = temp("nowarn");
+        let o = agentmark(&["build", &format!("{ROOT}/examples/{name}"), "-o", s(&out), "--no-check"]).output().unwrap();
+        assert!(o.status.success(), "{name}: {}", stderr(&o));
+        let b = cargo_build_in(&out);
+        assert!(b.status.success(), "{name}: {}", stderr(&b));
+        assert!(!stderr(&b).contains("warning"), "{name} must compile warning free:\n{}", stderr(&b));
+    }
+}
+
+const BROKEN_SEMICOLON: &str = "# Record: Invoice\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: invoice: Invoice\n- effect: pure\n  ```rust\n  let loud = invoice.id.to_uppercase();\n  loud;\n  ```\n\n## On start\n- set loud = shout({ id: \"a\" })\n- log: \"hi {loud}\"\n";
+
+#[test]
+fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
+    let (d, file) = single("semicolon", "semi.agent.md", BROKEN_SEMICOLON);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{e}");
+    assert!(e.contains("semi.agent.md:8"), "points at the block heading:\n{e}");
+    assert!(e.contains("does not compile"), "{e}");
+    assert!(!e.contains("internal compiler error"), "{e}");
+}
+
+#[test]
+fn build_checks_the_generated_project_and_reports_user_rust_plainly() {
+    let (d, file) = single("buildcheck", "semi.agent.md", BROKEN_SEMICOLON);
+    let out = temp("buildcheck-out");
+    let o = agentmark(&["build", s(&file), "-o", s(&out)]).output().unwrap();
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{e}");
+    assert!(e.contains("semi.agent.md:8") && e.contains("does not compile"), "{e}");
+    assert!(!e.contains("error[E"), "no raw rustc output: {e}");
+    // --no-check only writes the files
+    let o = agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    drop(d);
+}
+
+const SEEN: &str = "# Record: Invoice\n- id: text\n- customer: text\n- status: text\n\n# Agent: seen\n- model: claude\n- tools: crm, log\n\n## On start\n- for each invoice in crm.invoices:\n  - crm update invoice: status = \"seen\"\n  - log: \"saw {invoice.id}\"\n";
+
+const CONNECT: &str = r#"//! A user's connect.rs: an in-memory CRM.
+use std::sync::Mutex;
+
+use agentmark_rt::RtError;
+use async_trait::async_trait;
+use serde_json::{json, Value};
+
+use crate::tools::{Connected, Crm, Email, Http};
+
+static STORE: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+
+struct Memory;
+
+#[async_trait]
+impl Crm for Memory {
+    async fn list(&self, _args: Value) -> Result<Value, RtError> {
+        let mut rows = STORE.lock().unwrap();
+        if rows.is_empty() {
+            rows.push(json!({"id": "A-1", "customer": "Acme", "status": "open"}));
+            rows.push(json!({"id": "A-2", "customer": "Bolt", "status": "open"}));
+        }
+        Ok(Value::Array(rows.clone()))
+    }
+    async fn get(&self, _args: Value) -> Result<Value, RtError> {
+        Ok(Value::Null)
+    }
+    async fn update(&self, args: Value) -> Result<Value, RtError> {
+        for r in STORE.lock().unwrap().iter_mut() {
+            if r["id"] == args["id"] {
+                r["status"] = args["set"]["status"].clone();
+            }
+        }
+        Ok(Value::Null)
+    }
+}
+
+struct Unused;
+
+#[async_trait]
+impl Email for Unused {
+    async fn send(&self, _args: Value) -> Result<Value, RtError> {
+        Ok(Value::Null)
+    }
+}
+
+#[async_trait]
+impl Http for Unused {
+    async fn get(&self, _args: Value) -> Result<Value, RtError> {
+        Ok(Value::Null)
+    }
+    async fn post(&self, _args: Value) -> Result<Value, RtError> {
+        Ok(Value::Null)
+    }
+}
+
+pub fn connect() -> Connected {
+    Connected { crm: Box::new(Memory), email: Box::new(Unused), http: Box::new(Unused) }
+}
+"#;
+
+#[test]
+fn connect_rs_is_written_once_and_a_real_run_uses_it() {
+    let (_d, file) = single("connect", "seen-real.agent.md", SEEN);
+    let out = temp("connect-out");
+    let build = || agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap();
+    assert!(build().status.success());
+    let stub = std::fs::read_to_string(out.join("src/connect.rs")).unwrap();
+    assert!(stub.contains("not connected yet: implement Crm::list in src/connect.rs"), "{stub}");
+    assert!(stub.contains("never changes"), "the header says the file is the user's");
+
+    // the user fills it in; building again leaves it alone
+    std::fs::write(out.join("src/connect.rs"), CONNECT).unwrap();
+    assert!(build().status.success());
+    assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), CONNECT);
+
+    let b = cargo_build_in(&out);
+    assert!(b.status.success(), "{}", stderr(&b));
+    assert!(!stderr(&b).contains("warning"), "{}", stderr(&b));
+    let trace = out.join("trace.jsonl");
+    let o = Command::new(gen_bin("seen-real")).args(["--once", "--trace", s(&trace)]).output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let t = parse_lines(&std::fs::read_to_string(trace).unwrap());
+    let updates: Vec<&Value> = t.iter().filter(|l| l["verb"] == "update").collect();
+    assert_eq!(updates.len(), 2, "{t:#?}");
+    assert_eq!(updates[0], &json!({"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"A-1","set":{"status":"seen"}}));
+    assert_eq!(t.last().unwrap(), &json!({"kind":"tool","tool":"log","message":"saw A-2"}));
+}
+
+#[test]
+fn a_real_run_without_connecting_says_what_to_implement() {
+    let (_d, file) = single("unconnected", "seen-stub.agent.md", SEEN);
+    let out = temp("unconnected-out");
+    assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
+    let b = cargo_build_in(&out);
+    assert!(b.status.success(), "{}", stderr(&b));
+    let o = Command::new(gen_bin("seen-stub")).args(["--once"]).output().unwrap();
+    assert_eq!(o.status.code(), Some(1));
+    assert!(stderr(&o).contains("not connected yet: implement Crm::list in src/connect.rs"), "{}", stderr(&o));
+}
+
+#[test]
+fn every_agent_asks_the_model_of_its_own_model_line() {
+    let src = "# Agent: small\n- model: claude:haiku\n- tools: log\n\n## On start\n- ask model: \"Q small\" -> a\n- log: \"{a}\"\n\n# Agent: big\n- model: claude:opus\n- tools: log\n\n## On start\n- ask model: \"Q big\" -> b\n- log: \"{b}\"\n";
+    let (d, file) = single("drivers", "two.agent.md", src);
+    let fx = d.join("fx");
+    write(
+        &fx,
+        "model.json",
+        r#"{"today":"2026-10-13","responses":[
+            {"prompt_prefix":"Q small","response":"S","model":"claude-haiku-4-5"},
+            {"prompt_prefix":"Q big","response":"B","model":"claude-opus-4-1"}]}"#,
+    );
+    let t = trace_of(s(&file), &fx);
+    let logs: Vec<&str> = t.iter().filter_map(|l| l["message"].as_str()).collect();
+    assert_eq!(logs, vec!["S", "B"], "{t:#?}");
+}
+
+#[test]
+fn build_warns_about_memory_file_and_serialized_parallel_blocks() {
+    let src = "# Agent: a\n- model: claude\n- tools: log\n- memory: file\n\n## On start\n- parallel:\n  - log: \"x\"\n";
+    let (d, file) = single("notes", "a.agent.md", src);
+    let o = agentmark(&["build", s(&file), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
+    let e = stderr(&o);
+    assert!(o.status.success(), "{e}");
+    assert!(e.contains("`memory: file` is not supported in v0.1"), "{e}");
+    assert!(e.contains("this `parallel:` runs in order"), "{e}");
+    assert!(e.contains("only event entries") || !e.contains("event"), "{e}");
+}
+
+#[test]
+fn a_failing_command_leaves_an_error_line_in_the_trace() {
+    let src = "# Command: slurp\n- args: path: text\n\n## Run\n- read file path as text -> t\n- print: \"got {t}\"\n";
+    let (d, file) = single("cmderr", "slurp.agent.md", src);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    write(&fx, "command.json", r#"{"command":"slurp","args":{"path":"missing.txt"}}"#);
+    let o = agentmark(&["trace", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    let t = parse_lines(&stdout(&o));
+    assert_eq!(t.len(), 1, "{t:#?}");
+    assert_eq!(t[0]["kind"], "error");
+    assert_eq!(t[0]["agent"], "slurp");
+    assert_eq!(t[0]["block"], "Run");
 }

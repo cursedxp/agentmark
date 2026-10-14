@@ -84,6 +84,9 @@ pub struct Body<'a> {
     last_src: Option<(String, u32)>,
     assigned: HashSet<String>,
     lenient: HashSet<String>,
+    /// `maybe` variables read through `expect` several times in the statement being written:
+    /// bound once, under this name.
+    narrowed: std::collections::HashMap<String, String>,
 }
 
 impl<'a> Body<'a> {
@@ -100,6 +103,7 @@ impl<'a> Body<'a> {
             last_src: None,
             assigned: HashSet::new(),
             lenient: HashSet::new(),
+            narrowed: Default::default(),
         }
     }
 
@@ -180,14 +184,41 @@ impl<'a> Body<'a> {
     }
 
     fn nested(&mut self, stmts: &[Stmt]) {
+        let saved = std::mem::take(&mut self.narrowed);
         self.indent += 1;
         self.block(stmts, false);
         self.indent -= 1;
+        self.narrowed = saved;
     }
 
     /// Returns true when it wrote the function's tail expression.
     fn stmt(&mut self, s: &Stmt, tail: bool) -> bool {
         self.src(&s.source);
+        let before = self.narrowed.clone();
+        self.narrow(s);
+        let ended = self.stmt_kind(s, tail);
+        self.narrowed = before;
+        ended
+    }
+
+    /// A `maybe` variable that is read through `expect` more than once in one statement is
+    /// unwrapped once, on the line before.
+    fn narrow(&mut self, s: &Stmt) {
+        let mut counts: Vec<(String, String, usize)> = Vec::new();
+        for e in stmt_exprs(s) {
+            count_unwraps(e, &mut counts);
+        }
+        for (var, what, n) in counts {
+            if n >= 2 && !self.narrowed.contains_key(&var) {
+                let name = format!("{}_value", self.n.local(&var));
+                let msg = lit(&format!("{what} is not empty here"));
+                self.line(&format!("let {name} = {}.as_ref().expect({msg});", self.n.local(&var)));
+                self.narrowed.insert(var, name);
+            }
+        }
+    }
+
+    fn stmt_kind(&mut self, s: &Stmt, tail: bool) -> bool {
         match &s.kind {
             StmtKind::Let { name, ty, value } => {
                 let m = if self.assigned.contains(name) { "mut " } else { "" };
@@ -538,10 +569,9 @@ impl<'a> Body<'a> {
     }
 
     fn tool_call(&self, t: &ToolCall, into: Option<&LocalVar>) -> Eff {
-        let trait_name = self.n.tools.get(&t.tool).cloned().unwrap_or_else(|| t.tool.clone());
         let verb = t.verb.clone().unwrap_or_default();
         let call = |args: String| -> String {
-            format!("tools::{trait_name}::{}(&*ctx.tools, {args}).await?", value_ident(&verb))
+            format!("ctx.tools.call({}, {}, &{args}).await?", lit(&t.tool), lit(&verb))
         };
         let mut temps: Vec<String> = Vec::new();
         let once = |temps: &mut Vec<String>, name: &str, e: &Expr, as_ref: bool| -> String {
@@ -817,6 +847,11 @@ impl<'a> Body<'a> {
                 atom(format!("{b}.{}", field_ident(field).0))
             }
             ExprKind::Unwrap { inner, what } => {
+                if let ExprKind::Var(v) = &inner.kind {
+                    if let Some(name) = self.narrowed.get(v) {
+                        return atom(name.clone());
+                    }
+                }
                 let b = paren(self.ex(inner), P_ATOM);
                 let msg = lit(&format!("{what} is not empty here"));
                 if is_copy(&e.ty) {
@@ -1136,6 +1171,85 @@ fn find_matches(e: &Expr, out: &mut HashSet<String>) {
             find_matches(rhs, out);
         }
         ExprKind::Not(x) => find_matches(x, out),
+        _ => {}
+    }
+}
+
+/// The expressions a statement evaluates itself (not those of the statements nested in it).
+fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
+    match &s.kind {
+        StmtKind::Let { value, .. } | StmtKind::Assign { value, .. } => vec![value],
+        StmtKind::If { cond, .. } => vec![cond],
+        StmtKind::IfSome { expr, .. } => vec![expr],
+        StmtKind::ForEach { source, .. } => vec![source],
+        StmtKind::Return(e) => vec![e],
+        StmtKind::Respond { body, .. } => body.iter().collect(),
+        StmtKind::Append { value, list } => vec![value, list],
+        StmtKind::Effect { call, .. } => call_exprs(call),
+        StmtKind::Try { stmt, .. } => stmt_exprs(stmt),
+        StmtKind::Stop | StmtKind::Parallel(_) => vec![],
+    }
+}
+
+fn call_exprs(call: &EffectCall) -> Vec<&Expr> {
+    match call {
+        EffectCall::Tool(t) => {
+            let mut v: Vec<&Expr> = Vec::new();
+            match &t.target {
+                Some(Target::Field { value, .. }) | Some(Target::Literal { value, .. }) => v.push(value),
+                Some(Target::Source { id, .. }) => v.extend(id.iter()),
+                None => {}
+            }
+            match &t.payload {
+                Some(Payload::Assign(fs)) => v.extend(fs.iter().map(|(_, e)| e)),
+                Some(Payload::Value(e)) => v.push(e),
+                None => {}
+            }
+            v
+        }
+        EffectCall::Model(m) => std::iter::once(&m.prompt).chain(m.context.iter()).collect(),
+        EffectCall::Binding { args, .. } | EffectCall::Rust { args, .. } | EffectCall::Fn { args, .. } => args.iter().collect(),
+        EffectCall::Io(IoCall::ReadFile { path, .. }) => vec![path],
+        EffectCall::Io(IoCall::Print { message }) => vec![message],
+        EffectCall::Io(IoCall::ReadBody { .. }) => vec![],
+        EffectCall::Trace(TraceEvent::Guard { ok, .. }) => vec![ok],
+    }
+}
+
+/// Count `expect` reads of non-`Copy` `maybe` variables: `(variable, source text, reads)`.
+fn count_unwraps(e: &Expr, out: &mut Vec<(String, String, usize)>) {
+    match &e.kind {
+        ExprKind::Unwrap { inner, what } => {
+            if let ExprKind::Var(v) = &inner.kind {
+                if !is_copy(&e.ty) {
+                    match out.iter_mut().find(|(n, _, _)| n == v) {
+                        Some(x) => x.2 += 1,
+                        None => out.push((v.clone(), what.clone(), 1)),
+                    }
+                    return;
+                }
+            }
+            count_unwraps(inner, out);
+        }
+        ExprKind::Field { base, .. } => count_unwraps(base, out),
+        ExprKind::Interp(parts) => parts.iter().for_each(|p| {
+            if let InterpPart::Expr(e) = p {
+                count_unwraps(e, out)
+            }
+        }),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            count_unwraps(lhs, out);
+            count_unwraps(rhs, out);
+        }
+        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => count_unwraps(x, out),
+        ExprKind::Call { args, .. } => args.iter().for_each(|a| count_unwraps(a, out)),
+        ExprKind::Record(fs) => fs.iter().for_each(|(_, v)| count_unwraps(v, out)),
+        ExprKind::Count { source, .. } => count_unwraps(source, out),
+        ExprKind::Matches { expr, .. } => count_unwraps(expr, out),
+        ExprKind::NoAmountsChanged { output, input } => {
+            count_unwraps(output, out);
+            count_unwraps(input, out);
+        }
         _ => {}
     }
 }

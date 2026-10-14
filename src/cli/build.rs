@@ -100,6 +100,9 @@ fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
             return Err(1);
         }
         let program = ir::lower(&project, &checked);
+        for n in cg::notes(&program, &project.root) {
+            eprintln!("{n}");
+        }
         let versions = crate_versions(&project);
         return Ok(Prepared { project, program, versions });
     }
@@ -158,12 +161,15 @@ fn write_project(out: &Path, files: &[GeneratedFile]) -> Result<(), String> {
     }
     for f in files {
         let p = out.join(&f.path);
+        if f.user_owned && p.exists() {
+            continue;
+        }
         std::fs::write(&p, &f.content).map_err(|e| format!("cannot write {}: {e}", p.display()))?;
     }
     Ok(())
 }
 
-pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool) -> u8 {
+pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool, no_check: bool) -> u8 {
     if target != "rust" {
         return fail(format!("unknown target \"{target}\": only \"rust\" is implemented"));
     }
@@ -172,8 +178,18 @@ pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool)
         Err(c) => return c,
     };
     let files = cg::generate(&prepared.program, &options(&prepared, path));
-    if let Err(e) = write_project(Path::new(out), &files) {
+    let dir = Path::new(out);
+    if let Err(e) = write_project(dir, &files) {
         return fail(e);
+    }
+    if !no_check {
+        // the generated project must compile: an error in the author's Rust is reported at its
+        // .agent.md line, anything else is a bug of agentmark
+        match cargo_build(dir, "check") {
+            Ok(run) if run.ok => {}
+            Ok(run) => return report_failure(&prepared, dir, &files, &run),
+            Err(e) => return fail(e),
+        }
     }
     println!("built {} ({} files). Compile it with: cargo build --release --manifest-path {}/Cargo.toml", out, files.len(), out.trim_end_matches('/'));
     0
@@ -187,6 +203,8 @@ pub(crate) struct RustcError {
     pub file: String,
     pub line: u32,
     pub message: String,
+    /// Other places the message points at (secondary spans and sub-messages).
+    pub others: Vec<(String, u32)>,
 }
 
 /// An error in code the author wrote, mapped back to the `.agent.md` file.
@@ -205,7 +223,9 @@ pub(crate) enum Failure {
     Ice { location: String, message: String },
 }
 
-/// Which `.agent.md` line a generated line comes from, if it lies inside a verbatim user block.
+/// Which `.agent.md` line a generated line comes from, if it lies in a user block of
+/// `bindings.rs`: the verbatim code (line by line), or the wrapper signature above it (the line of
+/// the block's heading).
 fn map_user_line(content: &str, line: u32) -> Option<(String, u32)> {
     let lines: Vec<&str> = content.lines().collect();
     let idx = (line as usize).checked_sub(1)?;
@@ -227,18 +247,34 @@ fn map_user_line(content: &str, line: u32) -> Option<(String, u32)> {
             }
             return Some((file.to_string(), first + offset as u32));
         }
+        if let Some(rest) = t.strip_prefix("// agentmark:block ") {
+            let (file, l) = rest.rsplit_once(':')?;
+            return Some((file.to_string(), l.parse().ok()?));
+        }
     }
     None
 }
 
+/// Where the author's own Rust lives besides `.agent.md` blocks.
+const USER_FILE: &str = "src/connect.rs";
+
 /// Sort rustc's errors into the author's and agentmark's own. `files` are the generated files
-/// (`src/bindings.rs` ...), to find the verbatim regions.
+/// (`src/bindings.rs` ...), to find the verbatim regions. An error whose primary span is in
+/// generated wrapper code but that also points into a user block (for example a block that ends
+/// in `;` and so returns `()`) is the author's.
 pub(crate) fn classify(errors: &[RustcError], files: &[GeneratedFile]) -> Failure {
     let mut user = Vec::new();
     let mut first_other: Option<&RustcError> = None;
+    let locate = |file: &str, line: u32| -> Option<(String, u32)> {
+        if file == USER_FILE {
+            return Some((file.to_string(), line));
+        }
+        let content = files.iter().find(|f| f.path == file).map(|f| f.content.as_str())?;
+        map_user_line(content, line)
+    };
     for e in errors {
-        let content = files.iter().find(|f| f.path == e.file).map(|f| f.content.as_str());
-        match content.and_then(|c| map_user_line(c, e.line)) {
+        let hit = locate(&e.file, e.line).or_else(|| e.others.iter().find_map(|(f, l)| locate(f, *l)));
+        match hit {
             Some((file, line)) => user.push(UserError { file, line, message: e.message.clone() }),
             None => {
                 first_other.get_or_insert(e);
@@ -246,6 +282,7 @@ pub(crate) fn classify(errors: &[RustcError], files: &[GeneratedFile]) -> Failur
         }
     }
     if !user.is_empty() {
+        user.dedup();
         return Failure::User(user);
     }
     match first_other {
@@ -261,9 +298,9 @@ struct CargoRun {
     stderr: String,
 }
 
-fn cargo_build(dir: &Path) -> Result<CargoRun, String> {
+fn cargo_build(dir: &Path, sub: &str) -> Result<CargoRun, String> {
     let mut cmd = Command::new("cargo");
-    cmd.arg("build").arg("--quiet").arg("--message-format=json").arg("--manifest-path").arg(dir.join("Cargo.toml"));
+    cmd.arg(sub).arg("--quiet").arg("--message-format=json").arg("--manifest-path").arg(dir.join("Cargo.toml"));
     if is_offline() {
         cmd.arg("--offline");
     }
@@ -285,12 +322,23 @@ fn cargo_build(dir: &Path) -> Result<CargoRun, String> {
                 if msg.starts_with("aborting due to") {
                     continue;
                 }
-                let span = m["spans"].as_array().and_then(|s| s.iter().find(|x| x["is_primary"].as_bool() == Some(true)));
-                let (file, line) = match span {
-                    Some(s) => (s["file_name"].as_str().unwrap_or_default().to_string(), s["line_start"].as_u64().unwrap_or(0) as u32),
-                    None => (String::new(), 0),
-                };
-                errors.push(RustcError { file, line, message: msg });
+                let mut spans: Vec<(String, u32, bool)> = Vec::new();
+                fn collect(m: &Value, spans: &mut Vec<(String, u32, bool)>) {
+                    for s in m["spans"].as_array().into_iter().flatten() {
+                        spans.push((
+                            s["file_name"].as_str().unwrap_or_default().to_string(),
+                            s["line_start"].as_u64().unwrap_or(0) as u32,
+                            s["is_primary"].as_bool() == Some(true),
+                        ));
+                    }
+                    for c in m["children"].as_array().into_iter().flatten() {
+                        collect(c, spans);
+                    }
+                }
+                collect(m, &mut spans);
+                let primary = spans.iter().find(|s| s.2).or(spans.first()).cloned().unwrap_or_default();
+                let others = spans.iter().filter(|s| (&s.0, s.1) != (&primary.0, primary.1)).map(|s| (s.0.clone(), s.1)).collect();
+                errors.push(RustcError { file: primary.0, line: primary.1, message: msg, others });
             }
             Some("compiler-artifact") => {
                 if let Some(e) = v["executable"].as_str() {
@@ -312,9 +360,15 @@ fn report_failure(prepared: &Prepared, dir: &Path, files: &[GeneratedFile], run:
     match classify(&run.errors, files) {
         Failure::User(errs) => {
             for e in &errs {
-                let src = prepared.project.sources.iter().find(|(k, _)| k.ends_with(&e.file) || e.file.ends_with(k.as_str())).map(|(_, v)| v.as_str());
-                let text = src.and_then(|s| s.lines().nth(e.line as usize - 1)).unwrap_or("");
-                eprintln!("{}:{}\n  {}\n  The Rust code in this block does not compile: {}\n", e.file, e.line, text.trim_end(), e.message);
+                if e.file == USER_FILE {
+                    let path = dir.join(&e.file);
+                    let text = std::fs::read_to_string(&path).ok().and_then(|t| t.lines().nth(e.line as usize - 1).map(String::from)).unwrap_or_default();
+                    eprintln!("{}:{}\n  {}\n  This file is yours (agentmark never rewrites it) and it does not compile: {}\n", path.display(), e.line, text.trim_end(), e.message);
+                    continue;
+                }
+                let shown = crate::project::normalize(&format!("{}/{}", prepared.project.root, e.file));
+                let text = prepared.project.sources.get(&shown).and_then(|s| s.lines().nth(e.line as usize - 1)).unwrap_or("");
+                eprintln!("{shown}:{}\n  {}\n  The Rust code in this block does not compile: {}\n", e.line, text.trim_end(), e.message);
             }
             1
         }
@@ -358,7 +412,7 @@ fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverifie
     if let Err(e) = write_project(&dir, &files) {
         return fail(e);
     }
-    let run = match cargo_build(&dir) {
+    let run = match cargo_build(&dir, "build") {
         Ok(r) => r,
         Err(e) => return fail(e),
     };
@@ -398,30 +452,30 @@ mod tests {
     use super::*;
 
     fn gf(path: &str, content: &str) -> GeneratedFile {
-        GeneratedFile { path: path.into(), content: content.into() }
+        GeneratedFile { path: path.into(), content: content.into(), user_owned: false }
     }
 
     fn err(file: &str, line: u32, message: &str) -> RustcError {
-        RustcError { file: file.into(), line, message: message.into() }
+        RustcError { file: file.into(), line, message: message.into(), others: vec![] }
     }
 
-    const BINDINGS: &str = "//! header\n\npub fn shout() -> String {\n    // agentmark:begin app/x.agent.md:20\n    let a = 1;\n    a.nope()\n    // agentmark:end\n}\n\nfn other() {}\n";
+    const BINDINGS: &str = "//! header\n\n// agentmark:block app/x.agent.md:18\npub fn shout() -> String {\n    // agentmark:begin app/x.agent.md:20\n    let a = 1;\n    a.nope()\n    // agentmark:end\n}\n\nfn other() {}\n";
 
     #[test]
     fn an_error_inside_a_user_block_maps_to_its_agent_md_line() {
-        let f = classify(&[err("src/bindings.rs", 6, "no method")], &[gf("src/bindings.rs", BINDINGS)]);
+        let f = classify(&[err("src/bindings.rs", 7, "no method")], &[gf("src/bindings.rs", BINDINGS)]);
         assert_eq!(f, Failure::User(vec![UserError { file: "app/x.agent.md".into(), line: 21, message: "no method".into() }]));
     }
 
     #[test]
     fn the_first_line_of_the_block_is_the_line_after_the_marker() {
-        let f = classify(&[err("src/bindings.rs", 5, "m")], &[gf("src/bindings.rs", BINDINGS)]);
+        let f = classify(&[err("src/bindings.rs", 6, "m")], &[gf("src/bindings.rs", BINDINGS)]);
         assert_eq!(f, Failure::User(vec![UserError { file: "app/x.agent.md".into(), line: 20, message: "m".into() }]));
     }
 
     #[test]
     fn an_error_outside_user_code_is_an_internal_compiler_error() {
-        for (file, line) in [("src/bindings.rs", 3), ("src/bindings.rs", 10), ("src/main.rs", 4), ("src/agent_a.rs", 1)] {
+        for (file, line) in [("src/bindings.rs", 2), ("src/bindings.rs", 11), ("src/main.rs", 4), ("src/agent_a.rs", 1)] {
             let f = classify(&[err(file, line, "mismatched types")], &[gf("src/bindings.rs", BINDINGS), gf("src/main.rs", "fn main() {}\n")]);
             assert_eq!(f, Failure::Ice { location: format!("{file}:{line}"), message: "mismatched types".into() }, "{file}:{line}");
         }
@@ -430,10 +484,31 @@ mod tests {
     #[test]
     fn user_errors_win_over_the_errors_they_cause_elsewhere() {
         let f = classify(
-            &[err("src/main.rs", 9, "cascade"), err("src/bindings.rs", 6, "root cause")],
+            &[err("src/main.rs", 9, "cascade"), err("src/bindings.rs", 7, "root cause")],
             &[gf("src/bindings.rs", BINDINGS), gf("src/main.rs", "")],
         );
         assert!(matches!(f, Failure::User(v) if v.len() == 1 && v[0].message == "root cause"));
+    }
+
+    #[test]
+    fn an_error_on_the_wrapper_signature_belongs_to_the_block_heading() {
+        // a block that ends in `;` returns `()`: rustc points at the generated signature
+        let f = classify(&[err("src/bindings.rs", 4, "mismatched types")], &[gf("src/bindings.rs", BINDINGS)]);
+        assert_eq!(f, Failure::User(vec![UserError { file: "app/x.agent.md".into(), line: 18, message: "mismatched types".into() }]));
+    }
+
+    #[test]
+    fn a_secondary_span_in_user_code_makes_the_error_the_authors() {
+        let mut e = err("src/agent_a.rs", 40, "mismatched types");
+        e.others = vec![("src/bindings.rs".into(), 7)];
+        let f = classify(&[e], &[gf("src/bindings.rs", BINDINGS), gf("src/agent_a.rs", "")]);
+        assert!(matches!(f, Failure::User(v) if v[0].line == 21));
+    }
+
+    #[test]
+    fn errors_in_connect_rs_are_the_users_too() {
+        let f = classify(&[err("src/connect.rs", 12, "cannot find trait")], &[]);
+        assert_eq!(f, Failure::User(vec![UserError { file: "src/connect.rs".into(), line: 12, message: "cannot find trait".into() }]));
     }
 
     #[test]
