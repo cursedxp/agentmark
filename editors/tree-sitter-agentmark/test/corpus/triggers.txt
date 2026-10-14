@@ -1,0 +1,228 @@
+====================
+Every duration
+====================
+
+# Agent: a
+- model: claude
+
+## Every 30 minutes
+- log: "tick"
+
+## Every 1 hour
+- log: "tick"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (every_heading
+        (duration))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))
+    (trigger_block
+      (every_heading
+        (duration))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))))
+
+====================
+Every day at
+====================
+
+# Agent: a
+- model: claude
+
+## Every day at 09:00
+- log: "daily"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (every_heading
+        (time))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))))
+
+====================
+Every weekday at
+====================
+
+# Agent: a
+- model: claude
+
+## Every Friday at 17:30
+- log: "weekly"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (every_heading
+        (weekday)
+        (time))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))))
+
+====================
+On start
+====================
+
+# Agent: a
+- model: claude
+
+## On start
+- log: "started"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))))
+
+====================
+When tool receives event
+====================
+
+# Agent: a
+- model: claude
+
+## When crm receives ticket
+- log: "New {ticket.subject}"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (when_heading
+        (identifier)
+        (identifier))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)
+            (interpolation
+              (field_expression
+                (identifier)
+                (identifier)))))))))
+
+====================
+Do block
+====================
+
+# Agent: a
+- model: claude
+
+## Do ping
+- log: "ping"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (do_heading
+        (identifier))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))))
+
+====================
+Headings are case-insensitive
+====================
+
+# agent: a
+- model: claude
+
+## every day at 09:00
+- log: "x"
+
+## ON START
+- log: "y"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (trigger_block
+      (every_heading
+        (time))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))))

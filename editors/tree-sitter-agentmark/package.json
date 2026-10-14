@@ -1,0 +1,21 @@
+{
+  "name": "tree-sitter-agentmark",
+  "version": "0.1.0",
+  "description": "tree-sitter grammar for AgentMark (.agent.md) files",
+  "license": "MIT",
+  "main": "bindings/node",
+  "keywords": ["parser", "tree-sitter", "agentmark"],
+  "files": ["grammar.js", "tree-sitter.json", "queries/*", "src/**"],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test && scripts/check-examples.sh"
+  },
+  "tree-sitter": [
+    {
+      "scope": "text.agentmark",
+      "file-types": ["agent.md"],
+      "highlights": "queries/highlights.scm",
+      "injections": "queries/injections.scm"
+    }
+  ]
+}

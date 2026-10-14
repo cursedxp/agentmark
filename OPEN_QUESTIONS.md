@@ -423,3 +423,23 @@ First written as "a real run cannot use a mock model": generated programs read o
 Generated projects depended only on a fixed list plus imported crates (and `agentmark-rt` by absolute path of the compiler checkout), so `rust/connect.rs` could not use a client crate such as `reqwest`.
 **Choice:** `agentmark.toml` has an optional `[rust.dependencies]` table (`Config.rust_dependencies`). Each entry is a version text or a TOML table; it is validated as TOML (other shapes, and unknown keys under `[rust]`, are E114 config errors) and written verbatim, as `name = <value>`, to the end of the generated `[dependencies]`. An entry named like a dependency the generated project already has (`agentmark-rt`, `async-trait`, `chrono`, `clap`, `serde`, `serde_json`, `tokio`; `axum`/`tower` with services; an imported crate or its alias) is a plain error from `build`/`run`/`trace` (exit 2) and nothing is written. The generated `Cargo.toml` is still rewritten on every build. `agentmark-rt` stays tied to the checkout (README says "keep the checkout").
 **Why:** a real backend needs a client crate; a table in the one config file keeps connect.rs the only Rust the author writes.
+
+## Q260 — tree-sitter grammar is line oriented, no external scanner (step 17)
+- Question: SPEC 1 says indentation is exactly 2 spaces per level; should the tree-sitter grammar model nesting with an INDENT/DEDENT scanner?
+- Choice: no. Every statement line is a sibling inside its `##` block; indentation is skipped as whitespace. Nesting, the depth limit and indentation errors stay with the compiler (`agentmark check`).
+- Why: highlighting, folding by heading and Rust injection need only line-local structure; a scanner would add C code to maintain for no visible gain, and editors must tolerate half-typed code.
+
+## Q261 — `- key: value` is a property only for the keys SPEC defines (step 17)
+- Question: `- log: "x"` is a tool call in a block but looks like a property in a declaration body (a Function's indented statements live there).
+- Choice: only these keys are properties: model, tools, memory, timeout, for, when, value, in, out, effect, args, listen, state, crate, proposed-effect. Any other `- word: ...` is parsed as a tool call, so `- log: ...` is highlighted as a tool everywhere. A tool named like one of those keys, written without a verb, is highlighted as a property.
+- Why: no extra scanner or indentation test is needed, and the collision needs a tool called `state`, `value`, `in`, ... used without a verb.
+
+## Q262 — Fragments and doc blocks must parse too (step 17)
+- Question: docs show `fragment` blocks (statements with no declaration, `## POST` with no `# Service`) and the `invalid` blocks.
+- Choice: the grammar accepts statement lines and `##` blocks before the first declaration, and the check script parses every `agentmark` fence in README.md and docs/*.md (including `fragment` and `invalid`, which are well-formed syntax).
+- Why: the grammar is for highlighting, not validation; an editor showing a half-written file must not paint it red.
+
+## Q263 — Contextual words stay usable as names (step 17)
+- Question: `first`, `count` and `no` start expressions (`first x in y where ...`, `count of ...`, `no amounts changed in ...`) but docs use `first` as a parameter and argument name.
+- Choice: they are keywords only when the rest of the phrase follows; otherwise they parse as plain identifiers. Other words (`state`, `value`, `length`, ...) are only keywords where the SPEC puts them, so they stay usable as record fields and variables.
+- Why: matches how the compiler reads them; avoids ERROR nodes on valid files.

@@ -1,0 +1,17 @@
+node_modules/
+build/
+target/
+*.wasm
+*.so
+*.dylib
+*.o
+*.a
+.tree-sitter/
+bindings/
+Cargo.toml
+binding.gyp
+Package.swift
+go.mod
+pyproject.toml
+setup.py
+*.log

@@ -1,0 +1,632 @@
+====================
+For each over a collection
+====================
+
+# Agent: a
+## On start
+- for each invoice in crm.invoices:
+  - log: "{invoice.id}"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (for_each
+          (identifier)
+          (field_expression
+            (identifier)
+            (identifier))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (interpolation
+              (field_expression
+                (identifier)
+                (identifier)))))))))
+
+====================
+Filtered for each with a rule
+====================
+
+# Agent: a
+## On start
+- for each overdue invoice in crm.invoices:
+  - do remind
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (for_each
+          (identifier)
+          (identifier)
+          (field_expression
+            (identifier)
+            (identifier))))
+      (statement_line
+        (do_statement
+          (identifier))))))
+
+====================
+Bare control line
+====================
+
+# Agent: a
+## On start
+for each invoice in crm.invoices:
+  - log: "{invoice.id}"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (for_each
+          (identifier)
+          (field_expression
+            (identifier)
+            (identifier))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (interpolation
+              (field_expression
+                (identifier)
+                (identifier)))))))))
+
+====================
+If, else and stop
+====================
+
+# Agent: a
+## On start
+- if invoice.amount > 1000 EUR:
+  - stop
+- else:
+  - log: "small"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (if_statement
+          (binary_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (money))))
+      (statement_line
+        (stop_statement))
+      (statement_line
+        (else_statement))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)))))))
+
+====================
+If is some
+====================
+
+# Agent: a
+## On start
+- if lead.score is some s:
+  - log: "{s}"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (if_statement
+          (predicate
+            (field_expression
+              (identifier)
+              (identifier))
+            (identifier))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (interpolation
+              (identifier))))))))
+
+====================
+Ask model, three shapes
+====================
+
+# Agent: a
+## On start
+- ask model: "Name one famous company." -> plain
+- ask model with lead: "Describe this lead." -> description
+- ask model with lead: scoring_prompt as Qualification -> q
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (ask_statement
+          (string
+            (string_content))
+          (bind
+            (identifier))))
+      (statement_line
+        (ask_statement
+          (identifier)
+          (string
+            (string_content))
+          (bind
+            (identifier))))
+      (statement_line
+        (ask_statement
+          (identifier)
+          (identifier)
+          (type
+            (identifier))
+          (bind
+            (identifier)))))))
+
+====================
+Tool calls
+====================
+
+# Agent: a
+## On start
+- crm get ticket id -> fresh
+- crm update ticket: priority = "low", subject = "changed"
+- http get "https://example.com/status" -> status
+- http post "https://example.com/hook": { id: ticket.id, subject: ticket.subject }
+- email send address "ops@example.com": "Ticket {ticket.subject}"
+- log: "done {ticket.id}"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (tool_call
+          (identifier)
+          (identifier)
+          (identifier)
+          (identifier)
+          (bind
+            (identifier))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (identifier)
+          (identifier)
+          (binary_expression
+            (identifier)
+            (string
+              (string_content)))
+          (binary_expression
+            (identifier)
+            (string
+              (string_content)))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (identifier)
+          (string
+            (string_content))
+          (bind
+            (identifier))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (identifier)
+          (string
+            (string_content))
+          (record_literal
+            (record_pair
+              (identifier)
+              (field_expression
+                (identifier)
+                (identifier)))
+            (record_pair
+              (identifier)
+              (field_expression
+                (identifier)
+                (identifier))))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (identifier)
+          (identifier)
+          (string
+            (string_content))
+          (string
+            (string_content)
+            (interpolation
+              (field_expression
+                (identifier)
+                (identifier))))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)
+            (interpolation
+              (field_expression
+                (identifier)
+                (identifier)))))))))
+
+====================
+Guards
+====================
+
+# Agent: a
+## On start
+- guard: no amounts changed in reminder
+- guard: reminder is not empty
+- guard: q matches Qualification
+- guard: reminder length < 800
+- guard: reminder length > 20 else set reminder = "Please pay."
+- guard: found is not empty else respond 404
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (guard_statement
+          (no_amounts_changed
+            (identifier))))
+      (statement_line
+        (guard_statement
+          (predicate
+            (identifier))))
+      (statement_line
+        (guard_statement
+          (predicate
+            (identifier)
+            (identifier))))
+      (statement_line
+        (guard_statement
+          (binary_expression
+            (length_expression
+              (identifier))
+            (number))))
+      (statement_line
+        (guard_statement
+          (binary_expression
+            (length_expression
+              (identifier))
+            (number))
+          (set_statement
+            (identifier)
+            (string
+              (string_content)))))
+      (statement_line
+        (guard_statement
+          (predicate
+            (identifier))
+          (respond_statement
+            (number)))))))
+
+====================
+Set and return
+====================
+
+# Agent: a
+## On start
+- set total = 0 EUR
+- set total = total + invoice.amount
+- return total
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (set_statement
+          (identifier)
+          (money)))
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (identifier)
+            (field_expression
+              (identifier)
+              (identifier)))))
+      (statement_line
+        (return_statement
+          (identifier))))))
+
+====================
+Do with arguments and binding
+====================
+
+# Agent: a
+## On start
+- do net_amount(invoice, 19) -> n
+- do load_all -> all
+- do remind
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (do_statement
+          (call_expression
+            (identifier)
+            (identifier)
+            (number))
+          (bind
+            (identifier))))
+      (statement_line
+        (do_statement
+          (identifier)
+          (bind
+            (identifier))))
+      (statement_line
+        (do_statement
+          (identifier))))))
+
+====================
+Try with otherwise
+====================
+
+# Agent: a
+## On start
+- try http get "https://api.example.com/rates" -> rates
+  otherwise:
+    - log: "Rates unavailable"
+    - set rates = "cached"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (try_statement
+          (tool_call
+            (identifier)
+            (identifier)
+            (string
+              (string_content))
+            (bind
+              (identifier)))))
+      (statement_line
+        (otherwise_statement))
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content))))
+      (statement_line
+        (set_statement
+          (identifier)
+          (string
+            (string_content)))))))
+
+====================
+Parallel
+====================
+
+# Function: load_all
+- out: list of Invoice
+- effect: network
+  - parallel:
+    - http get "https://api.example.com/rates" -> rates
+    - crm list invoice -> invoices
+  - return invoices
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (type_phrase
+          (type
+            (identifier)))))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (parallel_statement))
+    (statement_line
+      (tool_call
+        (identifier)
+        (identifier)
+        (string
+          (string_content))
+        (bind
+          (identifier))))
+    (statement_line
+      (tool_call
+        (identifier)
+        (identifier)
+        (identifier)
+        (bind
+          (identifier))))
+    (statement_line
+      (return_statement
+        (identifier)))))
+
+====================
+Read, append, respond, print
+====================
+
+# Command: c
+## Run
+- read file path as list of Invoice -> rows
+- append row to state.invoices
+- respond 200 { id: found.id, net: net_amount(found, vat_rate) }
+- respond 204
+- print: "Imported {count of rows} rows"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (run_heading)
+      (statement_line
+        (read_statement
+          (identifier)
+          (identifier)
+          (type
+            (type_phrase
+              (type
+                (identifier))))
+          (bind
+            (identifier))))
+      (statement_line
+        (append_statement
+          (identifier)
+          (field_expression
+            (identifier)
+            (identifier))))
+      (statement_line
+        (respond_statement
+          (number)
+          (record_literal
+            (record_pair
+              (identifier)
+              (field_expression
+                (identifier)
+                (identifier)))
+            (record_pair
+              (identifier)
+              (call_expression
+                (identifier)
+                (identifier)
+                (identifier))))))
+      (statement_line
+        (respond_statement
+          (number)))
+      (statement_line
+        (print_statement
+          (string
+            (string_content)
+            (interpolation
+              (count_expression
+                (identifier)))
+            (string_content)))))))
+
+====================
+Rust block
+====================
+
+# Function: f
+- in: payload: text
+- out: text
+- effect: pure
+  - return hash_payload(payload)
+
+## Rust: hash_payload -> text
+- in: payload: text
+- effect: pure
+  ```rust
+  use sha2::{Digest, Sha256};
+  format!("{:x}", Sha256::digest(payload.as_bytes()))
+  ```
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (identifier)))))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (return_statement
+        (call_expression
+          (identifier)
+          (identifier))))
+    (code_block
+      (rust_heading
+        (identifier)
+        (type
+          (identifier)))
+      (property
+        (property_key)
+        (property_value
+          (parameter
+            (identifier)
+            (type
+              (identifier)))))
+      (property
+        (property_key)
+        (property_value
+          (identifier)))
+      (code_fence
+        (fence_open)
+        (code_content)
+        (fence_close)))))

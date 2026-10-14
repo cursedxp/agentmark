@@ -1,0 +1,300 @@
+====================
+Literals
+====================
+
+# Rule: r
+- for: Invoice
+- when: amount > 12.50 EUR or amount = 0 EUR or due = 2026-10-13 or active = true
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (property
+      (property_key)
+      (property_value
+        (binary_expression
+          (binary_expression
+            (binary_expression
+              (binary_expression
+                (identifier)
+                (money))
+              (binary_expression
+                (identifier)
+                (money)))
+            (binary_expression
+              (identifier)
+              (date)))
+          (binary_expression
+            (identifier)
+            (boolean)))))))
+
+====================
+Duration and date arithmetic
+====================
+
+# Agent: a
+## On start
+- set next_check = today + 14 days
+- set a_month_ago = today - 1 month
+- set soon = now + 15 minutes
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (builtin)
+            (duration))))
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (builtin)
+            (duration))))
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (builtin)
+            (duration)))))))
+
+====================
+Logic and comparison
+====================
+
+# Agent: a
+## On start
+- set late = open_count > 3 or not open_count = 0
+- set both = a <= 1 and b >= 2 and c != 3
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (binary_expression
+              (identifier)
+              (number))
+            (unary_expression
+              (binary_expression
+                (identifier)
+                (number))))))
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (binary_expression
+              (binary_expression
+                (identifier)
+                (number))
+              (binary_expression
+                (identifier)
+                (number)))
+            (binary_expression
+              (identifier)
+              (number))))))))
+
+====================
+Money arithmetic
+====================
+
+# Agent: a
+## On start
+- set net = 120.50 EUR - 20.50 EUR * 2 / 4
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (money)
+            (binary_expression
+              (binary_expression
+                (money)
+                (number))
+              (number))))))))
+
+====================
+Count and first
+====================
+
+# Agent: a
+## On start
+- set open_count = count of open invoices in crm.invoices
+- set n = count of rows
+- set first_late = first invoice in crm.invoices where invoice.status = "open"
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (set_statement
+          (identifier)
+          (count_expression
+            (identifier)
+            (identifier)
+            (field_expression
+              (identifier)
+              (identifier)))))
+      (statement_line
+        (set_statement
+          (identifier)
+          (count_expression
+            (identifier))))
+      (statement_line
+        (set_statement
+          (identifier)
+          (first_expression
+            (identifier)
+            (field_expression
+              (identifier)
+              (identifier))
+            (binary_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (string
+                (string_content)))))))))
+
+====================
+Calls and records
+====================
+
+# Agent: a
+## On start
+- log: "{net_amount(invoice, 19)}"
+- http post "https://example.com": { a: 1, b: f(x, y), c: { d: "e" } }
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (interpolation
+              (call_expression
+                (identifier)
+                (identifier)
+                (number))))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (identifier)
+          (string
+            (string_content))
+          (record_literal
+            (record_pair
+              (identifier)
+              (number))
+            (record_pair
+              (identifier)
+              (call_expression
+                (identifier)
+                (identifier)
+                (identifier)))
+            (record_pair
+              (identifier)
+              (record_literal
+                (record_pair
+                  (identifier)
+                  (string
+                    (string_content)))))))))))
+
+====================
+Interpolated strings and escapes
+====================
+
+# Agent: a
+## On start
+- log: "Hello {customer}, you owe {invoice.amount} \"now\""
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (tool_call
+          (identifier)
+          (string
+            (string_content)
+            (interpolation
+              (identifier))
+            (string_content)
+            (interpolation
+              (field_expression
+                (identifier)
+                (identifier)))
+            (string_content)
+            (escape_sequence)
+            (string_content)
+            (escape_sequence)))))))
+
+====================
+Parenthesised and negative
+====================
+
+# Agent: a
+## On start
+- set x = -(a + b) * 2
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (trigger_block
+      (on_start_heading)
+      (statement_line
+        (set_statement
+          (identifier)
+          (binary_expression
+            (unary_expression
+              (parenthesized_expression
+                (binary_expression
+                  (identifier)
+                  (identifier))))
+            (number)))))))
