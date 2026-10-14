@@ -1,24 +1,15 @@
 # AgentMark internals
 
-*For a contributor. You know Rust; you want to know where things live and how to change them.*
+**In short**
+- This page is the map of the AgentMark compiler: which file does what, and how to change it.
+- It is for a contributor who knows Rust.
+- After reading it you can find the file for any change and follow a checklist to make it.
 
-AgentMark is a general-purpose programming language written as Markdown (`SPEC.md` section 22), and agents are one feature
-built on its core. The implementation reflects that: the front end, the checker, the IR and the Rust generator know records,
-enums, functions, collections, the built-in library and tools; an agent is rewritten into those by `src/lower/agent_lower.rs`
-before the generator runs, so a change to the core never needs to know about agents.
+**Jump to:** [Where do I change X?](#where-do-i-change-x) · [Add a statement](#add-a-statement) · [Add a lint rule](#add-a-lint-rule) · [Add a stdlib function](#add-a-stdlib-function) · [Change the binder tiers](#change-the-binder-tiers) · [Add a target](#add-a-target) · [Add an LSP feature](#add-an-lsp-feature) · [SPEC to file table](#where-each-section-of-the-specification-lives)
 
-AgentMark is one Cargo package that is also the workspace root: the library and the `agentmark` binary are
-`src/lib.rs` and `src/main.rs`, and the runtime that generated programs link against is the member crate
-`crates/agentmark-rt/`. The language is defined by `SPEC.md`, the architecture by `DESIGN.md`, and every
-choice the specification left open is a numbered entry in `OPEN_QUESTIONS.md`. When you change behaviour, change
-the code, a test, and the doc that describes it (`docs/reference.md`), and add a `Q` entry when you had to
-decide something. `SPEC.md` itself is never edited to make something easier.
+## The pipeline
 
-Working rules: run `export CARGO_TARGET_DIR=$PWD/target` before any cargo command when you use a worktree,
-run `cargo test --workspace`, keep the build free of warnings, and give anything that took two attempts to
-get right a regression test.
-
-## 1. The pass pipeline
+Source text goes through these passes, top to bottom:
 
 ```text
 source text
@@ -33,8 +24,54 @@ source text
   -> src/codegen/rust.rs       IR -> a Cargo project (one file per target)
 ```
 
-Each arrow is a function with an owned input and output, so a pass can be tested alone, and no pass reaches
-back into an earlier one. Two rules keep the pipeline honest:
+Details of each pass are in [The pass pipeline in detail](#the-pass-pipeline-in-detail) below.
+
+## Where do I change X?
+
+| I want to... | start in | then also touch | checklist |
+|---|---|---|---|
+| add a statement | `src/syntax/ast.rs`, `src/syntax/parser/stmt.rs` | `src/fmt.rs`, `src/lint.rs`, `src/sema/stmt.rs`, `src/lower/agent_lower.rs`, `src/ir/build.rs`, `src/codegen/rust.rs`, `docs/reference.md` | [Add a statement](#add-a-statement) |
+| add a lint rule | `src/lint.rs` (the `RULES` list) | `tests/lint.rs`, `editors/vscode/schemas/agentmark.schema.json`, `crates/agentmark-lsp/src/actions.rs` if it has a mechanical fix | [Add a lint rule](#add-a-lint-rule) |
+| add a stdlib function | `src/stdlib.rs` (one table row) | `crates/agentmark-rt/src/stdlib/`, `docs/reference.md` | [Add a stdlib function](#add-a-stdlib-function) |
+| change the binder tiers | `src/binder/rust/rustdoc.rs` (the classification) | `src/binder/core/pipeline.rs`, `tests/binder.rs` | [Change the binder tiers](#change-the-binder-tiers) |
+| add a target | a new module next to `src/codegen/rust.rs` | `src/codegen/mod.rs`, `src/cli/build.rs`, `src/binder/` | [Add a target](#add-a-target) |
+| add an LSP feature | `crates/agentmark-lsp/src/server.rs` | the matching file in `crates/agentmark-lsp/src/`, `crates/agentmark-lsp/tests/` | [Add an LSP feature](#add-an-lsp-feature) |
+| find the code for a SPEC section | the SPEC table below | | [SPEC to file table](#where-each-section-of-the-specification-lives) |
+
+## Ground rules
+
+AgentMark is a general-purpose programming language written as Markdown (`SPEC.md` section 22). Agents are one feature built on its core.
+
+The implementation reflects that. The front end, the checker, the IR and the Rust generator know these things:
+
+* records, enums and functions;
+* collections;
+* the built-in library and tools.
+
+`src/lower/agent_lower.rs` rewrites an agent into those before the generator runs. So a change to the core never needs to know about agents.
+
+AgentMark is one Cargo package that is also the workspace root. The library and the `agentmark` binary are `src/lib.rs` and `src/main.rs`. The runtime that generated programs link against is the member crate `crates/agentmark-rt/`.
+
+Three documents define the project:
+
+* `SPEC.md` defines the language. It is never edited to make something easier.
+* `DESIGN.md` defines the architecture.
+* `OPEN_QUESTIONS.md` holds every choice the specification left open, as a numbered `Q` entry.
+
+When you change behaviour, change the code, a test, and the doc that describes it (`docs/reference.md`). Add a `Q` entry when you had to decide something.
+
+Working rules:
+
+1. Run `export CARGO_TARGET_DIR=$PWD/target` before any cargo command when you use a worktree.
+2. Run `cargo test --workspace`.
+3. Keep the build free of warnings.
+4. Give anything that took two attempts to get right a regression test.
+
+## The pass pipeline in detail
+
+Each arrow is a function with an owned input and output. A pass can be tested alone. No pass reaches back into an earlier one.
+
+Two rules keep the pipeline honest:
 
 * **The IR has no agent concepts.** After `agent_lower` there is no agent, rule, trigger, `ask model` or guard
   node; the lowering tests walk the layer-2 AST to assert that. The generator never sees an agent
@@ -42,7 +79,8 @@ back into an earlier one. Two rules keep the pipeline honest:
 * **Every IR node carries an effect set**, copied from `Checked` (or merged from children for nodes lowering invented).
   The effect summary that `check` prints is read from the semantic check (`Checked.blocks`, see `src/cli/check.rs`); the IR carries the same sets, so a future optimiser reads them there.
 
-The pieces, in the order a program meets them:
+### The pieces, in the order a program meets them
+
 
 | stage | files | what it hands on |
 |---|---|---|
@@ -58,8 +96,9 @@ The pieces, in the order a program meets them:
 | tools around it | `src/fmt.rs`, `src/lint.rs`, `src/cli/docgen.rs`, `src/binder/` | formatter, lint rules, documentation page, library binder |
 | command line | `src/cli.rs`, `src/cli/check.rs`, `src/cli/build.rs` (build, run, trace), `src/cli/fmtlint.rs`, `src/cli/docgen.rs`, `src/cli/bind.rs`, `src/cli/files.rs` | one function per command; each prints its report and returns the exit code |
 
-`src/lib.rs` exports every pass, so a language server, an editor integration or a test can use the checker
-as a library:
+### Use the checker as a library
+
+`src/lib.rs` exports every pass. A language server, an editor integration or a test can call them:
 
 ```rust
 let project = agentmark::project::Project::load("examples/01-invoice-chaser");
@@ -70,63 +109,27 @@ let program = agentmark::ir::build::build(&project, checked.as_ref().unwrap(), &
 
 `Project::from_str` and `Project::from_memory` build in-memory projects (tests, editor buffers).
 
-### 1.1 Why the semantic check is side tables, not a new tree
+### Why the semantic check is side tables, not a new tree
 
-`sema::check` does not produce a typed AST. It leaves the AST alone and returns tables keyed by `NodeKey { file,
-span }`: `expr_types`, `expr_effects`, `stmt_effects`, `resolutions` (what a name stands for), `tool_calls` (what
-each tool call resolved to), `unwraps` (where a `maybe` is known to be present) and so on. Later passes look up
-what they need. This keeps the parser output stable for snapshots and lets the formatter and linter run on
-syntax alone, without the checker. The cost: every node a later pass wants to look up needs a *unique span*. When
-lowering invents nodes it gives them `col == 0` spans (`lower::is_synthetic`), and the IR builder merges the
-effects of their children instead of looking them up.
+`sema::check` does not produce a typed AST. It leaves the AST alone and returns tables keyed by `NodeKey { file, span }`. Later passes look up what they need.
 
-## 2. Where each section of the specification lives
+The main tables:
 
-| SPEC | topic | implemented in | tested in |
-|---|---|---|---|
-| 1 | file structure, indentation, comments | `src/syntax/lexer.rs`, `src/syntax/parser.rs` | `tests/syntax_errors.rs`, `tests/parse_structure.rs`, `tests/parse_snapshots.rs` |
-| 2.1 | records, field-type inference | `src/sema/decls.rs`, `src/sema/types.rs` | `tests/sema_types.rs` |
-| 2.2 | rules | `src/sema/body.rs`, `src/lower/agent_lower.rs` (rule becomes a pure function) | `tests/sema_effects.rs`, `tests/ir_lower.rs` |
-| 2.3, 3 | agent properties, triggers | `src/syntax/parser/heading.rs`, `src/sema/decls.rs`, `src/lower/agent_lower.rs`, scheduler in `crates/agentmark-rt/src/schedule.rs` | `tests/parse_structure.rs`, `tests/ir_lower.rs`, `crates/agentmark-rt/tests/schedule.rs` |
-| 4 | statements | `src/syntax/parser/stmt.rs`, `src/sema/stmt.rs`, `src/ir/build.rs` | `tests/parse_structure.rs`, `tests/sema_scope.rs`, `tests/ir_lower.rs` |
-| 4.4 | guards, `no amounts changed` | `src/sema/expr.rs`, `src/lower/agent_lower.rs` (agents), `src/ir/build.rs` (everywhere else, Q90), `crates/agentmark-rt/src/guard.rs` | `tests/ir_lower.rs`, `crates/agentmark-rt/tests/` |
-| 5, 6 | expressions, units, types | `src/syntax/parser/expr.rs`, `src/sema/expr.rs`, `src/sema/types.rs`, `crates/agentmark-rt/src/money.rs` | `tests/sema_types.rs`, `crates/agentmark-rt/tests/money.rs` |
-| 7 | tool manifest | `src/manifest.rs`, `src/sema/tools.rs` | `tests/sema_manifest.rs`, `tests/errors.rs` |
-| 8 | effects, the summary | `src/sema/effects.rs`, `src/ir/mod.rs` (`effect_summary`), `src/cli/check.rs` | `tests/sema_effects.rs`, `tests/cli.rs` |
-| 9 | commands | `src/cli.rs`, `src/cli/*.rs`, generator in `src/codegen/rust.rs` and `src/codegen/rust/` | `tests/cli.rs`, `tests/codegen.rs`, `tests/examples_e2e.rs` |
-| 9.2 | runtime crate | `crates/agentmark-rt/src/` | `crates/agentmark-rt/tests/` |
-| 10 | error messages | `src/diag.rs`, messages in the pass that finds the problem | `tests/errors.rs`, `tests/errors/*.agent.md`, `tests/syntax_errors.rs` |
-| 11 | fixtures and traces | `fixtures/`, `crates/agentmark-rt/src/trace.rs`, `crates/agentmark-rt/src/tools.rs` | `crates/agentmark-rt/tests/fixtures_01.rs`, `crates/agentmark-rt/tests/trace_kinds.rs` |
-| 13.1 | functions | `src/sema/decls.rs` (signatures), `src/sema/body.rs`, `src/ir/build.rs` | `tests/sema_types.rs`, `tests/sema_effects.rs` |
-| 13.2, 18.2 | modules, imports | `src/project.rs`, `src/sema/scope.rs`, `src/sema/unused.rs` | `tests/sema_scope.rs` |
-| 13.3 | services, commands | `src/syntax/parser.rs`, `src/ir/build.rs`, generator in `src/codegen/rust.rs` | `tests/ir_lower.rs` |
-| 14 | `try`, `maybe` | `src/sema/stmt.rs`, `src/ir/build.rs` (`Try`, `IfSome`) | `tests/sema_types.rs`, `tests/ir_lower.rs` |
-| 15 | library bindings | `src/binder/` (section 5 below), `src/cli/bind.rs` | `tests/binder.rs`, `tests/binder/` |
-| 16 | `parallel` | `src/sema/parallel.rs` | `tests/sema_effects.rs` |
-| 17 | `## Rust` blocks | `src/syntax/parser.rs` (`rust_block`), `src/sema/decls.rs`, `src/ir/build.rs` (`RustFn`) | `tests/sema_effects.rs`, `tests/parse_structure.rs` |
-| 18.1 | project layout | `src/project.rs` | `tests/sema_scope.rs`, `tests/sema_examples.rs` |
-| 18.3 | hard limits | `src/sema/limits.rs` | `tests/sema_limits.rs` |
-| 18.4 | lint | `src/lint.rs` | `tests/lint.rs` |
-| 18.5 | constants | `src/sema/decls.rs`, inlined by `src/ir/build.rs` | `tests/sema_review.rs` |
-| 18.6 | formatter | `src/fmt.rs` | `tests/fmt.rs`, `tests/fmt/messy.agent.md` |
-| 18.7 | documentation page | `src/cli/docgen.rs` | `tests/cli.rs` |
-| 19 | model providers | `crates/agentmark-rt/src/model.rs` | `crates/agentmark-rt/tests/anthropic.rs` |
-| 20.3 | language server | `crates/agentmark-lsp/src/` (section 9 below) | `crates/agentmark-lsp/tests/` |
-| 22.1 | enums, type aliases, `match` | `src/syntax/parser.rs` (`enum_decl`, `match_arms`), `src/sema/enums.rs`, `src/ir/build.rs` (`Match`, `Variant`), `src/codegen/rust/body.rs`, `src/codegen/rust/files.rs` (`records_rs`) | `tests/user_types.rs`, `tests/user_types/shapes.agent.md` |
-| 22.2 | collection words | `src/syntax/collections.rs` and `src/syntax/parser/collections.rs` (grammar), `src/sema/collections.rs` (types, element scope, purity), `src/codegen/rust/body/collections.rs`, runtime `crates/agentmark-rt/src/collections.rs` | `tests/collections.rs`, `tests/collections/`, `crates/agentmark-rt/tests/collections.rs` |
-| 22.3 | built-in library, the `file` tool, `read input` | the table `src/stdlib.rs`, checker `src/sema/stdlib.rs`, Rust spelling `src/codegen/rust/stdlib.rs`, runtime `crates/agentmark-rt/src/stdlib/` | `tests/sema_stdlib.rs`, `tests/stdlib_syntax.rs`, `tests/stdlib_e2e.rs`, `crates/agentmark-rt/src/stdlib/` (unit tests) |
-| 22.4 | handles: `handle of <crate>.<Type>`, ownership | `src/sema/handles.rs`, the binder (`src/binder/`, handle items and `## Handle:` blocks), `src/ir/build.rs`, `[crates]` in `src/project.rs` | `tests/handles.rs`, `tests/stdlib_handles.rs`, `tests/binder.rs` |
-| 22.5 | `# Tool` written in AgentMark | `src/syntax/parser/tool.rs`, `src/sema/user_tools.rs`, `src/ir/build.rs` (a verb is a function named `<tool>__<verb>`), the calls in `src/codegen/rust/body.rs` | `tests/user_tools.rs`, `tests/user_tools_e2e.rs`, `tests/user_tools/` |
-| 22.6 | default command, program arguments | `src/codegen/rust/default_cmd.rs`, `src/cli/` (`run` and `trace` pass the arguments after `--`) | `tests/user_tools_e2e.rs`, `tests/examples_e2e.rs` |
-| 22.7 | non-agent examples 06 to 10 and their fixtures (a run file, an input folder, the expected output) | `examples/06-…` to `examples/10-…`, `fixtures/` | `tests/examples_e2e.rs`, `tests/sema_examples.rs` |
+* `expr_types` and `expr_effects`: the type and effect of each expression.
+* `stmt_effects`: the effect of each statement.
+* `resolutions`: what a name stands for.
+* `tool_calls`: what each tool call resolved to.
+* `unwraps`: where a `maybe` is known to be present.
 
-The documentation is tested too: `tests/docs.rs` runs every sample in `docs/*.md`. Its header comment states which
-fenced blocks are complete programs and which are fragments, and the wrapper a fragment is parsed in.
+This keeps the parser output stable for snapshots. It lets the formatter and linter run on syntax alone, without the checker.
 
-## 3. How to add a statement
+**Watch out:** every node a later pass wants to look up needs a *unique span*. When lowering invents nodes it gives them `col == 0` spans (`lower::is_synthetic`). The IR builder merges the effects of their children instead of looking them up.
 
-Take an imaginary `wait <duration>` as the example, a statement that pauses a block. Work through the passes in
-order. The compiler finds most of what you forget, because `StmtKind` is matched exhaustively in every pass.
+## Add a statement
+
+The example is an imaginary `wait <duration>`, a statement that pauses a block. Work through the passes in order. The compiler finds most of what you forget, because `StmtKind` is matched exhaustively in every pass.
+
+**Checklist:**
 
 1. **AST.** Add a variant to `StmtKind` in `src/syntax/ast.rs` (`Wait(Expr)`), with the span it needs.
 2. **Parser.** Add the line grammar in `src/syntax/parser/stmt.rs`: a chumsky parser inside `head()`, producing a
@@ -160,10 +163,149 @@ order. The compiler finds most of what you forget, because `StmtKind` is matched
 A statement that is pure sugar for existing layer-2 statements should not enter layer 2 at all: lower it in
 `src/lower/agent_lower.rs` and let the generator stay unchanged. That is the point of the three layers.
 
-## 4. How to add a target
+**Next:** [Add a lint rule](#add-a-lint-rule)
 
-The IR is target-independent; a target is a consumer of `ir::Program` (and `Checked` for names). Adding one means
-adding files, not changing passes:
+## Add a lint rule
+
+A lint rule is a check in `src/lint.rs` that reports a finding with a rule id. The ids live in the `RULES` list, in the order SPEC 18.4 lists them.
+
+**Checklist:**
+
+1. **Rule.** Add the id to `RULES` in `src/lint.rs` and write the check next to the others (for example `missing-doc` and `vague-name`). `RULES` is a fixed-size array, `pub const RULES: [&str; 7]`. Bump the length to 8, or the code does not compile.
+2. **Config.** Add the id to the enum in `editors/vscode/schemas/agentmark.schema.json`, so `[lint] deny` completes it.
+3. **Fix (optional).** If the fix is mechanical, add an arm in `lint_fix` in `crates/agentmark-lsp/src/actions.rs` and a test in `crates/agentmark-lsp/tests/actions.rs` (Q255). If the fix needs a decision only the author can make, add none.
+4. **Tests.** Add one positive and one negative case in `tests/lint.rs`.
+5. **Docs.** Add the rule to section 18.4 of `docs/reference.md` and to the `[lint] deny` row in `docs/editor.md`.
+
+**Next:** [Add a stdlib function](#add-a-stdlib-function)
+
+## Add a stdlib function
+
+The built-in library (SPEC 22.3) is one table in `src/stdlib.rs`. The checker types calls from it, the generator spells the Rust call from it, and `check` and the editor read the names.
+
+**Checklist:**
+
+1. **Table row.** Add one row to the table in `src/stdlib.rs`.
+2. **Runtime function.** Write the Rust function in `agentmark_rt::stdlib::<module>`, in the matching file under `crates/agentmark-rt/src/stdlib/`.
+3. **Docs.** Add the same row to the library list in `docs/reference.md`. A test keeps the two in step.
+4. **Tests.** Run and extend these:
+   * `tests/stdlib_syntax.rs`: the test `the_reference_lists_every_function_of_the_table_and_every_file_verb` fails until step 3 is done.
+   * `tests/sema_stdlib.rs` and `tests/stdlib_e2e.rs`.
+   * the unit tests in `crates/agentmark-rt/src/stdlib/`.
+
+Two cases need more:
+
+* **A new module.** Also add its name to `MODULES` in `src/stdlib.rs` and a `pub mod` line in `crates/agentmark-rt/src/stdlib/mod.rs`.
+* **A check on a literal argument.** A regex or date pattern that cannot work is an error at check time. That check lives in `src/sema/stdlib.rs`.
+
+**Next:** [Change the binder tiers](#change-the-binder-tiers)
+
+## Change the binder tiers
+
+`src/binder/` turns a library's public API into a `# Binding` file (SPEC 15). Its own overview is `src/binder/README.md`. This section is the map for changing it.
+
+**Checklist: move an item between tiers**
+
+1. Change the classification in `src/binder/rust/rustdoc.rs`. The type mapping is in `src/binder/rust/types.rs`.
+2. Record the decision as a `Q` entry (the tier boundary below cites Q75 to Q78).
+3. Run `cargo test --test binder`. It works offline on stable.
+
+**Checklist: add a tier**
+
+1. Add a step next to the others, in the same shape as the on-demand tier below.
+2. Keep the invariant: code a model wrote is type-checked before it is accepted and is never silently wrong.
+3. Add a test with the canned model file (see Tests below).
+
+```text
+src/binder/mod.rs             bind(), doc_cheatsheet(), BindOptions, BindOutcome
+src/binder/core/model.rs      the item model: Item { name, path, summary, shape }, Shape, Sig, Ty
+src/binder/core/pipeline.rs   run_tiers(): every Item lands in exactly one tier
+src/binder/core/writer.rs     render_binding(), the header, freshness(), not_bound_entry()
+src/binder/core/effects.rs    propose_effect(): the proposed-effect guess
+src/binder/core/typecheck.rs  the TypeChecker trait
+src/binder/rust/rustdoc.rs    rustdoc JSON -> CrateItems (classifies each item's Shape)
+src/binder/rust/types.rs      Rust type <-> AgentMark type mapping and the direct-tier bodies
+src/binder/rust/checker.rs    CargoChecker: wraps a body in a function and runs cargo check
+src/binder/rust/fetch.rs      builds rustdoc JSON (cargo +nightly rustdoc) or reads the env override
+```
+
+### The division of labour
+
+The target decides an item's `Shape` *before any model is involved*. For Rust that classification is in `src/binder/rust/rustdoc.rs`, using the type mapping of `src/binder/rust/types.rs`.
+
+| shape | what it carries |
+|---|---|
+| `Shape::Direct` | a ready body, written by the target by rules |
+| `Shape::Assisted` | the signature and why it is not direct |
+| `Shape::Skipped` | the reason |
+
+`run_tiers` in `src/binder/core/pipeline.rs` then does the target-independent part:
+
+1. Take direct items as they are.
+2. For assisted items, ask the `ModelClient`. It gets the signature, the item's docs and the AgentMark style guide.
+3. Have the `TypeChecker` accept or reject the returned body.
+4. On failure, move the item to the skipped list with the reason. List every skip.
+
+`run_tiers` also keeps `placements`, one entry per input item. The tests use it to prove nothing is dropped.
+
+### Where the tier boundary is
+
+It is a decision list (Q75 to Q78). An item is direct only when all of these hold:
+
+* it is not `async` and does not return `Result`;
+* it has no generics;
+* its receiver is `self` or `&self` only;
+* its integers are up to `i64` and it has no floats.
+
+Closures are skipped because AgentMark has no function type. Generics are instantiated from their bounds with a small fixed table.
+
+To move an item between tiers, change the classification in `src/binder/rust/rustdoc.rs` and record the decision.
+
+### The on-demand tier
+
+It is the fourth step and lives next to the others. Four places do the work:
+
+* `src/binder/core/ondemand.rs`: the prompt, two attempts, the signature the model proposes when the item has none, and the type check.
+* `add_on_demand` in `src/binder/core/writer.rs`: moves the items out of `## Not bound` and resets `- effect:` to `unverified`.
+* `produce_on_demand` and `commit_on_demand` in `src/binder/mod.rs`: produce reads the binding and the rustdoc and computes the new text. Commit replaces the files. The CLI commits only when every crate succeeded.
+* `src/cli/ondemand.rs`: finds the statements, prints the E220 error, and writes the compiler text to `target/agentmark/ondemand-<crate>-<item>.log`.
+
+`check` and `build` call it after the automatic first binding and before the semantic check.
+
+**Watch out:** code a model wrote must be type-checked before it is accepted, and it is never silently wrong. A new tier adds a step in the same shape.
+
+### Trust is a file property
+
+`render_binding` always writes `- effect: unverified` plus the proposal.
+
+`freshness` decides what `bind` does with an existing file:
+
+| the file | what `bind` does |
+|---|---|
+| header version matches | cache hit, also when approved |
+| header version differs | regenerates as `unverified`; the old file is kept as `.prev` |
+| no generated header | hand-written; left alone unless `force` |
+
+`check` reads the effect through the normal parser. So the gate is in the CLI (`src/cli/check.rs`), not the binder.
+
+### Tests
+
+The tests run offline on stable with `cargo test --test binder`. They use two kinds of recorded input:
+
+* trimmed rustdoc JSON: `tests/binder/sha2.json`, `tests/binder/chrono.json`, `tests/binder/reqwest.json`, `tests/binder/digest.json`. `tests/binder/regen.sh` regenerates them with a nightly toolchain.
+* a canned `MockModel` file: `tests/binder/model.json`.
+
+Three tests run the real `cargo check --offline`.
+
+To move to a newer rustdoc format, re-run `tests/binder/regen.sh`. Then check `SUPPORTED_FORMAT` in `src/binder/rust/rustdoc.rs` (Q71).
+
+**Next:** [Add a target](#add-a-target)
+
+## Add a target
+
+The IR is target-independent. A target is a consumer of `ir::Program` (and `Checked` for names). Adding one means adding files, not changing passes.
+
+**Checklist:**
 
 1. **Generator.** One new module next to `src/codegen/rust.rs` (declared in `src/codegen/mod.rs`), exporting a function from `ir::Program` to a set of
    output files (`Vec<GeneratedFile>`), modelled on `generate()` in `src/codegen/rust.rs`. It reads only the IR. The conventions to keep are the ones
@@ -182,69 +324,105 @@ adding files, not changing passes:
    the traces are the contract (tests compare behaviour, never generated source text). Add the target to the
    `docs/reference.md` sections 9 and 15.
 
-## 5. How the binder tiers work
+**Next:** [Add an LSP feature](#add-an-lsp-feature)
 
-`src/binder/` turns a library's public API into a `# Binding` file (SPEC 15). Its own overview is
-`src/binder/README.md`; this is the map for changing it.
+## Add an LSP feature
 
-```text
-src/binder/mod.rs             bind(), doc_cheatsheet(), BindOptions, BindOutcome
-src/binder/core/model.rs      the item model: Item { name, path, summary, shape }, Shape, Sig, Ty
-src/binder/core/pipeline.rs   run_tiers(): every Item lands in exactly one tier
-src/binder/core/writer.rs     render_binding(), the header, freshness(), not_bound_entry()
-src/binder/core/effects.rs    propose_effect(): the proposed-effect guess
-src/binder/core/typecheck.rs  the TypeChecker trait
-src/binder/rust/rustdoc.rs    rustdoc JSON -> CrateItems (classifies each item's Shape)
-src/binder/rust/types.rs      Rust type <-> AgentMark type mapping and the direct-tier bodies
-src/binder/rust/checker.rs    CargoChecker: wraps a body in a function and runs cargo check
-src/binder/rust/fetch.rs      builds rustdoc JSON (cargo +nightly rustdoc) or reads the env override
-```
+`crates/agentmark-lsp/` is the workspace member that builds `agentmark-lsp`, a Language Server Protocol server on
+stdio (`lsp-server` for the transport, `lsp-types` for the messages; synchronous, one thread). It uses the compiler
+only as a library: `Project::load_with` through an overlay of the open buffers, `sema::check`, `lint`, `fmt`.
+Nothing in `src/` knows about it except `project::Config.lsp_model_actions` (Q250).
 
-**The division of labour.** The target decides an item's `Shape` *before any model is involved*: `Shape::Direct`
-carries a ready body (the target wrote it by rules), `Shape::Assisted` carries the signature and why it is not
-direct, `Shape::Skipped` carries the reason. For Rust that classification is in `src/binder/rust/rustdoc.rs`
-using the type mapping of `src/binder/rust/types.rs`. `run_tiers` in `src/binder/core/pipeline.rs` then does the
-target-independent part: take direct items as they are; for assisted ones ask the `ModelClient` (the signature, the
-item's docs, the AgentMark style guide), have the `TypeChecker` accept or reject the returned body, and on failure move
-the item to the skipped list with the reason; list every skip. It also keeps `placements`, one entry per input item,
-which the tests use to prove nothing is dropped.
+| file | what it does |
+|---|---|
+| `crates/agentmark-lsp/src/server.rs` | the message loop, one handler per method, the per-project analysis cache, diagnostics publishing |
+| `crates/agentmark-lsp/src/workspace.rs` | open buffers over the disk (`OverlayFs`), the project of a document, `Analysis` (load, check, lint, the last good check) |
+| `crates/agentmark-lsp/src/diagnostics.rs` | `Diagnostic` to LSP: the SPEC 10 message, range, code, source |
+| `crates/agentmark-lsp/src/complete.rs` | completion: context from the text left of the cursor, names from the ASTs, types from the checker |
+| `crates/agentmark-lsp/src/nav.rs` | go-to-definition (through `Checked.resolutions` and `declarations`, then by name) and hover (effect summary of a block, types) |
+| `crates/agentmark-lsp/src/actions.rs` | quick fixes of the lint rules and of "Did you mean", and the model actions |
+| `crates/agentmark-lsp/src/index.rs`, `crates/agentmark-lsp/src/text.rs`, `crates/agentmark-lsp/src/uri.rs` | declarations visible from a file and the word under the cursor; character and UTF-16 positions; `file://` URIs |
 
-**Where the tier boundary is** is a decision list (Q75 to Q78): direct requires not `async`, not `Result`, no
-generics, receivers `self` or `&self` only, integers up to `i64`, no floats; closures are skipped because AgentMark
-has no function type; generics are instantiated from their bounds with a small fixed table. To move an item between
-tiers, change the classification in `src/binder/rust/rustdoc.rs` and record the decision.
+**Checklist:**
 
-**The on-demand tier** is the fourth step and lives next to the others: `src/binder/core/ondemand.rs` (prompt, two attempts, the
-signature the model proposes when the item has none, the type check), `add_on_demand` in `src/binder/core/writer.rs` (moves the items
-out of `## Not bound`, resets `- effect:` to `unverified`), `produce_on_demand` and `commit_on_demand` in `src/binder/mod.rs` (produce reads the binding and the rustdoc, computes the new text; commit replaces the files, and the CLI commits only when every crate succeeded) and `src/cli/ondemand.rs` (finds the statements, prints the E220 error and writes the compiler text to `target/agentmark/ondemand-<crate>-<item>.log`). `check` and `build` call it after
-the automatic first binding and before the semantic check. Keep the invariant that code a model wrote is type-checked before it
-is accepted and is never silently wrong; a new tier adds a step in the same shape.
+1. Add the handler for the method in `crates/agentmark-lsp/src/server.rs`.
+2. Put the logic in the matching file from the table above, or a new one.
+3. Plan for the no-check state. The checker returns nothing when there is any error, which is the normal
+state while typing, so every feature has a plan for that (Q252).
+4. Convert positions through `crates/agentmark-lsp/src/text.rs`. Positions are characters in the compiler and UTF-16 units in the protocol.
+5. Add one test in `crates/agentmark-lsp/tests/`, driven over the protocol in-process.
+6. For a quick fix of a lint rule: add an arm in `lint_fix` in `crates/agentmark-lsp/src/actions.rs`. Add a test in `crates/agentmark-lsp/tests/actions.rs` that applies the edit and checks that the finding is gone and the project still checks (Q255).
+7. Add the feature to the table in `docs/editor.md`.
 
-**Trust is a file property.** `render_binding` always writes `- effect: unverified` plus the proposal;
-`freshness` decides what `bind` does with an existing file: a header whose version matches is a cache hit (also
-when approved); a different version regenerates (as `unverified`, old file kept as `.prev`); a file with no
-generated header is hand-written and is left alone unless `force`. `check` reads the effect through the normal
-parser, so the gate is in the CLI (`src/cli/check.rs`), not the binder.
+The decisions behind all of it are Q250 to Q258.
 
-**Tests** use trimmed rustdoc JSON (`tests/binder/sha2.json`, `tests/binder/chrono.json`, `tests/binder/reqwest.json`, `tests/binder/digest.json`),
-regenerated by `tests/binder/regen.sh` with a nightly toolchain, and a canned `MockModel` file
-(`tests/binder/model.json`), so `cargo test --test binder` works offline on stable. Three tests run the real
-`cargo check --offline`. Moving to a newer rustdoc format means re-running `tests/binder/regen.sh` and checking
-`SUPPORTED_FORMAT` in `src/binder/rust/rustdoc.rs` (Q71).
+## Where each section of the specification lives
 
-## 6. Real tools: the project's connect file
+| SPEC | topic | implemented in | tested in |
+|---|---|---|---|
+| 1 | file structure, indentation, comments | `src/syntax/lexer.rs`, `src/syntax/parser.rs` | `tests/syntax_errors.rs`, `tests/parse_structure.rs`, `tests/parse_snapshots.rs` |
+| 2.1 | records, field-type inference | `src/sema/decls.rs`, `src/sema/types.rs` | `tests/sema_types.rs` |
+| 2.2 | rules | `src/sema/body.rs`, `src/lower/agent_lower.rs` (rule becomes a pure function) | `tests/sema_effects.rs`, `tests/ir_lower.rs` |
+| 2.3, 3 | agent properties, triggers | `src/syntax/parser/heading.rs`, `src/sema/decls.rs`, `src/lower/agent_lower.rs`, scheduler in `crates/agentmark-rt/src/schedule.rs` | `tests/parse_structure.rs`, `tests/ir_lower.rs`, `crates/agentmark-rt/tests/schedule.rs` |
+| 4 | statements | `src/syntax/parser/stmt.rs`, `src/sema/stmt.rs`, `src/ir/build.rs` | `tests/parse_structure.rs`, `tests/sema_scope.rs`, `tests/ir_lower.rs` |
+| 4.4 | guards, `no amounts changed` | `src/sema/expr.rs`, `src/lower/agent_lower.rs` (agents), `src/ir/build.rs` (everywhere else, Q90), `crates/agentmark-rt/src/guard.rs` | `tests/ir_lower.rs`, `crates/agentmark-rt/tests/` |
+| 5, 6 | expressions, units, types | `src/syntax/parser/expr.rs`, `src/sema/expr.rs`, `src/sema/types.rs`, `crates/agentmark-rt/src/money.rs` | `tests/sema_types.rs`, `crates/agentmark-rt/tests/money.rs` |
+| 7 | tool manifest | `src/manifest.rs`, `src/sema/tools.rs` | `tests/sema_manifest.rs`, `tests/errors.rs` |
+| 8 | effects, the summary | `src/sema/effects.rs`, `src/ir/mod.rs` (`effect_summary`), `src/cli/check.rs` | `tests/sema_effects.rs`, `tests/cli.rs` |
+| 9 | commands | `src/cli.rs`, `src/cli/*.rs`, generator in `src/codegen/rust.rs` and `src/codegen/rust/` | `tests/cli.rs`, `tests/codegen.rs`, `tests/examples_e2e.rs` |
+| 9.2 | runtime crate | `crates/agentmark-rt/src/` | `crates/agentmark-rt/tests/` |
+| 10 | error messages | `src/diag.rs`, messages in the pass that finds the problem | `tests/errors.rs`, `tests/errors/*.agent.md`, `tests/syntax_errors.rs` |
+| 11 | fixtures and traces | `fixtures/`, `crates/agentmark-rt/src/trace.rs`, `crates/agentmark-rt/src/tools.rs` | `crates/agentmark-rt/tests/fixtures_01.rs`, `crates/agentmark-rt/tests/trace_kinds.rs` |
+| 13.1 | functions | `src/sema/decls.rs` (signatures), `src/sema/body.rs`, `src/ir/build.rs` | `tests/sema_types.rs`, `tests/sema_effects.rs` |
+| 13.2, 18.2 | modules, imports | `src/project.rs`, `src/sema/scope.rs`, `src/sema/unused.rs` | `tests/sema_scope.rs` |
+| 13.3 | services, commands | `src/syntax/parser.rs`, `src/ir/build.rs`, generator in `src/codegen/rust.rs` | `tests/ir_lower.rs` |
+| 14 | `try`, `maybe` | `src/sema/stmt.rs`, `src/ir/build.rs` (`Try`, `IfSome`) | `tests/sema_types.rs`, `tests/ir_lower.rs` |
+| 15 | library bindings | `src/binder/` (see [Change the binder tiers](#change-the-binder-tiers)), `src/cli/bind.rs` | `tests/binder.rs`, `tests/binder/` |
+| 16 | `parallel` | `src/sema/parallel.rs` | `tests/sema_effects.rs` |
+| 17 | `## Rust` blocks | `src/syntax/parser.rs` (`rust_block`), `src/sema/decls.rs`, `src/ir/build.rs` (`RustFn`) | `tests/sema_effects.rs`, `tests/parse_structure.rs` |
+| 18.1 | project layout | `src/project.rs` | `tests/sema_scope.rs`, `tests/sema_examples.rs` |
+| 18.3 | hard limits | `src/sema/limits.rs` | `tests/sema_limits.rs` |
+| 18.4 | lint | `src/lint.rs` | `tests/lint.rs` |
+| 18.5 | constants | `src/sema/decls.rs`, inlined by `src/ir/build.rs` | `tests/sema_review.rs` |
+| 18.6 | formatter | `src/fmt.rs` | `tests/fmt.rs`, `tests/fmt/messy.agent.md` |
+| 18.7 | documentation page | `src/cli/docgen.rs` | `tests/cli.rs` |
+| 19 | model providers | `crates/agentmark-rt/src/model.rs` | `crates/agentmark-rt/tests/anthropic.rs` |
+| 20.3 | language server | `crates/agentmark-lsp/src/` (see [Add an LSP feature](#add-an-lsp-feature)) | `crates/agentmark-lsp/tests/` |
+| 22.1 | enums, type aliases, `match` | `src/syntax/parser.rs` (`enum_decl`, `match_arms`), `src/sema/enums.rs`, `src/ir/build.rs` (`Match`, `Variant`), `src/codegen/rust/body.rs`, `src/codegen/rust/files.rs` (`records_rs`) | `tests/user_types.rs`, `tests/user_types/shapes.agent.md` |
+| 22.2 | collection words | `src/syntax/collections.rs` and `src/syntax/parser/collections.rs` (grammar), `src/sema/collections.rs` (types, element scope, purity), `src/codegen/rust/body/collections.rs`, runtime `crates/agentmark-rt/src/collections.rs` | `tests/collections.rs`, `tests/collections/`, `crates/agentmark-rt/tests/collections.rs` |
+| 22.3 | built-in library, the `file` tool, `read input` | the table `src/stdlib.rs`, checker `src/sema/stdlib.rs`, Rust spelling `src/codegen/rust/stdlib.rs`, runtime `crates/agentmark-rt/src/stdlib/` | `tests/sema_stdlib.rs`, `tests/stdlib_syntax.rs`, `tests/stdlib_e2e.rs`, `crates/agentmark-rt/src/stdlib/` (unit tests) |
+| 22.4 | handles: `handle of <crate>.<Type>`, ownership | `src/sema/handles.rs`, the binder (`src/binder/`, handle items and `## Handle:` blocks), `src/ir/build.rs`, `[crates]` in `src/project.rs` | `tests/handles.rs`, `tests/stdlib_handles.rs`, `tests/binder.rs` |
+| 22.5 | `# Tool` written in AgentMark | `src/syntax/parser/tool.rs`, `src/sema/user_tools.rs`, `src/ir/build.rs` (a verb is a function named `<tool>__<verb>`), the calls in `src/codegen/rust/body.rs` | `tests/user_tools.rs`, `tests/user_tools_e2e.rs`, `tests/user_tools/` |
+| 22.6 | default command, program arguments | `src/codegen/rust/default_cmd.rs`, `src/cli/` (`run` and `trace` pass the arguments after `--`) | `tests/user_tools_e2e.rs`, `tests/examples_e2e.rs` |
+| 22.7 | non-agent examples 06 to 10 and their fixtures (a run file, an input folder, the expected output) | `examples/06-…` to `examples/10-…`, `fixtures/` | `tests/examples_e2e.rs`, `tests/sema_examples.rs` |
 
-Generated programs reach real systems through one seam. `src/codegen/rust/files.rs` writes the generated tools file: one
-`#[async_trait]` trait per tool with verbs, an impl of each for `agentmark_rt::MockTools`, and `Connected`, which implements
-`agentmark_rt::Tools` by dispatching `(tool, verb)` to its fields. Generated blocks only call `ctx.tools.call(...)`, so mock and
-real runs share all code. The user's side is a file named rust/connect.rs in the *project*, beside the project's config file (next to the
-source file for a single file): `src/cli/build.rs` creates it from the stub template when it is missing, never overwrites it,
-copies it into the generated project on every build, and maps a rustc error in it back to the project file (Q135, amended in
-step 10). `--mock` runs use the file when it exists and never create it. The committed stubs are
-`examples/01-invoice-chaser/rust/connect.rs` and the same file in the other example projects. A change to what a tool trait
-looks like must keep older connect files compiling or say how to migrate them.
+The documentation is tested too: `tests/docs.rs` runs every sample in `docs/*.md`. Its header comment states which
+fenced blocks are complete programs and which are fragments, and the wrapper a fragment is parsed in.
 
-## 7. How the tests are organised
+## Real tools: the project's connect file
+
+Generated programs reach real systems through one seam. `src/codegen/rust/files.rs` writes the generated tools file. It holds three things:
+
+* one `#[async_trait]` trait per tool with verbs;
+* an impl of each trait for `agentmark_rt::MockTools`;
+* `Connected`, which implements `agentmark_rt::Tools` by dispatching `(tool, verb)` to its fields.
+
+Generated blocks only call `ctx.tools.call(...)`. So mock and real runs share all code.
+
+The user's side is a file named rust/connect.rs in the *project*. It sits beside the project's config file. For a single file it sits next to the source file.
+
+`src/cli/build.rs` handles it like this:
+
+1. It creates the file from the stub template when it is missing.
+2. It never overwrites the file.
+3. It copies the file into the generated project on every build.
+4. It maps a rustc error in it back to the project file (Q135, amended in step 10).
+
+`--mock` runs use the file when it exists and never create it. The committed stubs are `examples/01-invoice-chaser/rust/connect.rs` and the same file in the other example projects.
+
+**Watch out:** a change to what a tool trait looks like must keep older connect files compiling or say how to migrate them.
+
+## How the tests are organised
 
 | tests | what they pin |
 |---|---|
@@ -265,34 +443,35 @@ Conventions: tests compare behaviour (traces), not generated source text; a bug 
 regression test; test output stays free of warnings; shared helpers for the semantic tests are in
 `tests/common/mod.rs`.
 
-## 8. Open questions and decisions
+## Open questions and decisions
 
-`OPEN_QUESTIONS.md` is the memory of the project. A decision has a question, the choice, and why. The numbers are
-grouped by the step that made them: Q1 to Q11 setup, Q12 to Q15 runtime, Q16 to Q29 syntax, Q30 to Q41 semantic
-check, Q50 to Q56 formatter and lint, Q70 to Q82 binder, Q90 to Q95 lowering and IR, Q110 to Q117 command line, Q130 to Q140 code generation, Q150
-to Q158 examples and fixtures, Q170 to Q175 documentation, Q190 and up review fixes and library trust, Q200 to Q203 `result of T` and how `check` binds, Q300 to Q307 enums and `match`, Q320 to Q328 collection words, Q340 to Q349 the built-in library, Q360 to Q373 handles, Q380 to Q389 user-defined tools and the default command, Q400 to Q407 the non-agent examples. `docs/reference.md` cites the entries that change what a
-user sees. When you face a new ambiguity: write the entry, apply the choice, continue.
+`OPEN_QUESTIONS.md` is the memory of the project. A decision has a question, the choice, and why.
 
-## 9. The language server
+The numbers are grouped by the step that made them:
 
-`crates/agentmark-lsp/` is the workspace member that builds `agentmark-lsp`, a Language Server Protocol server on
-stdio (`lsp-server` for the transport, `lsp-types` for the messages; synchronous, one thread). It uses the compiler
-only as a library: `Project::load_with` through an overlay of the open buffers, `sema::check`, `lint`, `fmt`.
-Nothing in `src/` knows about it except `project::Config.lsp_model_actions` (Q250).
-
-| file | what it does |
+| entries | topic |
 |---|---|
-| `crates/agentmark-lsp/src/server.rs` | the message loop, one handler per method, the per-project analysis cache, diagnostics publishing |
-| `crates/agentmark-lsp/src/workspace.rs` | open buffers over the disk (`OverlayFs`), the project of a document, `Analysis` (load, check, lint, the last good check) |
-| `crates/agentmark-lsp/src/diagnostics.rs` | `Diagnostic` to LSP: the SPEC 10 message, range, code, source |
-| `crates/agentmark-lsp/src/complete.rs` | completion: context from the text left of the cursor, names from the ASTs, types from the checker |
-| `crates/agentmark-lsp/src/nav.rs` | go-to-definition (through `Checked.resolutions` and `declarations`, then by name) and hover (effect summary of a block, types) |
-| `crates/agentmark-lsp/src/actions.rs` | quick fixes of the lint rules and of "Did you mean", and the model actions |
-| `crates/agentmark-lsp/src/index.rs`, `crates/agentmark-lsp/src/text.rs`, `crates/agentmark-lsp/src/uri.rs` | declarations visible from a file and the word under the cursor; character and UTF-16 positions; `file://` URIs |
+| Q1 to Q11 | setup |
+| Q12 to Q15 | runtime |
+| Q16 to Q29 | syntax |
+| Q30 to Q41 | semantic check |
+| Q50 to Q56 | formatter and lint |
+| Q70 to Q82 | binder |
+| Q90 to Q95 | lowering and IR |
+| Q110 to Q117 | command line |
+| Q130 to Q140 | code generation |
+| Q150 to Q158 | examples and fixtures |
+| Q170 to Q175 | documentation |
+| Q190 and up | review fixes and library trust |
+| Q200 to Q203 | `result of T` and how `check` binds |
+| Q300 to Q307 | enums and `match` |
+| Q320 to Q328 | collection words |
+| Q340 to Q349 | the built-in library |
+| Q360 to Q373 | handles |
+| Q380 to Q389 | user-defined tools and the default command |
+| Q400 to Q407 | the non-agent examples |
 
-Three things to know before changing it. The checker returns nothing when there is any error, which is the normal
-state while typing, so every feature has a plan for that (Q252); keep it when you add a feature. Positions are
-characters in the compiler and UTF-16 units in the protocol: always go through `crates/agentmark-lsp/src/text.rs`. A new lint rule that has a
-mechanical fix gets an arm in `lint_fix` in `crates/agentmark-lsp/src/actions.rs` and a test in `crates/agentmark-lsp/tests/actions.rs` that
-applies the edit and checks that the finding is gone and the project still checks (Q255). The decisions behind all of
-it are Q250 to Q258.
+`docs/reference.md` cites the entries that change what a
+user sees.
+
+When you face a new ambiguity: write the entry, apply the choice, continue.
