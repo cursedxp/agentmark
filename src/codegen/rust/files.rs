@@ -92,7 +92,7 @@ fn imports_with(body: &str, c: &Ctxt, records: bool) -> String {
     if body.contains("json!(") {
         out.push_str("use serde_json::json;\n");
     }
-    let recs: Vec<&str> = c.n.records.values().map(String::as_str).filter(|r| has_word(body, r)).collect();
+    let recs: Vec<&str> = c.n.record_file_types().filter(|r| has_word(body, r)).collect();
     if records && !recs.is_empty() {
         let mut v = recs;
         v.sort();
@@ -540,36 +540,83 @@ pub fn command_rs(c: &Ctxt, idx: usize, cmd: &Command) -> String {
 
 // ---------------------------------------------------------------------------------- records
 
+/// `pub struct Name { fields }` with its `empty()` (placeholder values).
+fn struct_code(c: &Ctxt, name: &str, fields: &[RecordField], hint: bool) -> String {
+    let mut body = String::new();
+    body.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n");
+    body.push_str(&format!("pub struct {name} {{\n"));
+    for f in fields {
+        let (id, rename) = field_ident(&f.name);
+        if let Some(js) = rename {
+            body.push_str(&format!("    #[serde(rename = {})]\n", lit(&js)));
+        }
+        if matches!(f.ty, Type::List(_) | Type::Map(..)) {
+            body.push_str("    #[serde(default)]\n");
+        }
+        body.push_str(&format!("    pub {id}: {},\n", rust_type(&f.ty, c.n)));
+    }
+    body.push_str("}\n\n");
+    body.push_str(&format!("impl {name} {{\n"));
+    if hint {
+        let hint = format!(
+            "Answer with only a JSON object like {{{}}}.",
+            fields.iter().map(|f| format!("\"{}\": {}", f.name, schema_word(&f.ty))).collect::<Vec<_>>().join(", ")
+        );
+        body.push_str(&format!("    /// What to tell a model that must answer with this record.\n    pub const SCHEMA_HINT: &'static str = {};\n\n", lit(&hint)));
+    }
+    body.push_str("    /// Placeholder values: what a failed `try` or an unparseable model answer leaves behind.\n");
+    body.push_str("    pub fn empty() -> Self {\n        Self {\n");
+    for f in fields {
+        body.push_str(&format!("            {}: {},\n", field_ident(&f.name).0, default_expr(&f.ty, c.n)));
+    }
+    body.push_str("        }\n    }\n}\n\n");
+    body
+}
+
 pub fn records_rs(c: &Ctxt) -> String {
     let mut body = String::new();
     for r in &c.p.records {
         let name = c.n.record(&r.name);
         body.push_str(&doc_lines(&r.doc));
         body.push_str(&format!("// {}:{}\n", rel(c, &r.source.file), r.source.line));
-        body.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n");
-        body.push_str(&format!("pub struct {name} {{\n"));
-        for f in &r.fields {
-            let (id, rename) = field_ident(&f.name);
-            if let Some(js) = rename {
-                body.push_str(&format!("    #[serde(rename = {})]\n", lit(&js)));
+        body.push_str(&struct_code(c, &name, &r.fields, true));
+    }
+    // enums (SPEC 22.1): one struct per variant that has fields, then the enum, tagged with
+    // "kind" in JSON: {"kind":"Circle","radius":3} (OPEN_QUESTIONS Q301)
+    for e in &c.p.enums {
+        let name = c.n.enum_name(&e.name);
+        for v in e.variants.iter().filter(|v| !v.fields.is_empty()) {
+            body.push_str(&format!("/// The fields of `{}` of `{}`.\n", v.name, e.name));
+            body.push_str(&struct_code(c, &c.n.variant_struct(&e.name, &v.name), &v.fields, false));
+        }
+        body.push_str(&doc_lines(&e.doc));
+        body.push_str(&format!("// {}:{}\n", rel(c, &e.source.file), e.source.line));
+        body.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(tag = \"kind\")]\n");
+        body.push_str(&format!("pub enum {name} {{\n"));
+        for v in &e.variants {
+            let ident = c.n.variant_ident(&e.name, &v.name);
+            if ident != v.name {
+                body.push_str(&format!("    #[serde(rename = {})]\n", lit(&v.name)));
             }
-            if matches!(f.ty, Type::List(_) | Type::Map(..)) {
-                body.push_str("    #[serde(default)]\n");
+            if v.fields.is_empty() {
+                body.push_str(&format!("    {ident},\n"));
+            } else {
+                body.push_str(&format!("    {ident}({}),\n", c.n.variant_struct(&e.name, &v.name)));
             }
-            body.push_str(&format!("    pub {id}: {},\n", rust_type(&f.ty, c.n)));
         }
         body.push_str("}\n\n");
-        let hint = format!(
-            "Answer with only a JSON object like {{{}}}.",
-            r.fields.iter().map(|f| format!("\"{}\": {}", f.name, schema_word(&f.ty))).collect::<Vec<_>>().join(", ")
-        );
-        body.push_str(&format!("impl {name} {{\n    /// What to tell a model that must answer with this record.\n    pub const SCHEMA_HINT: &'static str = {};\n\n", lit(&hint)));
-        body.push_str("    /// Placeholder values: what a failed `try` or an unparseable model answer leaves behind.\n");
-        body.push_str("    pub fn empty() -> Self {\n        Self {\n");
-        for f in &r.fields {
-            body.push_str(&format!("            {}: {},\n", field_ident(&f.name).0, default_expr(&f.ty, c.n)));
-        }
-        body.push_str("        }\n    }\n}\n\n");
+        let first = e.variants.first().map(|v| {
+            let ident = c.n.variant_ident(&e.name, &v.name);
+            if v.fields.is_empty() {
+                format!("{name}::{ident}")
+            } else {
+                format!("{name}::{ident}({}::empty())", c.n.variant_struct(&e.name, &v.name))
+            }
+        });
+        body.push_str(&format!(
+            "impl {name} {{\n    /// Placeholder value: what a failed `try` leaves behind (the first variant).\n    pub fn empty() -> Self {{\n        {}\n    }}\n}}\n\n",
+            first.unwrap_or_else(|| "unreachable!(\"an enum has a variant\")".into())
+        ));
     }
     let serde_use = if body.is_empty() { "" } else { "use serde::{Deserialize, Serialize};\n" };
     format!(

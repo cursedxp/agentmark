@@ -71,6 +71,7 @@ module.exports = grammar({
       choice(
         $.import_declaration,
         $.record_declaration,
+        $.enum_declaration,
         $.run_declaration,
         $.declaration,
       ),
@@ -106,6 +107,25 @@ module.exports = grammar({
         $._newline,
       ),
 
+    // `# Enum: Shape` and one `- Variant: field: type, ...` line per variant.
+    enum_declaration: ($) =>
+      seq(
+        '#',
+        ci('enum'),
+        ':',
+        field('name', $.identifier),
+        $._newline,
+        repeat(choice($._filler, $.enum_variant)),
+      ),
+
+    enum_variant: ($) =>
+      seq(
+        '-',
+        field('name', $.identifier),
+        optional(seq(':', commaSep1($.parameter))),
+        $._newline,
+      ),
+
     run_declaration: ($) =>
       seq('#', ci('run'), $._newline, repeat(choice($._filler, $.run_item))),
 
@@ -131,6 +151,7 @@ module.exports = grammar({
         ci('command'),
         ci('constant'),
         ci('binding'),
+        ci('type'),
       ),
 
     // A line that may appear in a declaration body or a block.
@@ -298,6 +319,7 @@ module.exports = grammar({
         'state',
         'crate',
         'proposed-effect',
+        'is',
       ),
 
     property_value: ($) =>
@@ -349,6 +371,7 @@ module.exports = grammar({
             $.else_statement,
             $.otherwise_statement,
             $.parallel_statement,
+            $.match_statement,
             $.try_statement,
           ),
         ),
@@ -362,6 +385,8 @@ module.exports = grammar({
         $.else_statement,
         $.otherwise_statement,
         $.parallel_statement,
+        $.match_statement,
+        $.match_arm,
         $.try_statement,
         $._simple,
       ),
@@ -409,7 +434,21 @@ module.exports = grammar({
 
     parallel_statement: () => seq('parallel', ':'),
 
-    try_statement: ($) => seq('try', $._simple),
+    // `match shape:` and its branches `Circle c:`, `Shape.Empty:`, `some row:`, `none:`.
+    // (`otherwise:` is the statement above.)
+    match_statement: ($) => seq('match', field('subject', $._expression), ':'),
+
+    match_arm: ($) =>
+      seq(
+        field('pattern', choice($.identifier, $.field_expression)),
+        optional(field('binding', $.identifier)),
+        ':',
+      ),
+
+    try_statement: ($) => seq('try', choice($._simple, $.bare_call)),
+
+    // `try f(x) -> v`: a call of a function that can fail, without `do`
+    bare_call: ($) => seq($.call_expression, optional($.bind)),
 
     stop_statement: () => 'stop',
 
@@ -504,6 +543,8 @@ module.exports = grammar({
         $.builtin,
         $.field_expression,
         $.call_expression,
+        $.variant_expression,
+        $.some_expression,
         $.module_call,
         $.record_literal,
       ),
@@ -645,6 +686,18 @@ module.exports = grammar({
         '(',
         optional(commaSep1($._expression)),
         ')',
+      ),
+
+    some_expression: ($) => prec.right(seq('some', $._atom)),
+
+    // `Circle { radius: 3 }`
+    variant_expression: ($) =>
+      prec(
+        1,
+        seq(
+          field('variant', choice($.identifier, $.field_expression)),
+          $.record_literal,
+        ),
       ),
 
     // `text.split(t, ",")`: a function of the built-in library (SPEC 22.3)

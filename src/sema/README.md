@@ -31,12 +31,16 @@ project.render(&diags)                                           // SPEC 10 text
 | field | meaning |
 |---|---|
 | `files: Vec<String>` | display path per file id |
+| `enums: BTreeMap<String, EnumInfo>` | every `# Enum` (SPEC 22.1): `variants: Vec<VariantInfo { name, span, fields: Vec<FieldInfo> }>` in declaration order, field types resolved |
+| `aliases: BTreeMap<String, AliasInfo>` | every `# Type`, with the type it names. Aliases are replaced wherever a type is written, so later passes never see one; this is for tools |
+| `type_exprs: HashMap<NodeKey, Type>` | what every written type (key = the `TypeExpr`'s span) stands for, aliases resolved. The IR reads parameter, `out`, `read … as` types from here |
+| `patterns: HashMap<NodeKey, Pattern>` | what each branch of a `match` is (key = the branch line's span): `Variant{enum_name, variant}`, `Some`, `None`, `Ok`, `Error` |
 | `records: BTreeMap<String, RecordInfo>` | every record; `fields: Vec<FieldInfo { name, ty, inferred, span }>`, declaration order, types resolved (SPEC 2.1 inference applied) |
 | `expr_types: HashMap<NodeKey, Type>` | type of every expression, interpolation parts included. `NodeKey { file, span }`: the span is the expression's own span (unique per node within a file) |
 | `expr_effects: HashMap<NodeKey, EffectSet>` | effect of every expression (sub-expressions included): `network(crm)` for `crm.invoices`, the callee's set for a call, `pure` otherwise |
 | `stmt_effects: HashMap<NodeKey, EffectSet>` | effect of every statement, children included; key = the statement's span |
 | `blocks: Vec<BlockInfo>` | one per function, rule, agent block (`Entry` = trigger blocks, `Action` = `## Do`), service route, command `## Run`; source order. `effect`, `declared` (functions, rules), `param` = `(variable, record)` the block works on (rule record, event record, or the loop record a `## Do` is called with) |
-| `resolutions: HashMap<NodeKey, Resolution>` | what a name stands for, keyed by the span of the path / call expression, the `do` statement, or the rule-filter ident: `Var{name, def}` (first segment of a path; `def` = where it was defined, same file, `None` for `state` and a `## Do` block's received record), `Field{var, record, field}` (bare field), `Const{name}` (declared name, prefix removed; inline it), `Source{tool, source, record}` (`crm.invoices`), `Call{kind: Function\|RustBlock\|Binding\|DoBlock\|Rule, decl}` (declared name, never the aliased spelling; a binding call is `Call{Binding, binding name}` keyed by its statement) |
+| `resolutions: HashMap<NodeKey, Resolution>` | what a name stands for, keyed by the span of the path / call expression, the `do` statement, or the rule-filter ident: `Var{name, def}` (first segment of a path; `def` = where it was defined, same file, `None` for `state` and a `## Do` block's received record), `Field{var, record, field}` (bare field), `Const{name}` (declared name, prefix removed; inline it), `Source{tool, source, record}` (`crm.invoices`), `Call{kind: Function\|RustBlock\|Binding\|DoBlock\|Rule, decl}` (declared name, never the aliased spelling; a binding call is `Call{Binding, binding name}` keyed by its statement), `Variant{enum_name, variant}` (`Empty`, `Shape.Empty` as a path, or `Circle { radius: 3 }`; declared names) |
 | `declarations: Vec<DeclInfo>` | every named declaration `{kind, name, file, span of the name}`; `Sig.file/span`, `ConstInfo.span`, `RecordInfo.span`, `BindingInfo.span`, `RustInfo.span` give the same for go-to-definition |
 | `tool_calls: HashMap<NodeKey, ToolResolution>` | per tool-call statement (key = statement span): `tool`, `kind` (Manifest / Binding), `verb`, `target_word`, `record` (what the word names or stands in front of), `var` (the in-scope variable holding it), `field` (the field the runtime reads: `customer_email` else `customer` for `email send customer`, `id` for a crm target). `email send customer` without a record carrying such a field in front of the block is an error; a crm target gets `var` only from the record in front of the block or the single in-scope variable of that record (several = error "Which invoice?"); with an explicit value after the word (`crm get invoice id`) `var`/`field` are `None` |
 | `unwraps: HashMap<NodeKey, Vec<usize>>` | path expressions that read a `maybe` value known to be non-empty (after `is not empty`, `guard`, `is some`): the 0-based segment indices whose value codegen must unwrap. Type of the expression is already the unwrapped type |
@@ -52,10 +56,15 @@ Helpers: `Checked::unit_effect(unit)`, `expr_type(file, span)`, `stmt_effect(fil
 
 ## Types (`sema::Type`)
 
+`Text Int Money Date DateTime Duration Bool Bytes List(T) Maybe(T) Result(T) Record(name) Enum(name)
+Variant(enum, variant) Handle("crate.Type") Object(fields)` (the type of a record literal) and `Unknown` (only appears next to an already-reported error, so it never
 `Text Int Money Date DateTime Duration Bool Bytes List(T) Map(K, V) Maybe(T) Result(T) Record(name) Handle("crate.Type") Object(fields)`
 (the type of a record literal) and `Unknown` (only appears next to an already-reported error, so it never
 occurs in an `Ok` result except for tool results whose type the manifest cannot tell, e.g. `crm update … -> x`).
-Record names are unique in a project (OPEN_QUESTIONS Q31), so `Record(String)` identifies a record.
+Record names are unique in a project (OPEN_QUESTIONS Q31), so `Record(String)` identifies a record. Records, enums and
+type aliases share one namespace (Q302), so `Enum(String)` identifies an enum too. `Variant(enum, variant)` is only the
+type of the name a `match` branch gives (`Circle c:`): the fields of one variant, readable as `c.radius`, not a value of the
+enum (Q304). A `# Type` alias never becomes a `Type`: it is replaced by what it names.
 
 ## Collection words (`sema/collections.rs`, SPEC 22.2)
 
@@ -85,7 +94,8 @@ Reading `crm.invoices` is `network(crm)`.
 - `state` in a route/command is a variable of the service's `state:` record (Q9); only one service may have one. Reading it is pure, `append … to state.…` is `local(state)` (Q39).
 - Name order: variable, bare field, constant, tool source (needs the dot). `## Do` blocks nobody calls are checked leniently: a bare name passes if some record has such a field, otherwise it is reported (Q30).
 - Narrowing keys bare fields as `var.field` (`score` and `lead.score` are one fact); re-checking a present value is fine. `is not empty` / `is some` / `guard` unwrap `maybe` values in the rest of the block.
-- `result of T` (Q200): `return v` in such a function takes a `T`; `try do f(x) -> h` types `h` as `T`; calling it without `try`, or inside an expression, is an error. A crate import without binding is reported once on the import line (`E219` when a statement uses it, Q201), without `Unknown tool` or `Unused import` follow-ons.
+- User-defined types (SPEC 22.1, `enums.rs`): a path resolves to a variable, a bare field, a constant, a variant, then a tool source (Q303). `match v:` takes an enum, a `maybe` or a `result`; every branch gets a `Pattern` in `Checked::patterns`; a `result` is stored by `set x = f()` or matched at the call, and only a `match` may read it (Q300). Without `otherwise:` every case must be handled (E310 names the missing ones).
+- `result of T` (Q200): `return v` in such a function takes a `T`; `try f(x) -> h` (or `try do f(x) -> h`, Q307) types `h` as `T`; calling it without `try`, or inside an expression, is an error. A crate import without binding is reported once on the import line (`E219` when a statement uses it, Q201), without `Unknown tool` or `Unused import` follow-ons.
 
 ## Handles (`handles.rs`, SPEC 22.4, Q360 to Q369)
 
@@ -108,7 +118,7 @@ parameter carries a `HandleMode` (`modes`): `handle of` reads, `mut handle of` c
 
 `mod.rs` driver and result types · `scope.rs` registry and per-file scopes · `decls.rs` record fields,
 signatures, constants · `body.rs` per-body context, on-demand body checking · `expr.rs` expressions ·
-`stmt.rs` statements · `tools.rs` manifest checks · `types.rs` · `effects.rs` · `limits.rs` (SPEC 18.3) ·
+`stmt.rs` statements · `enums.rs` enums, aliases, variant values, `match` (E300-E314, W300) · `tools.rs` manifest checks · `types.rs` · `effects.rs` · `limits.rs` (SPEC 18.3) ·
 `parallel.rs` (SPEC 16) · `unused.rs` (SPEC 18.2).
 
 ## Bindings from `bindings/` (CLI `check`)

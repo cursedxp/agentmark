@@ -302,7 +302,7 @@ impl Checker<'_> {
     pub(super) fn std_decode(&mut self, cx: &mut Cx, e: &Expr, call: &Expr, ty: &TypeExpr) -> Type {
         let ExprKind::Call { func, args } = &call.kind else { return Type::Unknown };
         let arg_types: Vec<Type> = args.iter().map(|a| self.expr(cx, a)).collect();
-        let ok = cx.std_ok == Some(e.span);
+        let ok = cx.std_ok == Some(e.span) || cx.match_call == Some(e.span);
         let t = self.std_call(cx, &StdCall { e, func, args, types: &arg_types }, Some(ty), ok);
         self.expr_types.insert(NodeKey::new(cx.file, call.span), t.clone());
         t

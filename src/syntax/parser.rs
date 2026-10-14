@@ -49,6 +49,7 @@ const STATEMENT_WORDS: &[&str] = &[
     "remove",
     "print",
     "otherwise",
+    "match",
     "file",
 ];
 
@@ -154,6 +155,8 @@ struct Grammar<'l> {
     binding_item: P<'l, (Ident, Vec<Param>, Option<TypeExpr>)>,
     prop_head: P<'l, (Ident, &'l str, chumsky::span::SimpleSpan)>,
     field: P<'l, (Ident, Option<TypeExpr>)>,
+    variant: P<'l, (Ident, Vec<(Ident, TypeExpr)>)>,
+    arm: P<'l, stmt::Arm>,
     params: P<'l, Vec<Param>>,
     name_list: P<'l, Vec<Ident>>,
     model: P<'l, Spanned<String>>,
@@ -182,6 +185,8 @@ impl<'l> Grammar<'l> {
             binding_item: binding_item_heading(),
             prop_head: property_head(),
             field: field(),
+            variant: variant(),
+            arm: stmt::arm(),
             params: params(),
             name_list: name_list(),
             model: model_string(),
@@ -311,7 +316,7 @@ impl<'l> Builder<'l> {
             let w = w.trim_end_matches(':').to_string();
             let ends_in_colon = ctx.text.trim_end().ends_with(':');
             let needs_colon =
-                matches!(w.as_str(), "for" | "if" | "else" | "otherwise" | "parallel");
+                matches!(w.as_str(), "for" | "if" | "else" | "otherwise" | "parallel" | "match");
             if needs_colon && !ends_in_colon {
                 self.diags.push(missing_colon(self.file, ctx));
                 return;
@@ -609,6 +614,14 @@ impl<'l> Builder<'l> {
                 self.no_blocks(kind, &blocks);
                 self.record(span, doc, name, &prop_nodes)
             }
+            DeclKind::Enum => {
+                self.no_blocks(kind, &blocks);
+                self.enum_decl(span, doc, name, &prop_nodes)
+            }
+            DeclKind::TypeAlias => {
+                self.no_blocks(kind, &blocks);
+                self.type_alias(span, doc, name, &prop_nodes)
+            }
             DeclKind::Rule => {
                 self.no_blocks(kind, &blocks);
                 self.rule(span, doc, name, &prop_nodes)
@@ -630,7 +643,11 @@ impl<'l> Builder<'l> {
             self.error(
                 E_STRUCTURE,
                 line_span(l),
-                format!("A {} has no \"##\" blocks.", kind.word()),
+                format!(
+                    "{} {} has no \"##\" blocks.",
+                    if kind.word().starts_with(['A', 'E', 'I', 'O', 'U']) { "An" } else { "A" },
+                    kind.word()
+                ),
             );
         }
     }
@@ -796,6 +813,81 @@ impl<'l> Builder<'l> {
             doc,
             name,
             fields,
+        }))
+    }
+
+    /// `# Enum: Shape`: one `- Variant` or `- Variant: field: type, …` line per variant.
+    fn enum_decl(
+        &mut self,
+        span: Span,
+        doc: Option<String>,
+        name: Ident,
+        nodes: &[Node<'l>],
+    ) -> Option<Decl> {
+        let mut variants = Vec::new();
+        for n in nodes {
+            if n.line.kind != LineKind::Item {
+                self.error(
+                    E_STRUCTURE,
+                    line_span(n.line),
+                    "A variant starts with \"- \", like \"- Circle: radius: int\" or \"- Empty\".",
+                );
+                continue;
+            }
+            if let Some(k) = n.kids.first() {
+                self.kid_error(k.line, "Nothing can be indented under a variant.");
+            }
+            if let Some((vname, fields)) =
+                self.parse(|g| &g.variant, &n.line.text, n.line.line_no, n.line.col)
+            {
+                let fields = fields
+                    .into_iter()
+                    .map(|(fname, ty)| Field {
+                        span: fname.span.to(ty.span),
+                        comments: Vec::new(),
+                        name: fname,
+                        ty: Some(ty),
+                    })
+                    .collect();
+                variants.push(Variant {
+                    span: line_span(n.line),
+                    comments: n.comments.clone(),
+                    name: vname,
+                    fields,
+                });
+            }
+        }
+        Some(Decl::Enum(Enum {
+            span,
+            doc,
+            name,
+            variants,
+        }))
+    }
+
+    /// `# Type: Totals` with `- is: <type>`.
+    fn type_alias(
+        &mut self,
+        span: Span,
+        doc: Option<String>,
+        name: Ident,
+        nodes: &[Node<'l>],
+    ) -> Option<Decl> {
+        let props = self.props(nodes, &["is"], "a Type");
+        for p in &props {
+            self.no_kids(p);
+        }
+        let Some(p) = props.iter().find(|p| p.key.name == "is") else {
+            self.missing("type", &name, "is", "list of text");
+            return None;
+        };
+        let target = self.value(|g| &g.ty, p)?;
+        Some(Decl::TypeAlias(TypeAlias {
+            span,
+            doc,
+            prop_comments: prop_comments(&props),
+            name,
+            target,
         }))
     }
 
@@ -1439,6 +1531,80 @@ impl<'l> Builder<'l> {
         out
     }
 
+    /// The branches of a `match`: `Circle c:` lines with statements under them, and at most one
+    /// `otherwise:` at the end.
+    fn match_arms(&mut self, nodes: &[Node<'l>], at: Span) -> (Vec<MatchArm>, Option<Otherwise>) {
+        use stmt::Arm;
+        let mut arms: Vec<MatchArm> = Vec::new();
+        let mut otherwise: Option<Otherwise> = None;
+        if nodes.is_empty() {
+            self.error(
+                E_STRUCTURE,
+                at,
+                "A \"match\" needs branches indented under it, like \"- Circle c:\" or \"- otherwise:\".",
+            );
+        }
+        for n in nodes {
+            if !matches!(n.line.kind, LineKind::Item | LineKind::Control) {
+                self.error(
+                    E_STRUCTURE,
+                    line_span(n.line),
+                    "A branch of \"match\" starts with \"- \", like \"- Circle c:\".",
+                );
+                continue;
+            }
+            let parsed = match run(&self.g.arm, &n.line.text, n.line.line_no, n.line.col) {
+                Ok(a) => a,
+                Err((ctx, errs)) => {
+                    if !self.report_problems(&ctx) {
+                        if let Some(e) = errs.first() {
+                            self.diags.push(rich_diag(self.file, &ctx, e));
+                        }
+                    }
+                    continue;
+                }
+            };
+            let span = line_span(n.line);
+            match parsed {
+                Arm::Otherwise => {
+                    if otherwise.is_some() {
+                        self.error(E_STRUCTURE, span, "A \"match\" has only one \"otherwise:\" branch.");
+                        continue;
+                    }
+                    let body = self.stmts(&n.kids);
+                    otherwise = Some(Otherwise {
+                        span,
+                        comments: n.comments.clone(),
+                        body,
+                    });
+                }
+                Arm::Branch {
+                    qualifier,
+                    pattern,
+                    bind,
+                } => {
+                    if otherwise.is_some() {
+                        self.error(
+                            E_STRUCTURE,
+                            span,
+                            "\"otherwise:\" must be the last branch of a \"match\".",
+                        );
+                    }
+                    let body = self.stmts(&n.kids);
+                    arms.push(MatchArm {
+                        span,
+                        comments: n.comments.clone(),
+                        qualifier,
+                        pattern,
+                        bind,
+                        body,
+                    });
+                }
+            }
+        }
+        (arms, otherwise)
+    }
+
     fn stmts(&mut self, nodes: &[Node<'l>]) -> Vec<Stmt> {
         let heads = self.heads(nodes);
         let mut out = Vec::new();
@@ -1506,6 +1672,18 @@ impl<'l> Builder<'l> {
                     span,
                     "\"otherwise:\" must be indented under a \"try\" line.",
                 ),
+                Head::Match { scrutinee } => {
+                    let (arms, otherwise) = self.match_arms(&node.kids, span);
+                    out.push(Stmt {
+                        span,
+                        comments: Vec::new(),
+                        kind: StmtKind::Match {
+                            scrutinee: scrutinee.clone(),
+                            arms,
+                            otherwise,
+                        },
+                    });
+                }
                 Head::Parallel => {
                     let body = self.stmts(&node.kids);
                     out.push(Stmt {

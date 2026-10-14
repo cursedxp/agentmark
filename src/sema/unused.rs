@@ -109,6 +109,8 @@ pub fn check(ck: &mut Checker<'_>) {
             matches!(
                 e.kind,
                 Kind::Record
+                    | Kind::Enum
+                    | Kind::TypeAlias
                     | Kind::Rule
                     | Kind::Function
                     | Kind::Constant

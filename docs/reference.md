@@ -1832,6 +1832,177 @@ Section 22 of the specification turns the core (Layer 2) into a general-purpose 
 collection words, a built-in library, opaque library handles and user-defined tools. Each subsection below is added as the
 construct lands in the compiler, with checked samples like every other section.
 
+### 22.1 User-defined types
+
+An `# Enum` lists variants; a variant may carry named fields. A `# Type` gives another name to a type: the two are
+interchangeable. A value of a variant with fields is written `Circle { radius: 3 }`, a variant without fields is just its
+name, `Empty`. `match` takes a value apart: one branch per variant, and inside a branch the name after the variant
+(`c`) holds that variant's fields.
+
+```agentmark
+# Enum: Shape
+- Circle: radius: int
+- Rect: width: int, height: int
+- Empty
+
+# Type: Sizes
+- is: list of int
+
+> Says what a shape is in one line.
+# Function: describe
+- in: shape: Shape
+- out: text
+- effect: pure
+  - match shape:
+    - Circle c:
+      - return "circle with radius {c.radius}"
+    - Rect r:
+      - return "rectangle {r.width} by {r.height}"
+    - Empty:
+      - return "nothing"
+
+> Adds up a list of sizes.
+# Function: total
+- in: sizes: Sizes
+- out: int
+- effect: pure
+  - return count of sizes
+
+> Describes three shapes.
+# Command: show
+
+## Run
+- print: describe(Circle { radius: 3 })
+- print: describe(Shape.Rect { width: 2, height: 5 })
+- print: describe(Shape.Empty)
+```
+
+* The names of records, enums and types share one namespace. Two of them with the same name are an error.
+* Variant names are unique inside one enum. Two enums may both have a variant `Empty`; the name then needs its enum,
+  `Shape.Empty` (or `billing.Shape.Empty` through a module alias), and a bare `Empty` is an error that lists the choices.
+  Inside a `match` the branches are looked up in the enum being matched, so they never need the qualifier.
+* A variable or a constant with the same name as a variant wins over the variant.
+* A variant's fields are given by name, each exactly once; a field of type `maybe` may be left out. A variant cannot have a
+  field called `kind` (see the JSON form below).
+* Enum values compare with `=` and `!=`. They cannot be written into text as a whole (`"{shape}"`) and have no fields of
+  their own: read a field inside the branch of the variant that has it.
+* An alias is replaced by what it names wherever it is written, so it never shows up in an error message or in the
+  generated program. An alias that is defined in terms of itself is an error.
+
+`match` also takes a `maybe` and a `result`:
+
+```agentmark
+# Record: Row
+- id: text
+
+# Function: find
+- in: rows: list of Row, id: text
+- out: maybe Row
+- effect: pure
+  - return first row in rows where row.id = id
+
+# Function: read_count
+- in: path: text
+- out: result of int
+- effect: local
+  - try read file path as int -> n
+  - return n
+
+> Looks a row up and reads a count; says what happened to each.
+# Command: check
+- args: rows_path: text, count_path: text
+
+## Run
+- try read file rows_path as list of Row -> rows
+  otherwise:
+    - stop
+- match find(rows, "a"):
+  - some row:
+    - print: "found {row.id}"
+  - none:
+    - print: "no such row"
+- match read_count(count_path):
+  - ok total:
+    - print: "count {total}"
+  - error problem:
+    - print: "could not read: {problem}"
+```
+
+* On a `maybe`, the branches are `some x` and `none`. On a `result`, they are `ok x` and `error e`; `e` is the failure's
+  message as text. A `result` is matched at the call, as above, or stored first with `- set parsed = read_count(path)` and matched once; nothing else can read a stored result (Q300).
+A `maybe` value is written `some x` or `none`. In a branch the name after the variant (or after `ok` / `error`) is optional when the
+value is not used: `- error:`. A function that returns `result of T` is also used with `try`, without `do` (`try do f(x) -> v` means
+the same), and `if ... is some x:` works on any `maybe`
+expression, including a call. A record is built the same way as a variant, with every field that is not `maybe` given:
+
+```agentmark
+# Record: Sale
+- region: text
+- amount: money
+
+# Function: parse_sale
+- in: path: text
+- out: result of Sale
+- effect: local
+  - try read file path as Sale -> sale
+  - return sale
+
+# Function: find_sale
+- in: sales: list of Sale, region: text
+- out: maybe Sale
+- effect: pure
+  - return first sale in sales where sale.region = region
+
+> Reads a sale, builds another and looks one up.
+# Command: sales
+- args: path: text, list_path: text
+
+## Run
+- try parse_sale(path) -> sale
+  otherwise:
+    - set sale = Sale { region: "none", amount: 0 EUR }
+- print: "{sale.region} {sale.amount}"
+- try read file list_path as list of Sale -> sales
+  otherwise:
+    - stop
+- if find_sale(sales, "EU") is some eu:
+  - print: "EU {eu.amount}"
+```
+
+* Every case must be handled, or an `- otherwise:` branch must say what happens to the rest. `otherwise:` is the last
+  branch; one that can never run is a warning. The error names what is missing:
+
+```agentmark invalid name=shapes.agent.md says=does_not_handle_the_variant_"Empty"_of_Shape
+# Enum: Shape
+- Circle: radius: int
+- Empty
+
+> Says whether a shape is round.
+# Command: round
+
+## Run
+- set shape = Circle { radius: 3 }
+- match shape:
+  - Circle c:
+    - print: "round"
+```
+
+```console stderr
+$ agentmark check shapes.agent.md
+shapes.agent.md:10
+  - match shape:
+    ^^^^^^^^^^^^
+  This "match" does not handle the variant "Empty" of Shape.
+  Add a branch for it ("- Empty:"), or an "- otherwise:" branch for everything else.
+```
+
+* A misspelled variant in a branch or in a value gets the usual suggestion: `Shape has no variant "Circel". Did you mean
+  "Circle"?`
+* `match` is a statement. It is pure unless its branches are not, and it counts as one level of nesting (the limit of 3)
+  whatever the number of branches.
+
+**JSON.** An enum value is an object whose `kind` field names the variant, followed by the variant's fields:
+`{"kind":"Circle","radius":3}`, `{"kind":"Empty"}` (Q301). That is what `read file`, `read body` and `respond` read and write.
 ### 22.2 Collection words
 
 Lists are `list of T`, maps are `map of K to V` (keys: `text`, `int`, `date`, `datetime` or `bool`). The words below are
@@ -2115,6 +2286,7 @@ Every statement form of the language, with where it is explained:
 | `<binding> <item> <arguments>[ -> var]` (a library call) | 15 |
 | `try <statement>` + `otherwise:` | 14 |
 | `parallel:` | 16 |
+| `match <value>:` with `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | 22.1 |
 | `## Rust: <name>[ -> <type>]` | 17 |
 
 ## Appendix B. Decisions the specification left open

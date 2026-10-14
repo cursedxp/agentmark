@@ -11,10 +11,14 @@ use crate::project::{Project, ResolvedImport};
 use crate::syntax::ast::Decl;
 
 pub const E_DUPLICATE: &str = "E200";
+/// A record, enum or type alias with a name another one already has (SPEC 22.1).
+pub const E_TYPE_CLASH: &str = "E300";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub enum Kind {
     Record,
+    Enum,
+    TypeAlias,
     Rule,
     Function,
     Constant,
@@ -30,6 +34,8 @@ impl Kind {
     pub fn noun(self) -> &'static str {
         match self {
             Kind::Record => "record",
+            Kind::Enum => "enum",
+            Kind::TypeAlias => "type",
             Kind::Rule => "rule",
             Kind::Function => "function",
             Kind::Constant => "constant",
@@ -67,6 +73,8 @@ impl Entity {
 pub fn decl_header(d: &Decl) -> Option<(Kind, &str, Span)> {
     Some(match d {
         Decl::Record(x) => (Kind::Record, &x.name.name, x.name.span),
+        Decl::Enum(x) => (Kind::Enum, &x.name.name, x.name.span),
+        Decl::TypeAlias(x) => (Kind::TypeAlias, &x.name.name, x.name.span),
         Decl::Rule(x) => (Kind::Rule, &x.name.name, x.name.span),
         Decl::Agent(x) => (Kind::Agent, &x.name.name, x.name.span),
         Decl::Function(x) => (Kind::Function, &x.name.name, x.name.span),
@@ -177,6 +185,39 @@ pub fn build(p: &Project, diags: &mut Vec<Diagnostic>) -> (Registry, Vec<Scope>)
                 continue;
             }
             reg.ents.insert(ent.key(), ent);
+        }
+    }
+
+    // A record, an enum and a type alias are all written where a type is expected, so they share
+    // one namespace (SPEC 22.1).
+    let mut types: Vec<&Entity> = reg
+        .ents
+        .values()
+        .filter(|e| matches!(e.kind, Kind::Record | Kind::Enum | Kind::TypeAlias))
+        .collect();
+    types.sort_by_key(|e| (e.file, e.decl));
+    let mut first_of: HashMap<&str, &Entity> = HashMap::new();
+    for e in types {
+        match first_of.get(e.name.as_str()) {
+            Some(prev) => diags.push(
+                Diagnostic::error(
+                    E_TYPE_CLASH,
+                    &p.files[e.file].path,
+                    e.span,
+                    format!(
+                        "The {} \"{}\" has the same name as the {} in {}:{}.",
+                        e.kind.noun(),
+                        e.name,
+                        prev.kind.noun(),
+                        p.files[prev.file].path,
+                        prev.span.line
+                    ),
+                )
+                .with_help("Records, enums and types share one namespace; rename one of them."),
+            ),
+            None => {
+                first_of.insert(e.name.as_str(), e);
+            }
         }
     }
 

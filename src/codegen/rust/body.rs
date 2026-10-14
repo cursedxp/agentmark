@@ -234,11 +234,22 @@ impl<'a> Body<'a> {
             StmtKind::Let { name, ty, value } => {
                 let m = if self.assigned.contains(name) { "mut " } else { "" };
                 self.allow_unused_mut(m, ty);
-                let v = self.conv(value, ty);
-                self.line(&format!("let {m}{} = {v};", self.n.local(name)));
+                let v = match self.stored_result(value) {
+                    Some(raw) => raw,
+                    None => self.conv(value, ty),
+                };
+                if m.is_empty() {
+                    self.line(&format!("let {} = {v};", self.n.local(name)));
+                } else {
+                    // a value every branch of a `match` or `if` overwrites is not an error
+                    self.line(&format!("#[allow(unused_assignments)] let {m}{} = {v};", self.n.local(name)));
+                }
             }
             StmtKind::Assign { name, ty, value } => {
-                let v = self.conv(value, ty);
+                let v = match self.stored_result(value) {
+                    Some(raw) => raw,
+                    None => self.conv(value, ty),
+                };
                 self.line(&format!("{} = {v};", self.n.local(name)));
             }
             StmtKind::If { cond, then, else_ } => {
@@ -320,6 +331,9 @@ impl<'a> Body<'a> {
                 self.line(&format!("{l}.push({v});"));
             }
             StmtKind::Parallel(stmts) => self.parallel(stmts),
+            StmtKind::Match { scrutinee, arms, otherwise } => {
+                return self.match_stmt(scrutinee, arms, otherwise.as_deref(), tail);
+            }
             StmtKind::Coll(c) => self.coll_stmt(c),
             StmtKind::Effect { call, into } => {
                 self.effect_stmt(call, into.as_ref());
@@ -329,6 +343,141 @@ impl<'a> Body<'a> {
             }
         }
         false
+    }
+
+    /// `match v:` -> a Rust `match`. As the last statement of a function it is the function's tail
+    /// expression, each branch ending in its own `Ok(..)`.
+    fn match_stmt(&mut self, scrutinee: &Expr, arms: &[MatchArm], otherwise: Option<&[Stmt]>, tail: bool) -> bool {
+        let subject = match (&scrutinee.kind, &scrutinee.ty) {
+            // the `result of T` a function returns is looked at, not unwrapped with `?` (Q300)
+            (ExprKind::Call { .. }, Type::Result(_)) => self.stored_result(scrutinee).unwrap_or_else(|| self.val(scrutinee)),
+            // a stored result is moved into the match (it has no copy)
+            (ExprKind::Var(_), Type::Result(_)) => self.ex(scrutinee).s,
+            _ => self.val(scrutinee),
+        };
+        self.line(&format!("match {subject} {{"));
+        self.indent += 1;
+        for a in arms {
+            let (pat, pre) = self.arm_pattern(a);
+            self.line("#[allow(unused_variables)]");
+            self.line(&format!("{pat} => {{"));
+            self.arm_body(pre, &a.body, tail);
+            self.line("}");
+        }
+        if let Some(o) = otherwise {
+            self.line("_ => {");
+            self.arm_body(None, o, tail);
+            self.line("}");
+        }
+        self.indent -= 1;
+        self.line("}");
+        tail
+    }
+
+    /// A call of a `result of T` function whose result is looked at, not unwrapped with `?`.
+    fn stored_result(&self, e: &Expr) -> Option<String> {
+        match (&e.kind, &e.ty) {
+            (ExprKind::Call { callee: Callee::Fn, name, args }, Type::Result(_)) => {
+                let call = self.fn_call(name, args);
+                Some(call.strip_suffix('?').unwrap_or(&call).to_string())
+            }
+            _ => None,
+        }
+    }
+
+    fn arm_body(&mut self, pre: Option<String>, body: &[Stmt], tail: bool) {
+        let saved = std::mem::take(&mut self.narrowed);
+        self.indent += 1;
+        if let Some(p) = pre {
+            self.line(&p);
+        }
+        self.block(body, tail);
+        self.indent -= 1;
+        self.narrowed = saved;
+    }
+
+    /// The Rust pattern of a branch, and a line to write first in its body.
+    fn arm_pattern(&self, a: &MatchArm) -> (String, Option<String>) {
+        let bind = a.bind.as_ref().map(|b| {
+            let m = if self.assigned.contains(&b.name) { "mut " } else { "" };
+            format!("{m}{}", self.n.local(&b.name))
+        });
+        let bind_or_wild = bind.clone().unwrap_or_else(|| "_".into());
+        match &a.pattern {
+            Pattern::Variant { enum_name, variant } => {
+                let e = self.n.enum_name(enum_name);
+                let v = self.n.variant_ident(enum_name, variant);
+                let has_fields = self
+                    .p
+                    .enums
+                    .iter()
+                    .find(|x| &x.name == enum_name)
+                    .and_then(|x| x.variants.iter().find(|y| &y.name == variant))
+                    .is_some_and(|y| !y.fields.is_empty());
+                if has_fields {
+                    (format!("{e}::{v}({bind_or_wild})"), None)
+                } else {
+                    (format!("{e}::{v}"), None)
+                }
+            }
+            Pattern::Some => (format!("Some({bind_or_wild})"), None),
+            Pattern::None => ("None".into(), None),
+            Pattern::Ok => (format!("Ok({bind_or_wild})"), None),
+            Pattern::Error => match &a.bind {
+                Some(b) => {
+                    let name = self.n.local(&b.name);
+                    ("Err(err_)".to_string(), Some(format!("let {name} = err_.to_string();")))
+                }
+                None => ("Err(_)".into(), None),
+            },
+        }
+    }
+
+    /// `Sale { region: "EU" }` -> `Sale { region: "EU".to_string(), note: None }`.
+    fn struct_expr(&self, record: &str, fields: &[(String, Expr)]) -> String {
+        let decl = self.p.records.iter().find(|r| r.name == record);
+        let inits: Vec<String> = decl
+            .map(|d| {
+                d.fields
+                    .iter()
+                    .map(|f| {
+                        let id = field_ident(&f.name).0;
+                        match fields.iter().find(|(n, _)| *n == f.name) {
+                            Some((_, x)) => format!("{id}: {}", self.conv(x, &f.ty)),
+                            None => format!("{id}: None"),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        format!("{} {{ {} }}", self.n.record(record), inits.join(", "))
+    }
+
+    /// `Circle { radius: 3 }` -> `Shape::Circle(ShapeCircle { radius: 3 })`.
+    fn variant_expr(&self, enum_name: &str, variant: &str, fields: &[(String, Expr)]) -> String {
+        let e = self.n.enum_name(enum_name);
+        let v = self.n.variant_ident(enum_name, variant);
+        let decl = self
+            .p
+            .enums
+            .iter()
+            .find(|x| x.name == enum_name)
+            .and_then(|x| x.variants.iter().find(|y| y.name == variant));
+        let Some(decl) = decl.filter(|d| !d.fields.is_empty()) else {
+            return format!("{e}::{v}");
+        };
+        let inits: Vec<String> = decl
+            .fields
+            .iter()
+            .map(|f| {
+                let id = field_ident(&f.name).0;
+                match fields.iter().find(|(n, _)| *n == f.name) {
+                    Some((_, x)) => format!("{id}: {}", self.conv(x, &f.ty)),
+                    None => format!("{id}: None"),
+                }
+            })
+            .collect();
+        format!("{e}::{v}({} {{ {} }})", self.n.variant_struct(enum_name, variant), inits.join(", "))
     }
 
     /// `parallel:` - independent effects run together (`tokio::try_join!`); anything else in the
@@ -883,12 +1032,12 @@ impl<'a> Body<'a> {
     fn conv_plain(&self, v: &str, from: &Type, to: &Type) -> String {
         match (to, from) {
             (Type::Record(r), Type::Object(_)) => format!("serde_json::from_value::<{}>({v})?", self.n.record(r)),
-            (Type::Unknown | Type::Object(_), Type::Record(_) | Type::List(_) | Type::Money | Type::Text | Type::Int | Type::Bool | Type::Date)
+            (Type::Unknown | Type::Object(_), Type::Record(_) | Type::Enum(_) | Type::List(_) | Type::Money | Type::Text | Type::Int | Type::Bool | Type::Date)
                 if !matches!(from, Type::Object(_)) =>
             {
                 format!("serde_json::to_value(&{v})?")
             }
-            (Type::Record(_) | Type::List(_), Type::Unknown) => {
+            (Type::Record(_) | Type::Enum(_) | Type::List(_), Type::Unknown) => {
                 format!("serde_json::from_value::<{}>({v})?", self.rty(to))
             }
             _ => v.to_string(),
@@ -979,6 +1128,10 @@ impl<'a> Body<'a> {
                     atom(format!("bindings::{f}({})", self.args(args, params.as_deref())))
                 }
             },
+            ExprKind::Variant { enum_name, variant, fields } => atom(self.variant_expr(enum_name, variant, fields)),
+            ExprKind::Some(x) => atom(format!("Some({})", self.val(x))),
+            ExprKind::None => atom("None"),
+            ExprKind::Struct { record, fields } => atom(self.struct_expr(record, fields)),
             ExprKind::Std { module, name, args, decode } => atom(self.std_call(module, name, args, decode.as_ref(), false)),
             ExprKind::Record(fields) => {
                 let inner = fields
@@ -1210,8 +1363,8 @@ fn has_await(e: &Expr) -> bool {
         ExprKind::Unwrap { inner, .. } => has_await(inner),
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if has_await(e))),
         ExprKind::Binary { lhs, rhs, .. } => has_await(lhs) || has_await(rhs),
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => has_await(x),
-        ExprKind::Record(fs) => fs.iter().any(|(_, v)| has_await(v)),
+        ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => has_await(x),
+        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().any(|(_, v)| has_await(v)),
         ExprKind::First { source, cond, .. } => has_await(source) || has_await(cond),
         ExprKind::Matches { expr, .. } => has_await(expr),
         ExprKind::NoAmountsChanged { output, input } => has_await(output) || has_await(input),
@@ -1230,9 +1383,9 @@ fn uses_bare(e: &Expr, var: &str) -> bool {
         ExprKind::Unwrap { inner, .. } => uses_bare(inner, var),
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if uses_bare(e, var))),
         ExprKind::Binary { lhs, rhs, .. } => uses_bare(lhs, var) || uses_bare(rhs, var),
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => uses_bare(x, var),
+        ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => uses_bare(x, var),
         ExprKind::Call { args, .. } | ExprKind::Std { args, .. } => args.iter().any(|a| uses_bare(a, var)),
-        ExprKind::Record(fs) => fs.iter().any(|(_, v)| uses_bare(v, var)),
+        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().any(|(_, v)| uses_bare(v, var)),
         ExprKind::Count { source, .. } => uses_bare(source, var),
         ExprKind::First { source, cond, .. } => uses_bare(source, var) || uses_bare(cond, var),
         ExprKind::Matches { expr, .. } => uses_bare(expr, var),
@@ -1270,6 +1423,14 @@ pub fn visit_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Stmt)) {
                 }
             }
             StmtKind::Parallel(b) => visit_stmts(b, f),
+            StmtKind::Match { arms, otherwise, .. } => {
+                for a in arms {
+                    visit_stmts(&a.body, f);
+                }
+                if let Some(o) = otherwise {
+                    visit_stmts(o, f);
+                }
+            }
             StmtKind::Try { stmt, otherwise, .. } => {
                 visit_stmts(std::slice::from_ref(stmt), f);
                 if let Some(o) = otherwise {
@@ -1347,6 +1508,7 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         StmtKind::Let { value, .. } | StmtKind::Assign { value, .. } => vec![value],
         StmtKind::If { cond, .. } => vec![cond],
         StmtKind::IfSome { expr, .. } => vec![expr],
+        StmtKind::Match { scrutinee, .. } => vec![scrutinee],
         StmtKind::ForEach { source, .. } => vec![source],
         StmtKind::Return(e) => vec![e],
         StmtKind::Respond { body, .. } => body.iter().collect(),
@@ -1410,9 +1572,9 @@ fn count_unwraps(e: &Expr, out: &mut Vec<(String, String, usize)>) {
             count_unwraps(lhs, out);
             count_unwraps(rhs, out);
         }
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => count_unwraps(x, out),
+        ExprKind::Some(x) | ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => count_unwraps(x, out),
         ExprKind::Call { args, .. } | ExprKind::Std { args, .. } => args.iter().for_each(|a| count_unwraps(a, out)),
-        ExprKind::Record(fs) => fs.iter().for_each(|(_, v)| count_unwraps(v, out)),
+        ExprKind::Record(fs) | ExprKind::Variant { fields: fs, .. } | ExprKind::Struct { fields: fs, .. } => fs.iter().for_each(|(_, v)| count_unwraps(v, out)),
         ExprKind::Count { source, .. } => count_unwraps(source, out),
         ExprKind::Matches { expr, .. } => count_unwraps(expr, out),
         ExprKind::NoAmountsChanged { output, input } => {

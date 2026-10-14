@@ -130,6 +130,32 @@ fn page(project: &Project, c: &Checked) -> String {
         }
         true
     });
+    section(&mut out, "Enums", &files, |out, d| {
+        let Decl::Enum(e) = d else { return false };
+        let _ = writeln!(out, "### {}\n", e.name.name);
+        doc_block(out, &e.doc);
+        if let Some(info) = c.enums.get(&e.name.name) {
+            for v in &info.variants {
+                if v.fields.is_empty() {
+                    let _ = writeln!(out, "- {}", v.name);
+                } else {
+                    let fields: Vec<String> = v.fields.iter().map(|f| format!("{}: {}", f.name, f.ty)).collect();
+                    let _ = writeln!(out, "- {}: {}", v.name, fields.join(", "));
+                }
+            }
+            out.push('\n');
+        }
+        true
+    });
+    section(&mut out, "Types", &files, |out, d| {
+        let Decl::TypeAlias(t) = d else { return false };
+        let _ = writeln!(out, "### {}\n", t.name.name);
+        doc_block(out, &t.doc);
+        if let Some(info) = c.aliases.get(&t.name.name) {
+            let _ = writeln!(out, "Another name for `{}`.\n", info.ty);
+        }
+        true
+    });
     section(&mut out, "Rules", &files, |out, d| {
         let Decl::Rule(r) = d else { return false };
         let _ = writeln!(out, "### {}\n", r.name.name);

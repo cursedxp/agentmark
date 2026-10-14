@@ -24,6 +24,10 @@ pub enum Head {
     Else,
     Otherwise,
     Parallel,
+    /// `match shape:`; the branches are the indented lines (see [`arm`]).
+    Match {
+        scrutinee: Expr,
+    },
     /// A statement that has no body of its own.
     Simple(Stmt),
     /// `try <statement>`; an `otherwise:` child line may follow.
@@ -52,6 +56,7 @@ const STATEMENT_WORDS: &[&str] = &[
     "remove",
     "print",
     "otherwise",
+    "match",
     "file",
 ];
 
@@ -95,7 +100,7 @@ pub fn head<'a>() -> P<'a, Head> {
                         .delimited_by(just('('), just(')')),
                 )
                 .then(into.clone().or_not())
-                .map(|((name, args), into)| StmtKind::Do { name, args, into });
+                .map(|((name, args), into)| StmtKind::Do { name, args, into, bare: false });
             let do_tool = name()
                 .then_ignore(sp1())
                 .then(name())
@@ -116,6 +121,7 @@ pub fn head<'a>() -> P<'a, Head> {
                     name,
                     args: vec![],
                     into,
+                    bare: false,
                 });
             let do_stmt = kw("do")
                 .ignore_then(sp1())
@@ -370,14 +376,49 @@ pub fn head<'a>() -> P<'a, Head> {
     let else_head = kw("else").ignore_then(colon()).to(Head::Else);
     let otherwise = kw("otherwise").ignore_then(colon()).to(Head::Otherwise);
     let parallel = kw("parallel").ignore_then(colon()).to(Head::Parallel);
+    let match_head = kw("match")
+        .ignore_then(sp1())
+        .ignore_then(expr.clone())
+        .then_ignore(colon())
+        .map(|scrutinee| Head::Match { scrutinee });
+    // `try f(x) -> v` / `try module.f(x) -> v`: a call of a function that can fail, without `do`
+    let bare_call = name()
+        .separated_by(just('.'))
+        .at_least(1)
+        .collect::<Vec<_>>()
+        // the built-in library's calls (`number.parse(t) -> n`, `csv.parse(t) as T -> v`) are statements of their own
+        .try_map(|path: Vec<Ident>, span| {
+            if path.len() == 2 && crate::stdlib::is_module(&path[0].name) {
+                Err(Rich::custom(span, "a library call"))
+            } else {
+                Ok(path)
+            }
+        })
+        .then(
+            expr.clone()
+                .padded_by(sp())
+                .separated_by(just(','))
+                .allow_trailing()
+                .collect::<Vec<_>>()
+                .delimited_by(just('('), just(')')),
+        )
+        .then(arrow().ignore_then(ident()).or_not())
+        .map_with(|((path, args), into), e| {
+            let name = Ident {
+                name: path.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join("."),
+                span: path[0].span.to(path[path.len() - 1].span),
+            };
+            stmt_at(StmtKind::Do { name, args, into, bare: true }, e)
+        });
     let try_head = kw("try")
         .ignore_then(sp1())
-        .ignore_then(simple.clone())
+        .ignore_then(choice((bare_call, simple.clone())))
         .map(Head::Try);
 
     choice((
         loops,
         for_each,
+        match_head,
         if_head,
         else_head,
         otherwise,
@@ -386,6 +427,39 @@ pub fn head<'a>() -> P<'a, Head> {
         simple.map(Head::Simple),
     ))
     .boxed()
+}
+
+/// A branch line of a `match`.
+#[derive(Debug, Clone)]
+pub enum Arm {
+    /// `Circle c:`, `Shape.Empty:`, `some row:`, `none:`, `ok v:`, `error e:`
+    Branch {
+        qualifier: Option<Ident>,
+        pattern: Ident,
+        bind: Option<Ident>,
+    },
+    /// `otherwise:`
+    Otherwise,
+}
+
+/// The grammar of one `match` branch line.
+pub fn arm<'a>() -> P<'a, Arm> {
+    let otherwise = kw("otherwise").ignore_then(colon()).to(Arm::Otherwise);
+    let branch = ident()
+        .separated_by(just('.'))
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .then(sp1().ignore_then(ident()).or_not())
+        .then_ignore(colon())
+        .map(|(mut path, bind)| {
+            let pattern = path.pop().expect("a path has a segment");
+            Arm::Branch {
+                qualifier: qualifier_of(&path),
+                pattern,
+                bind,
+            }
+        });
+    choice((otherwise, branch)).then_ignore(sp()).boxed()
 }
 
 /// A name that is not an expression keyword (for loop variables).
@@ -519,7 +593,7 @@ mod tests {
     #[test]
     fn stop_and_do() {
         assert!(matches!(kind("stop"), StmtKind::Stop));
-        let StmtKind::Do { name, args, into } = kind("do remind") else {
+        let StmtKind::Do { name, args, into, .. } = kind("do remind") else {
             panic!()
         };
         assert_eq!(name.name, "remind");

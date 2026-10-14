@@ -185,11 +185,15 @@ impl Checker<'_> {
                 name.span,
                 format!("\"{}\" was used up on line {} (\"{text}\"), so it cannot be used again here.", name.name, at.line),
             )
-            .with_help(format!(
-                "A handle moves when a library call takes it or you pass it on. Create a new one \
-                 (the line that made \"{}\") or keep using it before line {}.",
-                name.name, at.line
-            )),
+            .with_help(if matches!(cx.var(&name.name), Some(Type::Result(_))) {
+                format!("A stored result is matched once. Call the function again, or do everything with \"{}\" in that one match.", name.name)
+            } else {
+                format!(
+                    "A handle moves when a library call takes it or you pass it on. Create a new one \
+                     (the line that made \"{}\") or keep using it before line {}.",
+                    name.name, at.line
+                )
+            }),
         );
     }
 

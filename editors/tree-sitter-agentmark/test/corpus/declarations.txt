@@ -532,3 +532,56 @@ Imports
       (identifier)
       (import_alias
         (identifier)))))
+
+====================
+Enum with variants that carry fields
+====================
+
+# Enum: Shape
+- Circle: radius: int
+- Rect: width: int, height: int
+- Empty
+
+--------------------
+
+(source_file
+  (enum_declaration
+    (identifier)
+    (enum_variant
+      (identifier)
+      (parameter
+        (identifier)
+        (type
+          (identifier))))
+    (enum_variant
+      (identifier)
+      (parameter
+        (identifier)
+        (type
+          (identifier)))
+      (parameter
+        (identifier)
+        (type
+          (identifier))))
+    (enum_variant
+      (identifier))))
+
+====================
+Type alias
+====================
+
+# Type: Totals
+- is: list of int
+
+--------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (type_phrase
+          (type
+            (identifier)))))))

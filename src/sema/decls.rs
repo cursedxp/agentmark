@@ -9,7 +9,7 @@ use super::effects::effect_name;
 use super::scope::Kind;
 use super::types::{assignable, infer_field_type, Type, BUILTIN_TYPES};
 use super::{
-    BindingInfo, BindingItemInfo, Checker, ConstInfo, ConstState, FieldInfo, ParamInfo, RecordInfo,
+    NodeKey, BindingInfo, BindingItemInfo, Checker, ConstInfo, ConstState, FieldInfo, ParamInfo, RecordInfo,
     RustInfo, Sig,
 };
 
@@ -57,23 +57,35 @@ impl Checker<'_> {
         assignable(from, to, &|r| self.record_fields(r))
     }
 
-    /// Resolve a written type in the scope of `file`. Unknown names are errors.
+    /// Resolve a written type in the scope of `file`. Unknown names are errors. The answer is
+    /// remembered for every written type (`Checked::type_exprs`), aliases already replaced.
     pub fn resolve_type(&mut self, file: usize, te: &TypeExpr) -> Type {
+        let t = self.resolve_type_inner(file, te);
+        self.type_exprs.insert(NodeKey::new(file, te.span), t.clone());
+        t
+    }
+
+    fn resolve_type_inner(&mut self, file: usize, te: &TypeExpr) -> Type {
         match &te.kind {
             TypeKind::Named(n) => {
                 if let Some(t) = Type::builtin(n) {
                     return t;
                 }
-                if let Some((_, name)) = self.lookup(file, n, &[Kind::Record]) {
-                    return Type::Record(name);
+                let kinds = [Kind::Record, Kind::Enum, Kind::TypeAlias];
+                if let Some((kind, name)) = self.lookup(file, n, &kinds) {
+                    return match kind {
+                        Kind::Enum => Type::Enum(name),
+                        Kind::TypeAlias => self.alias_type(&name),
+                        _ => Type::Record(name),
+                    };
                 }
                 let mut cands: Vec<String> = BUILTIN_TYPES.iter().map(|s| s.to_string()).collect();
-                cands.extend(self.scopes[file].names_of(&[Kind::Record]));
+                cands.extend(self.scopes[file].names_of(&kinds));
                 let d = Diagnostic::error(E_UNKNOWN_TYPE, self.path(file), te.span, format!("Unknown type \"{n}\"."))
                     .with_did_you_mean(super::scope::suggest(n, &cands))
                     .with_help(
-                        "Types are text, int, money, date, datetime, duration, bool, bytes, or a record \
-                         that this file imports.",
+                        "Types are text, int, money, date, datetime, duration, bool, bytes, or a record, \
+                         enum or type that this file declares or imports.",
                     );
                 self.diags.push(d);
                 Type::Unknown
@@ -183,10 +195,23 @@ impl Checker<'_> {
 
     fn params(&mut self, file: usize, ps: &[Param]) -> Vec<ParamInfo> {
         ps.iter()
-            .map(|p| ParamInfo {
-                name: p.name.name.clone(),
-                ty: self.resolve_type(file, &p.ty),
-                has_default: p.default.is_some(),
+            .map(|p| {
+                let ty = self.resolve_type(file, &p.ty);
+                if matches!(ty, Type::Result(_)) {
+                    self.error(
+                        super::enums::E_RESULT_MATCH,
+                        file,
+                        p.ty.span,
+                        "A result is made by a call and matched where it is stored; it cannot be passed in.",
+                    );
+                    self.diags.last_mut().unwrap().help =
+                        Some("Pass the plain value, or call the function that makes the result inside this one.".into());
+                }
+                ParamInfo {
+                    name: p.name.name.clone(),
+                    ty,
+                    has_default: p.default.is_some(),
+                }
             })
             .collect()
     }

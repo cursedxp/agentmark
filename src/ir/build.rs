@@ -50,6 +50,7 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
             version: project.config.version.clone(),
         },
         records: Vec::new(),
+        enums: Vec::new(),
         functions: Vec::new(),
         entries: Vec::new(),
         services: Vec::new(),
@@ -66,6 +67,8 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
         for d in &file.decls {
             match d {
                 Decl::Record(r) => p.records.push(b.record(r)),
+                Decl::Enum(e) => p.enums.push(b.enum_decl(e)),
+                Decl::TypeAlias(_) => {} // resolved wherever it is written
                 Decl::Function(f) => p.functions.push(b.function(f)),
                 Decl::Entry(e) => p.entries.push(b.entry(e)),
                 Decl::Service(s) => p.services.push(b.service(s)),
@@ -111,6 +114,9 @@ impl<'a> Builder<'a> {
     }
 
     fn ty(&self, te: &ast::TypeExpr) -> Type {
+        if let Some(t) = self.checked.type_exprs.get(&self.nk(te.span)) {
+            return t.clone();
+        }
         match &te.kind {
             ast::TypeKind::Named(n) => Type::builtin(n).unwrap_or_else(|| Type::Record(n.clone())),
             ast::TypeKind::List(i) => Type::List(Box::new(self.ty(i))),
@@ -180,6 +186,14 @@ impl<'a> Builder<'a> {
                 .find(|(n, _)| n == field)
                 .map(|(_, t)| t.clone())
                 .unwrap_or(Type::Unknown),
+            Type::Variant(e, v) => self
+                .checked
+                .enums
+                .get(e)
+                .and_then(|en| en.variants.iter().find(|x| x.name == *v))
+                .and_then(|x| x.fields.iter().find(|f| f.name == field))
+                .map(|f| f.ty.clone())
+                .unwrap_or(Type::Unknown),
             _ => Type::Unknown,
         }
     }
@@ -243,6 +257,36 @@ impl<'a> Builder<'a> {
             doc: r.doc.clone(),
             fields,
             source: self.src(r.span.line),
+        }
+    }
+
+    fn enum_decl(&self, e: &ast::Enum) -> ir::Enum {
+        let variants = self
+            .checked
+            .enums
+            .get(&e.name.name)
+            .map(|info| {
+                info.variants
+                    .iter()
+                    .map(|v| ir::Variant {
+                        name: v.name.clone(),
+                        fields: v
+                            .fields
+                            .iter()
+                            .map(|f| ir::RecordField {
+                                name: f.name.clone(),
+                                ty: f.ty.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        ir::Enum {
+            name: e.name.name.clone(),
+            doc: e.doc.clone(),
+            variants,
+            source: self.src(e.span.line),
         }
     }
 
@@ -617,8 +661,28 @@ impl<'a> Builder<'a> {
                     else_: self.scoped(else_),
                 }
             }
+            K::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => {
+                let scrutinee = self.expr(scrutinee);
+                let inner = match &scrutinee.ty {
+                    Type::Maybe(i) | Type::Result(i) => (**i).clone(),
+                    _ => Type::Unknown,
+                };
+                let arms = arms
+                    .iter()
+                    .map(|a| self.match_arm(a, &inner))
+                    .collect();
+                ir::StmtKind::Match {
+                    scrutinee,
+                    arms,
+                    otherwise: otherwise.as_ref().map(|o| self.scoped(&o.body)),
+                }
+            }
             K::Stop => ir::StmtKind::Stop,
-            K::Do { name, args, into } => self.do_stmt(s, name, args, into),
+            K::Do { name, args, into, .. } => self.do_stmt(s, name, args, into),
             K::ModelCall {
                 with,
                 prompt,
@@ -794,6 +858,44 @@ impl<'a> Builder<'a> {
             K::Parallel(body) => ir::StmtKind::Parallel(self.stmts(body)),
         };
         self.mk(s, kind)
+    }
+
+    fn match_arm(&mut self, a: &ast::MatchArm, inner: &Type) -> ir::MatchArm {
+        let pattern = self
+            .checked
+            .patterns
+            .get(&self.nk(a.span))
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "internal compiler error: the branch at line {} was not checked",
+                    a.span.line
+                )
+            });
+        let bind_ty = match &pattern {
+            ir::Pattern::Variant { enum_name, variant } => {
+                Type::Variant(enum_name.clone(), variant.clone())
+            }
+            ir::Pattern::Some | ir::Pattern::Ok => inner.clone(),
+            ir::Pattern::Error => Type::Text,
+            ir::Pattern::None => Type::Unknown,
+        };
+        self.push();
+        let bind = a.bind.as_ref().map(|b| {
+            self.define(&b.name, bind_ty.clone());
+            ir::LocalVar {
+                name: b.name.clone(),
+                ty: bind_ty.clone(),
+            }
+        });
+        let body = self.stmts(&a.body);
+        self.pop();
+        ir::MatchArm {
+            pattern,
+            bind,
+            body,
+            source: self.src(a.span.line),
+        }
     }
 
     fn do_stmt(
@@ -1112,6 +1214,40 @@ impl<'a> Builder<'a> {
                 self.mke(e, ir::ExprKind::Not(Box::new(x)), Type::Bool)
             }
             X::Call { func, args } => self.call(e, func, args, known),
+            X::Some(x) => {
+                let x = self.expr(x);
+                let ty = Type::Maybe(Box::new(x.ty.clone()));
+                self.mke(e, ir::ExprKind::Some(Box::new(x)), ty)
+            }
+            X::None => self.mke(e, ir::ExprKind::None, known.unwrap_or(Type::Maybe(Box::new(Type::Unknown)))),
+            X::Variant { fields, .. } => {
+                let fields: Vec<(String, ir::Expr)> = fields
+                    .iter()
+                    .map(|f| (f.name.name.clone(), self.expr(&f.value)))
+                    .collect();
+                if let Some(Resolution::Record { record }) = self.checked.resolutions.get(&self.nk(e.span)) {
+                    let record = record.clone();
+                    let ty = Type::Record(record.clone());
+                    return self.mke(e, ir::ExprKind::Struct { record, fields }, ty);
+                }
+                let (enum_name, variant) = match self.checked.resolutions.get(&self.nk(e.span)) {
+                    Some(Resolution::Variant { enum_name, variant }) => (enum_name.clone(), variant.clone()),
+                    _ => panic!(
+                        "internal compiler error: the variant at line {} was not checked",
+                        e.span.line
+                    ),
+                };
+                let ty = Type::Enum(enum_name.clone());
+                self.mke(
+                    e,
+                    ir::ExprKind::Variant {
+                        enum_name,
+                        variant,
+                        fields,
+                    },
+                    ty,
+                )
+            }
             X::Decode { call, ty } => {
                 let ast::ExprKind::Call { func, args } = &call.kind else { unreachable!("the parser makes Decode around a call") };
                 let decode = self.ty(ty);
@@ -1276,6 +1412,18 @@ impl<'a> Builder<'a> {
                 let ty = known.unwrap_or(Type::Unknown);
                 return self.mke(e, ir::ExprKind::Source { tool, source, record }, ty);
             }
+            Some(Resolution::Variant { enum_name, variant }) => {
+                let ty = Type::Enum(enum_name.clone());
+                return self.mke(
+                    e,
+                    ir::ExprKind::Variant {
+                        enum_name,
+                        variant,
+                        fields: Vec::new(),
+                    },
+                    ty,
+                );
+            }
             Some(Resolution::Field {
                 var,
                 record,
@@ -1396,9 +1544,9 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
             add(lhs);
             add(rhs);
         }
-        X::TextToBytes(x) | X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
+        X::Some(x) | X::TextToBytes(x) | X::Not(x) | X::IsEmpty(x) | X::IsNotEmpty(x) | X::Length(x) => add(x),
         X::Call { args, .. } | X::Std { args, .. } => args.iter().for_each(&mut add),
-        X::Record(fields) => fields.iter().for_each(|(_, x)| add(x)),
+        X::Record(fields) | X::Variant { fields, .. } | X::Struct { fields, .. } => fields.iter().for_each(|(_, x)| add(x)),
         X::Count { source, .. } => add(source),
         X::First { source, cond, .. } => {
             add(source);
@@ -1419,6 +1567,7 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
         | X::Today
         | X::Now
         | X::Var(_)
+        | X::None
         | X::Source { .. } => {}
     }
     e
@@ -1495,6 +1644,19 @@ fn kids_effect(kind: &ir::StmtKind) -> EffectSet {
             e.merge(&list.effect);
         }
         S::Parallel(v) => e.merge(&ir::union_effects(v)),
+        S::Match {
+            scrutinee,
+            arms,
+            otherwise,
+        } => {
+            e.merge(&scrutinee.effect);
+            for a in arms {
+                e.merge(&ir::union_effects(&a.body));
+            }
+            if let Some(o) = otherwise {
+                e.merge(&ir::union_effects(o));
+            }
+        }
         S::Coll(c) => {
             c.exprs().into_iter().for_each(|x| e.merge(&x.effect));
             if let Some(b) = c.body() {
