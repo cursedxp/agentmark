@@ -26,6 +26,12 @@ const PREC = {
   field: 9,
 };
 
+// Words that start a collection expression; they stay usable as names.
+const COLLECTION_WORDS = [
+  'list', 'map', 'empty', 'sort', 'group', 'sum', 'min', 'max', 'last', 'take', 'skip',
+  'unique', 'join', 'keys', 'values',
+];
+
 function commaSep1(rule) {
   return seq(rule, repeat(seq(',', rule)));
 }
@@ -37,7 +43,13 @@ module.exports = grammar({
 
   extras: () => [/[ \t\r]/],
 
-  conflicts: ($) => [[$._atom, $.decode_expression]],
+  // A collection word is also a valid name (`values`, `last`, ...): the parser tries both.
+  conflicts: ($) => [
+    [$._atom, $.collection_expression],
+    [$._expression, $.collection_expression],
+    [$.type, $._atom],
+    [$._atom, $.decode_expression],
+  ],
 
   rules: {
     // Statement lines and blocks may appear before the first declaration so
@@ -311,13 +323,13 @@ module.exports = grammar({
       ),
 
     property_value: ($) =>
-      commaSep1(choice($.parameter, $.type_phrase, $._expression, $.driver, $.address)),
+      commaSep1(choice($.parameter, prec.dynamic(2, $.type_phrase), $._expression, $.driver, $.address)),
 
     parameter: ($) =>
       seq(
         // `first`, `count` and `no` start expressions, so they are keywords
         // where a property value begins; as a parameter name they are plain.
-        field('name', choice($.identifier, alias(choice('first', 'count', 'no'), $.identifier))),
+        field('name', choice($.identifier, alias(choice('first', 'count', 'no', ...COLLECTION_WORDS), $.identifier))),
         ':',
         field('type', $.type),
         optional(seq('=', field('default', $._expression))),
@@ -336,6 +348,7 @@ module.exports = grammar({
         seq('list', 'of', $.type),
         seq('maybe', $.type),
         seq('result', 'of', $.type),
+        seq('map', 'of', $.type, 'to', $.type),
         $.handle_type,
       ),
 
@@ -388,6 +401,8 @@ module.exports = grammar({
         $.do_statement,
         $.read_statement,
         $.append_statement,
+        $.put_statement,
+        $.remove_statement,
         $.respond_statement,
         $.print_statement,
         $.call_statement,
@@ -401,9 +416,13 @@ module.exports = grammar({
         choice(
           field('variable', $.identifier),
           seq(field('rule', $.identifier), field('variable', $.identifier)),
+          // `for each region, total in totals:` (SPEC 22.2)
+          seq(field('variable', $.identifier), ',', field('value', $.identifier)),
         ),
         'in',
         field('source', $._expression),
+        // `for each row in rows with index i:`
+        optional(seq('with', 'index', field('index', $.identifier))),
         ':',
       ),
 
@@ -485,6 +504,12 @@ module.exports = grammar({
     append_statement: ($) =>
       seq('append', $._expression, 'to', field('target', $._expression)),
 
+    put_statement: ($) =>
+      seq('put', $._expression, 'at', $._expression, 'in', field('target', $._expression)),
+
+    remove_statement: ($) =>
+      seq('remove', $._expression, 'from', field('target', $._expression)),
+
     respond_statement: ($) =>
       seq('respond', field('status', $.number), optional(field('body', $._atom))),
 
@@ -508,7 +533,7 @@ module.exports = grammar({
         $.identifier,
         // `first`, `count`, `no` are only keywords when followed by the rest
         // of their phrase; otherwise they are ordinary variable names.
-        alias(choice('first', 'count', 'no'), $.identifier),
+        alias(choice('first', 'count', 'no', ...COLLECTION_WORDS), $.identifier),
         $.string,
         $.number,
         $.money,
@@ -536,6 +561,7 @@ module.exports = grammar({
         $.count_expression,
         $.first_expression,
         $.no_amounts_changed,
+        $.collection_expression,
       ),
 
     parenthesized_expression: ($) => seq('(', $._expression, ')'),
@@ -573,6 +599,7 @@ module.exports = grammar({
         PREC.compare,
         choice(
           seq($._expression, 'is', 'not', 'empty'),
+          seq($._expression, 'is', 'empty'),
           seq($._expression, 'is', 'some', field('binding', $.identifier)),
           seq($._expression, 'matches', field('record', $.identifier)),
         ),
@@ -601,10 +628,43 @@ module.exports = grammar({
           'first',
           field('item', $.identifier),
           'in',
-          field('source', $._expression),
+          field('source', $._atom),
           'where',
           field('condition', $._expression),
         ),
+      ),
+
+    // What a collection word is applied to: a name, a call or a parenthesis (Q321).
+    _source: ($) => choice($._atom, $.parenthesized_expression),
+
+    // Collection words (SPEC 22.2). The grammar only needs the words and the places of the
+    // expressions around them; the compiler checks the rest.
+    collection_expression: ($) =>
+      choice(
+        prec.right(seq('list', 'of', commaSep1($._expression))),
+        seq('empty', 'list', 'of', $.type),
+        seq('empty', 'map', 'of', $.type, 'to', $.type),
+        prec.right(seq('map', 'of', commaSep1(seq($._expression, 'to', $._expression)))),
+        prec.right(seq('map', field('source', $._source), 'to', $._expression)),
+        prec.right(seq(
+          'sort', field('source', $._source), 'by', $._expression, optional('descending'),
+        )),
+        prec.right(seq('group', field('source', $._source), 'by', $._expression)),
+        prec.right(seq(
+          choice('sum', 'min', 'max'), 'of', $._expression,
+          optional(seq('in', field('source', $._source))),
+        )),
+        prec.right(seq('count', 'of', field('source', $._source), 'where', $._expression)),
+        seq(choice('first', 'last'), 'of', field('source', $._source)),
+        seq(choice('take', 'skip'), $._atom, 'from', field('source', $._source)),
+        prec.right(seq(
+          'unique', $._expression, optional(seq('in', field('source', $._source))),
+        )),
+        seq('join', field('source', $._source), 'with', $._atom),
+        seq(choice('keys', 'values'), 'of', field('source', $._source)),
+        // `rows where cond` and `totals at "EU"`
+        prec.right(PREC.or - 1, seq(field('source', $._atom), 'where', $._expression)),
+        prec.dynamic(-1, seq(field('source', $._atom), 'at', $._atom)),
       ),
 
     no_amounts_changed: ($) =>

@@ -572,6 +572,7 @@ const START_HEAD: &str = r#"    let fixtures = match &cli.fixtures {
 "#;
 
 const COMMAND_ARG: &str = r#"/// One argument of `command.json`: by name (`dry_run` or `dry-run`), else its default.
+#[allow(dead_code)]
 fn command_arg<T: serde::de::DeserializeOwned>(args: &serde_json::Value, name: &str, default: Option<T>) -> Result<T, AgentError> {
     match args.get(name).or_else(|| args.get(name.replace('_', "-"))) {
         Some(v) => Ok(serde_json::from_value(v.clone())?),

@@ -1,0 +1,410 @@
+================================================================================
+Literals and empty collections
+================================================================================
+# Function: f
+- effect: pure
+  - set a = list of 1, 2, 3
+  - set b = empty list of text
+  - set c = map of "EU" to 1, "US" to 2
+  - set d = empty map of text to int
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (number)
+          (number)
+          (number))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (type
+            (identifier)))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (string
+            (string_content))
+          (number)
+          (string
+            (string_content))
+          (number))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (type
+            (identifier))
+          (type
+            (identifier)))))))
+
+================================================================================
+Filter, map, sort and group
+================================================================================
+# Function: f
+- effect: pure
+  - set e = rows where region = "EU"
+  - set f = map rows to amount
+  - set g = sort rows by amount descending
+  - set h = group rows by region
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (binary_expression
+            (identifier)
+            (string
+              (string_content))))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (identifier))))))
+
+================================================================================
+Aggregates and picks
+================================================================================
+# Function: f
+- effect: pure
+  - set a = sum of amount in rows
+  - set b = sum of numbers
+  - set c = count of rows where amount > 5 EUR
+  - set d = min of amount in rows
+  - set e = max of numbers
+  - set f = first of rows
+  - set g = last of rows
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (binary_expression
+            (identifier)
+            (money)))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier))))))
+
+================================================================================
+Slices, unique, join, lookups
+================================================================================
+# Function: f
+- effect: pure
+  - set a = take 10 from rows
+  - set b = skip 2 from rows
+  - set c = unique rows
+  - set d = unique region in rows
+  - set e = join names with ", "
+  - set f = totals at "EU"
+  - set g = keys of totals
+  - set h = values of totals
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (number)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (number)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (string
+            (string_content)))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier)
+          (string
+            (string_content)))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier))))
+    (statement_line
+      (set_statement
+        (identifier)
+        (collection_expression
+          (identifier))))))
+
+================================================================================
+Map and list statements
+================================================================================
+# Function: f
+- effect: local
+  - append row to rows
+  - put 1 at "EU" in totals
+  - remove "US" from totals
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (append_statement
+        (identifier)
+        (identifier)))
+    (statement_line
+      (put_statement
+        (number)
+        (string
+          (string_content))
+        (identifier)))
+    (statement_line
+      (remove_statement
+        (string
+          (string_content))
+        (identifier)))))
+
+================================================================================
+Loops with an index and over a map
+================================================================================
+# Function: f
+- effect: local
+  - for each row in rows with index i:
+    - print: "{i}"
+  - for each region, total in totals:
+    - print: "{region}"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (for_each
+        (identifier)
+        (identifier)
+        (identifier)))
+    (statement_line
+      (print_statement
+        (string
+          (interpolation
+            (identifier)))))
+    (statement_line
+      (for_each
+        (identifier)
+        (identifier)
+        (identifier)))
+    (statement_line
+      (print_statement
+        (string
+          (interpolation
+            (identifier)))))))
+
+================================================================================
+Collection words as names, and map types
+================================================================================
+# Function: f
+- in: values: list of int, last: int, totals: map of text to money
+- out: map of text to list of int
+- effect: pure
+  - set keys = values
+  - return map of "a" to values
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (type_phrase
+              (type
+                (identifier)))))
+        (parameter
+          (identifier)
+          (type
+            (identifier)))
+        (parameter
+          (identifier)
+          (type
+            (type_phrase
+              (type
+                (identifier))
+              (type
+                (identifier)))))))
+    (property
+      (property_key)
+      (property_value
+        (type_phrase
+          (type
+            (identifier))
+          (type
+            (type_phrase
+              (type
+                (identifier)))))))
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (set_statement
+        (identifier)
+        (identifier)))
+    (statement_line
+      (return_statement
+        (collection_expression
+          (string
+            (string_content))
+          (identifier))))))
+
+================================================================================
+Parenthesised sources and is empty on a lookup
+================================================================================
+# Function: f
+- effect: local
+  - return take 3 from (sort sales by amount descending)
+  - if totals at "EU" is empty:
+    - stop
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (identifier)))
+    (statement_line
+      (return_statement
+        (collection_expression
+          (number)
+          (parenthesized_expression
+            (collection_expression
+              (identifier)
+              (identifier))))))
+    (statement_line
+      (if_statement
+        (predicate
+          (collection_expression
+            (identifier)
+            (string
+              (string_content))))))
+    (statement_line
+      (stop_statement))))

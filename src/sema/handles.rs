@@ -35,6 +35,10 @@ fn handles_in(te: &TypeExpr, out: &mut Vec<String>) {
     match &te.kind {
         TypeKind::Handle { name, .. } => out.push(name.clone()),
         TypeKind::List(i) | TypeKind::Maybe(i) | TypeKind::Result(i) => handles_in(i, out),
+        TypeKind::Map(k, v) => {
+            handles_in(k, out);
+            handles_in(v, out);
+        }
         TypeKind::Named(_) => {}
     }
 }

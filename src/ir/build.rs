@@ -13,6 +13,8 @@ use crate::project::{Project, ResolvedImport};
 use crate::sema::{BlockKind, CallKind, Checked, NodeKey, Resolution, ToolKind, ToolResolution};
 use crate::syntax::ast::{self, Decl, Ident, StmtKind as K, TargetPart};
 
+mod collections;
+
 /// What the builder knows about a callable.
 struct FnInfo {
     callee: Callee,
@@ -120,6 +122,7 @@ impl<'a> Builder<'a> {
             ast::TypeKind::List(i) => Type::List(Box::new(self.ty(i))),
             ast::TypeKind::Maybe(i) => Type::Maybe(Box::new(self.ty(i))),
             ast::TypeKind::Result(i) => Type::Result(Box::new(self.ty(i))),
+            ast::TypeKind::Map(k, v) => Type::Map(Box::new(self.ty(k)), Box::new(self.ty(v))),
             ast::TypeKind::Handle { name, .. } => Type::Handle(name.clone()),
         }
     }
@@ -829,6 +832,7 @@ impl<'a> Builder<'a> {
                 value: self.expr(value),
                 list: self.expr(list),
             },
+            K::Coll(c) => self.coll_stmt(c),
             K::Print(e) => ir::StmtKind::Effect {
                 call: ir::EffectCall::Io(ir::IoCall::Print {
                     message: self.expr(e),
@@ -1301,6 +1305,7 @@ impl<'a> Builder<'a> {
                     known.unwrap_or(Type::Maybe(Box::new(elem))),
                 )
             }
+            X::Coll(c) => self.coll(e, c, known),
             X::IsEmpty(x) => {
                 let x = self.expr(x);
                 self.mke(e, ir::ExprKind::IsEmpty(Box::new(x)), Type::Bool)
@@ -1552,6 +1557,7 @@ fn expr_kids_effect(kind: &ir::ExprKind) -> EffectSet {
             add(output);
             add(input);
         }
+        X::Coll(c) => c.children().into_iter().for_each(&mut add),
         X::Str(_)
         | X::Int(_)
         | X::Money { .. }
@@ -1649,6 +1655,12 @@ fn kids_effect(kind: &ir::StmtKind) -> EffectSet {
             }
             if let Some(o) = otherwise {
                 e.merge(&ir::union_effects(o));
+            }
+        }
+        S::Coll(c) => {
+            c.exprs().into_iter().for_each(|x| e.merge(&x.effect));
+            if let Some(b) = c.body() {
+                e.merge(&ir::union_effects(b));
             }
         }
         S::Try {

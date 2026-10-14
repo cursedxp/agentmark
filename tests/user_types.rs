@@ -708,3 +708,18 @@ fn library_results_are_stored_and_matched_like_function_results() {
     let e = sema_errors(&NOTES.replace("- match parsed:", "- set copy = parsed\n- match parsed:"));
     assert!(e.contains("\"parsed\" holds a result, which can only be matched."), "{e}");
 }
+
+const TOTALS: &str = "# Enum: Kind\n- Sale: amount: money\n- Refund: amount: money\n- Note\n\n# Type: Totals\n- is: map of text to money\n\n# Function: lookup\n- in: totals: Totals\n- out: maybe money\n- effect: pure\n  - return totals at \"sales\"\n\n# Function: signed\n- in: kind: Kind\n- out: money\n- effect: pure\n  - match kind:\n    - Sale s:\n      - return s.amount\n    - Refund r:\n      - return 0 EUR - r.amount\n    - Note:\n      - return 0 EUR\n\n> Adds sales and refunds per region, matching each kind inside the loops.\n# Command: demo\n\n## Run\n- set totals = empty map of text to money\n- set kinds = list of Sale { amount: 5.00 EUR }, Refund { amount: 2.00 EUR }, Note\n- for each kind in kinds with index i:\n  - match kind:\n    - Sale s:\n      - put s.amount at \"sales\" in totals\n    - Refund:\n      - put signed(kind) at \"refunds\" in totals\n    - otherwise:\n      - print: \"note {i}\"\n- for each region, total in totals:\n  - print: \"{region}: {total}\"\n- match lookup(totals):\n  - some m:\n    - print: \"sales {m}\"\n  - none:\n    - print: \"no sales\"\n";
+
+#[test]
+fn map_aliases_and_matches_inside_collection_loops() {
+    let alias = "# Type: Totals\n- is: map of text to money\n\n# Function: f\n- in: totals: Totals\n- out: maybe money\n- effect: pure\n  - return totals at \"EU\"\n";
+    let c = common::ok(&use_it(alias));
+    assert_eq!(c.aliases["Totals"].ty.to_string(), "map of text to money");
+    assert_eq!(c.functions["f"].params[0].ty.to_string(), "map of text to money");
+    assert!(is_canonical(alias, "t.agent.md").unwrap());
+    let c = common::ok(TOTALS);
+    assert!(c.warnings.is_empty(), "{:?}", c.warnings);
+    let (out, _) = run_command("totals", TOTALS, &[], json!({}));
+    assert_eq!(out, "note 3\nrefunds: -2.00 EUR\nsales: 5.00 EUR\nsales 5.00 EUR\n");
+}

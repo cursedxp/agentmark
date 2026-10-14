@@ -39,6 +39,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Match{scrutinee, arms, otherwise}` — `match v:` over an enum, a `maybe` or a `result`. `MatchArm{pattern, bind, body}`: `pattern` is a `Pattern` (`Variant{enum_name, variant}`, `Some`, `None`, `Ok`, `Error`), `bind` the name the branch gives its value (`Type::Variant(enum, variant)` for a variant, the inner `T` for `some`/`ok`, `text` for `error`). Without `otherwise` the arms cover every case. A `result` scrutinee is the `Expr::Call` itself (codegen does not apply `?` to it, Q300).
 - `Return(e)`; `Stop` = leave the enclosing Fn/entry/route/command (SPEC 4.1).
 - `Effect{call, into}` — an effect; `into` declares a fresh variable (shadows) for its result.
+- `Coll(CollStmt)` (`ir/collections.rs`): `Put{value,key,map}`, `Remove{key,map}`, `ForEachIndex{var,index,source,body}` (index from 1), `ForEachEntry{key,value,source,body}` (key order).
 - `Respond{status,body}`, `Append{value,list}` (list = path to a list, e.g. `state.invoices`), `Parallel(stmts)`.
 - `Try{stmt, otherwise, defines}` — `defines` is the variable `stmt` introduces; it is visible after the try and `otherwise` may assign it (declare it before, assign in both arms). No `otherwise`: on failure `ctx.trace_error` and stop. If `otherwise` falls through without assigning/stopping, codegen uses the type's default (Q94). In a function whose `ret` is `Result(T)` a failing `try` without `otherwise` returns the error to the caller instead (Q200); `defines` of a `try do f()` on such a function is the plain `T`.
 
@@ -63,6 +64,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Variant{enum_name, variant, fields}` — an enum value (`Circle { radius: 3 }`, `Empty`); fields a `maybe` variant field leaves out are not listed. `ty` is `Type::Enum`.
 - `Std{module, name, args, decode}` — a call of the built-in library (SPEC 22.3; the one table is `crate::stdlib`). `ty` is the type of the whole call (`Result(T)` for `number.parse`, `money.parse`, `date.parse`, `json.parse`, `csv.parse`); `decode` is `T` of `json.parse(t) as T` / `list of T` of `csv.parse`. Pure; codegen writes `agentmark_rt::stdlib::<module>::<name>(…)`.
 - `Call{callee: Fn|Rust, name, args}`; `Source{tool,source,record}` (read `crm.invoices`, effect network).
+- `Coll(CollOp)` (`ir/collections.rs`): `List`, `Map`, `Where`, `CountWhere`, `MapTo`, `Sort`, `Group`, `Sum`, `Extreme`, `Edge`, `Slice`, `Unique`, `Join`, `At`, `MapPart`. The per-element operands are ordinary expressions over `Var("item")` (`collections::ELEM`); a record element's bare fields are already `Field{Var("item"), f}`. Codegen writes loops, never closures (the operands may `await`).
 - `Count{source, filter}` — `filter` is the name of a pure `Fn(rec) -> bool`; `First{var,source,cond}` -> `maybe T`.
 - `IsEmpty`, `IsNotEmpty`, `Length`, `Matches{expr,record}`.
 - `NoAmountsChanged{output,input}` — `input` = the `with` value (else prompt) of the model call that wrote `output`; re-evaluated at the guard (Q93).

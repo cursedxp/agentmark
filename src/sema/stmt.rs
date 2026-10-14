@@ -368,6 +368,7 @@ impl Checker<'_> {
                         self.diags.push(d);
                     }
                 }
+                self.want_variable(cx, list, "append");
                 if let ExprKind::Path(segs) = &list.kind {
                     if segs[0].name == "state" {
                         cx.acc.add(Effect::Local, "state");
@@ -375,6 +376,7 @@ impl Checker<'_> {
                 }
                 self.check_limit(cx, s);
             }
+            StmtKind::Coll(c) => self.coll_stmt(cx, s, c),
             StmtKind::ReadInput { into } => {
                 self.read_input_stmt(cx, into);
                 self.check_limit(cx, s);

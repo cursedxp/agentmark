@@ -12,6 +12,7 @@ use crate::project::Project;
 use crate::syntax::ast::{Decl, Effect, Expr, HandleMode};
 
 mod body;
+mod collections;
 mod decls;
 mod enums;
 mod expr;

@@ -237,8 +237,9 @@
     },
     "control": {
       "patterns": [
-        { "match": "\\b(for each|if|else|otherwise|stop|do|set|return|respond|read|print|match)\\b", "name": "keyword.control.agentmark" },
-        { "match": "\\b(in|as|with|from|and|or|not|is|matches|else)\\b", "name": "keyword.operator.word.agentmark" },
+        { "match": "\\b(for each|if|else|otherwise|stop|do|set|return|respond|read|print|match|append|put|remove)\\b", "name": "keyword.control.agentmark" },
+        { "match": "\\b(in|as|with|from|and|or|not|is|matches|else|index)\\b", "name": "keyword.operator.word.agentmark" },
+        { "match": "\\b(?:(?:list|map|keys|values|sum|min|max|first|last|count) of|empty (?:list|map) of|sort|group|take|skip|unique|join|where|by|descending|at|to)\\b", "name": "support.function.collection.agentmark" },
         { "match": "->", "name": "keyword.operator.arrow.agentmark" }
       ]
     },

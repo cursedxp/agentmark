@@ -100,6 +100,11 @@ impl Checker<'_> {
                 self.nest_check(file, te, inner).maybe()
             }
             TypeKind::Result(t) => Type::Result(Box::new(self.resolve_type(file, t))),
+            TypeKind::Map(k, v) => {
+                let key = self.resolve_type(file, k);
+                self.check_map_key(file, k.span, &key);
+                Type::Map(Box::new(key), Box::new(self.resolve_type(file, v)))
+            }
         }
     }
 

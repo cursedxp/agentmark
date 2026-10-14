@@ -58,11 +58,21 @@ Helpers: `Checked::unit_effect(unit)`, `expr_type(file, span)`, `stmt_effect(fil
 
 `Text Int Money Date DateTime Duration Bool Bytes List(T) Maybe(T) Result(T) Record(name) Enum(name)
 Variant(enum, variant) Handle("crate.Type") Object(fields)` (the type of a record literal) and `Unknown` (only appears next to an already-reported error, so it never
+`Text Int Money Date DateTime Duration Bool Bytes List(T) Map(K, V) Maybe(T) Result(T) Record(name) Handle("crate.Type") Object(fields)`
+(the type of a record literal) and `Unknown` (only appears next to an already-reported error, so it never
 occurs in an `Ok` result except for tool results whose type the manifest cannot tell, e.g. `crm update … -> x`).
 Record names are unique in a project (OPEN_QUESTIONS Q31), so `Record(String)` identifies a record. Records, enums and
 type aliases share one namespace (Q302), so `Enum(String)` identifies an enum too. `Variant(enum, variant)` is only the
 type of the name a `match` branch gives (`Circle c:`): the fields of one variant, readable as `c.radius`, not a value of the
 enum (Q304). A `# Type` alias never becomes a `Type`: it is replaced by what it names.
+
+## Collection words (`sema/collections.rs`, SPEC 22.2)
+
+`ExprKind::Coll` and `StmtKind::Coll` are typed there. `CollExpr::parts()` (in `syntax/collections.rs`) says which child
+expressions run per element: those are checked in a frame where `item` is the element and, for a record, its fields are bare
+names (`Implicit { var: "item", .. }`), with `PureKind::Element` so an effect is an error (Q323). `Resolution::Var { name: "item" }`
+and `Resolution::Field { var: Some("item"), .. }` are therefore what the IR sees. Results: Q325; map keys: `check_map_key` (E321);
+codes E320 to E328 (list items, key, order, sum, not a collection, join, map entry, variable hides a field, target is not a variable); E329 (nesting) comes from the parser.
 
 ## Effects (`sema::EffectSet`)
 

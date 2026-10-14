@@ -621,6 +621,7 @@ fn type_text(t: &crate::syntax::ast::TypeExpr) -> String {
         TypeKind::List(i) => format!("list of {}", type_text(i)),
         TypeKind::Maybe(i) => format!("maybe {}", type_text(i)),
         TypeKind::Result(i) => format!("result of {}", type_text(i)),
+        TypeKind::Map(k, v) => format!("map of {} to {}", type_text(k), type_text(v)),
         TypeKind::Handle { name, mode } => match mode.word() {
             Some(w) => format!("{w} handle of {name}"),
             None => format!("handle of {name}"),
