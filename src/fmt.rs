@@ -185,8 +185,7 @@ impl Printer {
             Decl::Constant(c) => self.constant(c),
             Decl::Run(r) => self.run(r),
             Decl::RustBlock(r) => self.rust_block(r),
-            // Layer 2 only: the parser never builds it, so source text never has one.
-            Decl::Entry(_) => {}
+            Decl::Entry(_) => unreachable!("L2-only node in fmt"),
         }
     }
 
@@ -862,9 +861,8 @@ fn simple_text(s: &Stmt) -> String {
         | StmtKind::IfSome { .. }
         | StmtKind::Try { .. }
         | StmtKind::Parallel(_)
-        // Layer 2 only: the parser never builds these.
-        | StmtKind::ModelCall { .. }
-        | StmtKind::Trace(_) => "stop".to_string(),
+        => "stop".to_string(),
+        StmtKind::ModelCall { .. } | StmtKind::Trace(_) => unreachable!("L2-only node in fmt"),
     }
 }
 

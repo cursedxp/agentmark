@@ -97,7 +97,11 @@ pub struct LocalVar {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Fn {
+    /// Declared name; lowering-made names are `<agent>__<block>` (unique, not Rust-safe).
     pub name: String,
+    /// `(unit, label)` to show in the effect summary instead of `name`: `("invoice-chaser",
+    /// "Do remind")` for a former `## Do` block. `None` for ordinary functions and rules.
+    pub display: Option<(String, String)>,
     pub doc: Option<String>,
     pub params: Vec<Param>,
     /// `None`: returns nothing. `Type::Result(T)`: `Result<T, AgentError>` in Rust.
@@ -457,7 +461,8 @@ pub fn effect_summary(p: &Program) -> Vec<(String, String, EffectSet)> {
         out.push((c.name.clone(), "Run".to_string(), c.effect.clone()));
     }
     for f in &p.functions {
-        out.push((f.name.clone(), f.name.clone(), f.effect.clone()));
+        let (unit, label) = f.display.clone().unwrap_or((f.name.clone(), f.name.clone()));
+        out.push((unit, label, f.effect.clone()));
     }
     out
 }

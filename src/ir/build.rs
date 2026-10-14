@@ -8,10 +8,9 @@
 use std::collections::HashMap;
 
 use crate::ir::{self, Callee, EffectSet, Type};
-use crate::lower::{is_synthetic, sanitize, Lowered};
-use crate::manifest::{singular, ToolDef};
+use crate::lower::{guard_text, is_synthetic, Lowered};
 use crate::project::{Project, ResolvedImport};
-use crate::sema::{CallKind, Checked, NodeKey, Resolution, ToolKind, ToolResolution};
+use crate::sema::{BlockKind, CallKind, Checked, NodeKey, Resolution, ToolKind, ToolResolution};
 use crate::syntax::ast::{self, Decl, Ident, StmtKind as K, TargetPart};
 
 /// What the builder knows about a callable.
@@ -26,9 +25,7 @@ struct Builder<'a> {
     /// File being converted (an index into `Project::files`).
     fi: usize,
     /// Variables in scope, innermost frame last.
-    env: Vec<HashMap<String, Type>>,
-    /// For `no amounts changed in x`: what the model call that wrote `x` was given.
-    model_inputs: HashMap<String, ir::Expr>,
+    env: Vec<HashMap<String, (Type, Option<ir::Expr>)>>,
     fns: HashMap<String, FnInfo>,
     /// Record of the project's service state (commands use it, Q9).
     state_record: Option<String>,
@@ -41,7 +38,6 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
         checked,
         fi: 0,
         env: Vec::new(),
-        model_inputs: HashMap::new(),
         fns: HashMap::new(),
         state_record: None,
     };
@@ -129,12 +125,35 @@ impl<'a> Builder<'a> {
 
     fn define(&mut self, name: &str, ty: Type) {
         if let Some(f) = self.env.last_mut() {
-            f.insert(name.to_string(), ty);
+            f.insert(name.to_string(), (ty, None));
+        }
+    }
+
+    /// Declare the result of a model call together with what the model was given, for
+    /// `no amounts changed in x` (the input lives and dies with the binding, Q93).
+    fn define_model(&mut self, name: &str, ty: Type, input: ir::Expr) {
+        if let Some(f) = self.env.last_mut() {
+            f.insert(name.to_string(), (ty, Some(input)));
         }
     }
 
     fn lookup(&self, name: &str) -> Option<&Type> {
-        self.env.iter().rev().find_map(|f| f.get(name))
+        self.env.iter().rev().find_map(|f| f.get(name)).map(|(t, _)| t)
+    }
+
+    fn model_input(&self, name: &str) -> Option<ir::Expr> {
+        self.env
+            .iter()
+            .rev()
+            .find_map(|f| f.get(name))
+            .and_then(|(_, i)| i.clone())
+    }
+
+    /// `set x = …` on an existing variable: whatever the model was given no longer describes it.
+    fn forget_input(&mut self, name: &str) {
+        if let Some(entry) = self.env.iter_mut().rev().find_map(|f| f.get_mut(name)) {
+            entry.1 = None;
+        }
     }
 
     fn field_ty(&self, ty: &Type, field: &str) -> Type {
@@ -164,7 +183,7 @@ impl<'a> Builder<'a> {
                     Decl::Function(f) => {
                         let ret = f.out.as_ref().map(|t| self.ty(t));
                         self.fns.insert(
-                            sanitize(&f.name.name),
+                            f.name.name.clone(),
                             FnInfo {
                                 callee: Callee::Fn,
                                 ret,
@@ -174,7 +193,7 @@ impl<'a> Builder<'a> {
                     Decl::RustBlock(r) => {
                         let ret = r.out.as_ref().map(|t| self.ty(t));
                         self.fns.insert(
-                            sanitize(&r.name.name),
+                            r.name.name.clone(),
                             FnInfo {
                                 callee: Callee::Rust,
                                 ret,
@@ -235,8 +254,14 @@ impl<'a> Builder<'a> {
         }
         let body = self.stmts(&f.body);
         ir::Fn {
-            name: sanitize(&f.name.name),
+            name: f.name.name.clone(),
             doc: f.doc.clone(),
+            display: self
+                .checked
+                .blocks
+                .iter()
+                .find(|b| b.file == self.fi && b.span == f.span && b.kind == BlockKind::Action)
+                .map(|b| (b.unit.clone(), b.label.clone())),
             params,
             ret: f.out.as_ref().map(|t| self.ty(t)),
             effect: ir::union_effects(&body),
@@ -346,7 +371,7 @@ impl<'a> Builder<'a> {
     }
 
     fn rust_fn(&mut self, r: &ast::RustBlock) -> ir::RustFn {
-        let name = sanitize(&r.name.name);
+        let name = r.name.name.clone();
         let mut effect = EffectSet::pure();
         effect.add(r.effect.value, &r.name.name);
         ir::RustFn {
@@ -406,7 +431,14 @@ impl<'a> Builder<'a> {
     // ------------------------------------------------------------------ statements
 
     fn stmts(&mut self, body: &[ast::Stmt]) -> Vec<ir::Stmt> {
-        body.iter().map(|s| self.stmt(s)).collect()
+        let mut out = Vec::new();
+        for s in body {
+            match &s.kind {
+                K::Guard { cond, else_ } => out.extend(self.guard(s, cond, else_)),
+                _ => out.push(self.stmt(s)),
+            }
+        }
+        out
     }
 
     /// The effect of a statement: `Checked`'s for real ones, the children's for made-up ones.
@@ -422,6 +454,61 @@ impl<'a> Builder<'a> {
             effect,
             source: self.src(s.span.line),
         }
+    }
+
+    /// A guard outside an agent expands exactly as `agent_lower` does inside one (Q90):
+    /// `let tmp = cond; trace; if not tmp { else | stop }`.
+    fn guard(&mut self, s: &ast::Stmt, cond: &ast::Expr, else_: &Option<Box<ast::Stmt>>) -> Vec<ir::Stmt> {
+        let name = guard_text(self.checked, self.fi, cond);
+        let c = self.expr(cond);
+        let tmp = format!("guard_ok_{}", s.span.line);
+        let src = self.src(s.span.line);
+        let mkv = || ir::Expr {
+            kind: ir::ExprKind::Var(tmp.clone()),
+            ty: Type::Bool,
+            effect: EffectSet::pure(),
+        };
+        self.define(&tmp, Type::Bool);
+        let then = match else_ {
+            Some(e) => vec![self.stmt(e)],
+            None => vec![ir::Stmt {
+                kind: ir::StmtKind::Stop,
+                effect: EffectSet::pure(),
+                source: src.clone(),
+            }],
+        };
+        let pure_stmt = |kind| ir::Stmt {
+            kind,
+            effect: EffectSet::pure(),
+            source: src.clone(),
+        };
+        let mut out = vec![
+            ir::Stmt {
+                effect: c.effect.clone(),
+                kind: ir::StmtKind::Let {
+                    name: tmp.clone(),
+                    ty: Type::Bool,
+                    value: c,
+                },
+                source: src.clone(),
+            },
+            pure_stmt(ir::StmtKind::Effect {
+                call: ir::EffectCall::Trace(ir::TraceEvent::Guard { name, ok: mkv() }),
+                into: None,
+            }),
+        ];
+        let mut cond_stmt = pure_stmt(ir::StmtKind::If {
+            cond: ir::Expr {
+                kind: ir::ExprKind::Not(Box::new(mkv())),
+                ty: Type::Bool,
+                effect: EffectSet::pure(),
+            },
+            then,
+            else_: Vec::new(),
+        });
+        cond_stmt.effect = kids_effect(&cond_stmt.kind);
+        out.push(cond_stmt);
+        out
     }
 
     fn scoped(&mut self, body: &[ast::Stmt]) -> Vec<ir::Stmt> {
@@ -503,8 +590,7 @@ impl<'a> Builder<'a> {
                     None => Type::Text,
                 };
                 let input = with.clone().unwrap_or_else(|| prompt.clone());
-                self.model_inputs.insert(into.name.clone(), input);
-                self.define(&into.name, ty.clone());
+                self.define_model(&into.name, ty.clone(), input);
                 ir::StmtKind::Effect {
                     call: ir::EffectCall::Model(ir::ModelCall {
                         prompt,
@@ -529,28 +615,7 @@ impl<'a> Builder<'a> {
                 into,
                 ..
             } => self.tool_call(s, tool, verb, target, payload, into),
-            K::Guard { cond, else_ } => {
-                // a guard outside an agent: a plain check without a trace line (Q90)
-                let c = self.expr(cond);
-                let negated = ir::Expr {
-                    effect: c.effect.clone(),
-                    kind: ir::ExprKind::Not(Box::new(c)),
-                    ty: Type::Bool,
-                };
-                let then = match else_ {
-                    Some(e) => vec![self.stmt(e)],
-                    None => vec![ir::Stmt {
-                        kind: ir::StmtKind::Stop,
-                        effect: EffectSet::pure(),
-                        source: self.src(s.span.line),
-                    }],
-                };
-                ir::StmtKind::If {
-                    cond: negated,
-                    then,
-                    else_: Vec::new(),
-                }
-            }
+            K::Guard { .. } => unreachable!("guards are expanded by `stmts`"),
             K::Trace(ast::TraceEvent::Guard { name, ok }) => ir::StmtKind::Effect {
                 call: ir::EffectCall::Trace(ir::TraceEvent::Guard {
                     name: name.clone(),
@@ -561,11 +626,14 @@ impl<'a> Builder<'a> {
             K::Set { var, expr } => {
                 let value = self.expr(expr);
                 match self.lookup(&var.name).cloned() {
-                    Some(ty) => ir::StmtKind::Assign {
-                        name: var.name.clone(),
-                        ty,
-                        value,
-                    },
+                    Some(ty) => {
+                        self.forget_input(&var.name);
+                        ir::StmtKind::Assign {
+                            name: var.name.clone(),
+                            ty,
+                            value,
+                        }
+                    }
                     None => {
                         self.define(&var.name, value.ty.clone());
                         ir::StmtKind::Let {
@@ -654,14 +722,14 @@ impl<'a> Builder<'a> {
             Some(Resolution::Call {
                 kind: CallKind::RustBlock,
                 decl,
-            }) => (sanitize(&decl), Callee::Rust),
+            }) => (decl.clone(), Callee::Rust),
             Some(Resolution::Call {
                 kind: CallKind::Function,
                 decl,
-            }) => (sanitize(&decl), Callee::Fn),
+            }) => (decl.clone(), Callee::Fn),
             // a former `## Do` block: agent_lower already wrote its function name
             _ => {
-                let n = sanitize(&name.name);
+                let n = name.name.clone();
                 let c = self.fns.get(&n).map(|f| f.callee).unwrap_or(Callee::Fn);
                 (n, c)
             }
@@ -713,14 +781,7 @@ impl<'a> Builder<'a> {
                         TargetPart::Value(e) => self.expr(e),
                     })
                     .collect();
-                let ret = self
-                    .checked
-                    .bindings
-                    .iter()
-                    .find(|b| b.name == tr.tool)
-                    .and_then(|b| b.items.iter().find(|i| Some(&i.name) == verb_name.as_ref()))
-                    .and_then(|i| i.sig.out.clone())
-                    .unwrap_or(Type::Unknown);
+                let ret = tr.result.clone().unwrap_or(Type::Unknown);
                 (
                     ir::EffectCall::Binding {
                         binding: tr.tool.clone(),
@@ -737,7 +798,7 @@ impl<'a> Builder<'a> {
                     .tool(&tool.name)
                     .cloned()
                     .unwrap_or_else(|| panic!("internal compiler error: unknown tool {}", tool.name));
-                let tgt = self.target(&def, &tr, target);
+                let tgt = self.target(&tr, target);
                 let pay = payload.as_ref().map(|p| match p {
                     ast::Payload::Assign(list) => ir::Payload::Assign(
                         list.iter()
@@ -746,12 +807,7 @@ impl<'a> Builder<'a> {
                     ),
                     ast::Payload::Value(e) => ir::Payload::Value(self.expr(e)),
                 });
-                let ty = match (verb_name.as_deref(), &tr.record) {
-                    (Some("get"), Some(r)) => Type::Record(r.clone()),
-                    (Some("list"), Some(r)) => Type::List(Box::new(Type::Record(r.clone()))),
-                    _ if def.sources.is_empty() && def.targets.is_empty() => Type::Text,
-                    _ => Type::Unknown,
-                };
+                let ty = tr.result.clone().unwrap_or(Type::Unknown);
                 (
                     ir::EffectCall::Tool(ir::ToolCall {
                         tool: def.name.clone(),
@@ -784,7 +840,6 @@ impl<'a> Builder<'a> {
 
     fn target(
         &mut self,
-        def: &ToolDef,
         tr: &ToolResolution,
         parts: &[TargetPart],
     ) -> Option<ir::Target> {
@@ -799,11 +854,7 @@ impl<'a> Builder<'a> {
                 value: self.expr(e),
             }),
             TargetPart::Word(w) => {
-                let source = def
-                    .sources
-                    .iter()
-                    .find(|s| **s == w.name || singular(s) == w.name)
-                    .cloned();
+                let source = tr.source.clone();
                 let field_of = |this: &Self, var: &str, field: &str| {
                     let base = ir::Expr {
                         kind: ir::ExprKind::Var(var.to_string()),
@@ -962,7 +1013,7 @@ impl<'a> Builder<'a> {
                     e,
                     ir::ExprKind::Count {
                         source: Box::new(source),
-                        filter: rule.as_ref().map(|r| sanitize(&r.name)),
+                        filter: rule.as_ref().map(|r| r.name.clone()),
                     },
                     Type::Int,
                 )
@@ -1013,7 +1064,7 @@ impl<'a> Builder<'a> {
             X::NoAmountsChanged(x) => {
                 let output = self.expr(x);
                 let input = match &output.kind {
-                    ir::ExprKind::Var(name) => self.model_inputs.get(name).cloned(),
+                    ir::ExprKind::Var(name) => self.model_input(name),
                     _ => None,
                 }
                 .unwrap_or_else(|| output.clone());
@@ -1043,8 +1094,8 @@ impl<'a> Builder<'a> {
             self.checked.resolutions.get(&self.nk(e.span)).cloned()
         };
         let name = match res {
-            Some(Resolution::Call { decl, .. }) => sanitize(&decl),
-            _ => sanitize(&func[func.len() - 1].name),
+            Some(Resolution::Call { decl, .. }) => decl.clone(),
+            _ => func[func.len() - 1].name.clone(),
         };
         let info = self.fns.get(&name);
         let callee = info.map(|f| f.callee).unwrap_or(Callee::Fn);

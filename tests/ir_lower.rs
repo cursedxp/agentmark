@@ -114,7 +114,7 @@ fn example_01_lowers() {
         entry_summary(&p),
         ["invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)"]
     );
-    let remind = p.functions.iter().find(|f| f.name == "invoice_chaser__remind").unwrap();
+    let remind = p.functions.iter().find(|f| f.name == "invoice-chaser__remind").unwrap();
     assert_eq!(remind.effect.to_string(), "model, network(email, crm), local(log)");
     // the IR agrees with the check, block by block
     for b in c.blocks.iter().filter(|b| b.label == "Every day at 09:00") {
@@ -211,12 +211,14 @@ fn example_05_lowers_unchanged() {
     assert_eq!(p.rust_fns[0].name, "fingerprint");
     assert!(p.rust_fns[0].code.contains("Sha256"));
     assert_eq!(p.crates[0].name, "sha2");
-    // guard … else respond 404 is `if not … { respond 404 }`
+    // guard … else respond 404: let tmp, trace, `if not tmp { respond 404 }`
     let route = &p.services[0].routes[0];
-    let IS::If { then, .. } = &route.body[1].kind else { panic!("{:?}", route.body[1]) };
+    assert!(matches!(route.body[1].kind, IS::Let { .. }));
+    assert_eq!(guard_names(&route.body), ["found is not empty"]);
+    let IS::If { then, .. } = &route.body[3].kind else { panic!("{:?}", route.body[3]) };
     assert!(matches!(then[0].kind, IS::Respond { status: 404, .. }));
-    // `found.id` after the guard unwraps `found`
-    let json = serde_json::to_string(&route.body[2]).unwrap();
+    // `found` after the guard is unwrapped
+    let json = serde_json::to_string(&route.body[4]).unwrap();
     assert!(json.contains("\"Unwrap\""), "{json}");
     assert_eq!(p.commands[0].state.as_deref(), Some("AppState"));
     assert!(matches!(p.commands[0].body[0].kind, IS::Try { .. }));
@@ -287,15 +289,15 @@ fn do_block_becomes_a_function_called_with_the_loop_record() {
         Decl::Function(f) => Some(f.name.name.clone()),
         _ => None,
     }).collect();
-    assert!(names.contains(&"my_agent__show".to_string()), "{names:?}");
+    assert!(names.contains(&"my-agent__show".to_string()), "{names:?}");
     let prog = ir::build::build(&p, &c, &l);
-    let f = prog.functions.iter().find(|f| f.name == "my_agent__show").unwrap();
+    let f = prog.functions.iter().find(|f| f.name == "my-agent__show").unwrap();
     assert_eq!(f.params[0].name, "invoice");
     let e = &prog.entries[0];
     assert_eq!((e.unit.as_str(), e.label.as_str()), ("my-agent", "Every day at 08:00"));
     let IS::ForEach { body, .. } = &e.body[0].kind else { panic!() };
     let IS::Effect { call: EffectCall::Fn { name, args }, .. } = &body[0].kind else { panic!("{:?}", body[0]) };
-    assert_eq!(name, "my_agent__show");
+    assert_eq!(name, "my-agent__show");
     assert!(matches!(&args[0].kind, IX::Var(v) if v == "invoice"));
     assert_eq!(e.effect.to_string(), "network(crm), local(log)");
 }
@@ -355,4 +357,44 @@ fn unwrap_is_explicit_and_tool_targets_are_resolved() {
     assert!(json.contains("\"id_from\":[\"ticket\",\"id\"]"), "{json}");
     // the http post carries its URL as a literal target and a record body
     assert!(json.contains("\"tool\":\"http\""));
+}
+
+#[test]
+fn summary_shows_do_blocks_by_unit_and_label() {
+    let (_, _, _, p) = lower_example("examples/01-invoice-chaser");
+    let s = summary(&p);
+    assert!(
+        s.iter().any(|(u, l, e)| u == "invoice-chaser"
+            && l == "Do remind"
+            && e == "model, network(email, crm), local(log)"),
+        "{s:?}"
+    );
+    assert!(s.iter().all(|(u, _, _)| !u.contains("__")), "{s:?}");
+}
+
+#[test]
+fn no_amounts_input_follows_shadowing() {
+    let src = format!(
+        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\nfor each invoice in crm.invoices:\n  - ask model with invoice: \"one\" -> r\n  - if invoice.id = \"x\":\n    - ask model: \"two\" -> r\n    - guard: no amounts changed in r\n  - guard: no amounts changed in r\n"
+    );
+    let (p, c) = mem(&src);
+    let prog = ir::lower(&p, &c);
+    let IS::ForEach { body, .. } = &prog.entries[0].body[0].kind else { panic!() };
+    let json_inner = serde_json::to_string(&body[1]).unwrap();
+    // inside the `if` the input is the second call's prompt "two"
+    assert!(json_inner.contains("\"input\":{\"kind\":{\"Str\":\"two\"}"), "{json_inner}");
+    // after the `if`, `r` is the first call's again: its context `invoice`
+    let json_outer = serde_json::to_string(&body[2]).unwrap();
+    assert!(json_outer.contains("\"input\":{\"kind\":{\"Var\":\"invoice\"}"), "{json_outer}");
+}
+
+#[test]
+fn sema_rejects_a_do_call_without_the_record() {
+    let src = format!(
+        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\nfor each invoice in crm.invoices:\n  - do show\n- do show\n\n## Do show\n- log: \"{{customer}}\"\n"
+    );
+    let tools = std::fs::read_to_string("examples/tools.toml").unwrap();
+    let project = Project::from_str("t.agent.md", &src, &tools);
+    let err = sema::check(&project).expect_err("must be an error");
+    assert!(err.iter().any(|d| d.message.contains("works on")), "{}", project.render(&err));
 }

@@ -5,8 +5,8 @@
 //! | Layer 3 | Layer 2 |
 //! |---|---|
 //! | `## Every …` / `## When …` / `## On start` | [`Decl::Entry`] (agent name = `unit`, heading = `label`) |
-//! | `## Do remind` of agent `invoice-chaser` | [`Decl::Function`] `invoice_chaser__remind` |
-//! | `do remind` | `do invoice_chaser__remind` with the record in front of the caller as its argument |
+//! | `## Do remind` of agent `invoice-chaser` | [`Decl::Function`] `invoice-chaser__remind` |
+//! | `do remind` | `do invoice-chaser__remind` with the record in front of the caller as its argument |
 //! | `# Rule: r` | [`Decl::Function`] `r(<record>) -> bool`, `pure`, body `return <when>` |
 //! | `for each r rec in src:` | `for each rec in src:` + `if r(rec):` around the body |
 //! | `count of r recs in src` | same node, `rule` renamed to the rule's function |
@@ -42,11 +42,6 @@ pub fn is_synthetic(span: Span) -> bool {
 
 fn synth(span: Span) -> Span {
     Span::new(span.line, 0, 0)
-}
-
-/// Rust-safe spelling of a declared name (`-` is allowed in declaration names, Q29).
-pub fn sanitize(name: &str) -> String {
-    name.replace('-', "_")
 }
 
 /// Post-order mutating walk over an expression tree.
@@ -104,10 +99,10 @@ impl Names {
             for d in &f.ast.decls {
                 match d {
                     Decl::Function(x) => {
-                        used.insert(sanitize(&x.name.name));
+                        used.insert(x.name.name.clone());
                     }
                     Decl::RustBlock(x) => {
-                        used.insert(sanitize(&x.name.name));
+                        used.insert(x.name.name.clone());
                     }
                     _ => {}
                 }
@@ -128,7 +123,7 @@ impl Names {
             for (di, d) in f.ast.decls.iter().enumerate() {
                 match d {
                     Decl::Rule(r) => {
-                        let base = sanitize(&r.name.name);
+                        let base = r.name.name.clone();
                         // a rule and a function may share a name (kinds are separate in sema)
                         let base = if used.contains(&base) { format!("{base}__rule") } else { base };
                         rules.insert(r.name.name.clone(), alloc(&mut used, base));
@@ -136,7 +131,7 @@ impl Names {
                     Decl::Agent(a) => {
                         for (bi, b) in a.blocks.iter().enumerate() {
                             if let Trigger::Do(n) = &b.trigger {
-                                let base = format!("{}__{}", sanitize(&a.name.name), sanitize(&n.name));
+                                let base = format!("{}__{}", a.name.name, n.name);
                                 actions.insert((fi, di, bi), alloc(&mut used, base));
                             }
                         }
@@ -461,7 +456,7 @@ impl Lw<'_> {
             .rules
             .get(&decl)
             .cloned()
-            .unwrap_or_else(|| sanitize(&decl))
+            .unwrap_or(decl)
     }
 
     fn stmt(&mut self, s: &Stmt) -> Vec<Stmt> {
@@ -544,6 +539,11 @@ impl Lw<'_> {
                         let fn_name = self.names.actions[&(self.fi, self.decl, bi)].clone();
                         let args = match (takes_record, self.current_bare()) {
                             (true, Some((var, _))) => vec![path_expr(var, s.span)],
+                            // sema rejects a call whose record differs from the first caller's
+                            (true, None) => panic!(
+                                "internal compiler error: `do {}` at line {} needs a record but none is in front of it",
+                                name.name, s.span.line
+                            ),
                             _ => Vec::new(),
                         };
                         StmtKind::Do {
@@ -697,43 +697,8 @@ impl Lw<'_> {
         ]
     }
 
-    /// The guard's source text with constants inlined: `reminder length < 800`.
     fn guard_name(&self, cond: &Expr) -> String {
-        let mut c = cond.clone();
-        self.inline_consts(&mut c, 0);
-        crate::fmt::expr_text(&c)
-    }
-
-    fn inline_consts(&self, e: &mut Expr, depth: u8) {
-        if depth > 8 {
-            return;
-        }
-        walk_expr_mut(e, &mut |n| {
-            let ExprKind::Path(segs) = &n.kind else { return };
-            let Some(Resolution::Const { name }) = self.resolution(n.span) else {
-                return;
-            };
-            // only a path that is the whole constant (`max` or `module.max`), not `max.field`
-            if segs.last().map(|s| s.name.as_str()) != Some(name.as_str()) {
-                return;
-            }
-            if let Some(info) = self.checked.constants.get(name) {
-                let mut v = info.value.clone();
-                // a constant is written in its own file, so its names resolve there
-                let inner = Lw {
-                    checked: self.checked,
-                    names: self.names,
-                    fi: info.file,
-                    in_agent: false,
-                    model: None,
-                    decl: 0,
-                    do_blocks: HashMap::new(),
-                    bare: Vec::new(),
-                };
-                inner.inline_consts(&mut v, depth + 1);
-                *n = v;
-            }
-        });
+        guard_text(self.checked, self.fi, cond)
     }
 
     // ------------------------------------------------------------------ expressions
@@ -760,4 +725,35 @@ impl Lw<'_> {
         });
         c
     }
+}
+
+/// A guard's source text with constants inlined: `reminder length < 800`. `fi` is the file the
+/// guard is written in.
+pub fn guard_text(checked: &Checked, fi: usize, cond: &Expr) -> String {
+    let mut c = cond.clone();
+    inline_consts(checked, fi, &mut c, 0);
+    crate::fmt::expr_text(&c)
+}
+
+fn inline_consts(checked: &Checked, fi: usize, e: &mut Expr, depth: u8) {
+    if depth > 8 {
+        return;
+    }
+    walk_expr_mut(e, &mut |n| {
+        let ExprKind::Path(segs) = &n.kind else { return };
+        let Some(Resolution::Const { name }) = checked.resolutions.get(&NodeKey::new(fi, n.span))
+        else {
+            return;
+        };
+        // only a path that is the whole constant (`max` or `module.max`), not `max.field`
+        if segs.last().map(|s| s.name.as_str()) != Some(name.as_str()) {
+            return;
+        }
+        if let Some(info) = checked.constants.get(name) {
+            let mut v = info.value.clone();
+            // a constant is written in its own file, so its names resolve there
+            inline_consts(checked, info.file, &mut v, depth + 1);
+            *n = v;
+        }
+    });
 }

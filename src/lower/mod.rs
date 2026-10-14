@@ -2,4 +2,4 @@
 
 pub mod agent_lower;
 
-pub use agent_lower::{agent_lower, is_synthetic, sanitize, walk_expr_mut, Lowered};
+pub use agent_lower::{agent_lower, guard_text, is_synthetic, walk_expr_mut, Lowered};

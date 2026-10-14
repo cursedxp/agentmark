@@ -420,15 +420,21 @@ impl Checker<'_> {
         }
 
         // result
+        let ty = match (verb.as_ref().map(|v| v.name.as_str()), &target_record) {
+            (Some("get"), Some(r)) => Type::Record(r.clone()),
+            (Some("list"), Some(r)) => Type::List(Box::new(Type::Record(r.clone()))),
+            _ if def.sources.is_empty() && def.targets.is_empty() => Type::Text,
+            _ => Type::Unknown,
+        };
         if let Some(i) = into {
-            let ty = match (verb.as_ref().map(|v| v.name.as_str()), &target_record) {
-                (Some("get"), Some(r)) => Type::Record(r.clone()),
-                (Some("list"), Some(r)) => Type::List(Box::new(Type::Record(r.clone()))),
-                _ if def.sources.is_empty() && def.targets.is_empty() => Type::Text,
-                _ => Type::Unknown,
-            };
-            cx.define(&i.name, ty, i.span);
+            cx.define(&i.name, ty.clone(), i.span);
         }
+        let source = target_word.and_then(|w| {
+            def.sources
+                .iter()
+                .find(|s| **s == w.name || singular(s) == w.name)
+                .cloned()
+        });
         self.tool_calls.insert(
             sk,
             ToolResolution {
@@ -439,6 +445,8 @@ impl Checker<'_> {
                 record,
                 var,
                 field,
+                source,
+                result: Some(ty).filter(|t| *t != Type::Unknown),
             },
         );
         cx.acc.add(def.effect, &def.name);
@@ -764,6 +772,8 @@ impl Checker<'_> {
                 record: None,
                 var: None,
                 field: None,
+                source: None,
+                result: Some(out.clone()).filter(|t| *t != Type::Unknown),
             },
         );
         if let Some(i) = into {

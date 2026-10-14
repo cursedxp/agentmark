@@ -10,7 +10,7 @@ The IR has no agent, rule, trigger, `ask model` or guard node. Constants are inl
 `Expr` has an `effect: EffectSet` (from `Checked`; unioned from the children for nodes lowering made up).
 Types are `sema::Type`; `Type::Unknown` means "untyped JSON value" (e.g. `http post … -> x`).
 `SourceRef { file, line }` on every statement is for the `// <file>.agent.md:<line>` comments.
-Names of functions are Rust-safe (`-` -> `_`); record/service/command names are as declared (codegen maps `-`).
+All names are the DECLARED names (functions, records, services, commands, `-` included); codegen maps them to Rust identifiers and dedups. Names lowering makes are `<agent>__<block>` (a rule that shares a name with a function becomes `<name>__rule`); `Fn.display` holds `(unit, label)` for a former `## Do` block so the effect summary does not show the internal name.
 
 ## Runtime context (not in the IR)
 `Entry.unit`/`label` are the trace labels. Codegen calls `ctx.enter(unit, label)` once at the start of an
@@ -21,7 +21,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Program` — everything: package, records, functions, entries, services, commands, rust_fns, bindings, crates, tools, run.
 - `Package` — `agentmark.toml` name/version.
 - `Record` / `RecordField` — a record with resolved (inferred) field types.
-- `Fn` — `name, doc, params, ret, effect, body, source`; former `# Rule` (`Fn(rec) -> bool`, pure) and `## Do` (`<agent>__<block>`, takes the caller's record) are plain Fns.
+- `Fn` — `name, display, doc, params, ret, effect, body, source`; former `# Rule` (`Fn(rec) -> bool`, pure) and `## Do` (`<agent>__<block>`, takes the caller's record) are plain Fns.
 - `Param` / `LocalVar` — parameter (with optional default) / variable a statement introduces.
 - `Entry` — `unit, label, trigger, param, timeout, memory_file, body, effect`; stop = return from the body.
 - `Trigger` — `Every(Duration) | DailyAt | Weekly | Event{tool,event} | Start`; `Duration {amount, unit}`.
@@ -49,7 +49,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Model(ModelCall{prompt, context, schema, model})` — `ask model`: interpolated prompt; `context` = the `with` value (trace `{"id": v.id}`); `schema` = `as Record` (parse + validate); `model` = agent driver string (`claude:haiku`), None outside agents.
 - `Binding{binding,item,args}` — call of a `# Binding` item (`pdf render doc`); `Rust{name,args}` — `## Rust` block call; `Fn{name,args}` — function call statement (`do f(x) -> y`, former `do <action>`).
 - `Io(ReadFile{path,ty} | ReadBody{ty} | Print{message})`.
-- `Trace(Guard{name, ok})` — one `guard` trace line; `name` is the guard source with constants inlined (`reminder length < 800`), `ok` a `bool` expression. Guards in agents are `Let tmp = cond; Effect(Trace); If(not tmp){else | Stop}`; outside agents they are just `If(not cond){else | Stop}` with no trace (Q90).
+- `Trace(Guard{name, ok})` — one `guard` trace line; `name` is the guard source with constants inlined (`reminder length < 800`), `ok` a `bool` expression. Every guard, in agents, services, commands and functions alike, is `Let guard_ok_<line> = cond; Effect(Trace); If(not tmp){else | Stop}` (Q90).
 
 ## Expressions (`ExprKind`, each with `ty` and `effect`)
 - Literals `Str Int Money{minor,currency} Duration Date Bool Today Now`; `Var(name)`; `Field{base,field}`.
@@ -61,4 +61,4 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `NoAmountsChanged{output,input}` — `input` = the `with` value (else prompt) of the model call that wrote `output`; re-evaluated at the guard (Q93).
 
 ## Functions
-`build::build`, `ir::lower`, `ir::effect_summary` (entries, routes, commands, functions), `ir::union_effects`.
+`build::build`, `ir::lower`, `ir::effect_summary` (entries, routes, commands, functions; a former `## Do` block shows as its `(unit, label)`), `ir::union_effects`.

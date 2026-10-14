@@ -364,8 +364,9 @@ impl Checker<'_> {
                 let diags = parallel::conflicts(self.path(cx.file), body);
                 self.diags.extend(diags);
             }
-            // Layer 2 nodes only `agent_lower` builds; the check runs on Layer 3 text.
-            StmtKind::ModelCall { .. } | StmtKind::Trace(_) => {}
+            StmtKind::ModelCall { .. } | StmtKind::Trace(_) => {
+                unreachable!("L2-only node in sema")
+            }
         }
     }
 
