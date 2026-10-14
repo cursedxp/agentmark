@@ -4,8 +4,16 @@
 use std::path::Path;
 use std::process::Command;
 
-fn run(dir: &Path, program: &str, args: &[&str]) -> String {
-    let out = Command::new(program).args(args).current_dir(dir).output().expect("spawn");
+/// `scratch` is inside the test's own temp dir: node writes `node-compile-cache` (and npm/vsce their
+/// temp files) there, so nothing is left in the real TMPDIR.
+fn run(dir: &Path, scratch: &Path, program: &str, args: &[&str]) -> String {
+    let out = Command::new(program)
+        .args(args)
+        .current_dir(dir)
+        .env("TMPDIR", scratch)
+        .env("NODE_COMPILE_CACHE", scratch.join("node-compile-cache"))
+        .output()
+        .expect("spawn");
     let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     assert!(out.status.success(), "`{program} {}` failed\n{text}", args.join(" "));
     text
@@ -40,12 +48,14 @@ fn the_vscode_extension_builds_tests_and_packages() {
     let dir = tmp.path().join("editors/vscode");
     copy_dir(&root.join("editors/vscode"), &dir);
     copy_dir(&root.join("examples"), &tmp.path().join("examples"));
+    let scratch = tmp.path().join("scratch");
+    std::fs::create_dir_all(&scratch).unwrap();
     let out = tmp.path().join("vsix");
     std::fs::create_dir_all(&out).unwrap();
-    run(&dir, "npm", &["ci", "--no-audit", "--no-fund"]);
-    run(&dir, "npm", &["run", "compile"]);
-    run(&dir, "npm", &["test"]);
-    let log = run(&dir, "npx", &["@vscode/vsce", "package", "--out", out.to_str().unwrap()]);
+    run(&dir, &scratch, "npm", &["ci", "--no-audit", "--no-fund"]);
+    run(&dir, &scratch, "npm", &["run", "compile"]);
+    run(&dir, &scratch, "npm", &["test"]);
+    let log = run(&dir, &scratch, "npx", &["@vscode/vsce", "package", "--out", out.to_str().unwrap()]);
     assert!(!log.contains("WARNING"), "vsce warned:\n{log}");
     assert!(std::fs::read_dir(&out).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().ends_with(".vsix")), "no .vsix was written");
 }
