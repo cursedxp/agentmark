@@ -12,6 +12,8 @@ use super::names::{value_ident, Names};
 use super::ty::{default_expr, field_ident, is_copy, rust_type};
 use crate::ir::*;
 
+mod collections;
+
 // precedence levels of an emitted expression
 const P_OR: u8 = 1;
 const P_AND: u8 = 2;
@@ -265,9 +267,20 @@ impl<'a> Body<'a> {
             }
             StmtKind::ForEach { var, source, body } => {
                 let v = self.val(source);
-                self.line(&format!("for {} in {v} {{", self.n.local(&var.name)));
+                let id = self.n.local(&var.name);
+                let start = self.out.len();
+                self.line("for _ in {}");
                 self.nested(body);
                 self.line("}");
+                // a variable the body never reads is bound as `_name`
+                let bound = if !self.body_mentions(start + 1, &id) {
+                    format!("_{id}")
+                } else if self.assigned.contains(&var.name) {
+                    format!("mut {id}")
+                } else {
+                    id
+                };
+                self.out[start] = format!("{}for {bound} in {v} {{", "    ".repeat(self.indent));
             }
             StmtKind::Return(e) => {
                 let ret = self.ret.clone().unwrap_or(e.ty.clone());
@@ -307,6 +320,7 @@ impl<'a> Body<'a> {
                 self.line(&format!("{l}.push({v});"));
             }
             StmtKind::Parallel(stmts) => self.parallel(stmts),
+            StmtKind::Coll(c) => self.coll_stmt(c),
             StmtKind::Effect { call, into } => {
                 self.effect_stmt(call, into.as_ref());
             }
@@ -857,6 +871,10 @@ impl<'a> Body<'a> {
     /// By value, converted to the type the receiver wants (`T` into `maybe T`, a record literal
     /// into a record, a record into a JSON value).
     fn conv(&self, e: &Expr, to: &Type) -> String {
+        bare(self.conv_inner(e, to))
+    }
+
+    fn conv_inner(&self, e: &Expr, to: &Type) -> String {
         let v = self.val(e);
         match (to, &e.ty) {
             (Type::Maybe(_), Type::Maybe(_)) => v,
@@ -990,6 +1008,7 @@ impl<'a> Body<'a> {
                 None => atom(format!("({}.len() as i64)", paren(self.ex(source), P_ATOM))),
             },
             ExprKind::First { var, source, cond } => self.first(var, source, cond),
+            ExprKind::Coll(op) => self.coll_expr(e, op),
             ExprKind::IsEmpty(x) => self.emptiness(x, true),
             ExprKind::IsNotEmpty(x) => self.emptiness(x, false),
             ExprKind::Matches { expr, record } => match &expr.kind {
@@ -1154,6 +1173,28 @@ pub fn duration_lit(d: &Duration) -> String {
     }
 }
 
+/// `(xs.len() as i64)` as a whole value needs no parentheses (rustc warns about them); inside an
+/// operator it does, and `ex` keeps them for that.
+fn bare(s: String) -> String {
+    if !(s.starts_with('(') && s.ends_with(')')) {
+        return s;
+    }
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 && i + 1 != s.len() {
+                    return s; // the first group closes before the end: `(a) + (b)`
+                }
+            }
+            _ => {}
+        }
+    }
+    s[1..s.len() - 1].to_string()
+}
+
 /// A variable, a field of one, or a narrowed `maybe`: something you can read without computing.
 fn is_place(e: &Expr) -> bool {
     match &e.kind {
@@ -1171,7 +1212,7 @@ fn cheap(e: &Expr) -> bool {
 
 fn has_await(e: &Expr) -> bool {
     match &e.kind {
-        ExprKind::Call { .. } | ExprKind::Source { .. } => true,
+        ExprKind::Call { .. } | ExprKind::Source { .. } | ExprKind::Coll(_) => true,
         ExprKind::Std { args, .. } => args.iter().any(has_await),
         ExprKind::Count { filter, source } => filter.is_some() || has_await(source),
         ExprKind::Field { base, .. } => has_await(base),
@@ -1205,6 +1246,7 @@ fn uses_bare(e: &Expr, var: &str) -> bool {
         ExprKind::First { source, cond, .. } => uses_bare(source, var) || uses_bare(cond, var),
         ExprKind::Matches { expr, .. } => uses_bare(expr, var),
         ExprKind::NoAmountsChanged { output, input } => uses_bare(output, var) || uses_bare(input, var),
+        ExprKind::Coll(op) => op.children().into_iter().any(|x| uses_bare(x, var)),
         _ => false,
     }
 }
@@ -1231,6 +1273,11 @@ pub fn visit_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Stmt)) {
                 visit_stmts(else_, f);
             }
             StmtKind::ForEach { body, .. } => visit_stmts(body, f),
+            StmtKind::Coll(c) => {
+                if let Some(b) = c.body() {
+                    visit_stmts(b, f);
+                }
+            }
             StmtKind::Parallel(b) => visit_stmts(b, f),
             StmtKind::Try { stmt, otherwise, .. } => {
                 visit_stmts(std::slice::from_ref(stmt), f);
@@ -1261,8 +1308,19 @@ fn collect_mut_handles(p: &Program, stmts: &[Stmt], out: &mut HashSet<String>) {
 
 fn collect_assigned(stmts: &[Stmt], out: &mut HashSet<String>) {
     visit_stmts(stmts, &mut |s| {
-        if let StmtKind::Assign { name, .. } = &s.kind {
-            out.insert(name.clone());
+        match &s.kind {
+            StmtKind::Assign { name, .. } => {
+                out.insert(name.clone());
+            }
+            // changing a list or map in place needs a `mut` binding for the variable it lives in
+            StmtKind::Append { list: place, .. }
+            | StmtKind::Coll(crate::ir::collections::CollStmt::Put { map: place, .. })
+            | StmtKind::Coll(crate::ir::collections::CollStmt::Remove { map: place, .. }) => {
+                if let Some(v) = collections::root_var(place) {
+                    out.insert(v.to_string());
+                }
+            }
+            _ => {}
         }
     });
 }
@@ -1302,6 +1360,7 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         StmtKind::Return(e) => vec![e],
         StmtKind::Respond { body, .. } => body.iter().collect(),
         StmtKind::Append { value, list } => vec![value, list],
+        StmtKind::Coll(c) => c.exprs(),
         StmtKind::Effect { call, .. } => call_exprs(call),
         StmtKind::Try { stmt, .. } => stmt_exprs(stmt),
         StmtKind::Stop | StmtKind::Parallel(_) => vec![],
@@ -1370,6 +1429,7 @@ fn count_unwraps(e: &Expr, out: &mut Vec<(String, String, usize)>) {
             count_unwraps(output, out);
             count_unwraps(input, out);
         }
+        ExprKind::Coll(op) => op.children().into_iter().for_each(|x| count_unwraps(x, out)),
         _ => {}
     }
 }

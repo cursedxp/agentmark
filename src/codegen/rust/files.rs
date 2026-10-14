@@ -314,7 +314,13 @@ pub fn service_rs(c: &Ctxt, idx: usize, s: &Service) -> String {
         };
         let uses_state = s.state.is_some() && has_word(&text_probe, "state");
         let mut appends = false;
-        super::body::visit_stmts(&r.body, &mut |st| appends |= matches!(st.kind, StmtKind::Append { .. }));
+        super::body::visit_stmts(&r.body, &mut |st| {
+            appends |= matches!(
+                st.kind,
+                StmtKind::Append { .. }
+                    | StmtKind::Coll(crate::ir::collections::CollStmt::Put { .. } | crate::ir::collections::CollStmt::Remove { .. })
+            )
+        });
         let mutates = uses_state && appends;
         if uses_state {
             b.raw_line(&format!("let {}state = state.lock().await;", if mutates { "mut " } else { "" }));
@@ -547,7 +553,7 @@ pub fn records_rs(c: &Ctxt) -> String {
             if let Some(js) = rename {
                 body.push_str(&format!("    #[serde(rename = {})]\n", lit(&js)));
             }
-            if matches!(f.ty, Type::List(_)) {
+            if matches!(f.ty, Type::List(_) | Type::Map(..)) {
                 body.push_str("    #[serde(default)]\n");
             }
             body.push_str(&format!("    pub {id}: {},\n", rust_type(&f.ty, c.n)));

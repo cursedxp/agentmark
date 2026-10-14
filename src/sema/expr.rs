@@ -79,6 +79,10 @@ fn pure_texts(k: PureKind) -> (&'static str, &'static str) {
             "A constant must be pure",
             "Constants are fixed values: they may only use literals and other constants.",
         ),
+        PureKind::Element => (
+            "An expression inside a collection word must be pure",
+            "\"where\", \"sort\", \"sum of\" and the other collection words run their expression once per element, so it may only read values and call pure functions. Do the effectful step in a \"for each\" loop instead.",
+        ),
     }
 }
 
@@ -158,7 +162,7 @@ impl Checker<'_> {
         cx.acc.merge(eff);
     }
 
-    fn maybe_error(&mut self, cx: &Cx, span: Span, what: &str, ty: &Type) {
+    pub(super) fn maybe_error(&mut self, cx: &Cx, span: Span, what: &str, ty: &Type) {
         let d = Diagnostic::error(
             E_MAYBE,
             self.path(cx.file),
@@ -208,6 +212,7 @@ impl Checker<'_> {
                 Type::Bool
             }
             ExprKind::Call { func, args } => self.call(cx, e, func, args),
+            ExprKind::Coll(c) => self.coll_expr(cx, c),
             ExprKind::Decode { call, ty } => self.std_decode(cx, e, call, ty),
             ExprKind::Record(fields) => {
                 let mut out = Vec::new();
@@ -249,7 +254,7 @@ impl Checker<'_> {
                 if !rechecked
                     && !matches!(
                         t,
-                        Type::Maybe(_) | Type::Text | Type::List(_) | Type::Bytes | Type::Unknown
+                        Type::Maybe(_) | Type::Text | Type::List(_) | Type::Map(..) | Type::Bytes | Type::Unknown
                     )
                 {
                     let d = Diagnostic::error(
@@ -285,7 +290,7 @@ impl Checker<'_> {
             }
             ExprKind::Length(x) => {
                 let t = self.expr(cx, x);
-                if !matches!(t, Type::Text | Type::List(_) | Type::Bytes | Type::Unknown) {
+                if !matches!(t, Type::Text | Type::List(_) | Type::Map(..) | Type::Bytes | Type::Unknown) {
                     self.error(
                         E_TYPE,
                         cx.file,
@@ -392,6 +397,7 @@ impl Checker<'_> {
         // a variable (loop variable, `set`/`->` result, parameter, route parameter, `state`)
         let handle_ok = std::mem::take(&mut cx.handle_ok);
         if let Some(t) = cx.var(&first.name).cloned() {
+            self.check_hides_field(cx, first);
             self.resolutions.insert(
                 key,
                 Resolution::Var {

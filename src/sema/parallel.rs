@@ -25,6 +25,15 @@ pub fn writes(s: &Stmt, out: &mut Vec<(String, Span)>) {
             }
         }
         StmtKind::ForEach { body, .. } => body.iter().for_each(|b| writes(b, out)),
+        StmtKind::Coll(c) => {
+            use crate::syntax::collections::CollStmt;
+            if let CollStmt::Put { map, .. } | CollStmt::Remove { map, .. } = c {
+                if let ExprKind::Path(segs) = &map.kind {
+                    out.push((segs[0].name.clone(), s.span));
+                }
+            }
+            c.body().into_iter().flatten().for_each(|b| writes(b, out));
+        }
         StmtKind::If { then, else_, .. } | StmtKind::IfSome { then, else_, .. } => {
             then.iter().chain(else_).for_each(|b| writes(b, out));
         }

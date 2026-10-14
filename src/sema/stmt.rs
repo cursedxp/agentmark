@@ -43,7 +43,7 @@ impl Checker<'_> {
 
     /// A function body must not exceed its declared effect (SPEC 13.1). Called when the effect of
     /// the statement itself (not of its children) is known, so the error lands on the right line.
-    fn check_limit(&mut self, cx: &mut Cx, s: &Stmt) {
+    pub(super) fn check_limit(&mut self, cx: &mut Cx, s: &Stmt) {
         let Some(f) = &mut cx.func else { return };
         if f.reported || !cx.acc.exceeds(f.declared) {
             return;
@@ -361,6 +361,7 @@ impl Checker<'_> {
                         self.diags.push(d);
                     }
                 }
+                self.want_variable(cx, list, "append");
                 if let ExprKind::Path(segs) = &list.kind {
                     if segs[0].name == "state" {
                         cx.acc.add(Effect::Local, "state");
@@ -368,6 +369,7 @@ impl Checker<'_> {
                 }
                 self.check_limit(cx, s);
             }
+            StmtKind::Coll(c) => self.coll_stmt(cx, s, c),
             StmtKind::ReadInput { into } => {
                 self.read_input_stmt(cx, into);
                 self.check_limit(cx, s);

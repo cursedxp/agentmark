@@ -24,6 +24,8 @@ pub enum PureKind {
     Rule,
     Guard,
     Constant,
+    /// The expression of a collection word, run once per element (SPEC 22.2).
+    Element,
 }
 
 #[derive(Debug, Default)]
@@ -32,6 +34,8 @@ pub struct Frame {
     /// Where each variable of this frame was defined (same file), when there is a place.
     pub defs: HashMap<String, crate::diag::Span>,
     pub bare: Option<Implicit>,
+    /// The frame of a collection word's per-element expression (`bare` is the element's record).
+    pub element: bool,
     /// Paths (`found`, `ticket.priority`) known not to be empty in this frame.
     pub narrowed: Vec<String>,
     /// Handles this frame shadows (`-> h` inside a branch or loop, where codegen declares a new
@@ -172,6 +176,16 @@ impl Cx {
         self.frames.iter().rev().find_map(|f| f.bare.as_ref())
     }
 
+    /// The record whose fields are bare names in the innermost per-element expression, if we are in one.
+    pub fn element_bare(&self) -> Option<&Implicit> {
+        let f = self.frames.iter().rev().find(|f| f.bare.is_some() || f.element)?;
+        if f.element {
+            f.bare.as_ref()
+        } else {
+            None
+        }
+    }
+
     pub fn is_narrowed(&self, path: &str) -> bool {
         self.frames
             .iter()
@@ -264,6 +278,7 @@ pub fn contains_return(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| match &s.kind {
         StmtKind::Return(_) => true,
         StmtKind::ForEach { body, .. } => contains_return(body),
+        StmtKind::Coll(c) => c.body().is_some_and(|b| contains_return(b)),
         StmtKind::If { then, else_, .. } | StmtKind::IfSome { then, else_, .. } => {
             contains_return(then) || contains_return(else_)
         }

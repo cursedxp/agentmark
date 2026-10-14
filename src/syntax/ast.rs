@@ -78,6 +78,8 @@ pub enum TypeKind {
     Maybe(Box<TypeExpr>),
     /// `result of T`
     Result(Box<TypeExpr>),
+    /// `map of K to V` (SPEC 22.2)
+    Map(Box<TypeExpr>, Box<TypeExpr>),
     /// `handle of <crate>.<Type>`: a value of a library type AgentMark has no equivalent for
     /// (SPEC 22.4). `name` is the dotted path (`sha2.Sha256`); `mode` is how a binding
     /// parameter holds it.
@@ -540,6 +542,8 @@ pub enum StmtKind {
     },
     /// Layer 2 only (`agent_lower`): a line for the trace.
     Trace(TraceEvent),
+    /// Collection statements (SPEC 22.2): `put`, `remove`, `for each … with index`, `for each k, v`.
+    Coll(super::collections::CollStmt),
 }
 
 /// What a [`StmtKind::Trace`] records (DESIGN 5.1).
@@ -650,6 +654,8 @@ pub enum ExprKind {
     Length(Box<Expr>),
     /// `no amounts changed in reminder`
     NoAmountsChanged(Box<Expr>),
+    /// Collection words (SPEC 22.2): `rows where …`, `sum of …`, `list of 1, 2`, …
+    Coll(Box<super::collections::CollExpr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
