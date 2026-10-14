@@ -627,3 +627,154 @@ Built only after v0.1 passes all tests. Nothing here changes the language.
 - Multiple agents talking to each other
 - Targets other than Rust
 - Closures and generics in the core language
+
+## 22. v0.3 — a general-purpose Markdown language
+
+From v0.3 AgentMark is first a general-purpose programming language written as Markdown; agents (Layer 3) are one feature built on it. Everything in this section is Layer 2. The layer rule (section 0) still holds: a construct below enters the language only because one of the v0.3 examples (22.7) needs it; the examples contain no `## Rust` block.
+
+### 22.1 User-defined types
+
+```
+# Enum: Shape
+- Circle: radius: int
+- Rect: width: int, height: int
+- Empty
+
+# Type: Totals
+- is: map of text to money
+```
+
+- An `# Enum` lists variants; a variant may carry named fields. Values are written `Circle { radius: 3 }` or, for a field-less variant, `Empty`. Variant names are unique within the file's scope; a clash is resolved by qualifying, `Shape.Empty`.
+- A `# Type` is an alias; it is interchangeable with what it names.
+- `match` branches over an enum, a `maybe`, or a `result`:
+
+```
+- match shape:
+  - Circle c:
+    - print: "circle {c.radius}"
+  - Rect r:
+    - print: "rect {r.width}x{r.height}"
+  - Empty:
+    - print: "nothing"
+
+- match found:          > maybe T
+  - some row:
+    - print: "{row.id}"
+  - none:
+    - stop
+
+- match parsed:         > result of T
+  - ok value:
+    - set total = value
+  - error problem:
+    - print: "{problem}"
+```
+
+Every variant must be handled or an `- otherwise:` branch given; a missing variant is a compile error naming it. `match` is a statement; it is pure unless its branches are not.
+
+### 22.2 Collection words
+
+Collections are `list of T` and `map of K to V`. Everything below is an expression unless shown as a statement. Inside the expression after `where`, `by`, `to` and `of`, the fields of the current element are in scope by their bare names (as in a `for each` over a record), and the element itself is `item`.
+
+| form | result |
+|---|---|
+| `list of 1, 2, 3` · `empty list of text` | list literal |
+| `map of "EU" to 1, "US" to 2` · `empty map of text to int` | map literal |
+| `rows where region = "EU"` | filtered list |
+| `map rows to amount` | list of the expression's values |
+| `sort rows by amount` · `sort rows by amount descending` | sorted list (stable) |
+| `group rows by region` | `map of K to list of T` |
+| `sum of amount in rows` · `sum of numbers` | number or money (money of one currency; empty → 0) |
+| `count of rows` · `count of rows where …` | int |
+| `min of amount in rows` · `max of …` | `maybe` of the element type |
+| `first of rows` · `last of rows` | `maybe T` |
+| `take 10 from rows` · `skip 2 from rows` | list |
+| `unique rows` · `unique region in rows` | list, first occurrence kept |
+| `join names with ", "` | text |
+| `totals at "EU"` | `maybe V` |
+| `keys of totals` · `values of totals` | list (keys sorted) |
+
+Statements: `- append x to list`, `- put v at k in m`, `- remove k from m`, and loops `for each row in rows with index i:` and `for each region, total in totals:` (map entries in key order). Collection words are pure; they never take a function value (closures stay out of scope, section 21).
+
+### 22.3 Built-in library
+
+The library is part of the language, not a binding; every function has a fixed effect class shown in `check`. Pure functions are called as `module.name(arguments)`:
+
+| module | functions (all pure) |
+|---|---|
+| `text` | `split(t, sep)`, `lines(t)`, `trim(t)`, `lower(t)`, `upper(t)`, `replace(t, from, to)`, `contains(t, part)`, `starts with(t, p)` (spelled `starts_with`), `ends_with`, `length(t)`, `pad(t, width)`, `repeat(t, n)` |
+| `regex` | `matches(t, pattern)`, `find(t, pattern)` → `maybe text`, `captures(t, pattern)` → `maybe list of text`, `replace(t, pattern, with)` |
+| `number` | `round(x, places)`, `parse(t)` → `result of int`, `min(a, b)`, `max(a, b)`, `abs(x)`, `format(x, places)` |
+| `money` | `parse(t)` → `result of money`, `format(m)` |
+| `date` | `parse(t, pattern)` → `result of date`, `format(d, pattern)`, `days between(a, b)` (spelled `days_between`), `today` stays a built-in |
+| `path` | `join(a, b)`, `name(p)`, `stem(p)`, `extension(p)`, `parent(p)` |
+| `json` | `parse(t) as T` → `result of T`, `encode(v)` → text |
+| `csv` | `parse(t) as list of T` → `result of list of T` (header row maps to field names), `encode(rows)` → text |
+
+Files are a built-in tool `file` with effect `local`; it needs no `tools.toml` entry:
+
+```
+- file read path -> content              > result of text; use try
+- file write path: content
+- file append path: line
+- file list folder -> names              > list of text, sorted
+- file rename old to new
+- file exists path -> present            > bool
+- file delete path
+```
+
+Every `file` call is traced (`{"kind":"file","verb":…,"path":…}`) so tests see what a program touched. Reading standard input is `- read input -> text`; `- print:` writes a line to standard output.
+
+### 22.4 Opaque library types
+
+When the binder (section 15) meets a Rust type that has no AgentMark equivalent, it no longer skips the API around it: it declares the type as `handle of <crate>.<Type>` and binds its constructors and methods.
+
+```
+- sha2 sha256 new -> hasher              > hasher: handle of sha2.Sha256
+- hasher update data                     > &mut self method, data: bytes (text accepted, Q151)
+- hasher finalize -> digest              > self method: consumes hasher
+```
+
+- A handle can be stored in variables and passed to functions; it cannot be printed, compared, put in a record that is serialized, or traced.
+- A method that takes `self` by value consumes the handle; using it afterwards is a compile error that names the line where it was consumed.
+- A method call is an ordinary tool-style statement `- <handle> <method> <arguments> [-> var]` with the binding's checked effect.
+- Target: for `sha2`, at least half of the items that v0.2 listed under `## Not bound` become bound.
+
+### 22.5 User-defined tools
+
+A tool can be written in AgentMark itself:
+
+```
+# Tool: slugger
+- effect: pure
+
+## slug(title: text) -> text
+- set lowered = text.lower(title)
+- return regex.replace(lowered, "[^a-z0-9]+", "-")
+```
+
+Each `## verb(params) -> type` block is a verb; its body is AgentMark statements or a fenced `rust` block (Layer 1). The tool is called like any tool, `- slugger slug title -> s`, or as an expression `slugger.slug(title)` when it is pure. The declared effect is checked against the body exactly like a `# Function`. `tools.toml` and `rust/connect.rs` remain for tools implemented outside the program (a real CRM, an email provider); a project that only uses `# Tool` declarations and the built-in `file` tool needs neither.
+
+### 22.6 Programs
+
+A project whose `# Run` lists a single `# Command` makes that command the binary's default: `my-tool <args>` runs it without a subcommand name. Command arguments are positional in the order declared, or `--name value`.
+
+### 22.7 v0.3 examples and testing contract
+
+Five examples, none an agent, none containing `## Rust`:
+
+| example | exercises |
+|---|---|
+| `06-sales-report` | CSV parse, `group by`, `sum of`, `sort … descending`, money, writes a report file |
+| `07-file-renamer` | `file list`, regex captures, `date.format`, `file rename`, a `--dry-run` flag |
+| `08-notes-api` | `# Service` REST API over SQLite through the binder (`sqlx` handles), JSON bodies, `match` on results |
+| `09-markdown-to-html` | text and regex functions, an `# Enum` for block kinds, `match`, string building |
+| `10-log-analyzer` | `lines`, regex captures, `group by`, `count of`, `take … from`, top-N report |
+
+A non-agent fixture folder holds `run.json` (`{"args": […]}`, optional `"stdin"`), an `input/` folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional `expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`. Services use `requests.json` as in v0.2.
+
+### 22.8 Out of scope for v0.3
+
+- Closures, first-class functions, user generics.
+- Async user code (handles to async library APIs are awaited by the generated code).
+- Operator overloading; every operator keeps the meaning of section 5.
