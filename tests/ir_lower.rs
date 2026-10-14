@@ -417,3 +417,23 @@ fn a_text_argument_to_a_bytes_binding_becomes_text_to_bytes() {
     assert!(matches!(args[0].kind, IX::TextToBytes(_)));
     assert_eq!(args[0].ty.to_string(), "bytes");
 }
+
+#[test]
+fn an_interpolated_string_argument_to_a_bytes_binding_becomes_text_to_bytes() {
+    let binding = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```\n";
+    let main = "# Import: crate hashing\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: pure\n  - hashing digest \"id-{t}\" -> b\n  - return b\n";
+    let p = Project::from_memory(
+        "app/main.agent.md",
+        vec![("app/main.agent.md", main), ("app/bindings/hashing.agent.md", binding)],
+    );
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    let l = agent_lower(&p, &c);
+    let prog = ir::build::build(&p, &c, &l);
+    let first = &prog.functions[0].body[0].kind;
+    let IS::Effect { call: EffectCall::Binding { args, .. }, .. } = first else { panic!("{first:?}") };
+    // the conversion wraps the whole interpolated text, not its parts
+    let IX::TextToBytes(inner) = &args[0].kind else { panic!("{:?}", args[0]) };
+    assert!(matches!(inner.kind, IX::Interp(_)), "{inner:?}");
+    assert_eq!(inner.ty.to_string(), "text");
+    assert_eq!(args[0].ty.to_string(), "bytes");
+}

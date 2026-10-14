@@ -184,16 +184,32 @@ fn check_json_has_the_documented_keys() {
     assert!(units.iter().any(|u| u["name"] == "overdue" && u["kind"] == "rule"));
 }
 
+/// A project that has every kind of nested entry docs/check-json.md describes: a warning (an unused
+/// import), an inferred field, a Rust block. Self-contained, so it does not depend on `examples/`.
+const JSON_DOC_PROJECT: &str = "# Import: ./spare.agent.md\n\n# Record: Order\n- amount\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: order: Order\n- effect: pure\n  ```rust\n  order.id.to_uppercase()\n  ```\n\n## On start\n- set loud = shout({ id: \"a\", amount: 5 EUR })\n- log: \"hi {loud}\"\n";
+
 #[test]
-fn check_json_reports_rust_blocks_and_diagnostics() {
-    let o = run(&["check", "examples/05-invoice-service.agent.md", "--json"]);
-    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+fn check_json_nested_entries_have_the_documented_keys() {
+    let d = temp("jsondoc");
+    write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
+    write(&d, "a.agent.md", JSON_DOC_PROJECT);
+    write(&d, "spare.agent.md", "# Record: Spare\n- id: text\n");
+    let o = run(&["check", s(&d), "--json"]);
+    let v: Value = serde_json::from_str(&out(&o)).unwrap_or_else(|e| panic!("{e}: {}{}", out(&o), err(&o)));
+    assert_eq!(v["ok"], true, "{v}");
     let rb = &v["rust_blocks"][0];
-    assert_eq!((rb["name"].as_str(), rb["effect"].as_str()), (Some("fingerprint"), Some("pure")));
+    assert_eq!((rb["name"].as_str(), rb["effect"].as_str()), (Some("shout"), Some("pure")));
     assert_eq!(keys(rb), ["effect", "file", "line", "name", "parent"]);
-    let d = &v["diagnostics"][0];
-    assert_eq!(d["severity"], "warning");
+    let d = v["diagnostics"].as_array().unwrap().iter().find(|d| d["severity"] == "warning").expect("the unused import is a warning");
     assert_eq!(keys(d), ["code", "column", "did_you_mean", "file", "help", "length", "line", "message", "severity"]);
+    assert!(d["message"].as_str().unwrap().starts_with("Unused"), "{d}");
+    let f = &v["inferred_fields"][0];
+    assert_eq!(keys(f), ["fallback", "field", "file", "line", "record", "type"]);
+    assert_eq!((f["record"].as_str(), f["field"].as_str(), f["type"].as_str()), (Some("Order"), Some("amount"), Some("money")));
+    let unit = &v["units"][0];
+    assert_eq!(keys(unit), ["blocks", "effects", "file", "kind", "name"]);
+    assert_eq!(keys(&unit["effects"]), ["class", "summary", "tools"]);
+    assert_eq!(keys(&unit["effects"]["tools"]), ["local", "model", "network", "unverified"]);
 }
 
 #[test]

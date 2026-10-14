@@ -77,6 +77,7 @@ Reading `crm.invoices` is `network(crm)`.
 - `state` in a route/command is a variable of the service's `state:` record (Q9); only one service may have one. Reading it is pure, `append … to state.…` is `local(state)` (Q39).
 - Name order: variable, bare field, constant, tool source (needs the dot). `## Do` blocks nobody calls are checked leniently: a bare name passes if some record has such a field, otherwise it is reported (Q30).
 - Narrowing keys bare fields as `var.field` (`score` and `lead.score` are one fact); re-checking a present value is fine. `is not empty` / `is some` / `guard` unwrap `maybe` values in the rest of the block.
+- `result of T` (Q200): `return v` in such a function takes a `T`; `try do f(x) -> h` types `h` as `T`; calling it without `try`, or inside an expression, is an error. A crate import without binding is reported once on the import line (`E219` when a statement uses it, Q201), without `Unknown tool` or `Unused import` follow-ons.
 
 ## Layout
 

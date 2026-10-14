@@ -332,7 +332,7 @@ SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **C
 
 ## Q150 — One mock response per prompt: branch coverage through `variants/` (step 9)
 `MockModel` matches on the prompt text only, so every `ask model` of one prompt gets the same reply; a single run cannot show both a hot and a cold lead (02), or a high and a low ticket (03).
-**Choice:** the top-level fixture folder covers the main path (02: two hot leads; 03: high ticket, then `stop`). The other branches live in `fixtures/<name>/variants/<case>/` with the same file set (`model.json`, tool JSON, `expected.trace.jsonl`): 02 `cold-lead`, 03 `low-priority` and `invalid-priority` (guard fail), 04 `empty-summary` (guard fail), 05 `missing-csv` (`try … otherwise`). A harness that wants full branch coverage runs each variant folder as its own fixture dir; one that ignores `variants/` still gets a valid main fixture.
+**Choice:** the top-level fixture folder covers the main path (02: two hot leads; 03: high ticket, then `stop`). The other branches live in `fixtures/<name>/variants/<case>/` with the same file set (`model.json`, tool JSON, `expected.trace.jsonl`): 02 `cold-lead` and `bad-json` (unparseable reply, Q157), 03 `low-priority` and `invalid-priority` (guard fail), 04 `empty-summary` (guard fail), 05 `missing-csv` (`try … otherwise`). A harness that wants full branch coverage runs each variant folder as its own fixture dir; one that ignores `variants/` still gets a valid main fixture.
 
 ## Q151 — Text where a binding takes `bytes` (05)
 The assisted `sha256_digest` binding takes `data: bytes` (`AsRef<[u8]>`), and the language had no text-to-bytes step.
