@@ -10,6 +10,7 @@ mod guard;
 mod model;
 mod money;
 mod schedule;
+mod support;
 mod tools;
 mod trace;
 
@@ -20,5 +21,6 @@ pub use guard::{extract_money, no_amounts_changed};
 pub use model::{AnthropicModel, MockModel, ModelClient, ModelRequest, ModelResponse};
 pub use money::{Currency, Money, MoneyError};
 pub use schedule::{run_once, run_schedule, Schedule};
+pub use support::{parse_model_json, read_data};
 pub use tools::{MockTools, Tools};
 pub use trace::Trace;

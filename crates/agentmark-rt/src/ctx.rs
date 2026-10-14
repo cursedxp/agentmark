@@ -88,6 +88,31 @@ impl Ctx {
         Ok(resp.text)
     }
 
+    /// Ask the model about a value: the prompt, then the value as JSON ("Context"), then an optional
+    /// answer-format hint (the `as Record` shape). The `model` trace line reports the context as
+    /// `{"id": ...}` when the value has an `id`, else the value itself; `None` adds no context.
+    pub async fn ask_model_about(
+        &self,
+        prompt: &str,
+        subject: Option<&Value>,
+        schema_hint: Option<&str>,
+    ) -> Result<String, RtError> {
+        let mut full = prompt.to_string();
+        if let Some(s) = subject {
+            full.push_str("\n\n");
+            full.push_str(&serde_json::to_string(s).map_err(|e| RtError::Model(e.to_string()))?);
+        }
+        if let Some(h) = schema_hint {
+            full.push_str("\n\n");
+            full.push_str(h);
+        }
+        let context = subject.map(|s| match s.get("id") {
+            Some(id) => serde_json::json!({ "id": id }),
+            None => s.clone(),
+        });
+        self.ask_model(&full, context).await
+    }
+
     /// Trace a `model` line with the current labels.
     pub fn trace_model(&self, prompt_prefix: &str, context: Option<Value>) -> Result<(), RtError> {
         self.trace.model(&self.unit, &self.entry, prompt_prefix, context)

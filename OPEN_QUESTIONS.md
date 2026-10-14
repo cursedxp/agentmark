@@ -283,3 +283,47 @@ SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **C
 
 ## Q117 — `bind --all` and a binding file with another name
 `bind` always writes `<crate>.agent.md`. For a file whose `- crate:` differs from its name, `--all` would create a second file. **Choice:** it refuses that entry with a message asking to rename the file (exit 1); the other bindings are still refreshed. `bind <crate>` and `--all` are mutually exclusive.
+
+## Q130 — `respond` ends the block; a guard's `else` statement does not (step 6)
+**Choice:** `respond` returns from the route at once. The IR's `guard … else s` is `if not ok { s }` with no implied `stop`, so a non-terminating `else` (a `log`, say) falls through to the next statement; codegen follows the IR. A route that ends without `respond` answers 200 with no body.
+**Why:** SPEC 4.4 only says a guard without `else` stops the block; routes in 05 always end the else branch with `respond`.
+
+## Q131 — An `as Record` answer that does not fit (step 6)
+**Choice:** the answer is parsed as JSON (a ```json fence or prose around it is tolerated). If the program asks `x matches Record` about that variable, an unparseable or non-fitting answer makes the guard fail (traced `fail`, block stops) and `x` holds placeholder values. Without such a guard the failure is an error of the statement (caught by `try`, else the block fails and the trace gets an `error` line).
+**Why:** `matches` would otherwise be a guard that cannot fail; acting on placeholder values is only possible when the author wrote the guard.
+
+## Q132 — Months and years in durations (step 6)
+**Choice:** `1 month` is 30 days and `1 year` 365 days (`chrono::Duration` has no calendar units).
+**Why:** sema types both as `duration`; calendar arithmetic needs a different type.
+
+## Q133 — Mock runs: working folder and the optional driver files (step 6, controller note)
+**Choice:** in a `--mock` run the program changes into the fixtures folder (so `read file rows.csv` finds `rows.csv` there). `state.<field>.json` seeds the state record of a service or command (Q9 extended to services); `requests.json` (`[{"method","path","body"?}]`) is sent to the services in order and `command.json` (`{"command","args"}`) runs a command, both in `--once` mode; a request's `http` trace line carries the concrete path and comes after the guard lines of that request.
+**Why:** services and commands have no schedule; `--once` needs something to do for them.
+
+## Q134 — Errors in generated code (step 6)
+**Choice:** every generated function returns `Result<T, AgentError>` (`AgentError = Box<dyn Error + Send + Sync>`); `result of T` is `T` there. A `try` without `otherwise` traces `error` and stops the block. A failure that escapes (no `try`, a timeout) is printed on stderr, traced as `error`, the run continues with the next entry and exits with code 1.
+**Why:** one error type means `?` everywhere, binding errors (Q70) and runtime errors alike.
+
+## Q135 — Tool traits and real runs (step 6)
+**Choice:** each tool gets a trait whose methods are blanket-implemented for every `agentmark_rt::Tools` (the mock, and any type the user writes). A run without `--mock` has no real tools yet: every call fails with a message saying so; only the `log` tool works (stderr). `print` goes to stdout unless the trace owns stdout.
+**Why:** the brief asks for typed traits plus an impl for `MockTools`; real backends are the user's.
+
+## Q136 — Which model a real run uses (step 6)
+**Choice:** the first `model:` driver found in the program (`claude`, `claude:haiku`, `claude:<id>`) is used for every `ask model`; `claude` = `claude-sonnet-4-5`. The request is the prompt, a blank line and the `with` value as JSON; for `as Record` an answer-format sentence follows.
+**Why:** `Ctx` holds one model; per-agent models need a `Ctx` per agent.
+
+## Q137 — Auto-binding on `build` (step 6)
+**Choice:** `build`/`run`/`trace` run the binder only for imported crates that have no binding file; an existing file is reported as `cached` without checking the crate version (that is `agentmark bind`'s job, SPEC 15.1 "stale"). The generated `Cargo.toml` pins each bound crate to `=<version of the binding header>`; a hand-written binding without a header gets `*`.
+**Why:** resolving the wanted version needs cargo and possibly the network on every build.
+
+## Q138 — Entry knobs (step 6)
+**Choice:** `timeout:` is enforced per run of an entry (the trace gets an `error` line); `memory: file` has no effect in v0.1. In `--once` mode event entries run once per item of `<tool>.<event>s.json`; in schedule mode they are announced as needing a real tool connection. Blocks run one at a time (a global lock), as SPEC 3 says.
+**Why:** nothing in the spec defines the memory file's format or a real event source.
+
+## Q139 — `parallel:` (step 6)
+**Choice:** a list of two or more effect statements runs together (`tokio::try_join!`, the first error wins); any other content runs in order.
+**Why:** SPEC 16 allows the opt-in; non-effect statements share variables.
+
+## Q140 — `read file p as T` (step 6)
+**Choice:** `.csv` (first row = field names, cells are text, converted to numbers/booleans only when the type refuses text) or JSON; `text` and `bytes` read the file as is.
+**Why:** the spec names no format.
