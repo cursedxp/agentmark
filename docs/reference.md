@@ -1763,8 +1763,9 @@ Nothing here changes the language. Built after v0.1 passes all its tests, in thi
 
 ## 22. v0.3: a general-purpose Markdown language
 
-From v0.3 AgentMark is first a general-purpose programming language written as Markdown; agents are one feature built on
-it. Everything in this section is Layer 2. This section follows SPEC section 22.
+Section 22 of the specification turns the core (Layer 2) into a general-purpose language: user-defined types and `match`,
+collection words, a built-in library, opaque library handles and user-defined tools. Each subsection below is added as the
+construct lands in the compiler, with checked samples like every other section.
 
 ### 22.1 User-defined types
 
