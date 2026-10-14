@@ -405,7 +405,8 @@ fn types_with_an_agentmark_equivalent_stay_values_and_generic_ones_are_not_handl
     assert_eq!(heading("weekday_succ"), "succ(self: handle of chrono.Weekday) -> handle of chrono.Weekday");
     for i in &b.items {
         let h = i.sig.heading(&i.name);
-        assert!(!h.contains("handle of chrono.NaiveDate") && !h.contains("handle of chrono.DateTime"), "{h}");
+        let words = h.split(|c: char| !(c.is_alphanumeric() || c == '.' || c == '_'));
+        assert!(!words.into_iter().any(|w| w == "chrono.NaiveDate" || w == "chrono.DateTime"), "{h}");
     }
 }
 
