@@ -4,9 +4,9 @@ This project is written in AgentMark, a programming language written as Markdown
 
 ## The one source of truth
 
-Read `docs/reference.md` of the AgentMark checkout before you write anything. It is the whole language in one file: every declaration, every statement form, every error message, with examples that are tested. Do not guess syntax from other languages and do not invent statements. If `docs/reference.md` does not show it, it does not exist; ask the human.
+Read `docs/reference.md` of the AgentMark source (`~/.agentmark/src` after `install.sh`) before you write anything. It is the whole language in one file: every declaration, every statement form, every error message, with examples that are tested. Do not guess syntax from other languages and do not invent statements. If `docs/reference.md` does not show it, it does not exist; ask the human.
 
-If this project lives outside the AgentMark checkout, keep a copy or a link of that file next to the project (for example `docs/agentmark-reference.md`) and read that one.
+If this project lives outside the AgentMark source, keep a copy or a link of that file next to the project (for example `docs/agentmark-reference.md`) and read that one.
 
 ## Workflow
 

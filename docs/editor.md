@@ -12,19 +12,20 @@ There are three pieces, and they work alone:
 
 ### The language server
 
-You need a Rust toolchain. From a checkout of this repository:
+If you installed AgentMark with `install.sh` (see the README), the language server is already installed. Otherwise you need a Rust toolchain and the AgentMark source: `~/.agentmark/src` after `install.sh`, or a clone of https://github.com/cursedxp/agentmark. From that folder:
 
 ```sh
-cargo install --path crates/agentmark-lsp
+cargo install --locked --path crates/agentmark-lsp
 ```
 
-`agentmark-lsp` ends up in `~/.cargo/bin`, next to `agentmark` (installed with `cargo install --path .`, see the README). It speaks the protocol on standard input and output and takes no arguments.
+`agentmark-lsp` ends up in `~/.cargo/bin`, next to `agentmark` (see the README). It speaks the protocol on standard input and output and takes no arguments.
 
 ### The VS Code extension
 
-You need Node.js. Build the package once, from the extension folder:
+You need Node.js. Build the package once, from the extension folder of the AgentMark source:
 
 ```sh
+cd ~/.agentmark/src
 cd editors/vscode
 npm install
 npx @vscode/vsce package
@@ -46,6 +47,8 @@ Both settings are machine-scoped: a workspace cannot set them, and they are igno
 |---|---|---|
 | `agentmark.server.path` | `agentmark-lsp` | the language server binary; give the full path if it is not on your `PATH` |
 | `agentmark.cli.path` | `agentmark` | the CLI the touch panel runs (`check --json`) |
+
+The paths below are examples (on Linux the home folder is `/home/you` instead of `/Users/you`):
 
 ```json
 {
@@ -208,7 +211,7 @@ Zed starts a language server from an extension, not from a settings file; see th
 * `highlights.scm`, the highlighting;
 * `injections.scm`, which highlights a fenced `rust` block (a `## Rust` body) as Rust.
 
-The grammar name is `agentmark`, its scope is `text.agentmark`, its file type is `agent.md`. Use an absolute path to your checkout where `/path/to/agentmark` appears below.
+The grammar name is `agentmark`, its scope is `text.agentmark`, its file type is `agent.md`. Below, the AgentMark source is the folder `install.sh` creates, `~/.agentmark/src`. Config files do not expand `~`, so they show it as `/Users/you/.agentmark/src`: write your own absolute path there (the path of your clone if you did not use the script). The `cp` commands run from that folder.
 
 **Neovim** (with `nvim-treesitter`, `main` branch): register the parser, install it, and copy the queries where Neovim looks for them.
 
@@ -217,7 +220,7 @@ vim.api.nvim_create_autocmd("User", {
   pattern = "TSUpdate",
   callback = function()
     require("nvim-treesitter.parsers").agentmark = {
-      install_info = { path = "/path/to/agentmark/editors/tree-sitter-agentmark" },
+      install_info = { path = "/Users/you/.agentmark/src/editors/tree-sitter-agentmark" },
     }
   end,
 })
@@ -237,7 +240,7 @@ Then run `:TSInstall agentmark`.
 ```toml
 [[grammar]]
 name = "agentmark"
-source = { path = "/path/to/agentmark/editors/tree-sitter-agentmark" }
+source = { path = "/Users/you/.agentmark/src/editors/tree-sitter-agentmark" }
 ```
 
 ```sh
@@ -255,7 +258,7 @@ version = "0.1.0"
 schema_version = 1
 
 [grammars.agentmark]
-repository = "file:///path/to/agentmark"
+repository = "file:///Users/you/.agentmark/src"
 rev = "HEAD"
 path = "editors/tree-sitter-agentmark"
 ```
