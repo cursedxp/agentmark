@@ -82,6 +82,10 @@
 (tool_call verb: (identifier) @function.method)
 (do_statement (identifier) @function)
 (call_expression function: (identifier) @function.call)
+; the built-in library: `text.split(t, ",")`, `json.parse(t) as Note`
+(module_call module: (identifier) @module.builtin)
+(module_call function: (identifier) @function.builtin)
+(decode_expression "as" @keyword)
 (for_each rule: (identifier) @function)
 (for_each variable: (identifier) @variable)
 (count_expression rule: (identifier) @function)

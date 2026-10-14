@@ -218,6 +218,7 @@ fn tool_items(a: &Analysis, _path: &str) -> Vec<CompletionItem> {
         .values()
         .map(|t| item(t.name.clone(), CompletionItemKind::MODULE, Some(format!("tool, {}", agentmark::sema::effects::effect_name(t.effect))), None))
         .collect();
+    out.push(item("file", CompletionItemKind::MODULE, Some("built-in tool, local".to_string()), None));
     for (b, _) in binding_names(a) {
         out.push(item(b, CompletionItemKind::MODULE, Some("binding".to_string()), None));
     }
@@ -226,10 +227,16 @@ fn tool_items(a: &Analysis, _path: &str) -> Vec<CompletionItem> {
 
 fn tool_statement(a: &Analysis, _path: &str, word: &str) -> bool {
     let word = word.trim_end_matches(':');
-    a.project.manifest.tool(word).is_some() || binding_names(a).iter().any(|(b, _)| b == word)
+    word == "file" || a.project.manifest.tool(word).is_some() || binding_names(a).iter().any(|(b, _)| b == word)
 }
 
 fn verb_items(a: &Analysis, _path: &str, tool: &str, rest_words: usize) -> Vec<CompletionItem> {
+    if tool == "file" && rest_words == 1 {
+        return agentmark::stdlib::FILE_VERBS
+            .iter()
+            .map(|v| item(v.verb, CompletionItemKind::METHOD, Some(v.shape.to_string()), None))
+            .collect();
+    }
     if let Some(def) = a.project.manifest.tool(tool) {
         return match rest_words {
             1 => def.verbs.iter().map(|v| item(v.clone(), CompletionItemKind::METHOD, Some(format!("{tool} verb")), None)).collect(),
@@ -335,6 +342,9 @@ fn expression_items(a: &Analysis, path: &str, line: usize) -> Vec<CompletionItem
     for w in ["today", "now"] {
         out.push(item(w, CompletionItemKind::KEYWORD, None, None));
     }
+    for m in agentmark::stdlib::MODULES {
+        out.push(item(*m, CompletionItemKind::MODULE, Some("built-in library".to_string()), None));
+    }
     out
 }
 
@@ -409,6 +419,12 @@ fn field_items(
         _ => {}
     }
     if chain.len() == 1 {
+        // a module of the built-in library (SPEC 22.3): `text.` offers its functions
+        if agentmark::stdlib::is_module(chain[0]) {
+            return agentmark::stdlib::functions_of(chain[0])
+                .map(|f| item(f.name, CompletionItemKind::FUNCTION, Some(format!("{} - {}", f.signature(), f.doc)), None))
+                .collect();
+        }
         if let Some(def) = a.project.manifest.tool(chain[0]) {
             return def
                 .sources

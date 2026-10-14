@@ -24,6 +24,12 @@ fn build_tour() -> (Tmp, PathBuf) {
 
 /// Runs `command args…` in a fresh copy of the input folder; returns the trace and the folder.
 fn run(bin: &Path, command: &[&str], stdin: &str) -> (Vec<Value>, Tmp) {
+    let (trace, work, status) = run_status(bin, command, stdin);
+    assert!(status.success(), "{command:?} failed ({status}) with trace {trace:#?}");
+    (trace, work)
+}
+
+fn run_status(bin: &Path, command: &[&str], stdin: &str) -> (Vec<Value>, Tmp, std::process::ExitStatus) {
     let work = temp("stdlib-work");
     copy_dir(Path::new(&format!("{ROOT}/tests/stdlib/input")), &work);
     write(&work, "model.json", r#"{"today": "2026-10-14", "responses": []}"#);
@@ -38,8 +44,7 @@ fn run(bin: &Path, command: &[&str], stdin: &str) -> (Vec<Value>, Tmp) {
         .unwrap();
     child.stdin.take().unwrap().write_all(stdin.as_bytes()).unwrap();
     let o = child.wait_with_output().unwrap();
-    assert!(o.status.success(), "{command:?} failed ({}):\n{}", o.status, stderr(&o));
-    (parse_lines(&stdout(&o)), work)
+    (parse_lines(&stdout(&o)), work, o.status)
 }
 
 fn prints(trace: &[Value]) -> Vec<String> {
@@ -83,6 +88,7 @@ fn the_tour_program_behaves() {
             "not a number",
             "photos/a.jpg a.tar.gz a.tar",
             "gz p",
+            "2026-10-14 00:00",
         ]
     );
 
@@ -99,6 +105,7 @@ fn the_tour_program_behaves() {
             json!({"kind": "print", "message": "1 first #home"}),
             json!({"kind": "print", "message": "2 second"}),
             json!({"kind": "print", "message": r#"[{"id":1,"title":"first","tag":"home"},{"id":2,"title":"second","tag":null}]"#}),
+            json!({"kind": "print", "message": r#"{"id":1,"name":"t1"}"#}),
             json!({"kind": "print", "message": "seven region,product,amount,sold\nEU,Widget,120.00 EUR,2026-10-01\nUS,Gadget,5.50 EUR,2026-09-30\n"}),
             json!({"kind": "print", "message": "t1: a sales file needs amount and sold columns"}),
         ]
@@ -133,4 +140,15 @@ fn the_tour_program_behaves() {
     );
     assert!(!work.join("log.txt").exists() && !work.join("archive/log-1.txt").exists());
     assert!(work.join("archive/a.txt").exists());
+
+    // ---- a pattern built at run time is checked when it runs
+    let (trace, _w) = run(&bin, &["pattern", "b+"], "");
+    assert_eq!(prints(&trace), ["true"]);
+    let (trace, _w, status) = run_status(&bin, &["pattern", "("], "");
+    assert!(!status.success());
+    assert_eq!(trace.len(), 1, "{trace:#?}");
+    assert_eq!(trace[0]["kind"], "error");
+    assert_eq!(trace[0]["agent"], "pattern");
+    let message = trace[0]["message"].as_str().unwrap();
+    assert!(message.starts_with("\"(\" is not a valid pattern: "), "{message}");
 }

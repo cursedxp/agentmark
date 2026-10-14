@@ -630,3 +630,90 @@ Rust block
         (fence_open)
         (code_content)
         (fence_close)))))
+
+================================================================================
+built-in library: module calls, decode, file tool, read input
+================================================================================
+
+# Command: c
+- args: p: text
+
+## Run
+- try file read p -> content
+- try do csv.parse(content) as list of Sale -> rows
+- try number.parse(p) -> n
+- read input -> typed
+- file rename p to path.join(p, "x")
+- set d = json.parse(typed) as Note
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (declaration
+    (declaration_kind)
+    (identifier)
+    (property
+      (property_key)
+      (property_value
+        (parameter
+          (identifier)
+          (type
+            (identifier)))))
+    (trigger_block
+      (run_heading)
+      (statement_line
+        (try_statement
+          (tool_call
+            (identifier)
+            (identifier)
+            (identifier)
+            (bind
+              (identifier)))))
+      (statement_line
+        (try_statement
+          (do_statement
+            (module_call
+              (identifier)
+              (identifier)
+              (identifier))
+            (type
+              (type_phrase
+                (type
+                  (identifier))))
+            (bind
+              (identifier)))))
+      (statement_line
+        (try_statement
+          (call_statement
+            (module_call
+              (identifier)
+              (identifier)
+              (identifier))
+            (bind
+              (identifier)))))
+      (statement_line
+        (read_statement
+          (identifier)
+          (bind
+            (identifier))))
+      (statement_line
+        (tool_call
+          (identifier)
+          (identifier)
+          (identifier)
+          (module_call
+            (identifier)
+            (identifier)
+            (identifier)
+            (string
+              (string_content)))))
+      (statement_line
+        (set_statement
+          (identifier)
+          (decode_expression
+            (module_call
+              (identifier)
+              (identifier)
+              (identifier))
+            (type
+              (identifier))))))))

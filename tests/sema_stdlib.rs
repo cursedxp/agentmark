@@ -131,6 +131,12 @@ fn an_unknown_function_names_the_module_and_suggests() {
 }
 
 #[test]
+fn a_misspelled_module_suggests_the_whole_name() {
+    let e = first_error(&func("text", "return txt.upper(s)"));
+    assert!(e.contains("Unknown function \"txt.upper\"") && e.contains("Did you mean \"text.upper\"?"), "{e}");
+}
+
+#[test]
 fn wrong_argument_counts_and_kinds_are_plain() {
     let e = first_error(&func("text", "return text.pad(s)"));
     assert!(e.contains("\"text.pad\" takes 2 values (t, width), but 1 was given."), "{e}");

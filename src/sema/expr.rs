@@ -748,6 +748,8 @@ impl Checker<'_> {
                 return self.std_call(cx, &super::stdlib::StdCall { e, func, args, types: &arg_types }, None, ok);
             }
             let mut cands = self.scopes[cx.file].names_of(&[Kind::Function, Kind::RustBlock]);
+            // `txt.split(...)`: the built-in library's `module.function` names are candidates too
+            cands.extend(crate::stdlib::FUNCS.iter().map(|f| format!("{}.{}", f.module, f.name)));
             cands.sort();
             let span = func[0].span.to(func[func.len() - 1].span);
             let d = Diagnostic::error(

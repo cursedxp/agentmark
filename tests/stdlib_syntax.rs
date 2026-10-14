@@ -104,3 +104,22 @@ fn the_linter_sees_names_introduced_by_the_new_statements() {
         assert!(findings.iter().any(|d| d.code == "vague-name"), "{stmt}: {findings:?}");
     }
 }
+
+#[test]
+fn the_reference_lists_every_function_of_the_table_and_every_file_verb() {
+    let reference = std::fs::read_to_string("docs/reference.md").unwrap();
+    let start = reference.find("### 22.3").expect("docs/reference.md has a 22.3 section");
+    let section = &reference[start..];
+    let section = &section[..section.find("\n## Appendix").unwrap_or(section.len())];
+    for f in agentmark::stdlib::FUNCS {
+        let ps: Vec<&str> = f.params.iter().map(|p| p.0).collect();
+        let sig = format!("{}({})", f.name, ps.join(", "));
+        assert!(section.contains(&sig), "the 22.3 table in docs/reference.md lacks {}.{sig}", f.module);
+    }
+    for m in agentmark::stdlib::MODULES {
+        assert!(section.contains(&format!("| `{m}` |")), "module {m} is not in the table");
+    }
+    for v in agentmark::stdlib::FILE_VERBS {
+        assert!(section.contains(&format!("`file {} ", v.verb)), "file {} is not in the verb table", v.verb);
+    }
+}

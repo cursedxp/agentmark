@@ -50,6 +50,7 @@
     - print: "not a number"
 - print: "{path.join("photos", "a.jpg")} {path.name("p/a.tar.gz")} {path.stem("p/a.tar.gz")}"
 - print: "{path.extension("p/a.tar.gz")} {path.parent("p/a.tar.gz")}"
+- print: "{date.format(now, "YYYY-MM-DD HH:mm")}"
 
 > CSV and JSON in both directions, and standard input.
 # Command: data
@@ -72,6 +73,8 @@
   - else:
     - print: "{note.id} {note.title}"
 - print: "{json.encode(notes)}"
+- set blob = json.encode({ id: 1, name: label })
+- print: "{blob}"
 - try do json.parse("\{\"id\": 7, \"title\": \"seven\"\}") as Note -> one
 - print: "{one.title} {csv.encode(sales)}"
 - try do csv.parse("region,product\nEU,Widget\n") as list of Sale -> broken
@@ -98,3 +101,10 @@
 - try file read "missing.txt" -> nothing
   otherwise:
     - print: "missing.txt is not there"
+
+> A pattern the program is given can only be checked when it runs.
+# Command: pattern
+- args: pattern: text
+
+## Run
+- print: "{regex.matches("abc", pattern)}"
