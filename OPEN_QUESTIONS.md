@@ -881,7 +881,6 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 
 ## Q421 — Example 08 is not quoted in the docs (step 26)
 - Choice: `examples/08-notes-api` appears in prose and tables only. The docs quote only programs that `agentmark check` accepts today (06, 07, 09, 10 and the agents), through `file=` so a sample cannot drift. When 08 passes, a `file=` quote of one route can be added. (Done in step 25b: Q415.)
-- Choice: `examples/08-notes-api` appears in prose and tables only. The docs quote only programs that `agentmark check` accepts today (06, 07, 09, 10 and the agents), through `file=` so a sample cannot drift. When 08 passes, a `file=` quote of one route can be added.
 
 ## Q422 — Installer test: stand-in `cargo` always, real install opt-in (step 28)
 - Choice: `tests/install_script.rs` always runs `sh -n`, `--help`, the missing-cargo message and the whole clone/update/install/uninstall flow against a local git repository with a stand-in `cargo` that records its arguments (under a second). The real install, which compiles the compiler and the language server (about two minutes, reusing `CARGO_TARGET_DIR`), runs only with `AGENTMARK_TEST_INSTALL=1`; it passed once in this worktree. `shellcheck` was not available here, so it is not part of the tests.

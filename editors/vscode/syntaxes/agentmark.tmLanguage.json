@@ -131,6 +131,13 @@
           }
         },
         {
+          "match": "^(##)\\s+([A-Za-z_][\\w]*)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "entity.name.function.agentmark" }
+          }
+        },
+        {
           "match": "^(##)\\s+(.*)$",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },
