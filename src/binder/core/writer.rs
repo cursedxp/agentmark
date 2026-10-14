@@ -102,7 +102,7 @@ pub fn render_binding(
         } else {
             doc_line(&it.summary)
         };
-        o.push_str(&format!("> {doc}\n"));
+        o.push_str(&format!("> {}\n", fit_doc(&doc)));
         o.push_str(&format!("## {}\n", it.sig.heading(&it.name)));
         o.push_str(&format!("  ```{code_lang}\n"));
         for l in it.body.lines() {
@@ -117,7 +117,7 @@ pub fn render_binding(
     if !b.not_bound.is_empty() {
         o.push_str("\n## Not bound\n");
         for (name, reason) in &b.not_bound {
-            let r = doc_line(reason);
+            let r = fit_reason(name, &doc_line(reason));
             if r.is_empty() {
                 o.push_str(&format!("- {name}\n"));
             } else {
@@ -126,6 +126,51 @@ pub fn render_binding(
         }
     }
     o
+}
+
+/// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). A reason is
+/// `text (library::path)`; when the entry is too long the text is cut with `...` and the path,
+/// which names the item to wrap by hand, is kept (cut only if the path alone does not fit).
+fn fit_reason(name: &str, reason: &str) -> String {
+    const MAX: usize = 120;
+    let room = MAX.saturating_sub(name.chars().count() + 4); // "- " + ": "
+    if reason.chars().count() <= room {
+        return reason.to_string();
+    }
+    let cut = |s: &str, n: usize| -> String {
+        let keep = n.saturating_sub(3);
+        format!("{}...", s.chars().take(keep).collect::<String>().trim_end())
+    };
+    match reason.rfind(" (").filter(|_| reason.ends_with(')')) {
+        Some(i) => {
+            let path = &reason[i + 1..];
+            let path_len = path.chars().count();
+            if path_len + 5 <= room {
+                format!("{} {path}", cut(&reason[..i], room - path_len - 1))
+            } else {
+                cut(reason, room)
+            }
+        }
+        None => {
+            // keep the start and the end: the end usually says why; prefer a "; " boundary
+            let tail_len = match reason.rfind("; ") {
+                Some(i) if reason[i + 2..].chars().count() + 12 <= room => reason[i + 2..].chars().count(),
+                _ => room / 3,
+            };
+            let head: String = reason.chars().take(room - tail_len - 5).collect();
+            let tail: String = reason.chars().skip(reason.chars().count() - tail_len).collect();
+            format!("{} ... {}", head.trim_end(), tail.trim_start())
+        }
+    }
+}
+
+/// A `>` line of at most 120 characters.
+fn fit_doc(doc: &str) -> String {
+    if doc.chars().count() <= 118 {
+        return doc.to_string();
+    }
+    let head: String = doc.chars().take(115).collect();
+    format!("{}...", head.trim_end())
 }
 
 #[cfg(test)]

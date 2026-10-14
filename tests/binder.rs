@@ -586,7 +586,8 @@ fn a_failing_dependency_rustdoc_build_is_reported_in_the_reexport_line() {
     let f = parse(&out.path);
     let n = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").expect("re-export listed");
     let r = n.reason.as_deref().unwrap();
-    assert!(r.contains("not bound") && r.contains("cargo exploded for ext"), "{r}");
+    // long reasons are cut to 120 characters (Q110): the start and the cause survive
+    assert!(r.contains("re-export of `ext::Size`") && r.contains("cargo exploded for ext"), "{r}");
     assert!(binding(&f).not_bound.iter().all(|n| n.item != "w_size"));
 }
 
@@ -609,4 +610,37 @@ fn a_dependency_json_directory_replaces_the_nightly_build() {
     let f = parse(&bind("demo", &o2).unwrap().path);
     let r = binding(&f).not_bound.iter().find(|n| n.item == "reexport_ext_size").unwrap().reason.clone().unwrap();
     assert!(r.contains("AGENTMARK_RUSTDOC_JSON_DIR"), "{r}");
+}
+
+#[test]
+fn freshly_bound_files_keep_every_line_within_the_limit_and_check_clean() {
+    // SPEC 18.3: the limits apply to generated files too (Q110).
+    for (c, _) in CRATES {
+        let dir = scratch(&format!("limit-{c}"));
+        let out = bind(c, &opts(&dir, c, vec![])).unwrap();
+        let text = std::fs::read_to_string(&out.path).unwrap();
+        for (i, l) in text.lines().enumerate() {
+            assert!(l.chars().count() <= 120, "{c}:{}: {} chars: {l}", i + 1, l.chars().count());
+        }
+        // still names the library path of what was not bound
+        assert!(text.contains("## Not bound"), "{c}");
+        let project = agentmark::project::Project::load(dir.to_str().unwrap());
+        match agentmark::sema::check(&project) {
+            Ok(_) => {}
+            Err(d) => {
+                let errors: Vec<_> =
+                    d.into_iter().filter(|x| x.severity == agentmark::diag::Severity::Error).collect();
+                assert!(errors.is_empty(), "{c}:\n{}", project.render(&errors));
+            }
+        }
+    }
+}
+
+#[test]
+fn not_bound_entries_are_cut_but_keep_the_library_path() {
+    let dir = scratch("limit-path");
+    let out = bind("sha2", &opts(&dir, "sha2", vec![])).unwrap();
+    let text = std::fs::read_to_string(&out.path).unwrap();
+    let line = text.lines().find(|l| l.starts_with("- sha224_output_size:")).expect("entry");
+    assert!(line.contains("...") && line.ends_with("::output_size)"), "{line}");
 }
