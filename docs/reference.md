@@ -790,8 +790,7 @@ An expression computes a value. It appears after `set`, in conditions, in the `{
 
 ## 7. Tool manifest
 
-Tools are declared in `tools.toml` next to the source file (for a project: at its root). This is the
-manifest every example project uses:
+Tools are declared in `tools.toml` next to the source file. For a project it sits at the root. This is the manifest every example project uses:
 
 ```toml file=examples/01-invoice-chaser/tools.toml
 [email]
@@ -814,6 +813,15 @@ verbs = []
 effect = "local"
 ```
 
+**Rules**
+- An unknown tool, verb, target or source is an error with a suggestion.
+- A tool that an agent does not list in `tools:` is an error. See section [2.3](#23-agent).
+- `agentmark.toml` is a separate file. It holds `name`, `version`, `targets` and `[lint]` settings, as section [18.1](#181-project-layout) shows, plus `[models]` and `[crates]`, as sections [19](#19-model-providers) and [15.4](#154-binding-file-format) show.
+- The generated program defines one trait per tool. The runtime ships `MockTools`, which returns fixture data and records calls.
+- You supply the real implementations for production, in `rust/connect.rs`. See section [9.1](#91-generated-rust-project-layout).
+
+**Keys of a tool table**
+
 | key | meaning |
 |---|---|
 | table name (`[email]`) | the tool's name, as written in `tools:` and in statements |
@@ -821,19 +829,13 @@ effect = "local"
 | `targets` | words allowed after the verb (`email send customer`) |
 | `sources` | names readable as `tool.source` (`crm.invoices`); each is plural, and its singular names a record (`Invoice`) and is also the target word of `update` (Q5) |
 | `events` | names usable in `## When <tool> receives <event>`; each names a record (`lead` is `Lead`) |
-| `effect` | `local`, `network` or `model`. `pure` is not allowed for a tool (Q40) |
+| `effect` | `local`, `network` or `model`; `pure` is not allowed for a tool (Q40) |
 
-An unknown tool, verb, target or source is an error with a suggestion; a tool the agent does not list in
-`tools:` is an error (section 2.3). `agentmark.toml` is separate: it holds the project's `name`,
-`version`, `targets` and `[lint]` settings (section 9).
-
-The generated program defines one trait per tool, and the runtime ships `MockTools`, an implementation
-that returns fixture data and records calls. The user supplies real implementations for production.
+**Next:** [8. Effects](#8-effects)
 
 ## 8. Effects
 
-The report that matters most is the effect summary: for every block, everything it can touch. This is the
-real report for the invoice service, which has no agent and no model call:
+The report that matters most is the effect summary. It lists, for every block, everything the block can touch. This is the real report for the invoice service, which has no agent and no model call:
 
 ```console cwd=repo
 $ agentmark check examples/05-invoice-service
@@ -851,8 +853,14 @@ Rust blocks (trusted, not checked by AgentMark)
 ok: 0 errors, 0 warnings.
 ```
 
-Every statement has an effect class, ordered from least to most reach: `pure`, `local`, `network`,
-`model`. A fifth, `unverified`, marks calls into a library nobody approved yet (section 15.3).
+**Rules**
+- Every statement has an effect class, ordered from least to most reach: `pure`, `local`, `network`, `model`.
+- A fifth class, `unverified`, marks calls into a library nobody approved yet. See section [15.3](#153-effects-and-trust).
+- `# Rule` bodies and `guard` conditions must be `pure`. A rule that calls a `network` function is an error.
+- A function's body must not exceed its declared `effect`. A function that calls an unapproved library cannot claim `pure`, and `check` says so.
+- Rust blocks and bindings contribute their declared effect. It is trusted, because the checker cannot look inside Rust.
+
+**Classes**
 
 | class | what it is | where it comes from |
 |---|---|---|
@@ -861,26 +869,32 @@ Every statement has an effect class, ordered from least to most reach: `pure`, `
 | `network` | talks to another system | a `network` tool, reading a tool source such as `crm.invoices` |
 | `model` | asks a model | `ask model` |
 
-Rules and consequences:
+**Reading the summary**
+- A summary line looks like `unit / heading: model, network(email, crm), local(log)`.
+- The class names the highest reach. The brackets name the tools in order of first use.
+- Agents, services and commands print `unit / heading:`. Functions and rules print `function name:` and `rule name:`, per Q116.
+- The summary is also written into the generated Rust file as `// Effects: ...` at the top.
+- `agentmark check --json` prints the same facts as one JSON document for editors and CI. Its layout is in `docs/check-json.md`.
 
-* `# Rule` bodies and `guard` conditions must be `pure`. A rule that calls a `network` function is an error.
-* A function's body must not exceed its declared `effect`. A function that calls an unapproved library
-  cannot claim `pure`, and `check` says so.
-* Rust blocks and bindings contribute their declared effect. It is trusted, because the checker cannot
-  look inside Rust.
-* The summary line is `unit / heading: model, network(email, crm), local(log)`: the class names the
-  highest reach, the brackets name the tools in order of first use. Agents, services and commands print
-  `unit / heading:`; functions and rules print `function name:` and `rule name:` (Q116).
-* The summary is also written into the generated Rust file as `// Effects: ...` at the top.
-* `agentmark check --json` prints the same facts as one JSON document for editors and CI; its layout is
-  documented in `docs/check-json.md`.
+**Next:** [9. Compilation](#9-compilation)
 
 ## 9. Compilation
+
+Check that every file is in the canonical style:
 
 ```console cwd=repo
 $ agentmark fmt --check examples/01-invoice-chaser
 5 files are canonical.
 ```
+
+**Rules**
+- The pipeline is `source -> lexer -> parser -> AST -> semantic check -> L2 lowering -> IR -> Rust code`. The IR is independent of the target.
+- A new target is one new folder under `src/codegen/`. See `docs/internals.md`.
+- Only Rust exists in v0.1. It is `--target rust`, the default.
+- A project is a folder, normally with an `agentmark.toml` at its root. A single `.agent.md` file is also a project, with fewer rules, per Q34.
+- The generated program calls real systems through the project's own file `rust/connect.rs`. See section [9.1](#91-generated-rust-project-layout).
+
+**The commands**
 
 ```text
 agentmark check <file|dir> [--json] [--allow-unverified]   validate; print the effect summary, guessed types, unapproved libraries
@@ -895,48 +909,54 @@ agentmark trace <file|dir> --mock --fixtures <dir>         the same, printing th
 ```
 
 `check`, `fmt`, `lint`, `doc` and `bind` read and judge the program. `build`, `run` and `trace` produce a program from it.
-`run` and `trace` build the project into a cache folder, then run every entry once; `trace` prints the trace on stdout
-(the folder `fixtures/01-invoice-chaser` holds the test data and the trace this run must produce):
 
-```console cwd=repo
-$ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
-{"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
-{"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
-{"kind":"guard","agent":"invoice-chaser","name":"reminder length < 800","result":"pass"}
-{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
-{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
-{"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
-```
+**Trace, run and build**
 
-`run` does not print the trace; the built-in `log` tool writes its lines to standard error (`[log] ...`), and `print`
-writes to standard output unless the trace owns it:
+1. Trace a run. `trace` builds the project into a cache folder, runs every entry once and prints the trace on standard output. The folder `fixtures/01-invoice-chaser` holds the test data and the trace this run must produce.
 
-```console cwd=repo stderr
-$ agentmark run examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
-[log] Reminded Müller GmbH about 1200.00 EUR
-```
+   ```console cwd=repo
+   $ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+   {"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
+   {"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
+   {"kind":"guard","agent":"invoice-chaser","name":"reminder length < 800","result":"pass"}
+   {"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
+   {"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
+   {"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
+   ```
 
-`build` only writes the Cargo project (`-o <dir>`, required) and then runs `cargo check` on it unless `--no-check` is given.
+2. Run without the trace. `run` does not print the trace. The built-in `log` tool writes its lines to standard error as `[log] ...`, and `print` writes to standard output unless the trace owns it.
 
-* The pipeline is `source -> lexer -> parser -> AST -> semantic check -> L2 lowering -> IR -> Rust code`. The IR is
-  independent of the target. A new target is one new folder under `src/codegen/` (see `docs/internals.md`);
-  only Rust exists in v0.1 (`--target rust`, the default).
-* `check` exits 1 while an unverified library is left, unless `--allow-unverified` is given; the listing is printed
-  either way (Q112). `build`, `run` and `trace` apply the same rule: they refuse unapproved libraries.
-  With `--allow-unverified` (all four commands) an unverified library counts as its `proposed-effect` for the effect
-  checks, so a `pure` function that calls a library proposed `pure` passes; each such library gets one warning
-  (W008) saying so, and nothing is approved (Q203). Without the flag, such a function is an error.
-* Exit codes: 0 fine; 1 the project has problems (errors, denied lint rules, files that are not canonical with
-  `--check`, unapproved libraries, a failed bind); 2 the command itself cannot run (bad arguments,
-  a path that does not exist or is not a `.agent.md` file, no model for `bind`). Diagnostics go to stderr, reports
-  and counts to stdout (Q113).
-* `check`, `build`, `run` and `trace` auto-bind: every `# Import: crate x` that has no binding file gets one before the
-  program is checked, and `binding x: generated` is printed on standard error. Existing bindings are used as they are
-  (Q137, Q201). If binding is impossible (no API key, no mock, offline without cached metadata) the message is
-  `agentmark: cannot bind "x": <why>` and the program is checked without it; a crate that a statement or an agent's
-  `tools:` line needs then gets error E219 on its import line.
-* The generated program calls real systems through the project's own file `rust/connect.rs` (section 9.1).
-* A project is a folder (normally with an `agentmark.toml` at its root). A single `.agent.md` file is also a project, with fewer rules (Q34).
+   ```console cwd=repo stderr
+   $ agentmark run examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+   [log] Reminded Müller GmbH about 1200.00 EUR
+   ```
+
+3. Build only. `build` writes the Cargo project to `-o <dir>`, which is required. It then runs `cargo check` on it unless `--no-check` is given.
+
+**Exit codes**
+
+| code | meaning |
+|---|---|
+| 0 | fine |
+| 1 | the project has problems: errors, denied lint rules, files that are not canonical with `--check`, unapproved libraries, a failed bind |
+| 2 | the command itself cannot run: bad arguments, a path that does not exist or is not a `.agent.md` file, no model for `bind` |
+
+Diagnostics go to standard error. Reports and counts go to standard output, per Q113.
+
+**Unverified libraries**
+- `check` exits 1 while an unverified library is left, unless `--allow-unverified` is given. The listing is printed either way, per Q112.
+- `build`, `run` and `trace` apply the same rule: they refuse unapproved libraries.
+- With `--allow-unverified` on any of the four commands, an unverified library counts as its `proposed-effect` for the effect checks. A `pure` function that calls a library proposed `pure` then passes.
+- Each such library gets one warning, W008, and nothing is approved, per Q203. Without the flag, such a function is an error.
+
+**Automatic binding**
+- `check`, `build`, `run` and `trace` bind first. Every `# Import: crate x` that has no binding file gets one before the program is checked, and `binding x: generated` is printed on standard error.
+- Existing bindings are used as they are, per Q137 and Q201.
+- If binding is impossible, the message is `agentmark: cannot bind "x": <why>` and the program is checked without it. Binding is impossible with no API key, no mock, or no network and no cached metadata.
+
+| code | message | fix |
+|---|---|---|
+| E219 | The crate `"x"` has no binding yet, but this file uses it. | fix the reason binding failed, then run `agentmark bind x`; the error sits on the import line of a crate that a statement or an agent's `tools:` line needs |
 
 ### 9.1 Generated Rust project layout
 
@@ -952,28 +972,42 @@ out/
   src/connect.rs          a copy of the project's rust/connect.rs (see below)
 ```
 
-Services and commands get a file each (an axum router, a clap subcommand). The generated code reads like the
-source: one function per block, the block heading as its doc comment, and a comment
-`// <file>.agent.md:<line>` before every statement. The `Cargo.toml` pins a library to the exact version in its
-binding header (Q155).
+**Rules**
+- Services and commands get a file each: an axum router and a clap subcommand.
+- The generated code reads like the source. It has one function per block, the block heading as its doc comment, and a comment `// <file>.agent.md:<line>` before every statement.
+- The `Cargo.toml` pins a library to the exact version in its binding header, per Q155.
 
-The main program takes `--once` (run every scheduled entry once, in `# Run` order, then each event entry once per
-fixture item), `--schedule` (run for real on the schedule), `--mock` with `--fixtures <dir>` (pretend tools and
-model) and `--trace <file|->`.
+**Flags of the generated program**
 
-**Real tools: `rust/connect.rs`.** In a real run (no `--mock`) every tool call goes through `Connected`, which `connect()` in the user's file
-`rust/connect.rs` (beside `agentmark.toml`; next to the source file for a single-file project) builds. `build`, `run` and `trace` create the
-file from a stub when it is missing (the stub's methods fail with `not connected yet: implement Crm::list in rust/connect.rs`), never overwrite
-it, and copy it to `src/connect.rs` of the output on every build; with `--mock` it is used if it exists and never created (Q135). `log` is built in.
-The example projects ship the stubs: `examples/01-invoice-chaser/rust/connect.rs`. `docs/libraries.md` section 7 shows one.
+| flag | does |
+|---|---|
+| `--once` | runs every scheduled entry once, in `# Run` order, then each event entry once per fixture item |
+| `--schedule` | runs for real on the schedule |
+| `--mock` with `--fixtures <dir>` | pretends the tools and the model |
+| `--trace <file\|->` | writes the trace to a file, or to standard output with `-` |
+
+**Real tools: `rust/connect.rs`**
+- In a real run, without `--mock`, every tool call goes through `Connected`. The function `connect()` in the user's file `rust/connect.rs` builds it.
+- The file sits beside `agentmark.toml`. In a single-file project it sits next to the source file.
+- `build`, `run` and `trace` create the file from a stub when it is missing. The stub's methods fail with `not connected yet: implement Crm::list in rust/connect.rs`.
+- They never overwrite the file, and they copy it to `src/connect.rs` of the output on every build.
+- With `--mock` the file is used if it exists and never created, per Q135.
+- `log` is built in.
+- The example projects ship the stubs, such as `examples/01-invoice-chaser/rust/connect.rs`. `docs/libraries.md` section 7 shows one.
 
 ### 9.2 Runtime crate `agentmark-rt`
 
-`crates/agentmark-rt` is in the same repository and provides: `Money` and `Currency`; the scheduler; the
-`ModelClient` trait with an Anthropic implementation and `MockModel`; `MockTools` and the fixture loader; the
-`Trace` recorder (one JSON line per tool or model call); and `Ctx`, which bundles them. Money text is
-`"1200.00 EUR"`: EUR, USD, GBP, CHF with two decimals, JPY with none; parsing a number with more decimals than the
-currency has is an error, never silent rounding (Q14).
+`crates/agentmark-rt` is in the same repository. It provides:
+- `Money` and `Currency`.
+- the scheduler.
+- the `ModelClient` trait with an Anthropic implementation, and `MockModel`.
+- `MockTools` and the fixture loader.
+- the `Trace` recorder, which writes one JSON line per tool or model call.
+- `Ctx`, which bundles them.
+
+Money text is `"1200.00 EUR"`. EUR, USD, GBP and CHF have two decimals and JPY has none. Parsing a number with more decimals than the currency has is an error, never silent rounding, per Q14.
+
+**Next:** [10. Error messages](#10-error-messages)
 
 ## 10. Error messages
 
