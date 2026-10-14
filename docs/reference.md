@@ -735,8 +735,8 @@ An expression computes a value. It appears after `set`, in conditions, in the `{
 
 | code | message | fix |
 |---|---|---|
-| E203 | `Cannot add a duration to money.` | money only combines with money; durations combine with dates and other durations |
-| E400 | `A value of type <T> cannot be written into text as a whole.` | `join` a list of text, write a map entry by entry, or name the record's fields, per Q409 |
+| E203 | `Cannot add T to T.` or `Cannot subtract T from T.` or `Cannot multiply T by T.` or `Cannot divide T by T.` or `Cannot compare T with T.` or `Cannot add USD money and EUR money.` | money only combines with money and durations combine with dates and other durations; other E203 messages are in section [10](#10-error-messages) |
+| E400 | `A value of type T cannot be written into text as a whole.` | `join` a list of text, write a map entry by entry, or name the record's fields, per Q409 |
 
 **Next:** [6. Types](#6-types)
 
@@ -956,7 +956,7 @@ Diagnostics go to standard error. Reports and counts go to standard output, per 
 
 | code | message | fix |
 |---|---|---|
-| E219 | The crate `"x"` has no binding yet, but this file uses it. | fix the reason binding failed, then run `agentmark bind x`; the error sits on the import line of a crate that a statement or an agent's `tools:` line needs |
+| E219 | `The crate "x" has no binding yet, but this file uses it.` | fix the reason binding failed, then run `agentmark bind x`; the error sits on the import line of a crate that a statement or an agent's `tools:` line needs |
 
 ### 9.1 Generated Rust project layout
 
@@ -1013,6 +1013,8 @@ Money text is `"1200.00 EUR"`. EUR, USD, GBP and CHF have two decimals and JPY h
 
 Every error points at a line, says in plain words what was expected and puts a caret under the offending token. It adds a suggestion when a known word is within edit distance 2.
 
+Messages are the exact text check prints; `x`, `N` and `T` stand for the names, numbers and types in your program.
+
 ```agentmark invalid name=typo.agent.md says=Unknown_target
 > Mails a reminder.
 # Agent: reminder
@@ -1044,73 +1046,79 @@ typo.agent.md:7
 
 | code | message | fix |
 |---|---|---|
-| E001 | Tabs are not allowed in AgentMark files. | use 2 spaces for each indentation level |
-| E002 | Indentation must be 2 spaces per level. | indent in steps of 2 spaces |
-| E003 | This code fence is never closed. | add a line with just three backticks after the code |
-| E004 | A line is not part of the language, or a line with statements under it lacks its `:`. | start statements with `- `, put explanations in a `>` comment, end a line that owns statements with `:` |
-| E010 | Unknown property for a declaration. | use one of the properties the message lists |
-| E011 | The property is given twice. | remove one of the lines |
-| E012 | A declaration lacks a required property, such as the `effect` of a function or of a `## Rust` block. | add the line the message names |
-| E020 | Unknown declaration. | start with one of the kinds in section [1](#1-file-structure); the message suggests the closest |
-| E030 | This line is not inside a declaration. | start with a heading such as `# Agent: name` |
-| E031 | This line is indented more than is possible here. | indent one level, 2 spaces, at a time |
-| E032 | A structure error, for example a declaration with no `##` blocks, or lines under an import. | add the blocks, or remove the lines under the import |
-| E040 | Syntax error, for example an unknown statement word. | use a statement from Appendix A; the message suggests the closest |
-| E050 | Import syntax error, for example a glob renamed with `as`, or a folder without a name. | write `# Import: ./folder as name` for a folder, and do not rename a glob |
+| E001 | `Tabs are not allowed.` or `Tabs are not allowed in AgentMark files.` | use 2 spaces for each indentation level |
+| E002 | `Indentation must be 2 spaces per level, but this line is indented N spaces.` or `Headings must start at the beginning of the line.` | indent in steps of 2 spaces; start headings in column 1 |
+| E003 | ``This code fence is never closed. Add a line with just ``` after the code.`` | close the fence |
+| E004 | `This line is missing the ":" at its end.` or `This line is not part of the language: statements start with "- " and headings with "# " or "## ".` | end a line that owns statements with `:`; put explanations in a `>` comment |
+| E010 | `Unknown property "x" for a Rule.` | use one of the properties the message lists; the last words of the message name the declaration, such as a Type, a Rule, an Agent or a Rust block |
+| E011 | `The property "x" is given twice.` | remove one of the lines |
+| E012 | `The rule "x" has no "when" line.` or `The function "x" does not say what effect it has.` or `The command "x" has no "## Run" block.` or `The Rust block "x" does not declare its effect.` or `The tool "x" does not say what effect it has.` or `The tool "x" has no verbs.` | add the line or block the message names; the first form also exists for a type, a constant, an agent and a binding, each with its own required line |
+| E020 | `Unknown declaration "x".` | start with one of the kinds in section [1](#1-file-structure); the message suggests the closest |
+| E030 | `This line is not inside a declaration. Start with a heading such as "# Agent: name".` | start with a heading |
+| E031 | `This line is indented N spaces, but only N are possible here. Indent by one level (2 spaces) at a time.` | indent one level at a time |
+| E032 | `An import is a single line and has nothing under it.` or `A Record has no "##" blocks.` or `A property starts with "- ", like "- model: claude".` or `A field starts with "- ", like "- amount: money".` or `A variant starts with "- ", like "- Circle: radius: int" or "- Empty".` or `A "# Run" entry starts with "- " and names an agent, service or command.` or `Nothing can be indented under "x:".` or `Nothing can be indented under a field.` or `Nothing can be indented under a variant.` or `Nothing can be indented under this statement.` or `Only "otherwise:" can be indented under a "try" line.` or `Statements go under the "effect" line, not under "x".` or `A Function has no blocks except "## Rust: name".` or `A Command has only one "## Run" block.` or `A handle block is written "## Handle: <crate>.<Type>", for example "## Handle: sqlx.Query".` or `"x" needs its Rust code in a fenced block (```rust ... ```).` or `A "match" needs branches indented under it, like "- Circle c:" or "- otherwise:".` or `A branch of "match" starts with "- ", like "- Circle c:".` or `A "match" has only one "otherwise:" branch.` or `"otherwise:" must be the last branch of a "match".` or `"else:" must come directly after an "if" at the same indentation.` or `"otherwise:" must be indented under a "try" line.` or `This is not a statement.` | follow the shape the message shows |
+| E040 | `Unknown statement "x".` or `Unknown block heading "x".` or `Unknown word "x" after "ask". The statement is "ask model: ...".` or `Expected T here, but found T.` or `This line is missing the ":" at its end.` | use a statement or heading from Appendix A; the message suggests the closest |
+| E050 | `A glob import cannot be renamed with "as".` or `"x" is not a .agent.md file. To import a folder, give it a name: "# Import: x as <name>".` | name a folder import with `as <name>` and do not rename a glob |
 
 **Project files: E1xx**
 
 | code | message | fix |
 |---|---|---|
-| E100 to E105 | `tools.toml` is wrong: not valid TOML, an unknown key, a list that is not a list of words, an entry that is not a tool table, a missing or unknown `effect`. | write each tool as a table `[name]` with the keys of section [7](#7-tool-manifest) and `effect = "local"` or `"network"` |
-| E110 | The project or file cannot be found or read. | check the path |
-| E111 | An imported file is missing. | fix the path of the `# Import` line |
-| E112 | Imports form a cycle. | break the cycle; the message prints it |
-| E113 | A glob import matches no file. | fix the pattern |
-| E114 | `agentmark.toml` is wrong: not valid TOML, or a key of the wrong type. | fix the key the message names |
+| E100 | `This is not valid TOML: <reason>.` | each tool is a table, a `[name]` line followed by `key = value` lines |
+| E101 | `Unknown key "x" for tool "x".` | use one of the keys the message lists |
+| E102 | `The tool "x" does not say what effect it has.` | add `effect = "local"` or `effect = "network"` |
+| E103 | `"x" is not an effect class for a tool.` | use `local`, `network` or `model` |
+| E104 | `"x" of tool "x" must be a list of words.` | write it like `verbs = ["one", "two"]` |
+| E105 | `"x" must be a tool table, written as [x].` | every top-level entry of `tools.toml` is one tool |
+| E110 | `Cannot find the project "x".` or `Cannot read the file "x".` | check the path |
+| E111 | `Cannot find the file "x".` or `Cannot find the folder "x".` | fix the path of the `# Import` line |
+| E112 | `Import cycle: a -> b -> a.` | move what both files need into a third file that imports neither |
+| E113 | `The pattern "x" matches no files.` | fix the pattern |
+| E114 | `This is not valid TOML: <reason>.` or `"x" in agentmark.toml must be text.` or `"targets" in agentmark.toml must be a list of words, like ["rust"].` or `"deny" under [lint] must be a list of rule names.` or `"lsp" in agentmark.toml must be a table, like [lsp] model_actions = true.` or `"rust" in agentmark.toml must be a table with [rust.dependencies].` or `"crates" in agentmark.toml must be a table, like [crates] sqlx = { version = "0.8", features = ["sqlite"] }.` or `"models" in agentmark.toml must be a table, like [models] test = "mock".` or `Unknown key "x" in agentmark.toml.` | fix the key the message names |
 
 **Meaning: E2xx**
 
 | code | message | fix |
 |---|---|---|
-| E200 | The name is already declared in another place. | rename one of them |
-| E201 | Unknown type. | declare it or import its file |
-| E202 | Unknown name, field or event record, for example "no record Lead is visible in this file". | declare the record or import the file that does |
-| E203 | Type mismatch, for example "The prompt must be text". | use a value of the type the message names |
-| E204 | A `maybe` value is used before it is unwrapped. | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
-| E205 | An effect sits in a pure place such as a rule or a guard. | move the effectful call out |
-| E206 | A function has more effect than it declares. | raise the declared `effect`, or move the line out |
-| E207 | Unknown tool, verb, target or source. | use a name from `tools.toml`; the message suggests the closest |
-| E208 | The tool is not listed in the tools of the agent. | add it to the `- tools:` line |
-| E209 | A call is wrong: unknown action or function, a `result` called without `try`, a function with no result stored. | call a `## Do` block or a visible function; use `try` for a `result of T` |
-| E210 | A statement is in the wrong place, such as `stop` in a function or `respond` outside a route. | use `return` in a function; use routes of a `# Service` for `respond` |
-| E211 | A hard limit is broken. See section [18.3](#183-hard-limits). | split the file or the block |
-| E212 | Two statements of a `parallel` block write the same variable. | give each its own variable, or run them one after the other |
-| E213 | A `## Do` block is called wrongly: with values, with a result, or with another record than its first caller. | call it from places that have the same record in front of them |
-| E214 | An item of `# Run` is not an imported agent, service or command. | import it first |
-| E215 | An agent property is wrong, such as an unknown tool. | declare the tool in `tools.toml` |
-| E216 | A constant is defined in terms of itself. | break the loop |
-| E217 | A record has the same field twice. | remove one |
-| E218 | Two services have `state:`. | keep the state in one service, or pass data through a tool |
-| E219 | A crate import has no binding although a statement or an agent's `tools:` line uses it. | run `agentmark bind <crate>` |
-| E220 | An on-demand library item could not be bound. See section [15.2](#152-the-binder). | use a `## Rust` block, or bind it by hand |
-| E221 | The model driver is unknown or unsupported. | use a driver of section [19](#19-model-providers) |
+| E200 | `The record "x" is already declared in file:line.` | names are unique across the project, so rename one of them; the first word of the message names the kind of declaration |
+| E201 | `Unknown type "x".` | declare it or import its file |
+| E202 | `"x" holds T, but no record "x" is visible in this file.` or `The event "x" arrives as a record, but no record "x" is visible in this file.` or `Unknown field "x" on T.` or `Unknown rule "x".` or `Unknown name "x".` or `The variant "x" has no field "x".` or `Unknown field "x" on this record.` | declare the record or import the file that does; names come from `set` and `->` lines above, loop variables, constants and imported declarations |
+| E203 | `The prompt must be text, but this is T.` or `"as" needs a record the model's answer is checked against, but "x" is T.` or `"x" holds T, but this is T.` or `A file path must be text, but this is T.` or `This list holds T, but this is T.` or `"append" needs a list, but this is T.` or `This returns T, but the function says it returns "T".` or `"x.y" is a whole list; loop over it to read the fields of its items.` or `A target value must be text, but this is T.` or `The field "x" of T is T, but this is T.` or `The tool x takes a T here, but this is T.` or `The tool x takes text here, but this is T.` or `"x" of "x y" must be T, but this is T.` or `This is T, which can never be empty.` or `"matches" needs a record, but "x" is T.` or `Only text and lists have a length, but this is T.` or `"no amounts changed" checks text the model wrote, but this is T.` or `"x" needs a yes/no condition, but this is T.` or `"x" needs a list, but this is T.` or `The rule "x" is about T, but the list holds T.` or `"x" is a T, which has no fields of its own, so ".y" cannot be read.` or `"x" is T, which has no fields, so ".y" cannot be read.` or `Cannot add T to T.` or `Cannot subtract T from T.` or `Cannot multiply T by T.` or `Cannot divide T by T.` or `Cannot compare T with T.` or `Cannot add USD money and EUR money.` or `"x" compares two values of the same kind, but the first is T and this is T.` or `"x" needs a whole number, but this is T.` or `The text between the parts must be text, but this is T.` | use a value of the type the message names |
+| E204 | `This is T, which is never empty, so "is some" is not needed.` or `Declare the result as "maybe T" and check it with "is some" or "is not empty" before using it.` or `This value can be empty (T), so it cannot be used yet.` or `"x" can be empty here, so "y" cannot be read from it yet.` | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
+| E205 | `A rule must be pure, but "x" has the effect local.` | move the effectful call out; in a guard, a constant or a collection word the message starts `A guard must be pure`, `A constant must be pure` or `An expression inside a collection word must be pure` |
+| E206 | `The function "x" says "- effect: pure", but this line has the effect local (print).` | raise the declared `effect`, or move the line out; the message names a function, a tool or a Rust block |
+| E207 | `Unknown tool "x".` or `"x" is a tool, not a value.` or `Unknown source "x" for tool x.` or `Unknown event "x" for tool x.` or `The tool x has no verbs, but "x" was given.` or `Unknown verb "x" for tool x.` or `The tool x needs a verb.` or `The tool x has no targets, so "x" is not expected here.` or `Unknown target "x" for tool x.` or `Which x? x, x are both in scope.` or `"x" needs a record in front of this block with a "x_email" or "x" field.` or `The binding x needs a verb.` or `The handle "x" (T) has no method "x".` or `Unknown verb "x" for binding x.` or `"x y" takes N values (a, b), but N were given.` or `"x" is a handle, so the line needs a method after it.` | use a name from `tools.toml`; the message suggests the closest |
+| E208 | `The tool "x" is not listed in the tools of agent "x".` | add it to the `- tools:` line |
+| E209 | `Unknown action or function "x".` or `Unknown function "x".` or `The function "x" can fail (it returns "T"), so it has to be called with "try".` or `The function "x" can fail (it returns "result of T"), so it cannot be used inside an expression.` or `The verb "x" of "x" can fail (it returns "T"), so it has to be called with "try".` or `The verb "x" can fail (it returns "T"), so it cannot be used inside an expression.` or `The function "x" returns nothing, so there is no result to store.` or `The function "x" returns nothing, so it cannot be used as a value.` or `"x" takes N values (a, b), but N were given.` | `do` calls a `## Do` block or a visible function; use `try` for a `result of T` |
+| E210 | `"stop" ends a block, but this is a function.` or `"respond" only works inside a service route.` or `"read body" only works inside a service route.` or `"return" only works inside a function.` or `The function "x" has no "- out:", so it cannot return a value.` | use `return` in a function and `respond` in a route |
+| E211 | `This line is N characters long; the limit is N.` or `A file may hold only one agent, service or command, but the command "x" comes after the agent "x".` or `Several records in one file are only allowed in a "records/" folder.` or `Several rules in one file are only allowed in a "rules/" folder.` or `Records and rules cannot share a file.` or `The block "x" has no statements.` or `The block "x" has N statements; the limit is N.` or `Statements are nested N levels deep; the limit is N.` | split the file or the block; see section [18.3](#183-hard-limits) |
+| E212 | `Two statements of this "parallel" block both write "x" (the first is on line N).` or `Two statements of this "parallel" block both use the handle "x" (the first is on line N).` | give each its own variable, or run them one after the other |
+| E213 | `The block "x" takes no values.` or `The block "x" returns nothing, so there is no result to store.` or `The block "x" works on T, but here it is called with T.` | call a `## Do` block from places that have the same record in front of them |
+| E214 | `Unknown agent, service or command "x".` | import it into this file first |
+| E215 | `Unknown tool "x".` | declare the tool in `tools.toml` |
+| E216 | `The constant "x" is defined in terms of itself.` | break the loop |
+| E217 | `The record "x" has the field "x" twice.` | remove one |
+| E218 | `Only one service may have a "state:" ("x" in file:N has one), because commands use it.` | keep the state in one service, or pass data through a tool |
+| E219 | `The crate "x" has no binding yet, but this file uses it.` | run `agentmark bind x` |
+| E220 | `Could not bind "x" of x on demand: <why>` | use a `## Rust` block, or bind it by hand; see section [15.2](#152-the-binder) |
+| E221 | `Unknown model provider "x".` or `The model provider "x" is not supported in this version.` or `"x:" needs a model name, like "x:model".` or `The model is empty.` | use a driver of section [19](#19-model-providers) |
 
 **Warnings**
 
 | code | message | fix |
 |---|---|---|
-| W001 | A field type was guessed from its name. | write the type |
-| W002 | An import is not used. | remove the import line |
-| W003 | A declaration is not used. | remove it or use it |
-| W004 | A library has no binding. | run `agentmark bind <crate>` |
-| W005 | A library is not approved. | approve the binding's `- effect:` line, as section [15.3](#153-effects-and-trust) shows |
-| W006 | A file holds several runnable declarations. | split it into a project folder with one per file |
-| W007 | A line is long only because of text between quotes. | shorten the text or split it |
-| W008 | A library's effect is assumed from its proposal, because of `--allow-unverified`. | approve the library |
+| W001 | `The field "x" has no type and its name gives no hint, so it is inferred as T.` | write the type |
+| W002 | `Unused import: nothing from "x" is used in this file.` or `Unused import: the crate "x" is not used in this file.` | remove the import line |
+| W003 | `Unused record: nothing refers to "x".` or `Unused action: no block calls "do x".` | remove it or use it; the first word of the message names the kind of declaration |
+| W004 | `The crate "x" has no binding yet.` | run `agentmark bind x`; `## Rust` blocks can already use the crate |
+| W005 | `The binding "x" is unverified: nobody approved what it may touch.` | approve the binding's `- effect:` line, as section [15.3](#153-effects-and-trust) shows |
+| W006 | `This file holds N runnable declarations (agent, service or command): it is a single-file draft.` | split it into a project folder with one declaration per file |
+| W007 | `This line is N characters long; only the text of its strings makes it longer than N.` | move the long text into a `# Constant` and use its name |
+| W008 | `The binding "x" is unverified: its effect is assumed to be "x" from the proposal (--allow-unverified).` | approve the binding |
+| W300 | `Every case is handled above, so this "otherwise:" can never run.` | remove the branch |
 
 **Where the other codes are**
-- E360 to E366 are about handles. See the table in section [15.4](#154-binding-file-format).
+- E360 to E367 are about handles. See the table in section [15.4](#154-binding-file-format).
 - E320 to E329 are about collection words. See section [22.2](#222-collection-words).
 - E340 to E347 are about the built-in library and the `file` tool. See section [22.3](#223-the-built-in-library).
 - E380 to E387 are about user-defined tools. See section [22.5](#225-user-defined-tools).
@@ -1240,7 +1248,7 @@ Layer 2 has nothing to do with agents. It holds functions, modules, services and
 
 | code | message | fix |
 |---|---|---|
-| E210 | `"stop" ends a block, but this is a function.` | use `return <value>` to leave a function |
+| E210 | `"stop" ends a block, but this is a function.` or `"respond" only works inside a service route.` or `"read body" only works inside a service route.` or `"return" only works inside a function.` or `The function "x" has no "- out:", so it cannot return a value.` | use `return <value>` to leave a function; routes answer with `respond` |
 
 ### 13.2 Module and import
 
@@ -1455,8 +1463,8 @@ A `maybe` value is unwrapped with `is some`:
 
 | code | message | fix |
 |---|---|---|
-| E204 | `This value can be empty (maybe T), so it cannot be used yet.` | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
-| E209 | `The function "f" can fail (it returns "result of T"), so it has to be called with "try".` | write `- try f(...) -> value`, optionally with an `otherwise:` branch |
+| E204 | `This is T, which is never empty, so "is some" is not needed.` or `Declare the result as "maybe T" and check it with "is some" or "is not empty" before using it.` or `This value can be empty (T), so it cannot be used yet.` or `"x" can be empty here, so "y" cannot be read from it yet.` | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
+| E209 | `The function "x" can fail (it returns "T"), so it has to be called with "try".` or `The function "x" can fail (it returns "result of T"), so it cannot be used inside an expression.` | write `- try x(...) -> value`, optionally with an `otherwise:` branch; the other E209 messages are in section [10](#10-error-messages) |
 
 **Next:** [15. Library access](#15-library-access-automatic-bindings)
 
@@ -1571,9 +1579,7 @@ fingerprint.agent.md:8
 
 | code | message | fix |
 |---|---|---|
-| E220 | `Could not bind "sha224_digest" of sha2 on demand: the code the model wrote did not pass the type check, twice.` | use a `## Rust` block for the item, or bind it by hand in `bindings/sha2.agent.md` |
-| E220 | `... on demand: the model could not be reached: <reason>.` The reason is an API error, a timeout or no answer. | run again when the model can be reached |
-| E220 | `... on demand: the signature the model chose does not fit your statement (1 value, 2 parameters).` | use a `## Rust` block, or bind it by hand |
+| E220 | `Could not bind "x" of x on demand: the code the model wrote did not pass the type check, twice.` or `Could not bind "x" of x on demand: the model could not be reached: <reason>.` or `Could not bind "x" of x on demand: the signature the model chose does not fit your statement (1 value, 2 parameters).` | use a `## Rust` block for the item, or bind it by hand in `bindings/sha2.agent.md`; the reason of the second form is an API error, a timeout or no answer, so run again when the model can be reached |
 
 **Facade crates and long items**
 - A facade crate such as `sqlx` mostly re-exports other crates, as in `pub use sqlx_core::query::query`. The binder builds their rustdoc JSON too and merges it into the facade's, so what the facade exports is bound under the facade's name.
@@ -1611,14 +1617,6 @@ A binding file starts with a generated header that lets the binder see staleness
 - Every body is the body of `pub async fn <item>(<params>) -> Result<<ret>, Box<dyn std::error::Error + Send + Sync>>`.
 - Values arrive owned. The body ends in `Ok(value)`, may use `?` and `.await`, and names the library by full path, per Q70.
 - Above every bound item the binder writes one `>` line, which is the first sentence of the library's own documentation for it, per Q80.
-- A Rust integer wider than `int`, such as `u64` or `usize`, converts with `try_from(..)?`, which fails the call on overflow.
-- The features a library is bound and built with come from `agentmark.toml`, for the binder and the generated `Cargo.toml` alike:
-
-```toml
-[crates]
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
-```
-
 **Opaque handles**
 
 A library type that AgentMark has no equivalent for, such as a hasher, a client or a response, is a **handle**. It is written `handle of <crate>.<Type>`, as v0.3 section 22.4 describes. The binder declares it where it appears in a signature and binds the constructors and the methods around it, instead of skipping them, per Q360 to Q369.
@@ -1666,12 +1664,15 @@ All of these are compile errors, in the shape of section [10](#10-error-messages
 
 | code | message | fix |
 |---|---|---|
-| E360 | `A handle type is written with its crate, but "x" has none.` or `No binding declares the handle type "x".` | write it like `handle of sha2.Sha256`; handle types come from the bindings in `bindings/`, which `agentmark bind <crate>` writes |
-| E361 | `"x" was used up on line N, so it cannot be used again here.` The message names the line that used it up. | keep using it before that line, or stop using it after |
-| E362 | The handle is a library value that cannot be printed, interpolated, compared, put in a record or a request, saved, sent or traced. | store it in a variable with `... -> name` and use it with a call that takes it |
-| E363 | A handle cannot be in a list, a `maybe` or a record. | keep one variable per handle |
-| E365 | A mode word or `self` is in the wrong place, or a handle is given twice to one call. | write `mut` and `consume` only in a binding's parameter list, and `self` first, as `self: mut handle of sha2.Sha256` |
+| E360 | `A handle type is written with its crate, but "x" has none.` or `No binding declares the handle type "x".` or `No item of this binding uses the handle "x".` | write it like `handle of sha2.Sha256`; handle types come from the bindings in `bindings/`, which `agentmark bind <crate>` writes |
+| E361 | `"x" was used up on line N ("text"), so it cannot be used again here.` or `"x" is used up here, but this line is inside a loop and runs again with the same "x".` | keep using it before that line, or make a new handle inside the loop, or use it up after the loop |
+| E362 | `"x" is T, a library value that cannot be printed, compared, saved, sent or traced.` or `This is T, a library value that cannot be printed, compared, saved, sent or traced.` | use it with a call that takes it, or take a value out of it first with `... -> name` |
+| E363 | `A handle cannot be in a list: T.` or `A handle cannot be in a maybe: T.` or `A record is saved and sent as JSON, so it cannot have a field of T.` | keep one variable per handle |
+| E365 | `"mut" in front of "handle of" only belongs in a binding's parameter list.` or `"self" must be the first parameter of a binding item, and a handle.` or `"x" is given twice in one call.` or `"x" borrows its handle, so give it a variable, not a new value.` | write `mut` and `consume` only in a binding's parameter list, `self` first as `self: mut handle of sha2.Sha256`, and store a handle in a variable before the call |
 | E366 | `"x" is a handle, and there is none to use when this step fails.` | end the `otherwise:` branch with `stop` or `return`, or drop it |
+| E367 | `x comes from outside the program, and a handle cannot: it is a live library value (T).` | read plain values from outside the program |
+
+E364 is intentionally unused. An unknown method of a handle is E207.
 
 **Handles that borrow**
 
@@ -1685,6 +1686,15 @@ The items around such a type go to the assisted tier. The model writes the glue,
   sqlx::query::Query<'static, sqlx::Sqlite, <sqlx::Sqlite as sqlx::Database>::Arguments<'static>>
   ```
 ````
+
+**Types and features**
+- A Rust integer wider than `int`, such as `u64` or `usize`, converts with `try_from(..)?`, which fails the call on overflow.
+- The features a library is bound and built with come from `agentmark.toml`, for the binder and the generated `Cargo.toml` alike:
+
+```toml
+[crates]
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+```
 
 ### 15.5 Sharing
 
@@ -1761,7 +1771,7 @@ Any agent, service, command or function may contain a block `## Rust: <name>` wh
 
 | code | message | fix |
 |---|---|---|
-| E012 | `The Rust block "x" does not declare its effect.` | add `- effect: pure`, or `local`, `network`, `model`; the compiler cannot check Rust, so it trusts this line |
+| E012 | `The Rust block "x" does not declare its effect.` | add `- effect: pure`, or `local`, `network`, `model`; the compiler cannot check Rust, so it trusts this line; the other E012 messages are in section [10](#10-error-messages) |
 
 **Next:** [18. Code organization](#18-code-organization-and-readability)
 
@@ -2121,7 +2131,7 @@ This agent is rejected:
 
 | code | message | fix |
 |---|---|---|
-| E221 | The model driver is unknown or unsupported, for example `Unknown model provider "opnai". Did you mean "openai"?` | use a driver from the table above |
+| E221 | `Unknown model provider "x".` or `The model provider "x" is not supported in this version.` or `"x:" needs a model name, like "x:model".` or `The model is empty.` | use a driver from the table above; for an unknown name the message adds a suggestion such as `Did you mean "openai"?` |
 
 ### The `[models]` table and `AGENTMARK_ENV`
 
@@ -2376,16 +2386,25 @@ shapes.agent.md:10
 
 | code | message | fix |
 |---|---|---|
-| E300 | The name is the same as another declaration's. | rename one |
-| E301 | The enum has no variants. | list the variants under the heading, like `- Circle: radius: int` or `- Empty` |
-| E303 | A variant cannot have a field called `kind`. | pick another name, for example `type` or `label` |
-| E305 | Unknown enum or variant, for example `Shape has no variant "Circel".` | write a variant bare, or after its enum as in `Shape.Empty` |
-| E306 | A variant with fields is written without them, or with the wrong ones. | write `Circle { radius: 3 }` with every field that is not `maybe` |
-| E307 | The name is a variant of several enums here. | say which one you mean, as in `Shape.Empty` |
-| E308 | `match` works on an enum, a `maybe` or a `result`, but this is something else. | use `if` for a yes/no or a comparison |
-| E309 | A branch name is not a branch of the value matched. | use the branches the message lists |
-| E310 | `This "match" does not handle the variant "Empty" of Shape.` | add a branch `- Empty:`, or an `- otherwise:` branch for everything else |
-| E313 | A `result` can only be matched. | write `- match <call>:` with the branches `ok value` and `error problem` |
+| E300 | `The record "x" has the same name as the enum in file:line.` | rename one; the kinds in the message vary |
+| E301 | `The enum "x" has no variants.` | list the variants under the heading, like `- Circle: radius: int` or `- Empty` |
+| E302 | `The enum "x" has the variant "x" twice.` | remove or rename one |
+| E303 | `A variant cannot have a field called "kind": the JSON of an enum value uses it to say which variant it is.` or `The variant "x" has the field "x" twice.` | pick another name, for example `type` or `label` |
+| E304 | `The type "x" is defined in terms of itself.` | break the loop |
+| E305 | `x has no variant "x".` or `Unknown enum "x".` or `Unknown variant "x".` | write a variant bare, or after its enum as in `Shape.Empty` |
+| E306 | `The variant "x" of x has fields, so it is written with them.` or `The field "x" is given twice.` or `The x has no fields.` or `The x has no field "x".` or `The x needs a value for "x".` or `The x needs values for "x", "x".` | write `Circle { radius: 3 }` with every field that is not `maybe` |
+| E307 | `"x" is a variant of several enums here: a, b.` | say which one you mean, as in `Shape.Empty` |
+| E308 | `"match" works on an enum, a "maybe" or a "result", but this is T.` | use `if` for a yes/no or a comparison |
+| E309 | `This "match" is on x, but the branch names "x".` or `"x" is not a branch of x.` | use the branches the message lists |
+| E310 | `This "match" does not handle the variant "x" of x.` or `This "match" does not handle the variants "x", "x" of x.` or `This "match" does not handle the case "x" of the maybe.` | add a branch for it, such as `- Empty:`, or an `- otherwise:` branch for everything else |
+| E311 | `This "match" already has a branch for "x".` | remove the second branch |
+| E312 | `The variant "x" has no fields, so there is nothing to name "x".` or `"x" carries no value, so there is nothing to name "x".` | write just `- x:` |
+| E313 | `The result in "x" is never matched, so its failure would be lost.` or `"x" holds a result, which can only be matched.` or `A result can only be matched: it cannot be read like other values.` or `A result is made by a call and matched where it is stored; it cannot be passed in.` | write `- match <call>:` with the branches `ok value` and `error problem`, or use `try` |
+| E314 | `A T cannot be written into text as a whole.` | use `- match <value>:` and write what each variant carries |
+| E315 | `The variant "x" of x holds a x inside itself, which would never end.` | break the loop |
+| E316 | `"x" stands for the fields of T, not for a value of T.` | read one of its fields |
+| E317 | `This "none" does not say what it is a "none" of.` | use `none` where a `maybe` value is expected, such as `return none` in a function that returns `maybe int` |
+| W300 | `Every case is handled above, so this "otherwise:" can never run.` | remove the branch |
 
 **Next:** [22.2 Collection words](#222-collection-words)
 
@@ -2512,16 +2531,16 @@ The decisions behind these rules are Q320 to Q328 in `OPEN_QUESTIONS.md`.
 
 | code | message | fix |
 |---|---|---|
-| E320 | Every element of a list or map must be the same kind of value. | use one kind of value |
-| E321 | A map cannot be keyed by this type, or `group … by` needs a key that is text, a number, a date or a yes/no value. | key by text, a number, a date, a datetime or a yes/no value |
-| E322 | The word needs values it can put in order. | sort or compare numbers, text or dates |
-| E323 | `sum of` adds numbers or money, but these are something else. | sum the numbers or amounts of a field, as in `sum of amount in rows` |
-| E324 | The word needs a list, or a map, but this is something else. | pass a list, or write a map like `map of "EU" to 1, "US" to 2` |
-| E325 | `join` glues a list of text, but this is a list of something else. | turn the values into text first, for example `map rows to "{item.id}"` |
-| E326 | The keys or values of this map are not the kind the map holds. | use values of the map's kinds |
-| E327 | A name is a variable here and also a field of the element, so it is unclear which is meant. | write `item.<name>` for the field, or rename the variable |
-| E328 | `append`, `put` or `remove` changes a variable, but this is not one. | name the value first with `set`, change that, and use it afterwards |
-| E329 | A line nests more than the allowed levels of parentheses or braces. | name the inner part with `set` on a line of its own |
+| E320 | `Every x must be the same kind of value: the first is T, but this is T.` | use one kind of value |
+| E321 | `A map cannot be keyed by T.` or `"group … by" needs a key that is text, a number, a date or a yes/no value, but this is T.` | key by text, a number, a date, a datetime or a yes/no value |
+| E322 | `"x" needs values it can put in order, but this is T.` | numbers, money, text, dates and durations have an order; records and lists do not |
+| E323 | `"sum of" adds numbers or money, but these are T.` | sum the numbers or amounts of a field, as in `sum of amount in rows` |
+| E324 | `"x" needs a list, but this is T.` or `"x" needs a map, but this is T.` | use `values of` or `keys of` to get a list out of a map; write a map like `map of "EU" to 1, "US" to 2` |
+| E325 | `"join" glues a list of text, but this is a list of T.` | turn the values into text first, for example `map rows to "{item.id}"` |
+| E326 | `The keys of this map are T, but this is T.` or `This map holds T, but this is T.` | use keys and values of the map's kinds |
+| E327 | `"x" is a variable here and also a field of T, so it is unclear which one is meant.` | write `item.x` for the field, or rename the variable |
+| E328 | `"x" changes a variable, but this is not one.` | name the value first with `set`, change that, and use it afterwards |
+| E329 | `This line nests more than N levels of parentheses or braces.` | name the inner part with `set` on a line of its own |
 
 **Next:** [22.3 The built-in library](#223-the-built-in-library)
 
@@ -2669,13 +2688,13 @@ A trace shows the calls like this:
 
 | code | message | fix |
 |---|---|---|
-| E340 | `The module "x" has no function "y".` | use one of the functions the message lists |
-| E341 | `"module.f" can fail (it returns "result of T"), so it has to be called with "try".` The same holds for `file read`, which may find no file. | write `- try module.f(...) -> value`, optionally with an `otherwise:` branch |
-| E342 | `json.parse` or `csv.parse` needs to know what to read, so the type is missing. `csv.encode` writes a list of records. | write the type after the call, as in `csv.parse(content) as list of Sale` |
-| E343 | A literal pattern cannot work. | fix the pattern |
+| E340 | `The module "x" has no function "x".` | use one of the functions the message lists |
+| E341 | `"x.x" can fail (it returns "T"), so it has to be called with "try".` or `"file x" can fail (the file may not exist), so it has to be written with "try".` | write `- try x.x(...) -> value`, optionally with an `otherwise:` branch |
+| E342 | `"x.x" needs to know what to read: write the type after the call.` or `"x" cannot write T: a handle cannot be turned into text.` or `"csv.encode" writes a list of records (one per row), but this is T.` or `"x.parse" cannot read T: a handle comes from a library call, not from text.` or `"csv.parse" reads a list of records (one per row), but "as T" is not one.` | write the type after the call, as in `csv.parse(content) as list of Sale` |
+| E343 | `"x" is not a valid pattern: <reason>` or `"x" is not a date pattern. Use YYYY MM DD HH mm ss (for example "DD.MM.YYYY HH:mm") or % codes ("%Y-%m-%d").` | fix the pattern |
 | E344 | `The built-in tool "file" has no verb "x".` | use one of the verbs the message lists |
-| E345 | A `file` statement has a missing or an extra part. | write it like the form the message shows |
-| E347 | `"file" is a built-in tool, so it cannot be declared in tools.toml.` | remove the `[file]` table |
+| E345 | `"file x" takes only a path.` or `"file x" needs the new path after "to", not after a colon.` or `"file x" needs the text after a colon, not after "to".` or `"file x" needs the new path: "to <new>".` or `"file x" needs the text after a colon.` or `"file x" gives something back: name it with "-> name".` or `"file x" gives nothing back, so there is nothing to name.` | write the statement in the form the message shows, such as `file rename <old> to <new>` |
+| E347 | `"x" is a built-in tool, so it cannot be declared in tools.toml.` | remove the `[file]` table |
 
 **Next:** [22.4 Opaque library types](#224-opaque-library-types)
 
@@ -2804,16 +2823,17 @@ greeter.agent.md:6
 
 | code | message | fix |
 |---|---|---|
-| E206 | `The tool "greeter" says "- effect: pure", but this line has the effect local (print).` | change the tool to `- effect: local`, or move the line out of the tool |
-| E380 | A tool is named like a tool of `tools.toml`, like `file`, like a binding, or like an agent, command or service. | rename the tool |
-| E381 | A verb appears twice in one tool. | remove or rename one |
-| E382 | `The tool "x" has the effect <class>, so "name(...)" cannot be used inside an expression.` | call it as a statement: `- tool verb ... -> value` |
-| E383 | The tool needs a verb, or the verb is unknown. | use one of the verbs the message lists |
-| E384 | `The tool "x" takes values, not "field = value" assignments.` | write the values after the verb, and one value after a colon if you like |
-| E385 | A verb that returns nothing is used as a value or has its result stored. | call it as a statement |
-| E386 | A verb says it returns a value and never does. | return a value, or drop the `-> type` |
-| E387 | An argument of the default command is named like a flag every program has, such as `--once` or `--mock`. | rename the argument |
-| W380 | A tool is named like a library module. | rename the tool |
+| E206 | `The tool "x" says "- effect: pure", but this line has the effect local (print).` | change the tool to `- effect: local`, or move the line out of the tool |
+| E209 | `The verb "x" of "x" can fail (it returns "T"), so it has to be called with "try".` or `The verb "x" can fail (it returns "T"), so it cannot be used inside an expression.` | write `- try tool verb ... -> value`, optionally with an `otherwise:` branch |
+| E380 | `The tool "x" has the same name as x.` | a tool name must be unique, so rename this one; it cannot be named like a tool of `tools.toml`, like `file`, like a binding, or like an agent, command or service |
+| E381 | `The tool "x" has the verb "x" twice.` | remove or rename one |
+| E382 | `The tool "x" has the effect T, so "x(...)" cannot be used inside an expression.` | call it as a statement: `- tool verb ... -> value` |
+| E383 | `The tool x needs a verb.` or `Unknown verb "x" for tool x.` | use one of the verbs the message lists |
+| E384 | `The tool "x" takes values, not "field = value" assignments.` | write the values after the verb: `- name verb a b`, and one value after a colon if you like |
+| E385 | `The verb "x" of "x" returns nothing, so there is no result to store.` or `The verb "x" returns nothing, so it cannot be used as a value.` | call it as a statement |
+| E386 | `The verb "x" of the tool "x" says it returns a value but never does.` | end the body with `- return <value>`, or remove the `-> type` from the heading |
+| E387 | `The argument "x" would be the flag "--x", which every program already has, and this command is the program's default.` | rename the argument, for example `x_value` |
+| W380 | `The tool "x" has the name of a library module, so "x.something(...)" is easy to misread.` | a call `x.f(...)` means this tool only when it has the verb `f`; consider another name |
 
 **Next:** [22.6 Programs](#226-programs)
 
