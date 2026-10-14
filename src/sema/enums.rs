@@ -753,7 +753,16 @@ impl Checker<'_> {
         // branch goes on; a branch that leaves contributes nothing (Q362)
         let before = cx.consumed.clone();
         let mut merged = before.clone();
+        // matching a stored result settles it
+        if let (Type::Result(_), ExprKind::Path(segs)) = (&t, &scrutinee.kind) {
+            if segs.len() == 1 {
+                cx.pending.remove(&segs[0].name);
+            }
+        }
+        let pending_start = cx.pending.clone();
+        let mut ends: Vec<(std::collections::HashMap<String, Span>, bool)> = Vec::new();
         for arm in arms {
+            cx.pending = pending_start.clone();
             cx.consumed = before.clone();
             let (pattern, bind_ty) = self.arm_pattern(cx, arm, &kind, &mut handled, &mut had_unknown);
             if let Some(p) = pattern {
@@ -766,6 +775,7 @@ impl Checker<'_> {
             }
             self.stmts(cx, &arm.body);
             cx.pop();
+            ends.push((cx.pending.clone(), super::stmt::terminates(&arm.body)));
             if !super::stmt::terminates(&arm.body) {
                 for (k, v) in cx.consumed.clone() {
                     merged.entry(k).or_insert(v);
@@ -773,10 +783,12 @@ impl Checker<'_> {
             }
         }
         if let Some(o) = otherwise {
+            cx.pending = pending_start.clone();
             cx.consumed = before.clone();
             cx.push();
             self.stmts(cx, &o.body);
             cx.pop();
+            ends.push((cx.pending.clone(), super::stmt::terminates(&o.body)));
             if !super::stmt::terminates(&o.body) {
                 for (k, v) in cx.consumed.clone() {
                     merged.entry(k).or_insert(v);
@@ -784,6 +796,7 @@ impl Checker<'_> {
             }
         }
         cx.consumed = merged;
+        self.join_pending(cx, ends);
         // a stored result is moved into the match: it cannot be matched or read again
         if let (Type::Result(_), ExprKind::Path(segs)) = (&t, &scrutinee.kind) {
             if segs.len() == 1 {
@@ -952,8 +965,8 @@ impl Checker<'_> {
             handled.push(key.clone());
         }
         // naming the value
-        match (&arm.bind, takes_value) {
-            (Some(b), false) => {
+        if let (Some(b), false) = (&arm.bind, takes_value) {
+            {
                 let d = Diagnostic::error(
                     E_BINDER,
                     self.path(cx.file),
@@ -966,7 +979,6 @@ impl Checker<'_> {
                 .with_help(format!("Write just \"- {key}:\"."));
                 self.diags.push(d);
             }
-            _ => {}
         }
         (Some(pattern), bind_ty)
     }

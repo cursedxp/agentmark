@@ -35,6 +35,10 @@ impl Checker<'_> {
     pub fn stmt(&mut self, cx: &mut Cx, s: &Stmt) {
         let outer = std::mem::take(&mut cx.acc);
         self.stmt_inner(cx, s);
+        if matches!(s.kind, StmtKind::Stop | StmtKind::Return(_) | StmtKind::Respond { .. }) {
+            let left = std::mem::take(&mut cx.pending);
+            self.report_pending(cx, left);
+        }
         let eff = std::mem::replace(&mut cx.acc, outer);
         self.stmt_effects
             .insert(super::NodeKey::new(cx.file, s.span), eff.clone());
@@ -96,8 +100,11 @@ impl Checker<'_> {
                     });
                 }
                 let before = cx.consumed.clone();
+                let start = cx.pending.clone();
                 self.stmts(cx, body);
                 cx.pop();
+                let end = cx.pending.clone();
+                self.join_pending(cx, vec![(start, false), (end, terminates(body))]);
                 self.loop_consumption(cx, &before, body);
             }
             StmtKind::If { cond, then, else_ } => {
@@ -109,17 +116,21 @@ impl Checker<'_> {
                     self.norm_facts(cx, neg_facts(cond)),
                 );
                 let before = cx.consumed.clone();
+                let start = cx.pending.clone();
                 cx.push();
                 cx.narrow(&pos);
                 self.stmts(cx, then);
                 cx.pop();
                 let after_then = std::mem::replace(&mut cx.consumed, before.clone());
+                let end_then = std::mem::replace(&mut cx.pending, start.clone());
                 if !else_.is_empty() {
                     cx.push();
                     cx.narrow(&neg);
                     self.stmts(cx, else_);
                     cx.pop();
                 }
+                let end_else = cx.pending.clone();
+                self.join_pending(cx, vec![(end_then, terminates(then)), (end_else, terminates(else_))]);
                 self.join_consumption(cx, before, after_then, terminates(then), terminates(else_));
                 if terminates(then) {
                     cx.narrow(&neg);
@@ -154,6 +165,7 @@ impl Checker<'_> {
                 };
                 self.check_limit(cx, s);
                 let before = cx.consumed.clone();
+                let start = cx.pending.clone();
                 cx.push();
                 cx.top().vars.insert(bind.name.clone(), inner);
                 cx.top().defs.insert(bind.name.clone(), bind.span);
@@ -164,11 +176,14 @@ impl Checker<'_> {
                 self.stmts(cx, then);
                 cx.pop();
                 let after_then = std::mem::replace(&mut cx.consumed, before.clone());
+                let end_then = std::mem::replace(&mut cx.pending, start.clone());
                 if !else_.is_empty() {
                     cx.push();
                     self.stmts(cx, else_);
                     cx.pop();
                 }
+                let end_else = cx.pending.clone();
+                self.join_pending(cx, vec![(end_then, terminates(then)), (end_else, terminates(else_))]);
                 self.join_consumption(cx, before, after_then, terminates(then), terminates(else_));
             }
             StmtKind::Stop => {
@@ -257,6 +272,11 @@ impl Checker<'_> {
                 }
                 let t = self.expr_handle_ok(cx, expr);
                 cx.match_call = saved;
+                if matches!(t, Type::Result(_)) {
+                    if let Some(old) = cx.pending.insert(var.name.clone(), var.span) {
+                        self.report_pending(cx, std::collections::HashMap::from([(var.name.clone(), old)]));
+                    }
+                }
                 if cx.var(&var.name).is_none() {
                     self.untyped_none(cx, expr, &t);
                 }
@@ -409,9 +429,12 @@ impl Checker<'_> {
                         _ => None,
                     };
                     self.check_try_handle(cx, into, terminates(o));
+                    let start = cx.pending.clone();
                     cx.push();
                     self.stmts(cx, o);
                     cx.pop();
+                    let end = cx.pending.clone();
+                    self.join_pending(cx, vec![(start, false), (end, terminates(o))]);
                 }
             }
             StmtKind::Parallel(body) => {
@@ -515,17 +538,58 @@ impl Checker<'_> {
             .collect();
         new.sort_by_key(|(_, sp)| (sp.line, sp.col));
         for (name, at) in new {
+            let is_result = matches!(cx.var(&name), Some(Type::Result(_)));
             let d = Diagnostic::error(
                 super::handles::E_CONSUMED,
                 self.path(cx.file),
                 at,
                 format!("\"{name}\" is used up here, but this line is inside a loop and runs again with the same \"{name}\"."),
             )
-            .with_help(format!(
-                "Make a new handle inside the loop (the line that made \"{name}\"), or use \"{name}\" up after the loop."
-            ));
+            .with_help(if is_result {
+                format!("Match \"{name}\" inside the loop where it is made, or after the loop.")
+            } else {
+                format!("Make a new handle inside the loop (the line that made \"{name}\"), or use \"{name}\" up after the loop.")
+            });
             self.diags.push(d);
         }
+    }
+
+    /// Join the pending (never matched) results of the branches that go on; the ones a branch
+    /// that leaves still holds are lost on that path.
+    pub(super) fn join_pending(&mut self, cx: &mut Cx, ends: Vec<(std::collections::HashMap<String, crate::diag::Span>, bool)>) {
+        let mut merged = std::collections::HashMap::new();
+        for (map, leaves) in ends {
+            if leaves {
+                self.report_pending(cx, map);
+            } else {
+                merged.extend(map);
+            }
+        }
+        cx.pending = merged;
+    }
+
+    pub(super) fn report_pending(&mut self, cx: &mut Cx, map: std::collections::HashMap<String, crate::diag::Span>) {
+        let mut v: Vec<(String, crate::diag::Span)> = map.into_iter().collect();
+        v.sort_by_key(|(_, sp)| (sp.line, sp.col));
+        for (name, at) in v {
+            if !cx.pending_reported.insert(at) {
+                continue;
+            }
+            let d = Diagnostic::error(
+                super::enums::E_RESULT_MATCH,
+                self.path(cx.file),
+                at,
+                format!("The result in \"{name}\" is never matched, so its failure would be lost."),
+            )
+            .with_help(format!("Match it with \"- match {name}:\" (branches \"ok\" and \"error\") on every path, or use \"- try ... -> value\" instead."));
+            self.diags.push(d);
+        }
+    }
+
+    /// The end of a block: what is still pending was never matched.
+    pub(super) fn end_of_body(&mut self, cx: &mut Cx) {
+        let left = std::mem::take(&mut cx.pending);
+        self.report_pending(cx, left);
     }
 
     fn return_stmt(&mut self, cx: &mut Cx, s: &Stmt, e: &crate::syntax::ast::Expr) {

@@ -723,3 +723,27 @@ fn map_aliases_and_matches_inside_collection_loops() {
     let (out, _) = run_command("totals", TOTALS, &[], json!({}));
     assert_eq!(out, "note 3\nrefunds: -2.00 EUR\nsales: 5.00 EUR\nsales 5.00 EUR\n");
 }
+
+#[test]
+fn a_stored_result_must_be_matched_on_every_path() {
+    let head = format!("{STORED}# Command: demo\n- args: path: text, flag: bool\n\n## Run\n");
+    let never = "The result in \"n\" is never matched, so its failure would be lost.";
+    // straight line
+    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- print: \"done\"\n"));
+    assert!(e.contains(never), "{e}");
+    // one branch matches, the other does not
+    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- if flag:\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n"));
+    assert!(e.contains(never), "{e}");
+    // a branch that leaves with the result unmatched
+    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- if flag:\n  - stop\n- match n:\n  - ok:\n    - print: \"a\"\n  - error:\n    - print: \"b\"\n"));
+    assert!(e.contains(never), "{e}");
+    // made in a loop and never matched
+    let e = sema_errors(&format!("{head}- for each i in list of 1, 2:\n  - set n = read_count(path)\n  - print: \"x\"\n"));
+    assert!(e.contains(never), "{e}");
+    // matched before the loop's second round: the loop message talks about results
+    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- for each i in list of 1, 2:\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n"));
+    assert!(e.contains("Match \"n\" inside the loop where it is made, or after the loop."), "{e}");
+    // matched on every path is fine
+    common::ok(&format!("{head}- set n = read_count(path)\n- if flag:\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n- else:\n  - match n:\n    - ok:\n      - print: \"c\"\n    - error:\n      - print: \"d\"\n"));
+    common::ok(&format!("{head}- for each i in list of 1, 2:\n  - set n = read_count(path)\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n"));
+}

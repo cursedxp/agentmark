@@ -81,6 +81,10 @@ pub struct Cx {
     pub match_call: Option<crate::diag::Span>,
     /// The built-in library call (by span) that may be a `result`: the one directly after `try`.
     pub std_ok: Option<crate::diag::Span>,
+    /// Stored results (`set n = f()`) not matched yet on some path: name -> the `set` line.
+    pub pending: HashMap<String, crate::diag::Span>,
+    /// Pending results already reported (by the span of the `set`).
+    pub pending_reported: std::collections::HashSet<crate::diag::Span>,
     /// Handles (SPEC 22.4) that were used up (`self` methods, passing them on): variable ->
     /// the span of the line that used it up.
     pub consumed: HashMap<String, crate::diag::Span>,
@@ -105,6 +109,8 @@ impl Cx {
             in_try: false,
             match_call: None,
             std_ok: None,
+            pending: HashMap::new(),
+            pending_reported: Default::default(),
             consumed: HashMap::new(),
             handle_ok: false,
         }
@@ -418,6 +424,7 @@ impl Checker<'_> {
                     reported: false,
                 });
                 self.stmts(&mut cx, &f.body);
+                self.end_of_body(&mut cx);
                 if out.is_some() && !f.body.is_empty() && !contains_return(&f.body) {
                     self.error(
                         "E210",
@@ -524,6 +531,7 @@ impl Checker<'_> {
                     _ => {}
                 }
                 self.stmts(&mut cx, &b.body);
+                self.end_of_body(&mut cx);
                 let eff = cx.acc.clone();
                 self.blocks.push(BlockInfo {
                     kind: if is_do {
@@ -562,6 +570,7 @@ impl Checker<'_> {
                     cx.top().vars.insert("state".into(), ty);
                 }
                 self.stmts(&mut cx, &r.body);
+                self.end_of_body(&mut cx);
                 let eff = cx.acc.clone();
                 self.blocks.push(BlockInfo {
                     kind: BlockKind::Route,
@@ -596,6 +605,7 @@ impl Checker<'_> {
                     cx.top().vars.insert("state".into(), ty);
                 }
                 self.stmts(&mut cx, &c.body);
+                self.end_of_body(&mut cx);
                 let eff = cx.acc.clone();
                 self.blocks.push(BlockInfo {
                     kind: BlockKind::Command,

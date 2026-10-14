@@ -396,6 +396,7 @@ pub enum Target {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[allow(clippy::large_enum_variant)] // an `Expr` is large since the library call (`Std`) and enum values joined it
 pub enum Payload {
     /// `status = "reminded"`: fields to set, in written order.
     Assign(Vec<(String, Expr)>),
@@ -542,6 +543,7 @@ pub enum Callee {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum InterpPart {
     Text(String),
     Expr(Expr),
