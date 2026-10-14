@@ -19,7 +19,7 @@ pub fn rust_type(t: &Type, n: &Names) -> String {
         Type::Maybe(i) => format!("Option<{}>", rust_type(i, n)),
         Type::Result(i) => rust_type(i, n),
         Type::Record(r) => n.record(r),
-        Type::Handle(h) => handle_path(h),
+        Type::Handle(h) => n.handle_rust.get(h).cloned().unwrap_or_else(|| handle_path(h)),
         Type::Object(_) | Type::Unknown => "serde_json::Value".into(),
     }
 }

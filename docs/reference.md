@@ -1348,6 +1348,25 @@ Rules (all compile errors, in the shape of section 10):
   `consume` belong to binding parameters only (E365).
 * A library method that is `async` is awaited by the generated code: every binding body is the body of an `async fn`.
 * The effect of a method call is the binding's, like any other binding call (section 15.3).
+* A handle owns whatever the Rust value borrows. A library type with lifetimes (`Query<'q, DB>`), or with type parameters that
+  have one instantiation in the crate as configured (`DB = Sqlite` when only the `sqlite` feature is on), is still a handle: the
+  items around it go to the assisted tier, the model writes the glue (copying or leaking what the call borrows), and the binding
+  carries a block with the Rust type it stands for:
+
+````text
+## Handle: sqlx.query.Query
+  ```rust
+  sqlx::query::Query<'static, sqlx::Sqlite, <sqlx::Sqlite as sqlx::Database>::Arguments<'static>>
+  ```
+````
+
+* A Rust integer wider than `int` (`u64`, `usize`) converts with `try_from(..)?`, which fails the call on overflow.
+* The features a library is bound and built with come from `agentmark.toml`, for the binder and the generated `Cargo.toml` alike:
+
+```toml
+[crates]
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+```
 
 ### 15.5 Sharing
 

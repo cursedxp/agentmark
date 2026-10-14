@@ -55,6 +55,7 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
         rust_fns: Vec::new(),
         bindings: Vec::new(),
         crates: Vec::new(),
+        handle_rust: Default::default(),
         tools: checked.manifest.tools.values().cloned().collect(),
         run: Vec::new(),
     };
@@ -68,7 +69,12 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
                 Decl::Service(s) => p.services.push(b.service(s)),
                 Decl::Command(c) => p.commands.push(b.command(c)),
                 Decl::RustBlock(r) => p.rust_fns.push(b.rust_fn(r)),
-                Decl::Binding(bi) => b.binding(bi, &mut p.bindings),
+                Decl::Binding(bi) => {
+                    b.binding(bi, &mut p.bindings);
+                    for h in &bi.handles {
+                        p.handle_rust.insert(h.name.clone(), h.rust.code.trim().to_string());
+                    }
+                }
                 Decl::Run(r) => p.run.extend(r.items.iter().map(|i| i.name.clone())),
                 Decl::Constant(_) => {} // inlined at every use
                 Decl::Agent(_) | Decl::Rule(_) => {

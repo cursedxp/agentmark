@@ -290,6 +290,16 @@ impl Checker<'_> {
                                 effect_name(pe.value)
                             ));
                         }
+                        for h in &x.handles {
+                            if !self.handle_types.contains_key(&h.name) {
+                                self.error(
+                                    super::handles::E_UNKNOWN_HANDLE,
+                                    fi,
+                                    h.span,
+                                    format!("No item of this binding uses the handle \"{}\".", h.name),
+                                );
+                            }
+                        }
                         let assumed = x.effect.value == Effect::Unverified
                             && x.proposed_effect.is_some()
                             && self.p.assume_proposed;
@@ -323,6 +333,7 @@ impl Checker<'_> {
                                 effect: x.effect.value,
                                 proposed_effect: x.proposed_effect.as_ref().map(|e| e.value),
                                 items,
+                                handles: x.handles.iter().map(|h| (h.name.clone(), h.rust.code.trim().to_string())).collect(),
                             },
                         );
                     }

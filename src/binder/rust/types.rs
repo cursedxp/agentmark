@@ -3,7 +3,8 @@
 
 use crate::binder::core::{HandleMode, Ty};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RT {
@@ -17,6 +18,9 @@ pub enum RT {
     Generic(String),
     Impl(Vec<Bound>),
     Dyn(Vec<Bound>),
+    /// `<S as Trait>::Name<'a>`: kept so a handle's type can be written out (`lifetimes` is the
+    /// number of lifetime arguments of the associated type).
+    Qual { self_ty: Box<RT>, trait_path: Option<Vec<String>>, name: String, lifetimes: usize },
     Other(String),
 }
 
@@ -43,6 +47,9 @@ const MARKERS: &[&str] = &[
 const INTS: &[&str] = &["i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize"];
 /// Integers that always fit an AgentMark `int` (i64): the direct tier allows only these.
 const SMALL_INTS: &[&str] = &["i8", "i16", "i32", "i64", "u8", "u16", "u32"];
+/// Integers that can be wider than `int`: converted with a checked conversion that fails the call
+/// on overflow (SPEC 22.4).
+const WIDE_INTS: &[&str] = &["u64", "usize", "isize"];
 
 pub struct TypeParser<'a> {
     pub doc: &'a Value,
@@ -123,7 +130,21 @@ impl<'a> TypeParser<'a> {
             }
             "qualified_path" => {
                 self.hz.assoc = true;
-                RT::Other("<qualified path>".into())
+                let tr = &body["trait"];
+                let trait_path = if tr.is_null() {
+                    None
+                } else {
+                    Some(self.full_path(tr["id"].as_u64(), tr["path"].as_str().unwrap_or("?")))
+                };
+                let lifetimes = body["args"]["angle_bracketed"]["args"]
+                    .as_array()
+                    .map_or(0, |a| a.iter().filter(|x| x.get("lifetime").is_some()).count());
+                RT::Qual {
+                    self_ty: Box::new(self.parse(&body["self_type"])),
+                    trait_path,
+                    name: body["name"].as_str().unwrap_or("?").to_string(),
+                    lifetimes,
+                }
             }
             "function_pointer" => {
                 self.hz.closure = true;
@@ -248,7 +269,47 @@ pub fn render(t: &RT) -> String {
         RT::Generic(n) => n.clone(),
         RT::Impl(b) => format!("impl {}", render_bounds(b)),
         RT::Dyn(b) => format!("dyn {}", render_bounds(b)),
+        RT::Qual { self_ty, trait_path, name, lifetimes } => {
+            let lt = if *lifetimes == 0 { String::new() } else { format!("<{}>", vec!["'static"; *lifetimes].join(", ")) };
+            match trait_path {
+                Some(t) => format!("<{} as {}>::{name}{lt}", render(self_ty), t.join("::")),
+                None => format!("<{}>::{name}{lt}", render(self_ty)),
+            }
+        }
         RT::Other(s) => s.clone(),
+    }
+}
+
+/// `t` with every path replaced by the public one (`pubmap`: canonical path -> public path).
+fn publicize(t: &RT, pubmap: &HashMap<Vec<String>, Vec<String>>) -> RT {
+    let p = |x: &RT| publicize(x, pubmap);
+    match t {
+        RT::Path { full, args } => RT::Path {
+            full: pubmap.get(full).cloned().unwrap_or_else(|| full.clone()),
+            args: args.iter().map(p).collect(),
+        },
+        RT::Slice(i) => RT::Slice(Box::new(p(i))),
+        RT::Array(i) => RT::Array(Box::new(p(i))),
+        RT::Tuple(v) => RT::Tuple(v.iter().map(p).collect()),
+        RT::Ref { inner, mutable } => RT::Ref { inner: Box::new(p(inner)), mutable: *mutable },
+        RT::Qual { self_ty, trait_path, name, lifetimes } => RT::Qual {
+            self_ty: Box::new(p(self_ty)),
+            trait_path: trait_path.as_ref().map(|t| pubmap.get(t).cloned().unwrap_or_else(|| t.clone())),
+            name: name.clone(),
+            lifetimes: *lifetimes,
+        },
+        other => other.clone(),
+    }
+}
+
+fn has_generic(t: &RT) -> bool {
+    match t {
+        RT::Generic(_) | RT::Impl(_) => true,
+        RT::Path { args, .. } => args.iter().any(has_generic),
+        RT::Slice(i) | RT::Array(i) | RT::Ref { inner: i, .. } => has_generic(i),
+        RT::Tuple(v) => v.iter().any(has_generic),
+        RT::Qual { self_ty, .. } => has_generic(self_ty),
+        _ => false,
     }
 }
 
@@ -271,12 +332,37 @@ pub fn render_bounds(b: &[Bound]) -> String {
 
 // ---------------------------------------------------------------------------- lift
 
+/// A public type of the bound crate that becomes a handle (SPEC 22.4).
+#[derive(Debug, Clone)]
+pub struct HandleDef {
+    /// `sha2.Sha256`: the dotted name below the crate.
+    pub name: String,
+    /// Its public Rust path, `sha2::Sha256`.
+    pub rust_path: String,
+    /// Lifetime parameters: written `'static` (the handle owns what it borrows).
+    pub lifetimes: usize,
+    /// It has type parameters: written with the single instantiation the signatures give.
+    pub generic: bool,
+}
+
+/// What the lift needs to know about the whole crate.
+#[derive(Default)]
+pub struct LiftCtx {
+    /// Public types that become handles, by every path a signature can name them by.
+    pub handles: HashMap<Vec<String>, HandleDef>,
+    /// Trait (last name) -> the concrete types of the crate that implement it: a bound with exactly one
+    /// of them has one obvious instantiation (`DB: Database` with one database compiled in).
+    pub implementors: HashMap<String, Vec<RT>>,
+    /// Canonical path -> public path of the crate's own types.
+    pub pubmap: HashMap<Vec<String>, Vec<String>>,
+    /// Handle name -> its Rust type, for the generic / lifetime ones as the signatures instantiate them.
+    pub rust_types: RefCell<BTreeMap<String, String>>,
+}
+
 pub struct Lifter<'a> {
     /// Generic parameter name -> its bounds (fn and impl level).
     pub bounds: &'a [(String, Vec<Bound>)],
-    /// Public types of the bound crate that become `handle of <crate>.<Type>` (SPEC 22.4): the
-    /// path a signature names them by (canonical and public) -> the handle's dotted name.
-    pub handles: &'a HashMap<Vec<String>, String>,
+    pub ctx: &'a LiftCtx,
 }
 
 fn utc() -> RT {
@@ -306,7 +392,10 @@ impl Lifter<'_> {
                 },
                 ("ToString" | "Display" | "IntoUrl", _) => std_path("String", vec![]),
                 ("TimeZone", _) => utc(),
-                _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
+                (n, _) => match self.ctx.implementors.get(n).map(Vec::as_slice) {
+                    Some([only]) => only.clone(),
+                    _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
+                },
             };
             match &found {
                 Some(f) if *f != one => {
@@ -396,11 +485,31 @@ impl Lifter<'_> {
         }
     }
 
-    /// The handle name of a plain (non-generic) public type of the bound crate, by its path alone.
+    /// The handle name of a public type of the bound crate, by its path alone. A type with
+    /// lifetimes or type parameters is written out with `'static` and the one instantiation the
+    /// signatures give; a second, different one is not a handle.
     fn raw_handle(&self, rt: &RT) -> Option<String> {
-        match rt {
-            RT::Path { full, args } if args.is_empty() => self.handles.get(full).cloned(),
-            _ => None,
+        let RT::Path { full, args } = rt else { return None };
+        let def = self.ctx.handles.get(full)?;
+        if !def.generic && def.lifetimes == 0 {
+            return args.is_empty().then(|| def.name.clone());
+        }
+        let mut parts: Vec<String> = vec!["'static".to_string(); def.lifetimes];
+        for a in args {
+            let r = self.resolve(a);
+            if has_generic(&r) {
+                return None;
+            }
+            parts.push(render(&publicize(&r, &self.ctx.pubmap)));
+        }
+        let ty = if parts.is_empty() { def.rust_path.clone() } else { format!("{}<{}>", def.rust_path, parts.join(", ")) };
+        let mut seen = self.ctx.rust_types.borrow_mut();
+        match seen.get(&def.name) {
+            Some(prev) if *prev != ty => None,
+            _ => {
+                seen.insert(def.name.clone(), ty);
+                Some(def.name.clone())
+            }
         }
     }
 
@@ -487,7 +596,9 @@ fn is_chrono_value(full: &[String], args: &[RT]) -> bool {
 pub fn conv_in(e: &str, rt: &RT) -> Option<String> {
     match rt {
         RT::Prim(p) if p == "i64" || p == "bool" => Some(e.to_string()),
-        RT::Prim(p) if SMALL_INTS.contains(&p.as_str()) => Some(format!("{p}::try_from({e})?")),
+        RT::Prim(p) if SMALL_INTS.contains(&p.as_str()) || WIDE_INTS.contains(&p.as_str()) => {
+            Some(format!("{p}::try_from({e})?"))
+        }
         RT::Ref { inner, mutable: false } => match &**inner {
             RT::Prim(p) if p == "str" => Some(format!("&{e}")),
             RT::Slice(i) if is_u8(i) => Some(format!("&{e}")),
@@ -536,6 +647,7 @@ pub fn conv_out(e: &str, rt: &RT) -> Option<String> {
     match rt {
         RT::Prim(p) if p == "i64" || p == "bool" => Some(e.to_string()),
         RT::Prim(p) if SMALL_INTS.contains(&p.as_str()) => Some(format!("i64::from({e})")),
+        RT::Prim(p) if WIDE_INTS.contains(&p.as_str()) => Some(format!("i64::try_from({e})?")),
         RT::Ref { inner, mutable: false } => match &**inner {
             RT::Prim(p) if p == "str" => Some(format!("{e}.to_string()")),
             RT::Slice(i) if is_u8(i) => Some(format!("{e}.to_vec()")),
@@ -555,6 +667,8 @@ pub fn conv_out(e: &str, rt: &RT) -> Option<String> {
                 let inner = conv_out("v", a)?;
                 Some(if inner == "v" {
                     e.to_string()
+                } else if inner.contains('?') {
+                    format!("{e}.into_iter().map(|v| {BOXERR} {{ Ok({inner}) }}).collect::<Result<Vec<_>, _>>()?")
                 } else {
                     format!("{e}.into_iter().map(|v| {inner}).collect::<Vec<_>>()")
                 })
@@ -563,6 +677,8 @@ pub fn conv_out(e: &str, rt: &RT) -> Option<String> {
                 let inner = conv_out("v", a)?;
                 Some(if inner == "v" {
                     e.to_string()
+                } else if inner.contains('?') {
+                    format!("{e}.map(|v| {BOXERR} {{ Ok({inner}) }}).transpose()?")
                 } else {
                     format!("{e}.map(|v| {inner})")
                 })
@@ -586,7 +702,10 @@ mod tests {
     fn small_ints_convert_with_try_from_and_wide_ones_are_not_direct() {
         assert_eq!(conv_in("x", &p("i64")).unwrap(), "x");
         assert_eq!(conv_in("x", &p("u32")).unwrap(), "u32::try_from(x)?");
-        assert!(conv_in("x", &p("u64")).is_none());
+        // wider than `int`: a checked conversion that fails the call on overflow
+        assert_eq!(conv_in("x", &p("u64")).unwrap(), "u64::try_from(x)?");
+        assert_eq!(conv_out("y", &p("usize")).unwrap(), "i64::try_from(y)?");
+        assert!(conv_in("x", &p("f64")).is_none());
         assert_eq!(conv_out("y", &p("i32")).unwrap(), "i64::from(y)");
     }
 
@@ -606,8 +725,8 @@ mod tests {
             "S".to_string(),
             vec![Bound { name: "AsRef".into(), args: vec![p("str")], output: None, marker: false }],
         )];
-        let none = HashMap::new();
-        let l = Lifter { bounds: &bounds, handles: &none };
+        let ctx = LiftCtx::default();
+        let l = Lifter { bounds: &bounds, ctx: &ctx };
         assert_eq!(l.value(&RT::Generic("S".into())), Ok(Ty::Text));
         assert!(l.value(&RT::Generic("T".into())).is_err());
     }

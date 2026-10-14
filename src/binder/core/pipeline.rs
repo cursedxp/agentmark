@@ -2,7 +2,7 @@
 //! (model writes the body, the type checker accepts or rejects it) -> skipped (listed under
 //! `## Not bound` with the reason). Every item lands in exactly one tier; nothing is dropped.
 
-use super::model::{CrateItems, Item, Shape, Sig};
+use super::model::{CrateItems, Item, Shape, Sig, Ty};
 use super::typecheck::{CheckRequest, TypeChecker};
 use agentmark_rt::{ModelClient, ModelRequest};
 
@@ -49,6 +49,8 @@ pub struct BoundCrate {
     /// "exactly one tier each".
     pub placements: Vec<(String, Tier)>,
     pub counts: Counts,
+    /// Rust types of the bound items' handles that are not `<crate>::<Type>` (`## Handle:` blocks).
+    pub handle_types: std::collections::BTreeMap<String, String>,
 }
 
 /// Run every item through the tiers. `extra_not_bound` entries (traits, foreign re-exports)
@@ -65,6 +67,7 @@ pub async fn run_tiers(
         not_bound: Vec::new(),
         placements: Vec::new(),
         counts: Counts::default(),
+        handle_types: Default::default(),
     };
     for item in &ci.items {
         let too_long = match &item.shape {
@@ -132,6 +135,15 @@ pub async fn run_tiers(
         out.counts.skipped += 1;
         out.placements.push((e.name.clone(), Tier::Skipped));
     }
+    for it in &out.items {
+        for t in it.sig.params.iter().map(|p| &p.ty).chain(it.sig.ret.as_ref()) {
+            if let Ty::Handle { name, .. } = t {
+                if let Some(r) = ci.handle_types.get(name) {
+                    out.handle_types.insert(name.clone(), r.clone());
+                }
+            }
+        }
+    }
     out
 }
 
@@ -189,12 +201,24 @@ pub fn assist_prompt(ci: &CrateItems, item: &Item, sig: &Sig, why: &str) -> Stri
         item.docs.trim()
     };
     let heading = sig.heading(item.heading.as_deref().unwrap_or(&item.name));
-    let handles = if heading.contains("handle of") {
+    let mut handles = if heading.contains("handle of") {
         "\n\nA `handle of <crate>.<Type>` is a value of the library's own type that AgentMark cannot look \
          into: it is only passed on, returned, or used for the call itself."
+            .to_string()
     } else {
-        ""
+        String::new()
     };
+    for t in sig.params.iter().map(|p| &p.ty).chain(sig.ret.as_ref()) {
+        if let Ty::Handle { name, .. } = t {
+            if let Some(r) = ci.handle_types.get(name) {
+                handles.push_str(&format!(
+                    "\nThe handle `{name}` is the {lang} type `{r}`: whatever it borrows, the handle owns \
+                     (copy, clone or leak it).",
+                    lang = ci.language
+                ));
+            }
+        }
+    }
     format!(
         "bind {path}\n\
          You are the AgentMark binder. Write the {lang} body of one binding item for the crate \

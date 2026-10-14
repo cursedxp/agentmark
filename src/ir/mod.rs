@@ -39,6 +39,8 @@ pub struct Program {
     pub bindings: Vec<BindingFn>,
     /// `# Import: crate x`.
     pub crates: Vec<CrateImport>,
+    /// Rust type of a handle when it is not `<crate>::<Type>` (`## Handle:` blocks of bindings).
+    pub handle_rust: std::collections::BTreeMap<String, String>,
     /// The tool manifest (`tools.toml`), so codegen can write one trait per tool.
     pub tools: Vec<ToolDef>,
     /// Names listed under `# Run`, in order (agents, services, commands).

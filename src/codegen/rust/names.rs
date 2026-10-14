@@ -156,11 +156,13 @@ pub struct Names {
     pub counters: HashMap<String, String>,
     /// Every value-level identifier that names an item; locals must not reuse them.
     pub item_idents: HashSet<String>,
+    /// Handle name -> its Rust type when that is not `<crate>::<Type>`.
+    pub handle_rust: HashMap<String, String>,
 }
 
 impl Names {
     pub fn build(p: &Program) -> Names {
-        let mut n = Names::default();
+        let mut n = Names { handle_rust: p.handle_rust.iter().map(|(k, v)| (k.clone(), v.clone())).collect(), ..Names::default() };
 
         let mut types = Namespace::with(RESERVED_TYPES);
         for r in &p.records {

@@ -317,7 +317,19 @@ pub struct Binding {
     pub effect: Spanned<Effect>,
     pub proposed_effect: Option<Spanned<Effect>>,
     pub items: Vec<BindingItem>,
+    /// `## Handle: <crate>.<Type>` blocks: the Rust type a handle stands for when it is not simply
+    /// `<crate>::<Type>` (a type with lifetimes or type parameters, instantiated).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub handles: Vec<BindingHandle>,
     pub not_bound: Vec<NotBound>,
+}
+
+/// `## Handle: sqlx.Query` with the Rust type in a fenced block (SPEC 22.4, Q370).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BindingHandle {
+    pub span: Span,
+    pub name: String,
+    pub rust: RustCode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

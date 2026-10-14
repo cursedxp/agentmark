@@ -176,7 +176,7 @@ struct Walk<'a> {
     items: Vec<Item>,
     /// Public types that become `handle of <crate>.<Type>` (SPEC 22.4): the paths a signature
     /// can name them by -> the dotted name below the crate.
-    handles: Rc<HashMap<Vec<String>, String>>,
+    ctx: Rc<LiftCtx>,
     /// Type alias public path -> its `alias_…` line under `## Not bound`; dropped when the alias
     /// turned out to be a handle whose methods are bound.
     alias_entries: HashMap<Vec<String>, String>,
@@ -229,13 +229,14 @@ fn walked(doc: &Value) -> Result<Walk<'_>, String> {
         foreign_uses: Vec::new(),
         names: HashSet::new(),
         items: Vec::new(),
-        handles: Rc::new(HashMap::new()),
+        ctx: Rc::new(LiftCtx::default()),
         alias_entries: HashMap::new(),
     };
     w.seen_modules.insert(root_id);
     let prefix = vec![w.crate_ident.clone()];
     w.walk_module(root_id, &prefix);
-    w.handles = Rc::new(w.compute_handles());
+    let ctx = w.lift_ctx();
+    w.ctx = Rc::new(ctx);
     Ok(w)
 }
 
@@ -256,6 +257,7 @@ pub fn read_crate_with(json: &str, foreign: &[String]) -> Result<CrateItems, Str
         let fdoc = parse_doc(f)?;
         w.emit_foreign(&fdoc);
     }
+    let handle_types = w.ctx.rust_types.borrow().clone();
     Ok(CrateItems {
         name,
         version,
@@ -265,6 +267,7 @@ pub fn read_crate_with(json: &str, foreign: &[String]) -> Result<CrateItems, Str
         hints: effect_hints(),
         items: w.items,
         extra_not_bound: w.extra,
+        handle_types,
     })
 }
 
@@ -372,41 +375,77 @@ impl<'a> Walk<'a> {
         }
     }
 
-    /// The public, non-generic types of this crate: what a signature can name as a handle.
-    fn compute_handles(&self) -> HashMap<Vec<String>, String> {
-        let mut out = HashMap::new();
+    /// What the lift needs to know of the crate: the public types that become handles, who
+    /// implements which trait, and the public path of every type.
+    fn lift_ctx(&self) -> LiftCtx {
+        let mut ctx = LiftCtx::default();
         for id in &self.order {
             let Some(it) = self.get(*id) else { continue };
             let k = kind(it);
             let path = &self.pub_paths[id];
+            let canon: Option<Vec<String>> = self.doc["paths"][id.to_string()]["path"]
+                .as_array()
+                .map(|c| c.iter().filter_map(|s| s.as_str().map(String::from)).collect());
+            if let Some(c) = &canon {
+                if c != path {
+                    ctx.pubmap.insert(c.clone(), path.clone());
+                }
+            }
             if path.len() < 2 {
                 continue;
             }
-            let no_params = |g: &Value| g["params"].as_array().is_some_and(|p| p.is_empty());
-            let eligible = match k {
-                "struct" | "enum" | "union" => no_params(&it["inner"][k]["generics"]),
+            let params = |g: &Value| -> (usize, usize, usize) {
+                let ps = g["params"].as_array().cloned().unwrap_or_default();
+                let n = |key: &str| ps.iter().filter(|p| p["kind"].get(key).is_some()).count();
+                (n("lifetime"), n("type"), n("const"))
+            };
+            let def = match k {
+                "struct" | "enum" | "union" => {
+                    let g = &it["inner"][k]["generics"];
+                    // a rustdoc file without `generics` cannot say a type is plain: no handle
+                    if g.is_null() {
+                        continue;
+                    }
+                    let (lt, ty, cn) = params(g);
+                    (cn == 0).then_some((lt, ty > 0))
+                }
                 "type_alias" => {
                     let a = &it["inner"]["type_alias"];
-                    no_params(&a["generics"]) && {
+                    let plain = a["generics"]["params"].as_array().is_some_and(|p| p.is_empty()) && {
                         let t = TypeParser::new(self.doc, None).parse(&a["type"]);
                         matches!(&t, RT::Path { .. }) && !t.is_std_path()
-                    }
+                    };
+                    plain.then_some((0, false))
                 }
-                _ => false,
+                _ => None,
             };
-            if !eligible {
-                continue;
+            let Some((lifetimes, generic)) = def else { continue };
+            let d = HandleDef { name: path.join("."), rust_path: path.join("::"), lifetimes, generic };
+            ctx.handles.insert(path.clone(), d.clone());
+            if let Some(c) = canon.filter(|c| c.len() >= 2) {
+                ctx.handles.entry(c).or_insert(d);
             }
-            let name = path.join(".");
-            out.insert(path.clone(), name.clone());
-            if let Some(c) = self.doc["paths"][id.to_string()]["path"].as_array() {
-                let canon: Vec<String> = c.iter().filter_map(|s| s.as_str().map(String::from)).collect();
-                if canon.len() >= 2 {
-                    out.entry(canon).or_insert(name);
+        }
+        // implementors of traits: the crate's own concrete types
+        if let Some(index) = self.doc["index"].as_object() {
+            for it in index.values().filter(|i| kind(i) == "impl") {
+                let imp = &it["inner"]["impl"];
+                if imp["is_synthetic"] == true || !imp["blanket_impl"].is_null() || imp["is_negative"] == true || imp["trait"].is_null() {
+                    continue;
+                }
+                let tname = imp["trait"]["path"].as_str().unwrap_or("?").rsplit("::").next().unwrap_or("?").to_string();
+                let ty = TypeParser::new(self.doc, None).parse(&imp["for"]);
+                let concrete = matches!(&ty, RT::Path { args, .. } if args.is_empty())
+                    && imp["generics"]["params"].as_array().is_none_or(|p| p.is_empty());
+                if concrete {
+                    let v = ctx.implementors.entry(tname).or_default();
+                    if !v.contains(&ty) {
+                        v.push(ty);
+                    }
                 }
             }
         }
-        out
+        ctx
     }
 
     fn unique(&mut self, base: String) -> String {
@@ -574,7 +613,7 @@ impl<'a> Walk<'a> {
             for (apath, aty) in &aliases {
                 // an alias that is a handle (SPEC 22.4) gets every method of the trait, the ones
                 // with a `self` included
-                let is_handle = self.handles.contains_key(apath);
+                let is_handle = self.ctx.handles.contains_key(apath);
                 for m in methods.iter().filter(|m| is_handle || receiverless(m)) {
                     let owner = Owner {
                         self_ty: aty.clone(),
@@ -594,8 +633,8 @@ impl<'a> Walk<'a> {
             }
             let with_self: Vec<&str> = methods.iter().filter(|m| !receiverless(m)).filter_map(|m| m["name"].as_str()).collect();
             // one entry per method and alias, so no name is hidden inside a list (SPEC 15.2)
-            let handles = self.handles.clone();
-            for (apath, _) in aliases.iter().filter(|(p, _)| !handles.contains_key(p)) {
+            let ctx = self.ctx.clone();
+            for (apath, _) in aliases.iter().filter(|(p, _)| !ctx.handles.contains_key(p)) {
                 for m in &with_self {
                     let name = self.unique(format!("{}_{}", snake(&apath[1..].join("_")), snake(m)));
                     self.extra.push(NotBoundEntry {
@@ -640,7 +679,7 @@ impl<'a> Walk<'a> {
         let mut has_generics = false;
         let mut self_bound = false;
         let mut impl_generics = false;
-        let handles = self.handles.clone();
+        let ctx = self.ctx.clone();
         let mut gens = vec![&inner["generics"]];
         if let Some(o) = &owner {
             gens.push(&o.impl_generics);
@@ -729,8 +768,8 @@ impl<'a> Walk<'a> {
             .collect();
 
         let source_sig = render_sig(&fname, recv, &params, &ret_rt, &bounds, is_async);
-        let lifter = Lifter { bounds: &bounds, handles: &handles };
-        let contract_of = |sig: &Sig| contract(&name, sig);
+        let lifter = Lifter { bounds: &bounds, ctx: &ctx };
+        let contract_of = |sig: &Sig| super::checker::rust_fn_header_with(&name, sig, &ctx.rust_types.borrow());
         // a method of a handle type is written with its method name; the handle tells methods apart
         let recv_handle = match recv {
             Recv::None | Recv::Other => None,
@@ -742,15 +781,14 @@ impl<'a> Walk<'a> {
         });
 
         let skipped = |reason: String| Shape::Skipped { reason };
+        // Lifetimes and associated types keep an item out of reach unless it has a handle: a handle
+        // owns whatever the Rust value borrows, and the assisted tier writes that glue.
+        let borrowy = hz.lifetimes || hz.assoc;
+        let borrow_reason = if hz.lifetimes { "lifetimes in the public API" } else { "associated types in the signature" };
+        let fail = |msg: String| skipped(if borrowy { borrow_reason.to_string() } else { msg });
         let shape = (|| {
             if is_unsafe {
                 return skipped("unsafe function".into());
-            }
-            if hz.lifetimes {
-                return skipped("lifetimes in the public API".into());
-            }
-            if hz.assoc {
-                return skipped("associated types in the signature".into());
             }
             if hz.closure {
                 return skipped("takes a closure and AgentMark has no function type".into());
@@ -772,22 +810,25 @@ impl<'a> Walk<'a> {
                 let st = self_ty.as_ref().unwrap();
                 match lifter.value(st) {
                     Ok(ty) => sparams.push(Param { name: recv_name.clone().unwrap(), ty }),
-                    Err(e) => return skipped(format!("method needs a value that AgentMark cannot hold: {e}")),
+                    Err(e) => return fail(format!("method needs a value that AgentMark cannot hold: {e}")),
                 }
             }
             for ((_, rt), pn) in params.iter().zip(&pnames) {
                 match lifter.param(rt) {
                     Ok(ty) => sparams.push(Param { name: pn.clone(), ty }),
-                    Err(e) => return skipped(format!("parameter `{pn}`: {e}")),
+                    Err(e) => return fail(format!("parameter `{pn}`: {e}")),
                 }
             }
             let ret = match lifter.ret(&ret_rt) {
                 Ok(r) => r,
-                Err(e) => return skipped(format!("return type: {e}")),
+                Err(e) => return fail(format!("return type: {e}")),
             };
             let sig = Sig { params: sparams, ret };
             let handle_item = sig.params.iter().any(|p| matches!(p.ty, Ty::Handle { .. }))
                 || matches!(sig.ret, Some(Ty::Handle { .. }));
+            if borrowy && !handle_item {
+                return skipped(borrow_reason.into());
+            }
 
             // Direct tier: 1:1 types, no generics, no async, no Result wrapping. An item that
             // involves a handle has no model-free alternative, so its rules also take generics
@@ -798,6 +839,9 @@ impl<'a> Walk<'a> {
             // the type it is bound on: its path would need type arguments
             if has_generics && (!handle_item || impl_generics) {
                 why.push("generic over a type with one obvious instantiation");
+            }
+            if borrowy {
+                why.push("the handle owns what the Rust value borrows");
             }
             if is_async {
                 why.push("async");
@@ -952,7 +996,8 @@ fn direct_body(
     let one = body(false)?;
     // the binding file indents the body by two
     if one.lines().any(|l| l.chars().count() + 2 > 118) {
-        body(true)
+        // still too long (a nested conversion): the model writes it in more lines
+        body(true).filter(|b| b.lines().all(|l| l.chars().count() + 2 <= 118))
     } else {
         Some(one)
     }

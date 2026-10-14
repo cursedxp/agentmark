@@ -149,6 +149,113 @@ fn async_library_methods_are_assisted_and_their_bodies_await() {
     assert!(why.contains("mock model has no response"), "{why}");
 }
 
+// ------------------------------------------- lifetimes and one-instantiation generics (Q370)
+
+/// A small crate in the shape of `sqlx::query`: `fn query<'q, DB: Database>(sql: &'q str) -> Query<'q, DB>`,
+/// one database (`Sqlite`) compiled in, and a builder method on the generic `Query`.
+fn mini_rustdoc() -> String {
+    let path = |id: u64, p: &str, args: serde_json::Value| serde_json::json!({"resolved_path": {"path": p, "id": id, "args": args}});
+    let query_args = serde_json::json!({"angle_bracketed": {"args": [{"lifetime": "'q"}, {"type": {"generic": "DB"}}], "constraints": []}});
+    let generics = serde_json::json!({"params": [
+        {"name": "'q", "kind": {"lifetime": {"outlives": []}}},
+        {"name": "DB", "kind": {"type": {"bounds": [{"trait_bound": {"trait": {"path": "Database", "id": 10, "args": null}, "generic_params": [], "modifier": "none"}}], "default": null, "is_synthetic": false}}},
+    ], "where_predicates": []});
+    let none = serde_json::json!({"params": [], "where_predicates": []});
+    let header = serde_json::json!({"is_unsafe": false, "is_async": false});
+    let item = |id: u64, name: &str, inner: serde_json::Value| serde_json::json!({"id": id, "name": name, "visibility": "public", "docs": "Starts a query.", "inner": inner});
+    serde_json::json!({
+        "format_version": 61, "crate_version": "1.0.0", "root": 0,
+        "index": {
+            "0": item(0, "mini", serde_json::json!({"module": {"items": [10, 11, 13, 3]}})),
+            "10": item(10, "Database", serde_json::json!({"trait": {}})),
+            "11": item(11, "Sqlite", serde_json::json!({"struct": {"impls": [12], "generics": none}})),
+            "12": item(12, "", serde_json::json!({"impl": {"is_synthetic": false, "blanket_impl": null, "is_negative": false,
+                "trait": {"path": "Database", "id": 10, "args": null}, "for": path(11, "Sqlite", serde_json::Value::Null), "items": [], "generics": none}})),
+            "13": item(13, "Query", serde_json::json!({"struct": {"impls": [14], "generics": generics}})),
+            "14": item(14, "", serde_json::json!({"impl": {"is_synthetic": false, "blanket_impl": null, "is_negative": false, "trait": null,
+                "for": path(13, "Query", query_args.clone()), "items": [15], "generics": generics}})),
+            "15": item(15, "bind", serde_json::json!({"function": {"sig": {"inputs": [["self", {"generic": "Self"}], ["value", {"primitive": "i64"}]], "output": {"generic": "Self"}},
+                "generics": none, "header": header}})),
+            "3": item(3, "query", serde_json::json!({"function": {"sig": {"inputs": [["sql", {"borrowed_ref": {"lifetime": "'q", "is_mutable": false, "type": {"primitive": "str"}}}]],
+                "output": path(13, "Query", query_args)}, "generics": generics, "header": header}})),
+        },
+        "paths": {"10": {"path": ["mini", "Database"]}, "11": {"path": ["mini", "Sqlite"]}, "13": {"path": ["mini", "Query"]}}
+    })
+    .to_string()
+}
+
+#[test]
+fn a_handle_owns_what_it_borrows_and_has_one_instantiation() {
+    let ci = read_crate_with(&mini_rustdoc(), &[]).unwrap();
+    // `Query<'q, DB>` is written with `'static` and the only database there is
+    assert_eq!(ci.handle_types.get("mini.Query").map(String::as_str), Some("mini::Query<'static, mini::Sqlite>"));
+    let canned = serde_json::json!({"responses": [
+        {"prompt_prefix": "bind mini::query\n", "response": "Ok(mini::query(Box::leak(sql.into_boxed_str())))"},
+        {"prompt_prefix": "bind mini::Query::bind\n", "response": "Ok(self_.bind(value))"},
+    ]});
+    let dir = temp("handles-lifetimes");
+    write(&dir, "model.json", &canned.to_string());
+    let model = MockModel::from_file(dir.join("model.json")).unwrap();
+    let b = block_on(run_tiers(&ci, &model, &AcceptAll));
+    // not skipped for the lifetime or the type parameter: the assisted tier writes the glue
+    let query = b.items.iter().find(|i| i.name == "query").expect("query is bound");
+    assert_eq!(query.tier, Tier::Assisted);
+    assert_eq!(query.sig.heading("query"), "query(sql: text) -> handle of mini.Query");
+    let bind_it = b.items.iter().find(|i| i.name == "query_bind").expect("bind is bound");
+    assert_eq!(bind_it.sig.heading(bind_it.heading.as_deref().unwrap()), "bind(self: consume handle of mini.Query, value: int) -> handle of mini.Query");
+    // the model is told what the handle is
+    let item = ci.items.iter().find(|i| i.name == "query").unwrap();
+    let agentmark::binder::core::Shape::Assisted { sig, why } = &item.shape else { panic!("assisted") };
+    let prompt = agentmark::binder::core::pipeline::assist_prompt(&ci, item, sig, why);
+    assert!(prompt.contains("The handle `mini.Query` is the Rust type `mini::Query<'static, mini::Sqlite>`"), "{prompt}");
+    assert!(why.contains("the handle owns what the Rust value borrows"), "{why}");
+    // the binding file says what the handle is, and reads back
+    let text = agentmark::binder::core::render_binding(
+        &b,
+        "rust",
+        agentmark::binder::core::ProposedEffect::Pure,
+        "2026-10-14",
+    );
+    assert!(text.contains("## Handle: mini.Query\n  ```rust\n  mini::Query<'static, mini::Sqlite>\n  ```\n"), "{text}");
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", "# Import: crate mini\n"), ("app/bindings/mini.agent.md", &text), ("app/tools.toml", "")]);
+    let checked = match sema::check(&p) {
+        Ok(c) => c,
+        Err(d) => {
+            let errors: Vec<_> = d.into_iter().filter(|x| x.severity == Severity::Error).collect();
+            assert!(errors.is_empty(), "{}", p.render(&errors));
+            panic!("no checked result")
+        }
+    };
+    assert_eq!(checked.bindings[0].handles.get("mini.Query").map(String::as_str), Some("mini::Query<'static, mini::Sqlite>"));
+}
+
+#[test]
+fn a_handle_block_for_a_handle_no_item_uses_is_an_error() {
+    let text = "# Binding: mini\n- crate: mini\n- effect: pure\n\n## Handle: mini.Nothing\n  ```rust\n  mini::Nothing\n  ```\n";
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", "# Import: crate mini\n"), ("app/bindings/mini.agent.md", text), ("app/tools.toml", "")]);
+    let e = match sema::check(&p) {
+        Ok(_) => String::new(),
+        Err(d) => p.render(&d.into_iter().filter(|x| x.severity == Severity::Error).collect::<Vec<_>>()),
+    };
+    assert!(e.contains("No item of this binding uses the handle \"mini.Nothing\"."), "{e}");
+}
+
+#[test]
+fn crates_in_agentmark_toml_carry_features() {
+    let toml = "name = \"p\"\n\n[crates]\nsqlx = { version = \"0.8\", features = [\"sqlite\", \"runtime-tokio\"] }\nserde = \"1\"\n";
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", "# Import: crate sqlx\n"), ("app/agentmark.toml", toml), ("app/tools.toml", "")]);
+    let c = &p.config.crates;
+    assert_eq!(c.len(), 2);
+    let sqlx = c.iter().find(|c| c.name == "sqlx").unwrap();
+    assert_eq!((sqlx.version.as_deref(), sqlx.features.as_slice(), sqlx.default_features), (Some("0.8"), ["sqlite".to_string(), "runtime-tokio".to_string()].as_slice(), true));
+    assert!(p.load_diagnostics.is_empty() || !p.load_diagnostics.iter().any(|d| d.message.contains("agentmark.toml")), "{:?}", p.load_diagnostics);
+    // a misspelled key is an error with a suggestion
+    let bad = "[crates]\nsqlx = { version = \"0.8\", feature = [\"sqlite\"] }\n";
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", "# Import: crate sqlx\n"), ("app/agentmark.toml", bad), ("app/tools.toml", "")]);
+    let msg = p.load_diagnostics.iter().map(|d| d.message.clone()).collect::<Vec<_>>().join("\n");
+    assert!(msg.contains("Cannot read \"feature\" of the crate \"sqlx\""), "{msg}");
+}
+
 // ------------------------------------------------------------------------------ sema
 
 const HASH_BINDING: &str = "> generated by agentmark bind \u{2014} sha2 0.10.9 \u{2014} 2026-10-14
@@ -483,6 +590,9 @@ fn hash_project(d: &Path) -> PathBuf {
     copy_dir(Path::new(&format!("{ROOT}/examples/05-invoice-service")), &proj);
     std::fs::remove_file(proj.join("bindings/sha2.agent.md")).unwrap();
     write(&proj, "commands/hash-pieces.agent.md", HASH_COMMAND);
+    // the library is bound and built with the features `agentmark.toml` names (Q371)
+    let toml = std::fs::read_to_string(proj.join("agentmark.toml")).unwrap();
+    write(&proj, "agentmark.toml", &format!("{toml}\n[crates]\nsha2 = {{ default-features = false, features = [\"std\"] }}\n"));
     let main = std::fs::read_to_string(proj.join("main.agent.md")).unwrap();
     let main = main
         .replace("# Import: ./commands/import-csv.agent.md\n", "# Import: ./commands/import-csv.agent.md\n# Import: ./commands/hash-pieces.agent.md\n")
@@ -514,6 +624,8 @@ fn an_incremental_hash_builds_and_prints_the_right_digest() {
     let second = build();
     assert!(second.status.success(), "{}", stderr(&second));
 
+    let cargo = std::fs::read_to_string(out.join("Cargo.toml")).unwrap();
+    assert!(cargo.contains("sha2 = { version = \"=0.10.9\", default-features = false, features = [\"std\"] }"), "{cargo}");
     let bin = build_bin(&out, "invoice-service");
     let run = std::process::Command::new(&bin).args(["hash-pieces", "hello ", "world"]).current_dir(&d).output().unwrap();
     assert!(run.status.success(), "{}", stderr(&run));

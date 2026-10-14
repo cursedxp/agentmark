@@ -52,6 +52,8 @@ pub struct BindOptions {
     /// Dependency features the library is bound (and its bodies checked) with.
     pub default_features: bool,
     pub features: Vec<String>,
+    /// Per crate, from `[crates]` in `agentmark.toml`: `(default features, features)`; overrides the two above.
+    pub crate_features: std::collections::BTreeMap<String, (bool, Vec<String>)>,
     /// Pre-generated rustdoc JSON of other crates (tests): used when the bound crate re-exports
     /// a trait from one of them. Otherwise they are built next to the main one.
     pub foreign_rustdoc: Vec<PathBuf>,
@@ -75,6 +77,7 @@ impl BindOptions {
             checker: None,
             default_features: true,
             features: vec![],
+            crate_features: Default::default(),
             foreign_rustdoc: vec![],
             foreign_fetch: None,
             today,
@@ -158,6 +161,10 @@ fn spec(crate_name: &str, version: Option<&str>, opts: &BindOptions) -> rust::Fe
     s.offline = opts.offline;
     s.default_features = opts.default_features;
     s.features = opts.features.clone();
+    if let Some((d, f)) = opts.crate_features.get(crate_name) {
+        s.default_features = *d;
+        s.features = f.clone();
+    }
     s
 }
 
@@ -269,7 +276,7 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
     let checker: &dyn TypeChecker = match &opts.checker {
         Some(c) => &**c,
         None => {
-            default_checker = rust::CargoChecker::for_spec(&spec(crate_name, Some(&version), opts));
+            default_checker = rust::CargoChecker::for_spec(&spec(crate_name, Some(&version), opts)).with_handle_types(ci.handle_types.clone());
             &default_checker
         }
     };
@@ -425,7 +432,7 @@ pub fn produce_on_demand(
     let checker: &dyn TypeChecker = match &opts.checker {
         Some(c) => &**c,
         None => {
-            default_checker = rust::CargoChecker::for_spec(&spec(crate_name, Some(&version), opts));
+            default_checker = rust::CargoChecker::for_spec(&spec(crate_name, Some(&version), opts)).with_handle_types(ci.handle_types.clone());
             &default_checker
         }
     };

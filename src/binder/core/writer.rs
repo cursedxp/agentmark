@@ -99,6 +99,13 @@ pub fn render_binding(
         o.push('\n');
         o.push_str(&render_item(it, code_lang));
     }
+    for (name, rust) in &b.handle_types {
+        o.push_str(&format!("\n## Handle: {name}\n  ```{code_lang}\n"));
+        for l in wrap_type(rust, 116) {
+            o.push_str(&format!("  {l}\n"));
+        }
+        o.push_str("  ```\n");
+    }
     if !b.not_bound.is_empty() {
         o.push_str("\n## Not bound\n");
         for (name, reason) in &b.not_bound {
@@ -111,6 +118,21 @@ pub fn render_binding(
         }
     }
     o
+}
+
+/// A Rust type on lines of at most `width` characters: broken after a `, ` (Rust does not mind).
+fn wrap_type(t: &str, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for piece in t.split_inclusive(", ") {
+        if !cur.is_empty() && cur.chars().count() + piece.chars().count() > width {
+            lines.push(cur.trim_end().to_string());
+            cur = "    ".to_string();
+        }
+        cur.push_str(piece);
+    }
+    lines.push(cur);
+    lines
 }
 
 /// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). Nothing is

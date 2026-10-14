@@ -134,4 +134,7 @@ pub struct CrateItems {
     pub hints: crate::binder::core::effects::EffectHints,
     pub items: Vec<Item>,
     pub extra_not_bound: Vec<NotBoundEntry>,
+    /// Handle name -> its Rust type, for the handles that are not simply `<crate>::<Type>`
+    /// (types with lifetimes or type parameters, as the signatures instantiate them).
+    pub handle_types: std::collections::BTreeMap<String, String>,
 }

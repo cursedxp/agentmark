@@ -263,6 +263,8 @@ pub struct BindingInfo {
     pub effect: Effect,
     pub proposed_effect: Option<Effect>,
     pub items: Vec<BindingItemInfo>,
+    /// Rust type of the handles whose type is not simply `<crate>::<Type>` (`## Handle:` blocks).
+    pub handles: BTreeMap<String, String>,
 }
 
 impl BindingInfo {

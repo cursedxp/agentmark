@@ -48,7 +48,7 @@ Other entry points: `rust::fetch_rustdoc_json(crate, version)` (builds rustdoc J
 
 | tier | rule (Rust target) | who writes the body |
 |---|---|---|
-| direct | non-generic, non-async, non-`Result`, every type maps 1:1 (ints up to `u32`/`i64`, bool, text, bytes, `NaiveDate`, `DateTime<Utc>`, `Duration`, `Vec`/`Option` of those), `self`/`&self` only | rules (`rust/types.rs` conversions), no model |
+| direct | non-generic, non-async, non-`Result`, every type maps 1:1 (ints up to `i64`, wider ones (`u64`, `usize`) with a checked conversion, bool, text, bytes, `NaiveDate`, `DateTime<Utc>`, `Duration`, `Vec`/`Option` of those), `self`/`&self` only | rules (`rust/types.rs` conversions), no model |
 | assisted | everything else whose parameters and return can still be declared in AgentMark types: generics with one obvious instantiation, `Result`, `async` | `ModelClient`, then `cargo check` of the body against the declared signature (scratch crate, one attempt) |
 | skipped | unsafe, lifetimes, associated types, closures, `&mut` of a type that is not a handle, a type with no AgentMark type, a rejected or missing model body, a heading over 120 characters | listed under `## Not bound` with the reason |
 
