@@ -5,6 +5,7 @@ new keys may be added, none are renamed or removed within v0.x. The VS Code pane
 
 ```json
 {
+  "schema_version": 1,
   "ok": true,
   "path": "examples/01-invoice-chaser",
   "diagnostics": [
@@ -35,6 +36,7 @@ new keys may be added, none are renamed or removed within v0.x. The VS Code pane
 
 | key | meaning |
 |---|---|
+| `schema_version` | integer, 1 for this layout; bumped only for a breaking change |
 | `ok` | no error diagnostics **and** (no unverified bindings or `--allow-unverified` given) |
 | `diagnostics` | every error and warning, ordered by file and line; `severity` is `"error"` or `"warning"`; `line`/`column` are 1-based; `did_you_mean` and `help` may be `null` |
 | `units` | one entry per agent, service, command, function and rule (`kind` = `agent`, `service`, `command`, `function`, `rule`), in source order; `effects` is the union over its blocks; empty when the project has errors |

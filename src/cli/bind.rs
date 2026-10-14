@@ -53,20 +53,29 @@ pub(crate) fn run(name: Option<&str>, force: bool, all: bool, project: &str) -> 
         Err(e) => return fail(e),
     };
     let dir = Path::new(project).join("bindings");
-    let crates: Vec<String> = if all {
+    let crates: Vec<(String, Option<String>)> = if all {
         match existing_crates(&dir) {
             Ok(c) => c,
             Err(e) => return fail(e),
         }
     } else {
-        name.map(|n| vec![n.to_string()]).unwrap_or_default()
+        name.map(|n| vec![(n.to_string(), None)]).unwrap_or_default()
     };
     if crates.is_empty() {
         println!("No bindings in {} to refresh.", dir.display());
         return 0;
     }
     let mut failed = false;
-    for c in &crates {
+    for (c, stem) in &crates {
+        // `bind` writes `<crate>.agent.md`; a file with another name is never duplicated (Q117)
+        if let Some(stem) = stem.as_ref().filter(|st| *st != c) {
+            failed = true;
+            eprintln!(
+                "agentmark: bindings/{stem}.agent.md holds the binding of \"{c}\" but is not named \"{c}.agent.md\"; \
+                 rename it so \"agentmark bind\" can refresh it"
+            );
+            continue;
+        }
         let mut opts = BindOptions::new(&dir, model.clone(), mock_today.unwrap_or_else(system_today));
         opts.force = force;
         opts.offline = matches!(std::env::var("AGENTMARK_OFFLINE").as_deref(), Ok("1") | Ok("true"));
@@ -90,7 +99,7 @@ fn explain(c: &str, e: &BindError) -> String {
 }
 
 /// Crate names of `bindings/*.agent.md` (from the `- crate:` line, else the file name).
-fn existing_crates(dir: &Path) -> Result<Vec<String>, String> {
+fn existing_crates(dir: &Path) -> Result<Vec<(String, Option<String>)>, String> {
     if !dir.is_dir() {
         return Ok(vec![]);
     }
@@ -106,7 +115,7 @@ fn existing_crates(dir: &Path) -> Result<Vec<String>, String> {
                 _ => None,
             })
         });
-        names.push(from_file.unwrap_or_else(|| stem.to_string()));
+        names.push((from_file.unwrap_or_else(|| stem.to_string()), Some(stem.to_string())));
     }
     names.sort();
     names.dedup();

@@ -5,10 +5,10 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use super::files::in_bindings;
-use super::{exists, fail};
+use super::{exists, fail, require_source};
 use crate::binder::doc_cheatsheet;
-use crate::project::Project;
-use crate::sema::{self, Checked};
+use crate::project::{Project, ProjectKind};
+use crate::sema::{self, Checked, EffectSet};
 use crate::syntax::ast::Decl;
 
 pub(crate) fn run(target: Option<&str>, project_dir: &str) -> u8 {
@@ -45,6 +45,9 @@ fn doc_block(out: &mut String, doc: &Option<String>) {
 }
 
 fn project_page(path: &str) -> u8 {
+    if let Err(c) = require_source(path) {
+        return c;
+    }
     let project = Project::load(path);
     let checked = match sema::check(&project) {
         Ok(c) => c,
@@ -60,7 +63,18 @@ fn project_page(path: &str) -> u8 {
 
 fn page(project: &Project, c: &Checked) -> String {
     let mut out = String::new();
-    let title = project.config.name.clone().unwrap_or_else(|| project.root.clone());
+    let title = match (&project.config.name, project.kind) {
+        (Some(n), _) => n.clone(),
+        (None, ProjectKind::SingleFile) => project
+            .files
+            .first()
+            .map(|f| {
+                let name = f.path.rsplit('/').next().unwrap_or(&f.path);
+                name.strip_suffix(".agent.md").unwrap_or(name).to_string()
+            })
+            .unwrap_or_else(|| project.root.clone()),
+        (None, ProjectKind::Folder) => project.root.clone(),
+    };
     let _ = writeln!(out, "# {title}\n");
     let files: Vec<_> = project.files.iter().filter(|f| !in_bindings(&f.path)).collect();
     for f in &files {
@@ -73,7 +87,7 @@ fn page(project: &Project, c: &Checked) -> String {
         let _ = writeln!(out, "### {}\n", a.name.name);
         doc_block(out, &a.doc);
         let tools: Vec<_> = a.tools.iter().map(|t| t.name.as_str()).collect();
-        let _ = writeln!(out, "- model: {}\n- tools: {}\n- can touch: {}\n", a.model.value, tools.join(", "), c.unit_effect(&a.name.name));
+        let _ = writeln!(out, "- model: {}\n- tools: {}\n- can touch: {}\n", a.model.value, tools.join(", "), touch(&c.unit_effect(&a.name.name)));
         for b in &a.blocks {
             let eff = block_effect(c, &a.name.name, &b.label);
             let _ = writeln!(out, "**{}** (can touch: {eff})\n", b.label);
@@ -85,7 +99,7 @@ fn page(project: &Project, c: &Checked) -> String {
         let Decl::Service(s) = d else { return false };
         let _ = writeln!(out, "### {}\n", s.name.name);
         doc_block(out, &s.doc);
-        let _ = writeln!(out, "- can touch: {}\n", c.unit_effect(&s.name.name));
+        let _ = writeln!(out, "- can touch: {}\n", touch(&c.unit_effect(&s.name.name)));
         for r in &s.routes {
             let label = format!("{} {}", r.method, r.path);
             let eff = block_effect(c, &s.name.name, &label);
@@ -98,7 +112,7 @@ fn page(project: &Project, c: &Checked) -> String {
         let Decl::Command(x) = d else { return false };
         let _ = writeln!(out, "### {}\n", x.name.name);
         doc_block(out, &x.doc);
-        let _ = writeln!(out, "- can touch: {}\n", c.unit_effect(&x.name.name));
+        let _ = writeln!(out, "- can touch: {}\n", touch(&c.unit_effect(&x.name.name)));
         true
     });
     section(&mut out, "Records", &files, |out, d| {
@@ -115,8 +129,9 @@ fn page(project: &Project, c: &Checked) -> String {
     });
     section(&mut out, "Rules", &files, |out, d| {
         let Decl::Rule(r) = d else { return false };
-        let _ = writeln!(out, "### {}\n\nApplies to {}. Always pure.\n", r.name.name, r.for_record.name);
+        let _ = writeln!(out, "### {}\n", r.name.name);
         doc_block(out, &r.doc);
+        let _ = writeln!(out, "Applies to {}. Always pure.\n", r.for_record.name);
         true
     });
     section(&mut out, "Functions", &files, |out, d| {
@@ -124,18 +139,27 @@ fn page(project: &Project, c: &Checked) -> String {
         let _ = writeln!(out, "### {}\n", f.name.name);
         doc_block(out, &f.doc);
         let eff = c.unit_effect(&f.name.name);
-        let _ = writeln!(out, "- can touch: {eff}\n");
+        let _ = writeln!(out, "- can touch: {}\n", touch(&eff));
         true
     });
     out
+}
+
+/// `pure` reads as a fact about the code, not as an effect.
+fn touch(e: &EffectSet) -> String {
+    if e.is_pure() {
+        "nothing outside itself (pure)".to_string()
+    } else {
+        e.to_string()
+    }
 }
 
 fn block_effect(c: &Checked, unit: &str, label: &str) -> String {
     c.blocks
         .iter()
         .find(|b| b.unit == unit && b.label == label)
-        .map(|b| b.effect.to_string())
-        .unwrap_or_else(|| "pure".into())
+        .map(|b| touch(&b.effect))
+        .unwrap_or_else(|| touch(&EffectSet::pure()))
 }
 
 /// Print `## title` once if at least one declaration of that kind exists.

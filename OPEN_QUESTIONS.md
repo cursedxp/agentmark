@@ -251,7 +251,7 @@ Generated bindings are rewritten by `agentmark bind` (and carry the lines Q110 d
 SPEC 15.3: `check` lists unverified bindings and the release build refuses them. The brief gives `check` the flag. **Choice:** `check` exits 1 while any binding is `unverified` (the listing says which line to change) unless `--allow-unverified` is passed; the listing is printed either way. Rationale: `check` is the CI gate, and an unapproved library must not pass it silently. Sema keeps W005 a warning; the gate is in the CLI. `build` (codegen task) reuses the same rule.
 
 ## Q113 — Exit codes and streams
-**Choice:** 0 = ok; 1 = the user's project has problems (errors, denied lints, non-canonical files with `--check`, unapproved libraries, a bind that failed); 2 = the command itself cannot run (bad arguments, missing path for `fmt`, no model for `bind`). Diagnostics go to stderr in the SPEC 10 format; reports and the final count go to stdout. `check --json` prints only JSON on stdout. `check` on a path that does not exist is exit 1 (the project loader reports "Cannot find …" as a diagnostic).
+**Choice:** 0 = ok; 1 = the user's project has problems (errors, denied lints, non-canonical files with `--check`, unapproved libraries, a bind that failed); 2 = the command itself cannot run (bad arguments, missing path for `fmt`, no model for `bind`). Diagnostics go to stderr in the SPEC 10 format; reports and the final count go to stdout. `check --json` prints only JSON on stdout. A path that does not exist, or a file that is not `.agent.md` (e.g. `tools.toml`), is exit 2 with one plain message for every command (`check`, `fmt`, `lint`, `doc`); `fmt` writes through a temp file and rename.
 
 ## Q114 — `doc <target>`: project or library?
 `agentmark doc [<dir>]` (SPEC 18.7) and `agentmark doc <crate>` (brief) share one argument. **Choice:** if the argument exists on disk it is a project (file or folder); otherwise it is a library name looked up as `<project>/bindings/<name>.agent.md` (`--project`, default `.`; also `.agentmark/bindings/`). No argument = the current folder. A library whose name equals a local folder must be asked for with `--project`.
@@ -261,3 +261,6 @@ SPEC 15.3: `check` lists unverified bindings and the release build refuses them.
 
 ## Q116 — Effect summary lines for functions and rules
 SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **Choice:** agents, services and commands print `unit / heading: effects` (heading as written, `GET /invoices/{id}`, `Run`); functions and rules, which have no heading, print `function name: effects` / `rule name: effects`. In JSON both are `units[]` with `kind`.
+
+## Q117 — `bind --all` and a binding file with another name
+`bind` always writes `<crate>.agent.md`. For a file whose `- crate:` differs from its name, `--all` would create a second file. **Choice:** it refuses that entry with a message asking to rename the file (exit 1); the other bindings are still refreshed. `bind <crate>` and `--all` are mutually exclusive.

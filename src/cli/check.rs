@@ -2,6 +2,7 @@
 
 use serde_json::{json, Value};
 
+use super::{plural, require_source};
 use crate::diag::{Diagnostic, Severity};
 use crate::project::Project;
 use crate::sema::effects::effect_name;
@@ -154,6 +155,9 @@ fn report(project: &Project, c: &Checked) -> Report {
 }
 
 pub(crate) fn run(path: &str, json_out: bool, allow_unverified: bool) -> u8 {
+    if let Err(c) = require_source(path) {
+        return c;
+    }
     let project = Project::load(path);
     let result = sema::check(&project);
     let (diags, checked) = match result {
@@ -161,7 +165,6 @@ pub(crate) fn run(path: &str, json_out: bool, allow_unverified: bool) -> u8 {
         Err(d) => (d, None),
     };
     let errors = diags.iter().filter(|d| d.severity == Severity::Error).count();
-    let warnings = diags.len() - errors;
     let rep = checked.as_ref().map(|c| report(&project, c));
     let unverified_count = rep.as_ref().map_or(0, |r| r.unverified.len());
     let blocked = unverified_count > 0 && !allow_unverified;
@@ -170,6 +173,7 @@ pub(crate) fn run(path: &str, json_out: bool, allow_unverified: bool) -> u8 {
     if json_out {
         let empty = Vec::new();
         let doc = json!({
+            "schema_version": 1,
             "ok": ok,
             "path": path,
             "diagnostics": diags.iter().map(diag_json).collect::<Vec<_>>(),
@@ -182,24 +186,28 @@ pub(crate) fn run(path: &str, json_out: bool, allow_unverified: bool) -> u8 {
         return u8::from(!ok);
     }
 
-    if !diags.is_empty() {
-        eprintln!("{}\n", project.render(&diags));
+    // an unapproved library is reported once, in its own section (the JSON keeps the W005 diagnostic)
+    let shown: Vec<_> = diags.iter().filter(|d| rep.is_none() || d.code != "W005").cloned().collect();
+    let warnings = shown.iter().filter(|d| d.severity == Severity::Warning).count();
+    if !shown.is_empty() {
+        eprintln!("{}\n", project.render(&shown));
     }
     if let Some(r) = &rep {
-        section("Effects (what each block can touch)", &r.lines, "");
+        section("Effects (what each block can touch)", &r.lines, "  ");
         section("Field types guessed from names", &r.inferred_lines, "  ");
         section("Libraries nobody approved yet (one line each to approve)", &r.unverified_lines, "  ");
         section("Rust blocks (trusted, not checked by AgentMark)", &r.rust_lines, "  ");
     }
     if errors > 0 {
-        println!("{errors} errors, {warnings} warnings: not ok.");
+        println!("{}, {}: not ok.", plural(errors, "error"), plural(warnings, "warning"));
     } else if blocked {
         println!(
-            "{warnings} warnings, but {unverified_count} unapproved librar{}: approve the lines above, or use --allow-unverified while developing.",
+            "{}, but {unverified_count} unapproved librar{}: approve the lines above, or use --allow-unverified while developing.",
+            plural(warnings, "warning"),
             if unverified_count == 1 { "y" } else { "ies" }
         );
     } else {
-        println!("ok: 0 errors, {warnings} warnings.");
+        println!("ok: 0 errors, {}.", plural(warnings, "warning"));
     }
     u8::from(!ok)
 }

@@ -69,7 +69,7 @@ pub enum Command {
         #[arg(long)]
         force: bool,
         /// Refresh every `bindings/*.agent.md` of the project.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "name")]
         all: bool,
         /// Project folder whose `bindings/` is used.
         #[arg(long, default_value = ".")]
@@ -109,4 +109,24 @@ pub(crate) fn fail(message: impl std::fmt::Display) -> u8 {
 /// Does `path` exist on disk?
 pub(crate) fn exists(path: &str) -> bool {
     Path::new(path).exists()
+}
+
+/// `path` must be a project folder or a `.agent.md` file; otherwise one plain message and the
+/// "command cannot run" exit code 2 (Q113), the same for every command.
+pub(crate) fn require_source(path: &str) -> Result<(), u8> {
+    let p = Path::new(path);
+    if !p.exists() {
+        return Err(fail(format!("cannot find \"{path}\"")));
+    }
+    if p.is_file() && !path.ends_with(".agent.md") {
+        return Err(fail(format!(
+            "\"{path}\" is not an AgentMark file: give a .agent.md file or a project folder"
+        )));
+    }
+    Ok(())
+}
+
+/// "1 error", "2 errors".
+pub(crate) fn plural(n: usize, word: &str) -> String {
+    format!("{n} {word}{}", if n == 1 { "" } else { "s" })
 }

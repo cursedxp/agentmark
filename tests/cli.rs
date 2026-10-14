@@ -117,14 +117,40 @@ fn check_errors_exit_1_with_did_you_mean_and_no_rust() {
     let se = err(&o);
     assert!(se.contains("a.agent.md:6"), "{se}");
     assert!(se.contains("Did you mean \"log\"?"), "{se}");
-    assert!(out(&o).contains("1 errors, 0 warnings: not ok."), "{}", out(&o));
+    assert!(out(&o).contains("1 error, 0 warnings: not ok."), "{}", out(&o));
 }
 
 #[test]
 fn check_missing_path_is_an_error() {
-    let o = run(&["check", "does/not/exist"]);
-    assert_eq!(code(&o), 1);
-    assert!(err(&o).contains("Cannot find"), "{}", err(&o));
+    for cmd in ["check", "fmt", "lint", "doc"] {
+        let o = run(&[cmd, "does/not/exist"]);
+        if cmd == "doc" {
+            assert_eq!(code(&o), 2, "doc treats an unknown name as a library");
+        } else {
+            assert_eq!(code(&o), 2, "{cmd}");
+            assert!(err(&o).contains("cannot find \"does/not/exist\""), "{cmd}: {}", err(&o));
+        }
+    }
+}
+
+#[test]
+fn a_file_that_is_not_agentmark_source_is_refused_plainly() {
+    for cmd in ["check", "fmt", "lint", "doc"] {
+        let o = run(&[cmd, "examples/tools.toml"]);
+        assert_eq!(code(&o), 2, "{cmd}");
+        assert!(err(&o).contains("is not an AgentMark file"), "{cmd}: {}", err(&o));
+        assert_eq!(err(&o).lines().count(), 1, "one message: {}", err(&o));
+    }
+}
+
+#[test]
+fn counts_are_pluralized() {
+    let d = temp("plural");
+    write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
+    write(&d, "a.agent.md", BAD_AGENT);
+    assert!(out(&run(&["check", s(&d)])).contains("1 error, 0 warnings: not ok."));
+    let l = lint_project("plural-lint", "name = \"p\"\n");
+    assert!(out(&run(&["lint", s(&l)])).contains("lint: 0 errors, 1 warning in 1 file."), "{}", out(&run(&["lint", s(&l)])));
 }
 
 fn keys(v: &Value) -> Vec<&str> {
@@ -140,9 +166,10 @@ fn check_json_has_the_documented_keys() {
     let v: Value = serde_json::from_str(&out(&o)).expect("one JSON document on stdout");
     assert_eq!(
         keys(&v),
-        ["diagnostics", "inferred_fields", "ok", "path", "rust_blocks", "units", "unverified_bindings"]
+        ["diagnostics", "inferred_fields", "ok", "path", "rust_blocks", "schema_version", "units", "unverified_bindings"]
     );
     assert_eq!(v["ok"], true);
+    assert_eq!(v["schema_version"], 1);
     let units = v["units"].as_array().unwrap();
     let agent = units.iter().find(|u| u["name"] == "invoice-chaser").unwrap();
     assert_eq!(agent["kind"], "agent");
@@ -203,7 +230,7 @@ fn fmt_check_fails_on_a_messy_file_and_passes_after_fmt() {
 
     let o = run(&["fmt", "--check", s(&d)]);
     assert_eq!(code(&o), 0, "{}", out(&o));
-    assert!(out(&o).contains("1 files are canonical"));
+    assert!(out(&o).contains("1 file is canonical"));
 }
 
 #[test]
@@ -241,12 +268,12 @@ fn lint_warns_by_default_and_fails_for_denied_rules() {
     let o = run(&["lint", s(&d)]);
     assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
     assert!(err(&o).contains("a.agent.md:1"), "{}", err(&o));
-    assert!(out(&o).contains("lint: 0 errors, 1 warnings"), "{}", out(&o));
+    assert!(out(&o).contains("lint: 0 errors, 1 warning"), "{}", out(&o));
 
     let d = lint_project("lint-deny", "name = \"p\"\n\n[lint]\ndeny = [\"missing-doc\"]\n");
     let o = run(&["lint", s(&d)]);
     assert_eq!(code(&o), 1);
-    assert!(out(&o).contains("lint: 1 errors, 0 warnings"), "{}", out(&o));
+    assert!(out(&o).contains("lint: 1 error, 0 warnings"), "{}", out(&o));
 }
 
 #[test]
@@ -469,6 +496,62 @@ fn generated_bindings_pass_lint_and_fmt_are_left_alone() {
     assert_eq!(code(&run(&["lint", s(&d)])), 0);
     assert_eq!(code(&run(&["fmt", s(&d)])), 0);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+}
+
+#[test]
+fn review_fixes_text_layout() {
+    // effects are indented like the other sections
+    let o = run(&["check", "examples/01-invoice-chaser"]);
+    assert!(out(&o).contains("\n  invoice-chaser / Every day at 09:00: model,"), "{}", out(&o));
+    // single-file doc: title is the file stem; pure units are not called "pure effects"
+    let o = run(&["doc", "examples/05-invoice-service.agent.md"]);
+    assert!(out(&o).starts_with("# 05-invoice-service\n"), "{}", out(&o));
+    assert!(out(&o).contains("- can touch: nothing outside itself (pure)"), "{}", out(&o));
+    // the author's doc comes before the generated line of a rule
+    let d = temp("ruledoc");
+    write(&d, "records/order.agent.md", "# Record: Order\n- amount: money\n");
+    write(&d, "rules/big.agent.md", "# Import: ../records/order.agent.md\n\n> Big orders.\n# Rule: big\n- for: Order\n- when: amount > 5 EUR\n");
+    let o = run(&["doc", s(&d)]);
+    assert!(out(&o).contains("### big\n\nBig orders.\n\nApplies to Order. Always pure."), "{}{}", out(&o), err(&o));
+}
+
+#[test]
+fn fmt_leaves_no_temp_files() {
+    let d = temp("fmtatomic");
+    std::fs::copy(Path::new(ROOT).join("tests/fmt/messy.agent.md"), d.join("messy.agent.md")).unwrap();
+    assert_eq!(code(&run(&["fmt", s(&d)])), 0);
+    let names: Vec<_> = std::fs::read_dir(&d).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+}
+
+#[test]
+fn bind_all_conflicts_with_a_name_and_refuses_misnamed_files() {
+    assert_eq!(code(&run(&["bind", "sha2", "--all"])), 2);
+    let d = sha2_project("bindmisnamed");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    let dir = d.join("bindings");
+    std::fs::rename(dir.join("sha2.agent.md"), dir.join("hash.agent.md")).unwrap();
+    let o = agentmark(&["bind", "--all", "--project", s(&d)])
+        .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+        .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))
+        .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"))
+        .env("AGENTMARK_OFFLINE", "1")
+        .output()
+        .unwrap();
+    assert_eq!(code(&o), 1);
+    assert!(err(&o).contains("not named \"sha2.agent.md\""), "{}", err(&o));
+    assert!(!dir.join("sha2.agent.md").exists(), "no second file");
+}
+
+#[test]
+fn unverified_library_is_reported_once_in_text_and_kept_in_json_diagnostics() {
+    let d = sha2_project("bindonce");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    let o = run(&["check", s(&d)]);
+    assert!(!err(&o).contains("nobody approved"), "{}", err(&o));
+    assert!(out(&o).contains("Libraries nobody approved yet"));
+    let v: Value = serde_json::from_str(&out(&run(&["check", s(&d), "--json"]))).unwrap();
+    assert!(v["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "W005"));
 }
 
 // ---------------------------------------------------------------------------------- misc
