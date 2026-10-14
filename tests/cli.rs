@@ -472,10 +472,14 @@ fn check_loads_the_binding_and_lists_it_until_approved() {
 fn check_types_binding_calls_against_the_bound_signature() {
     let d = sha2_project("bindtype");
     assert_eq!(code(&bind(&d, &[])), 0);
-    write(&d, "fingerprint.agent.md", &USES_SHA2.replace("payload: bytes", "payload: text"));
+    write(&d, "fingerprint.agent.md", &USES_SHA2.replace("payload: bytes", "payload: int"));
     let o = run(&["check", s(&d), "--allow-unverified"]);
     assert_eq!(code(&o), 1);
-    assert!(err(&o).contains("\"data\" of \"sha2 sha256_digest\" must be bytes, but this is text."), "{}", err(&o));
+    assert!(err(&o).contains("\"data\" of \"sha2 sha256_digest\" must be bytes, but this is a number."), "{}", err(&o));
+    // text is accepted where a binding takes bytes (Q151)
+    write(&d, "fingerprint.agent.md", &USES_SHA2.replace("payload: bytes", "payload: text"));
+    let o = run(&["check", s(&d), "--allow-unverified"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
 }
 
 #[test]
@@ -586,4 +590,18 @@ fn fmt_keeps_file_permissions() {
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o640)).unwrap();
     assert_eq!(code(&run(&["fmt", s(&d)])), 0);
     assert_eq!(std::fs::metadata(&f).unwrap().permissions().mode() & 0o777, 0o640);
+}
+
+#[test]
+fn dot_is_a_project_folder_for_check_and_lint() {
+    let d = temp("dot");
+    write(&d, "agentmark.toml", "name = \"p\"\nversion = \"0.1.0\"\ntargets = [\"rust\"]\n");
+    write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
+    write(&d, "records/a.agent.md", "> A.\n# Record: A\n- id: text\n");
+    for cmd in ["check", "lint"] {
+        let mut c = agentmark(&[cmd, "."]);
+        let o = c.current_dir(&d).output().unwrap();
+        assert_eq!(code(&o), 0, "{cmd} .: {}{}", out(&o), err(&o));
+        assert!(!err(&o).contains("Cannot find"), "{cmd} .: {}", err(&o));
+    }
 }

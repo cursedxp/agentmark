@@ -1,0 +1,4 @@
+{"kind":"model","agent":"support-triage","block":"Every 15 minutes","prompt_prefix":"Classify priority as low, medium or high","context":{"id":"T-5"}}
+{"kind":"guard","agent":"support-triage","name":"t.priority = \"low\" or t.priority = \"medium\" or t.priority = \"high\"","result":"pass"}
+{"kind":"tool","tool":"crm","verb":"update","source":"tickets","id":"T-5","set":{"priority":"low"}}
+{"kind":"tool","tool":"log","message":"Triaged T-5 as low/other"}

@@ -8,6 +8,15 @@ imports:
   - span:
       line: 1
       col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
       len: 35
     doc: ~
     kind:
@@ -15,22 +24,13 @@ imports:
         path: "../records/invoice.agent.md"
         alias: ~
   - span:
-      line: 2
+      line: 3
       col: 3
       len: 33
     doc: ~
     kind:
       File:
         path: "../rules/overdue.agent.md"
-        alias: ~
-  - span:
-      line: 3
-      col: 3
-      len: 29
-    doc: ~
-    kind:
-      File:
-        path: "../constants.agent.md"
         alias: ~
 decls:
   - Agent:
@@ -83,7 +83,7 @@ decls:
           body:
             - span:
                 line: 11
-                col: 1
+                col: 3
                 len: 41
               kind:
                 ForEach:
@@ -91,30 +91,30 @@ decls:
                     name: overdue
                     span:
                       line: 11
-                      col: 10
+                      col: 12
                       len: 7
                   var:
                     name: invoice
                     span:
                       line: 11
-                      col: 18
+                      col: 20
                       len: 7
                   source:
                     span:
                       line: 11
-                      col: 29
+                      col: 31
                       len: 12
                     kind:
                       Path:
                         - name: crm
                           span:
                             line: 11
-                            col: 29
+                            col: 31
                             len: 3
                         - name: invoices
                           span:
                             line: 11
-                            col: 33
+                            col: 35
                             len: 8
                   body:
                     - span:

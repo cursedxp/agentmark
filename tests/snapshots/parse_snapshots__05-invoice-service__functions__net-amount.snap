@@ -1,0 +1,154 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/05-invoice-service/functions/net-amount.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 35
+    doc: ~
+    kind:
+      File:
+        path: "../records/invoice.agent.md"
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 4
+        col: 3
+        len: 20
+      doc: The invoice amount after taking off VAT.
+      name:
+        name: net_amount
+        span:
+          line: 4
+          col: 13
+          len: 10
+      params:
+        - name:
+            name: invoice
+            span:
+              line: 5
+              col: 7
+              len: 7
+          ty:
+            kind:
+              Named: Invoice
+            span:
+              line: 5
+              col: 16
+              len: 7
+          default: ~
+        - name:
+            name: vat
+            span:
+              line: 5
+              col: 25
+              len: 3
+          ty:
+            kind:
+              Named: int
+            span:
+              line: 5
+              col: 30
+              len: 3
+          default: ~
+      out:
+        kind:
+          Named: money
+        span:
+          line: 6
+          col: 8
+          len: 5
+      effect:
+        value: Pure
+        span:
+          line: 7
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 8
+            col: 5
+            len: 50
+          kind:
+            Return:
+              span:
+                line: 8
+                col: 12
+                len: 43
+              kind:
+                Binary:
+                  op: Sub
+                  lhs:
+                    span:
+                      line: 8
+                      col: 12
+                      len: 14
+                    kind:
+                      Path:
+                        - name: invoice
+                          span:
+                            line: 8
+                            col: 12
+                            len: 7
+                        - name: amount
+                          span:
+                            line: 8
+                            col: 20
+                            len: 6
+                  rhs:
+                    span:
+                      line: 8
+                      col: 29
+                      len: 26
+                    kind:
+                      Binary:
+                        op: Div
+                        lhs:
+                          span:
+                            line: 8
+                            col: 29
+                            len: 20
+                          kind:
+                            Binary:
+                              op: Mul
+                              lhs:
+                                span:
+                                  line: 8
+                                  col: 29
+                                  len: 14
+                                kind:
+                                  Path:
+                                    - name: invoice
+                                      span:
+                                        line: 8
+                                        col: 29
+                                        len: 7
+                                    - name: amount
+                                      span:
+                                        line: 8
+                                        col: 37
+                                        len: 6
+                              rhs:
+                                span:
+                                  line: 8
+                                  col: 46
+                                  len: 3
+                                kind:
+                                  Path:
+                                    - name: vat
+                                      span:
+                                        line: 8
+                                        col: 46
+                                        len: 3
+                        rhs:
+                          span:
+                            line: 8
+                            col: 52
+                            len: 3
+                          kind:
+                            Int: 100

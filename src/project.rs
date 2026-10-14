@@ -111,15 +111,24 @@ pub trait Fs {
 
 pub struct RealFs;
 
+/// `normalize(".")` is the empty string (the project root); the OS wants `.` for it.
+fn real(path: &str) -> &str {
+    if path.is_empty() {
+        "."
+    } else {
+        path
+    }
+}
+
 impl Fs for RealFs {
     fn read(&self, path: &str) -> Option<String> {
         std::fs::read_to_string(path).ok()
     }
     fn is_dir(&self, path: &str) -> bool {
-        Path::new(path).is_dir()
+        Path::new(real(path)).is_dir()
     }
     fn list(&self, dir: &str) -> Vec<String> {
-        let mut v: Vec<String> = std::fs::read_dir(dir)
+        let mut v: Vec<String> = std::fs::read_dir(real(dir))
             .map(|rd| {
                 rd.filter_map(|e| e.ok())
                     .map(|e| e.file_name().to_string_lossy().to_string())

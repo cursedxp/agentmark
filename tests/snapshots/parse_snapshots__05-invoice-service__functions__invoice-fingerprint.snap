@@ -1,0 +1,219 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/05-invoice-service/functions/invoice-fingerprint.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 35
+    doc: ~
+    kind:
+      File:
+        path: "../records/invoice.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 18
+    doc: ~
+    kind:
+      Crate:
+        name:
+          name: sha2
+          span:
+            line: 2
+            col: 17
+            len: 4
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 5
+        col: 3
+        len: 29
+      doc: "A short fingerprint of an invoice: SHA-256 of its id and amount, written as hex."
+      name:
+        name: invoice_fingerprint
+        span:
+          line: 5
+          col: 13
+          len: 19
+      params:
+        - name:
+            name: invoice
+            span:
+              line: 6
+              col: 7
+              len: 7
+          ty:
+            kind:
+              Named: Invoice
+            span:
+              line: 6
+              col: 16
+              len: 7
+          default: ~
+      out:
+        kind:
+          Named: text
+        span:
+          line: 7
+          col: 8
+          len: 4
+      effect:
+        value: Pure
+        span:
+          line: 8
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 9
+            col: 5
+            len: 59
+          kind:
+            ToolCall:
+              tool:
+                name: sha2
+                span:
+                  line: 9
+                  col: 5
+                  len: 4
+              verb:
+                name: sha256_digest
+                span:
+                  line: 9
+                  col: 10
+                  len: 13
+              target:
+                - Value:
+                    span:
+                      line: 9
+                      col: 24
+                      len: 30
+                    kind:
+                      Interp:
+                        - Expr:
+                            span:
+                              line: 9
+                              col: 26
+                              len: 10
+                            kind:
+                              Path:
+                                - name: invoice
+                                  span:
+                                    line: 9
+                                    col: 26
+                                    len: 7
+                                - name: id
+                                  span:
+                                    line: 9
+                                    col: 34
+                                    len: 2
+                        - Expr:
+                            span:
+                              line: 9
+                              col: 38
+                              len: 14
+                            kind:
+                              Path:
+                                - name: invoice
+                                  span:
+                                    line: 9
+                                    col: 38
+                                    len: 7
+                                - name: amount
+                                  span:
+                                    line: 9
+                                    col: 46
+                                    len: 6
+              payload: ~
+              into:
+                name: digest
+                span:
+                  line: 9
+                  col: 58
+                  len: 6
+              via_do: false
+        - span:
+            line: 10
+            col: 5
+            len: 26
+          kind:
+            Return:
+              span:
+                line: 10
+                col: 12
+                len: 19
+              kind:
+                Call:
+                  func:
+                    - name: fingerprint
+                      span:
+                        line: 10
+                        col: 12
+                        len: 11
+                  args:
+                    - span:
+                        line: 10
+                        col: 24
+                        len: 6
+                      kind:
+                        Path:
+                          - name: digest
+                            span:
+                              line: 10
+                              col: 24
+                              len: 6
+  - RustBlock:
+      span:
+        line: 13
+        col: 4
+        len: 25
+      doc: Only formats the bytes; the hashing itself comes from the sha2 binding.
+      name:
+        name: fingerprint
+        span:
+          line: 13
+          col: 10
+          len: 11
+      parent:
+        name: invoice_fingerprint
+        span:
+          line: 5
+          col: 13
+          len: 19
+      params:
+        - name:
+            name: digest
+            span:
+              line: 14
+              col: 7
+              len: 6
+          ty:
+            kind:
+              Named: bytes
+            span:
+              line: 14
+              col: 15
+              len: 5
+          default: ~
+      out:
+        kind:
+          Named: text
+        span:
+          line: 13
+          col: 25
+          len: 4
+      effect:
+        value: Pure
+        span:
+          line: 15
+          col: 11
+          len: 4
+      rust:
+        code: "digest.iter().map(|b| format!(\"{:02x}\", b)).collect::<String>()"
+        line: 17

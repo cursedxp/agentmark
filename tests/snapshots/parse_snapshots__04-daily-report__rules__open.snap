@@ -1,0 +1,62 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/04-daily-report/rules/open.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 35
+    doc: ~
+    kind:
+      File:
+        path: "../records/invoice.agent.md"
+        alias: ~
+decls:
+  - Rule:
+      span:
+        line: 4
+        col: 3
+        len: 10
+      doc: "Not paid yet, whether or not it is late."
+      name:
+        name: open
+        span:
+          line: 4
+          col: 9
+          len: 4
+      for_record:
+        name: Invoice
+        span:
+          line: 5
+          col: 8
+          len: 7
+      when:
+        span:
+          line: 6
+          col: 9
+          len: 16
+        kind:
+          Binary:
+            op: Ne
+            lhs:
+              span:
+                line: 6
+                col: 9
+                len: 6
+              kind:
+                Path:
+                  - name: status
+                    span:
+                      line: 6
+                      col: 9
+                      len: 6
+            rhs:
+              span:
+                line: 6
+                col: 19
+                len: 6
+              kind:
+                Str: paid

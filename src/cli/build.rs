@@ -37,16 +37,7 @@ fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
     let mut announced: Vec<String> = Vec::new();
     for _round in 0..2 {
         let project = Project::load(path);
-        let checked = match sema::check(&project) {
-            Ok(c) => c,
-            Err(diags) => {
-                eprintln!("{}\n", project.render(&diags));
-                let errors = diags.iter().filter(|d| d.severity == Severity::Error).count();
-                eprintln!("{}: not built.", super::plural(errors, "error"));
-                return Err(1);
-            }
-        };
-        // SPEC 15.1: every imported crate has a binding before codegen
+        // SPEC 15.1: every imported crate has a binding before the project is checked
         let mut generated_any = false;
         let mut crates: Vec<(String, Option<usize>)> = Vec::new();
         for f in &project.files {
@@ -81,6 +72,15 @@ fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
         if generated_any {
             continue;
         }
+        let checked = match sema::check(&project) {
+            Ok(c) => c,
+            Err(diags) => {
+                eprintln!("{}\n", project.render(&diags));
+                let errors = diags.iter().filter(|d| d.severity == Severity::Error).count();
+                eprintln!("{}: not built.", super::plural(errors, "error"));
+                return Err(1);
+            }
+        };
 
         let shown: Vec<_> = checked.warnings.iter().filter(|d| d.code != "W005").cloned().collect();
         if !shown.is_empty() {

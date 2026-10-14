@@ -1,0 +1,4 @@
+{"kind":"model","agent":"lead-qualifier","block":"When crm receives lead","prompt_prefix":"Score this inbound lead from 1 to 10","context":{"id":"L-3"}}
+{"kind":"guard","agent":"lead-qualifier","name":"q matches Qualification","result":"pass"}
+{"kind":"tool","tool":"crm","verb":"update","source":"leads","id":"L-3","set":{"score":3}}
+{"kind":"tool","tool":"log","message":"Lead Hobby Bakery scored 3, no action"}

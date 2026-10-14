@@ -1,0 +1,262 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/05-invoice-service/commands/import-csv.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 35
+    doc: ~
+    kind:
+      File:
+        path: "../records/invoice.agent.md"
+        alias: ~
+decls:
+  - Command:
+      span:
+        line: 4
+        col: 3
+        len: 19
+      doc: Loads invoices from a CSV file into the application state. With dry_run it only reads and counts.
+      name:
+        name: import-csv
+        span:
+          line: 4
+          col: 12
+          len: 10
+      args:
+        - name:
+            name: path
+            span:
+              line: 5
+              col: 9
+              len: 4
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 5
+              col: 15
+              len: 4
+          default: ~
+        - name:
+            name: dry_run
+            span:
+              line: 5
+              col: 21
+              len: 7
+          ty:
+            kind:
+              Named: bool
+            span:
+              line: 5
+              col: 30
+              len: 4
+          default:
+            span:
+              line: 5
+              col: 37
+              len: 5
+            kind:
+              Bool: false
+      body:
+        - span:
+            line: 8
+            col: 3
+            len: 45
+          kind:
+            Try:
+              stmt:
+                span:
+                  line: 8
+                  col: 7
+                  len: 41
+                kind:
+                  ReadFile:
+                    path:
+                      span:
+                        line: 8
+                        col: 17
+                        len: 4
+                      kind:
+                        Path:
+                          - name: path
+                            span:
+                              line: 8
+                              col: 17
+                              len: 4
+                    ty:
+                      kind:
+                        List:
+                          kind:
+                            Named: Invoice
+                          span:
+                            line: 8
+                            col: 33
+                            len: 7
+                      span:
+                        line: 8
+                        col: 25
+                        len: 15
+                    into:
+                      name: rows
+                      span:
+                        line: 8
+                        col: 44
+                        len: 4
+              otherwise:
+                - span:
+                    line: 10
+                    col: 7
+                    len: 30
+                  kind:
+                    Print:
+                      span:
+                        line: 10
+                        col: 14
+                        len: 23
+                      kind:
+                        Interp:
+                          - Text: "Could not read "
+                          - Expr:
+                              span:
+                                line: 10
+                                col: 31
+                                len: 4
+                              kind:
+                                Path:
+                                  - name: path
+                                    span:
+                                      line: 10
+                                      col: 31
+                                      len: 4
+                - span:
+                    line: 11
+                    col: 7
+                    len: 4
+                  kind: Stop
+        - span:
+            line: 12
+            col: 3
+            len: 21
+          kind:
+            ForEach:
+              filter_rule: ~
+              var:
+                name: row
+                span:
+                  line: 12
+                  col: 12
+                  len: 3
+              source:
+                span:
+                  line: 12
+                  col: 19
+                  len: 4
+                kind:
+                  Path:
+                    - name: rows
+                      span:
+                        line: 12
+                        col: 19
+                        len: 4
+              body:
+                - span:
+                    line: 13
+                    col: 5
+                    len: 15
+                  kind:
+                    If:
+                      cond:
+                        span:
+                          line: 13
+                          col: 8
+                          len: 11
+                        kind:
+                          Not:
+                            span:
+                              line: 13
+                              col: 12
+                              len: 7
+                            kind:
+                              Path:
+                                - name: dry_run
+                                  span:
+                                    line: 13
+                                    col: 12
+                                    len: 7
+                      then:
+                        - span:
+                            line: 14
+                            col: 7
+                            len: 28
+                          kind:
+                            Append:
+                              value:
+                                span:
+                                  line: 14
+                                  col: 14
+                                  len: 3
+                                kind:
+                                  Path:
+                                    - name: row
+                                      span:
+                                        line: 14
+                                        col: 14
+                                        len: 3
+                              list:
+                                span:
+                                  line: 14
+                                  col: 21
+                                  len: 14
+                                kind:
+                                  Path:
+                                    - name: state
+                                      span:
+                                        line: 14
+                                        col: 21
+                                        len: 5
+                                    - name: invoices
+                                      span:
+                                        line: 14
+                                        col: 27
+                                        len: 8
+                      else_: []
+        - span:
+            line: 15
+            col: 3
+            len: 38
+          kind:
+            Print:
+              span:
+                line: 15
+                col: 10
+                len: 31
+              kind:
+                Interp:
+                  - Text: "Imported "
+                  - Expr:
+                      span:
+                        line: 15
+                        col: 21
+                        len: 13
+                      kind:
+                        CountOf:
+                          rule: ~
+                          noun: ~
+                          source:
+                            span:
+                              line: 15
+                              col: 30
+                              len: 4
+                            kind:
+                              Path:
+                                - name: rows
+                                  span:
+                                    line: 15
+                                    col: 30
+                                    len: 4
+                  - Text: " rows"

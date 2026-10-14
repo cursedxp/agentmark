@@ -1,0 +1,55 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/03-support-triage/records/triage.agent.md
+doc: ~
+imports: []
+decls:
+  - Record:
+      span:
+        line: 2
+        col: 3
+        len: 14
+      doc: "The model's structured classification of a ticket."
+      name:
+        name: Triage
+        span:
+          line: 2
+          col: 11
+          len: 6
+      fields:
+        - span:
+            line: 3
+            col: 3
+            len: 14
+          name:
+            name: priority
+            span:
+              line: 3
+              col: 3
+              len: 8
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 3
+              col: 13
+              len: 4
+        - span:
+            line: 4
+            col: 3
+            len: 14
+          name:
+            name: category
+            span:
+              line: 4
+              col: 3
+              len: 8
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 4
+              col: 13
+              len: 4

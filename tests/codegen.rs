@@ -141,66 +141,38 @@ fn mock_without_fixtures_is_asked_for_them() {
     assert!(stderr(&o).contains("--fixtures"), "{}", stderr(&o));
 }
 
-// ---------------------------------------------------------------------------------- 02-04
+// ---------------------------------------------------------------------------------- fixtures
 
-#[test]
-fn example_02_lead_qualifier_runs_once_per_lead() {
-    let fx = temp("fx02");
-    write(&fx, "crm.leads.json", r#"[{"id":"L1","company":"Acme","message":"hi","email":"a@acme.com"},{"id":"L2","company":"Tiny","message":"hm","email":"t@tiny.com"}]"#);
-    write(&fx, "model.json", &model_json(&[("Score this inbound lead", r#"{"score": 9, "reason": "big budget"}"#)]));
-    let t = trace_of(&format!("{ROOT}/examples/02-lead-qualifier.agent.md"), &fx);
-    let kinds: Vec<String> = t.iter().map(|l| format!("{}:{}", l["kind"].as_str().unwrap(), l["tool"].as_str().unwrap_or(l["name"].as_str().unwrap_or("")))).collect();
-    assert_eq!(t.len(), 8, "{kinds:?}");
-    assert_eq!(t[0]["context"], json!({"id": "L1"}));
-    assert_eq!(t[1]["name"], "q matches Qualification");
-    assert_eq!(t[1]["result"], "pass");
-    assert_eq!(t[2], json!({"kind":"tool","tool":"crm","verb":"update","source":"leads","id":"L1","set":{"score":9}}));
-    assert_eq!(t[3], json!({"kind":"tool","tool":"email","verb":"send","target":"address","to":"sales@optimotion.dev"}));
-    assert_eq!(t[4]["context"], json!({"id": "L2"}));
+/// Every fixture folder (and its `variants/<case>/`) with an `expected.trace.jsonl`: the program's
+/// trace must equal it, line by line.
+fn fixture_dirs() -> Vec<(String, PathBuf)> {
+    let mut out = Vec::new();
+    let mut names: Vec<_> = std::fs::read_dir(format!("{ROOT}/fixtures")).unwrap().flatten().map(|e| e.path()).collect();
+    names.sort();
+    for dir in names.into_iter().filter(|p| p.is_dir()) {
+        let name = dir.file_name().unwrap().to_string_lossy().to_string();
+        if dir.join("expected.trace.jsonl").is_file() {
+            out.push((name.clone(), dir.clone()));
+        }
+        let mut vs: Vec<_> = std::fs::read_dir(dir.join("variants")).into_iter().flatten().flatten().map(|e| e.path()).collect();
+        vs.sort();
+        for v in vs.into_iter().filter(|v| v.join("expected.trace.jsonl").is_file()) {
+            out.push((name.clone(), v));
+        }
+    }
+    out
 }
 
 #[test]
-fn example_02_a_model_answer_that_does_not_fit_fails_the_matches_guard() {
-    let fx = temp("fx02b");
-    write(&fx, "crm.leads.json", r#"[{"id":"L1","company":"Acme","message":"hi","email":"a@acme.com"}]"#);
-    write(&fx, "model.json", &model_json(&[("Score this inbound lead", "I think it is a good lead")]));
-    let t = trace_of(&format!("{ROOT}/examples/02-lead-qualifier.agent.md"), &fx);
-    assert_eq!(t.len(), 2, "{t:#?}");
-    assert_eq!(t[1]["result"], "fail");
-}
-
-#[test]
-fn example_03_support_triage_stops_the_whole_block_on_a_triaged_ticket() {
-    let fx = temp("fx03");
-    write(&fx, "crm.tickets.json", r#"[{"id":"T1","subject":"s","body":"b"},{"id":"T2","subject":"s","body":"b","priority":"low"},{"id":"T3","subject":"s","body":"b"}]"#);
-    write(&fx, "model.json", &model_json(&[("Classify priority", r#"{"priority":"high","category":"billing"}"#)]));
-    let t = trace_of(&format!("{ROOT}/examples/03-support-triage.agent.md"), &fx);
-    // T1 is triaged, T2 already has a priority: `stop` ends the block (Q3), T3 is not looked at
-    assert_eq!(t.len(), 5, "{t:#?}");
-    assert_eq!(t[2]["id"], "T1");
-    assert_eq!(t[3], json!({"kind":"tool","tool":"http","verb":"post","url":"https://hooks.example.com/alert","body":{"ticket":"T1","category":"billing"}}));
-    assert_eq!(t[4], json!({"kind":"tool","tool":"log","message":"Triaged T1 as high/billing"}));
-}
-
-#[test]
-fn example_03_an_unknown_priority_fails_the_guard_and_stops() {
-    let fx = temp("fx03b");
-    write(&fx, "crm.tickets.json", r#"[{"id":"T1","subject":"s","body":"b"}]"#);
-    write(&fx, "model.json", &model_json(&[("Classify priority", r#"{"priority":"urgent","category":"other"}"#)]));
-    let t = trace_of(&format!("{ROOT}/examples/03-support-triage.agent.md"), &fx);
-    assert_eq!(t.len(), 2);
-    assert_eq!(t[1]["result"], "fail");
-}
-
-#[test]
-fn example_04_daily_report_counts_with_the_rules() {
-    let fx = temp("fx04");
-    write(&fx, "crm.invoices.json", r#"[{"id":"I1","customer":"A","amount":"10.00 EUR","due":"2026-01-01","status":"open"},{"id":"I2","customer":"B","amount":"5.00 EUR","due":"2026-10-12","status":"open"},{"id":"I3","customer":"C","amount":"5.00 EUR","due":"2026-01-01","status":"paid"}]"#);
-    write(&fx, "model.json", &model_json(&[("Write a two-sentence Monday summary. Open invoices: 2. Overdue: 1.", "Two are open, one is late.")]));
-    let t = trace_of(&format!("{ROOT}/examples/04-daily-report.agent.md"), &fx);
-    assert_eq!(t[0]["prompt_prefix"], "Write a two-sentence Monday summary. Open invoices: 2. Overdue: 1.");
-    assert_eq!(t[1], json!({"kind":"guard","agent":"daily-report","name":"summary is not empty","result":"pass"}));
-    assert_eq!(t[3], json!({"kind":"tool","tool":"log","message":"Report sent: 2 open, 1 overdue"}));
+fn every_example_reproduces_the_expected_trace_of_every_fixture() {
+    let fixtures = fixture_dirs();
+    assert!(fixtures.len() >= 10, "{fixtures:?}");
+    for (example, dir) in fixtures {
+        let want = parse_lines(&std::fs::read_to_string(dir.join("expected.trace.jsonl")).unwrap());
+        // a variant is self-contained; a plain `requests.json` etc. only exists where it applies
+        let got = trace_of(&format!("{ROOT}/examples/{example}"), &dir);
+        assert_eq!(got, want, "{example} with {}", dir.display());
+    }
 }
 
 #[test]
@@ -208,7 +180,7 @@ fn a_missing_model_answer_is_reported_not_swallowed() {
     let fx = temp("fx04b");
     write(&fx, "crm.invoices.json", "[]");
     write(&fx, "model.json", &model_json(&[]));
-    let o = agentmark(&["trace", &format!("{ROOT}/examples/04-daily-report.agent.md"), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["trace", &format!("{ROOT}/examples/04-daily-report"), "--mock", "--fixtures", s(&fx)]).output().unwrap();
     // the block fails, the run says so, and the trace records the error
     assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
     let t = parse_lines(&stdout(&o));
@@ -218,35 +190,10 @@ fn a_missing_model_answer_is_reported_not_swallowed() {
 
 // ---------------------------------------------------------------------------------- 05
 
-/// Example 05 in a temp folder, with the sha2 binding generated from the canned rustdoc.
-fn project_05() -> (PathBuf, PathBuf) {
+/// Example 05 as it is in the repository (its sha2 binding is approved), built with cargo.
+fn built_05() -> (PathBuf, PathBuf) {
     let d = temp("p05");
-    std::fs::copy(format!("{ROOT}/examples/05-invoice-service.agent.md"), d.join("05-invoice-service.agent.md")).unwrap();
-    write(&d, "tools.toml", &tools_toml());
-    (d.clone(), d.join("05-invoice-service.agent.md"))
-}
-
-fn approve_sha2(dir: &Path) {
-    let p = dir.join("bindings/sha2.agent.md");
-    let t = std::fs::read_to_string(&p).unwrap().replace("- effect: unverified", "- effect: pure");
-    std::fs::write(p, t).unwrap();
-}
-
-#[test]
-fn build_binds_imported_crates_and_refuses_unapproved_ones() {
-    let (d, file) = project_05();
-    let mut c = agentmark(&["build", s(&file), "-o", s(&d.join("out"))]);
-    bind_env(&mut c);
-    let o = c.output().unwrap();
-    assert_eq!(o.status.code(), Some(1));
-    let e = stderr(&o);
-    assert!(e.contains("binding sha2: generated"), "{e}");
-    assert!(e.contains("not approved") && e.contains("--allow-unverified"), "{e}");
-    assert!(!d.join("out").exists(), "nothing is written for a refused build");
-
-    // approved: builds, and the second build finds the cached binding
-    approve_sha2(&d);
-    let o = agentmark(&["build", s(&file), "-o", s(&d.join("out"))]).output().unwrap();
+    let o = agentmark(&["build", &format!("{ROOT}/examples/05-invoice-service"), "-o", s(&d.join("out"))]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("binding sha2: cached"), "{}", stderr(&o));
     let cargo = std::fs::read_to_string(d.join("out/Cargo.toml")).unwrap();
@@ -254,22 +201,6 @@ fn build_binds_imported_crates_and_refuses_unapproved_ones() {
     for f in ["src/service_api.rs", "src/command_import_csv.rs"] {
         assert!(d.join("out").join(f).is_file(), "{f}");
     }
-}
-
-#[test]
-fn allow_unverified_builds_for_development() {
-    let (d, file) = project_05();
-    let mut c = agentmark(&["build", s(&file), "-o", s(&d.join("out")), "--allow-unverified"]);
-    bind_env(&mut c);
-    let o = c.output().unwrap();
-    assert!(o.status.success(), "{}", stderr(&o));
-}
-
-fn built_05() -> (PathBuf, PathBuf) {
-    let (d, file) = project_05();
-    let mut c = agentmark(&["build", s(&file), "-o", s(&d.join("out")), "--allow-unverified"]);
-    bind_env(&mut c);
-    assert!(c.output().unwrap().status.success());
     let b = Command::new("cargo")
         .args(["build", "--offline", "--manifest-path"])
         .arg(d.join("out/Cargo.toml"))
@@ -278,52 +209,64 @@ fn built_05() -> (PathBuf, PathBuf) {
         .unwrap();
     assert!(b.status.success(), "{}", stderr(&b));
     assert!(!stderr(&b).contains("warning"), "{}", stderr(&b));
-    let bin = gen_bin("agentmark-05-invoice-service");
+    let bin = gen_bin("invoice-service");
     (d, bin)
+}
+
+#[test]
+fn build_binds_missing_crates_and_refuses_unapproved_ones() {
+    // the repository copy of 05 without its binding: bound from the canned rustdoc, then refused
+    let d = temp("bind05");
+    copy_dir(Path::new(&format!("{ROOT}/examples/05-invoice-service")), &d);
+    std::fs::remove_file(d.join("bindings/sha2.agent.md")).unwrap();
+    let mut c = agentmark(&["build", s(&d), "-o", s(&d.join("../out-bind05"))]);
+    bind_env(&mut c);
+    let o = c.output().unwrap();
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(e.contains("binding sha2: generated"), "{e}");
+    assert!(e.contains("unverified") && e.contains("- effect: pure"), "{e}");
+    assert!(!d.join("../out-bind05").exists(), "nothing is written for a refused build");
+    // approving the one line is all it takes
+    let p = d.join("bindings/sha2.agent.md");
+    let t = std::fs::read_to_string(&p).unwrap().replace("- effect: unverified", "- effect: pure");
+    std::fs::write(p, t).unwrap();
+    let o = agentmark(&["build", s(&d), "-o", s(&d.join("../out-bind05"))]).output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stderr(&o).contains("binding sha2: cached"));
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    for e in std::fs::read_dir(from).unwrap().flatten() {
+        let t = to.join(e.file_name());
+        if e.path().is_dir() {
+            std::fs::create_dir_all(&t).unwrap();
+            copy_dir(&e.path(), &t);
+        } else {
+            std::fs::copy(e.path(), t).unwrap();
+        }
+    }
 }
 
 fn gen_bin(name: &str) -> PathBuf {
     PathBuf::from(gen_target()).join("debug").join(name)
 }
 
-const STATE: &str = r#"[{"id":"INV-1","customer":"Acme","amount":"100.00 EUR","due":"2026-01-01","status":"open"}]"#;
 
 #[test]
-fn service_answers_requests_from_the_fixture_and_traces_them() {
+fn a_response_that_differs_from_expect_body_fails_the_run() {
     let (d, bin) = built_05();
     let fx = d.join("fx");
-    write(&fx, "model.json", &model_json(&[]));
-    write(&fx, "state.invoices.json", STATE);
-    write(
-        &fx,
-        "requests.json",
-        r#"[{"method":"GET","path":"/invoices/INV-1"},{"method":"GET","path":"/invoices/NOPE"},
-            {"method":"POST","path":"/invoices","body":{"id":"INV-2","customer":"B","amount":"5.00 EUR","due":"2026-02-02","status":"open"}},
-            {"method":"GET","path":"/invoices/INV-2"},
-            {"method":"POST","path":"/invoices","body":{"id":"INV-3","customer":"B","amount":"0.00 EUR","due":"2026-02-02","status":"open"}}]"#,
-    );
-    let o = Command::new(bin).args(["--once", "--mock", "--fixtures", s(&fx), "--trace", "-"]).output().unwrap();
-    assert!(o.status.success(), "{}", stderr(&o));
-    let t = parse_lines(&stdout(&o));
-    let http: Vec<(String, String, u64)> = t
-        .iter()
-        .filter(|l| l["kind"] == "http")
-        .map(|l| (l["method"].as_str().unwrap().into(), l["path"].as_str().unwrap().into(), l["status"].as_u64().unwrap()))
-        .collect();
-    assert_eq!(
-        http,
-        vec![
-            ("GET".into(), "/invoices/INV-1".into(), 200),
-            ("GET".into(), "/invoices/NOPE".into(), 404),
-            ("POST".into(), "/invoices".into(), 201),
-            ("GET".into(), "/invoices/INV-2".into(), 200),
-            ("POST".into(), "/invoices".into(), 400),
-        ]
-    );
-    // the guard line comes before the http line of its request
-    assert_eq!(t[0]["kind"], "guard");
-    assert_eq!(t[0]["agent"], "api");
-    assert_eq!(t[1]["kind"], "http");
+    copy_dir(Path::new(&format!("{ROOT}/fixtures/05-invoice-service")), &{
+        std::fs::create_dir_all(&fx).unwrap();
+        fx.clone()
+    });
+    let ok = Command::new(&bin).args(["--once", "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    assert!(ok.status.success(), "{}", stderr(&ok));
+    write(&fx, "requests.json", r#"[{"method":"GET","path":"/invoices/INV-1","expect_body":{"id":"nope"}}]"#);
+    let bad = Command::new(&bin).args(["--once", "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    assert_eq!(bad.status.code(), Some(1));
+    assert!(stderr(&bad).contains("expected body"), "{}", stderr(&bad));
 }
 
 fn http_get(addr: &str, path: &str) -> String {
@@ -338,8 +281,10 @@ fn http_get(addr: &str, path: &str) -> String {
 fn service_serves_a_real_get() {
     let (d, bin) = built_05();
     let fx = d.join("fx");
-    write(&fx, "model.json", &model_json(&[]));
-    write(&fx, "state.invoices.json", STATE);
+    copy_dir(Path::new(&format!("{ROOT}/fixtures/05-invoice-service")), &{
+        std::fs::create_dir_all(&fx).unwrap();
+        fx.clone()
+    });
     let port = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         l.local_addr().unwrap().port()
@@ -365,32 +310,27 @@ fn service_serves_a_real_get() {
     assert!(reply.starts_with("HTTP/1.1 200"), "{reply}");
     let body: Value = serde_json::from_str(reply.split("\r\n\r\n").nth(1).unwrap().trim()).unwrap();
     assert_eq!(body["id"], "INV-1");
-    assert_eq!(body["net"], "81.00 EUR");
-    assert_eq!(body["fingerprint"].as_str().unwrap().len(), 64);
+    assert_eq!(body["net"], "972.00 EUR");
+    assert_eq!(body["fingerprint"], "fd8ffe6cba7f7fef9fd8eae9a4c87754b9cc91e6cb3543a95537b1eedfee2847");
     let t = parse_lines(&std::fs::read_to_string(trace).unwrap());
     assert_eq!(t.last().unwrap(), &json!({"kind":"http","method":"GET","path":"/invoices/INV-1/net","status":200}));
 }
 
 #[test]
-fn command_reads_a_csv_and_reports_a_missing_file() {
+fn command_line_runs_the_command_with_its_arguments() {
     let (d, bin) = built_05();
     let fx = d.join("fx");
-    write(&fx, "model.json", &model_json(&[]));
-    write(&fx, "rows.csv", "id,customer,amount,due,status\nA1,X,10.00 EUR,2026-01-01,open\nA2,Y,20.00 EUR,2026-01-02,open\n");
-    let run = |file: &str, extra: &[&str]| {
-        let mut args = vec!["--mock", "--fixtures", s(&fx), "--trace", "-", "import-csv", file];
-        args.extend_from_slice(extra);
-        let o = Command::new(&bin).args(&args).output().unwrap();
+    copy_dir(Path::new(&format!("{ROOT}/fixtures/05-invoice-service")), &{
+        std::fs::create_dir_all(&fx).unwrap();
+        fx.clone()
+    });
+    let run = |file: &str| {
+        let o = Command::new(&bin).args(["--mock", "--fixtures", s(&fx), "--trace", "-", "import-csv", file]).output().unwrap();
         assert!(o.status.success(), "{}", stderr(&o));
         parse_lines(&stdout(&o))
     };
-    assert_eq!(run("rows.csv", &[]), vec![json!({"kind":"print","message":"Imported 2 rows"})]);
-    assert_eq!(run("nope.csv", &[]), vec![json!({"kind":"print","message":"Could not read nope.csv"})]);
-    // command.json drives the same command in a --once mock run
-    write(&fx, "command.json", r#"{"command":"import-csv","args":{"path":"rows.csv","dry_run":true}}"#);
-    let o = Command::new(&bin).args(["--once", "--mock", "--fixtures", s(&fx), "--trace", "-"]).output().unwrap();
-    assert!(o.status.success(), "{}", stderr(&o));
-    assert_eq!(parse_lines(&stdout(&o)), vec![json!({"kind":"print","message":"Imported 2 rows"})]);
+    assert_eq!(run("nope.csv"), vec![json!({"kind":"print","message":"Could not read nope.csv"})]);
+    assert_eq!(run("invoices.csv")[0]["kind"], "print");
 }
 
 // ---------------------------------------------------------------------------------- names, errors

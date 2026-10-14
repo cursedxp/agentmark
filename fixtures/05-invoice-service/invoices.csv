@@ -1,0 +1,4 @@
+id,customer,amount,due,status
+INV-10,Braun SE,950.00 EUR,2026-10-30,open
+INV-11,Keller AG,120.50 EUR,2026-11-05,open
+INV-12,Vogel GmbH,2300.00 EUR,2026-09-20,paid

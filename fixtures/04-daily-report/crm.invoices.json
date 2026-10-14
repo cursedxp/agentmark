@@ -1,0 +1,8 @@
+[
+  {"id":"INV-1","customer":"Müller GmbH","amount":"1200.00 EUR","due":"2026-09-01","status":"open"},
+  {"id":"INV-2","customer":"Schmidt AG","amount":"450.00 EUR","due":"2026-09-25","status":"open"},
+  {"id":"INV-3","customer":"Weber KG","amount":"800.00 EUR","due":"2026-10-05","status":"open"},
+  {"id":"INV-4","customer":"Fischer OHG","amount":"300.00 EUR","due":"2026-08-15","status":"paid"},
+  {"id":"INV-5","customer":"Braun SE","amount":"950.00 EUR","due":"2026-10-30","status":"reminded"},
+  {"id":"INV-6","customer":"Krause GmbH","amount":"610.00 EUR","due":"2026-09-28","status":"open"}
+]

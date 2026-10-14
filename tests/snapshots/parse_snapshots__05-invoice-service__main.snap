@@ -1,0 +1,43 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/05-invoice-service/main.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 38
+    doc: ~
+    kind:
+      File:
+        path: "./commands/import-csv.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 31
+    doc: ~
+    kind:
+      File:
+        path: "./services/api.agent.md"
+        alias: ~
+decls:
+  - Run:
+      span:
+        line: 5
+        col: 3
+        len: 3
+      doc: Entry point. The API runs as a service; the CSV import is a subcommand.
+      items:
+        - name: api
+          span:
+            line: 6
+            col: 3
+            len: 3
+        - name: import-csv
+          span:
+            line: 7
+            col: 3
+            len: 10

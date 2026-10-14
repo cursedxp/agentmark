@@ -1,0 +1,27 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/03-support-triage/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 1
+        col: 3
+        len: 23
+      doc: ~
+      name:
+        name: triage_prompt
+        span:
+          line: 1
+          col: 13
+          len: 13
+      value:
+        span:
+          line: 2
+          col: 10
+          len: 87
+        kind:
+          Str: "Classify priority as low, medium or high and category as billing, technical or other."

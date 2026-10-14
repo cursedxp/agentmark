@@ -4,3 +4,4 @@ Cargo.lock.bak
 *.rs.bk
 .superpowers/
 .DS_Store
+*.agent.md.prev

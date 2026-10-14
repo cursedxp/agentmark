@@ -1,0 +1,11 @@
+{"kind":"guard","agent":"api","name":"found is not empty","result":"pass"}
+{"kind":"http","method":"GET","path":"/invoices/INV-1","status":200}
+{"kind":"guard","agent":"api","name":"found is not empty","result":"fail"}
+{"kind":"http","method":"GET","path":"/invoices/INV-404","status":404}
+{"kind":"guard","agent":"api","name":"found is not empty","result":"pass"}
+{"kind":"http","method":"GET","path":"/invoices/INV-1/net","status":200}
+{"kind":"guard","agent":"api","name":"inv.amount > 0 EUR","result":"pass"}
+{"kind":"http","method":"POST","path":"/invoices","status":201}
+{"kind":"guard","agent":"api","name":"inv.amount > 0 EUR","result":"fail"}
+{"kind":"http","method":"POST","path":"/invoices","status":400}
+{"kind":"print","message":"Imported 3 rows"}

@@ -1,0 +1,53 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/05-invoice-service/records/app-state.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 26
+    doc: ~
+    kind:
+      File:
+        path: "./invoice.agent.md"
+        alias: ~
+decls:
+  - Record:
+      span:
+        line: 4
+        col: 3
+        len: 16
+      doc: "The shared state of the application: every invoice it knows about."
+      name:
+        name: AppState
+        span:
+          line: 4
+          col: 11
+          len: 8
+      fields:
+        - span:
+            line: 5
+            col: 3
+            len: 25
+          name:
+            name: invoices
+            span:
+              line: 5
+              col: 3
+              len: 8
+          ty:
+            kind:
+              List:
+                kind:
+                  Named: Invoice
+                span:
+                  line: 5
+                  col: 21
+                  len: 7
+            span:
+              line: 5
+              col: 13
+              len: 15

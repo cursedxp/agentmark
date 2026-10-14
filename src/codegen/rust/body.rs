@@ -866,6 +866,7 @@ impl<'a> Body<'a> {
                     self.val(expr)
                 )),
             },
+            ExprKind::TextToBytes(x) => atom(format!("{}.as_bytes().to_vec()", paren(self.ex(x), P_ATOM))),
             ExprKind::Length(x) => {
                 let b = paren(self.ex(x), P_ATOM);
                 match x.ty {
@@ -1041,7 +1042,7 @@ fn has_await(e: &Expr) -> bool {
         ExprKind::Unwrap { inner, .. } => has_await(inner),
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if has_await(e))),
         ExprKind::Binary { lhs, rhs, .. } => has_await(lhs) || has_await(rhs),
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) => has_await(x),
+        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => has_await(x),
         ExprKind::Record(fs) => fs.iter().any(|(_, v)| has_await(v)),
         ExprKind::First { source, cond, .. } => has_await(source) || has_await(cond),
         ExprKind::Matches { expr, .. } => has_await(expr),
@@ -1061,7 +1062,7 @@ fn uses_bare(e: &Expr, var: &str) -> bool {
         ExprKind::Unwrap { inner, .. } => uses_bare(inner, var),
         ExprKind::Interp(parts) => parts.iter().any(|p| matches!(p, InterpPart::Expr(e) if uses_bare(e, var))),
         ExprKind::Binary { lhs, rhs, .. } => uses_bare(lhs, var) || uses_bare(rhs, var),
-        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) => uses_bare(x, var),
+        ExprKind::Not(x) | ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) | ExprKind::Length(x) | ExprKind::TextToBytes(x) => uses_bare(x, var),
         ExprKind::Call { args, .. } => args.iter().any(|a| uses_bare(a, var)),
         ExprKind::Record(fs) => fs.iter().any(|(_, v)| uses_bare(v, var)),
         ExprKind::Count { source, .. } => uses_bare(source, var),
