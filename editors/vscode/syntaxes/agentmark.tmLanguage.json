@@ -19,6 +19,26 @@
     "declaration": {
       "patterns": [
         {
+          "begin": "^(#)\\s+(Binding)(:)\\s*([A-Za-z][\\w-]*)?",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.declaration.agentmark" },
+            "3": { "name": "punctuation.separator.agentmark" },
+            "4": { "name": "entity.name.type.agentmark" }
+          },
+          "end": "(?=^#\\s)",
+          "patterns": [
+            {
+              "match": "^(##)\\s+([A-Za-z_][\\w]*)\\s*$",
+              "captures": {
+                "1": { "name": "punctuation.definition.heading.agentmark" },
+                "2": { "name": "entity.name.function.agentmark" }
+              }
+            },
+            { "include": "$self" }
+          ]
+        },
+        {
           "match": "^(#)\\s+(Agent|Record|Enum|Type|Rule|Function|Service|Command|Constant|Binding|Tool)(:)\\s*([A-Za-z][\\w-]*)?",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },
@@ -128,13 +148,6 @@
             "5": { "name": "punctuation.definition.parameters.end.agentmark" },
             "6": { "name": "keyword.operator.arrow.agentmark" },
             "7": { "name": "support.type.agentmark" }
-          }
-        },
-        {
-          "match": "^(##)\\s+([A-Za-z_][\\w]*)\\s*$",
-          "captures": {
-            "1": { "name": "punctuation.definition.heading.agentmark" },
-            "2": { "name": "entity.name.function.agentmark" }
           }
         },
         {

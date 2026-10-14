@@ -27,9 +27,8 @@ fn sqlx_in_the_cache() {
     let sig = Sig { params: Vec::<Param>::new(), ret: None };
     if let Err(e) = c.check(&CheckRequest { crate_name: "sqlx", version: "0.8.6", name: "probe", sig: &sig, body: "Ok(())" }) {
         panic!(
-            "sqlx 0.8.6 is not in the offline cargo cache ({e}).\nFetch it once with network access: \
-             `cd examples/08-notes-api && cargo fetch --manifest-path <a scratch crate depending on sqlx 0.8 with features sqlite, runtime-tokio>`, \
-             or build example 08 once online (`agentmark build examples/08-notes-api -o /tmp/n8`)."
+            "sqlx 0.8.6 is not in the offline cargo cache ({e}).\nFetch it once with network access:\n  \
+             cargo new --lib /tmp/sqlx-fetch && cd /tmp/sqlx-fetch && cargo add sqlx@0.8.6 --features sqlite,runtime-tokio && cargo fetch"
         );
     }
 }
