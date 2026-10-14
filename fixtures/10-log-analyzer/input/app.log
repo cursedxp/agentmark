@@ -1,0 +1,15 @@
+2026-10-12 08:15:03 INFO web request served in 120 ms
+2026-10-12 08:15:09 ERROR payments card declined for order 1042
+2026-10-12 08:16:41 WARN web slow response from search
+2026-10-12 08:17:02 ERROR payments gateway timeout
+2026-10-12 08:20:30 INFO mail queue empty
+2026-10-12 08:21:12 ERROR web upstream returned 502
+2026-10-12 08:25:47 ERROR payments card declined for order 1043
+2026-10-12 08:30:00 INFO payments settlement finished
+2026-10-12 08:31:55 WARN mail retrying delivery
+2026-10-12 08:32:10 ERROR mail smtp connection refused
+2026-10-12 08:40:18 ERROR payments card declined for order 1050
+2026-10-12 08:41:00 INFO web request served in 95 ms
+2026-10-12 08:42:30 ERROR mail smtp connection refused
+-- log rotated --
+

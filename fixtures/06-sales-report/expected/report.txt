@@ -1,0 +1,8 @@
+Sales report
+---------------------------
+Region  Orders  Revenue
+US      2       510.50 EUR
+EU      3       300.00 EUR
+APAC    2       195.00 EUR
+---------------------------
+Total   7       1005.50 EUR
