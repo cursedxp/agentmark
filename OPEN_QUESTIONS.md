@@ -820,3 +820,11 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 
 ## Q407 — Example layout details (step 25)
 - Choice: the `# Enum: Block` of 09 lives in `records/` (types live with records; 18.3 allows several declarations there). The non-agent examples have no `tools.toml` (SPEC 22.5: not needed with only `file` and `# Tool`). Service 08 has no `state:` (optional).
+
+## Q420 — Docs framing: general-purpose first, agents as one feature (step 26)
+- Decided by SPEC 22 (intro): AgentMark is a general-purpose language written as Markdown; agents are one feature.
+- Choice: the README opens with a non-agent program, the commands are shown on examples 06 and 10 (agents get their own README section after libraries and real tools), and `docs/guide.md` reaches a working report program (record, rule, function, collection words, `file read`/`file write`) before it adds an agent in its second half. The guide's vocabulary ban is unchanged. `docs/reference.md` keeps one `## N.` section per SPEC section in SPEC order, so the agent sections (2.2, 2.3, 3, 4.2, 4.4) stay where they are; a new unnumbered "Language at a glance" section before section 0 frames the language and points to them as one feature.
+- Why: `tests/docs.rs` pins the reference to the SPEC's numbering; reordering the sections would break a test that guards the specification, so the framing is done by the intro and the table, not by moving sections.
+
+## Q421 — Example 08 is not quoted in the docs (step 26)
+- Choice: `examples/08-notes-api` appears in prose and tables only. The docs quote only programs that `agentmark check` accepts today (06, 07, 09, 10 and the agents), through `file=` so a sample cannot drift. When 08 passes, a `file=` quote of one route can be added.

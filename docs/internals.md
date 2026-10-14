@@ -2,6 +2,11 @@
 
 *For a contributor. You know Rust; you want to know where things live and how to change them.*
 
+AgentMark is a general-purpose programming language written as Markdown (`SPEC.md` section 22), and agents are one feature
+built on its core. The implementation reflects that: the front end, the checker, the IR and the Rust generator know records,
+enums, functions, collections, the built-in library and tools; an agent is rewritten into those by `src/lower/agent_lower.rs`
+before the generator runs, so a change to the core never needs to know about agents.
+
 AgentMark is one Cargo package that is also the workspace root: the library and the `agentmark` binary are
 `src/lib.rs` and `src/main.rs`, and the runtime that generated programs link against is the member crate
 `crates/agentmark-rt/`. The language is defined by `SPEC.md`, the architecture by `DESIGN.md`, and every
@@ -109,6 +114,11 @@ effects of their children instead of looking them up.
 | 20.3 | language server | `crates/agentmark-lsp/src/` (section 9 below) | `crates/agentmark-lsp/tests/` |
 | 22.1 | enums, type aliases, `match` | `src/syntax/parser.rs` (`enum_decl`, `match_arms`), `src/sema/enums.rs`, `src/ir/build.rs` (`Match`, `Variant`), `src/codegen/rust/body.rs`, `src/codegen/rust/files.rs` (`records_rs`) | `tests/user_types.rs`, `tests/user_types/shapes.agent.md` |
 | 22.3 | built-in library, the `file` tool, `read input` | the table `src/stdlib.rs`, checker `src/sema/stdlib.rs`, Rust spelling `src/codegen/rust/stdlib.rs`, runtime `crates/agentmark-rt/src/stdlib/` | `tests/sema_stdlib.rs`, `tests/stdlib_syntax.rs`, `tests/stdlib_e2e.rs`, `crates/agentmark-rt/src/stdlib/` (unit tests) |
+| 22.2 | collection words | `src/syntax/collections.rs` and `src/syntax/parser/collections.rs` (grammar), `src/sema/collections.rs` (types, element scope, purity), `src/codegen/rust/body/collections.rs`, runtime `crates/agentmark-rt/src/collections.rs` | `tests/collections.rs`, `tests/collections/`, `crates/agentmark-rt/tests/collections.rs` |
+| 22.4 | handles: `handle of <crate>.<Type>`, ownership | `src/sema/handles.rs`, the binder (`src/binder/`, handle items and `## Handle:` blocks), `src/ir/build.rs`, `[crates]` in `src/project.rs` | `tests/handles.rs`, `tests/stdlib_handles.rs`, `tests/binder.rs` |
+| 22.5 | `# Tool` written in AgentMark | `src/syntax/parser/tool.rs`, `src/sema/user_tools.rs`, `src/ir/build.rs` (a verb is a function named `<tool>__<verb>`), the calls in `src/codegen/rust/body.rs` | `tests/user_tools.rs`, `tests/user_tools_e2e.rs`, `tests/user_tools/` |
+| 22.6 | default command, program arguments | `src/codegen/rust/default_cmd.rs`, `src/cli/` (`run` and `trace` pass the arguments after `--`) | `tests/user_tools_e2e.rs`, `tests/examples_e2e.rs` |
+| 22.7 | non-agent examples 06 to 10 and their fixtures (a run file, an input folder, the expected output) | `examples/06-…` to `examples/10-…`, `fixtures/` | `tests/examples_e2e.rs`, `tests/sema_examples.rs` |
 
 The documentation is tested too: `tests/docs.rs` runs every sample in `docs/*.md`. Its header comment states which
 fenced blocks are complete programs and which are fragments, and the wrapper a fragment is parsed in.
@@ -260,7 +270,7 @@ regression test; test output stays free of warnings; shared helpers for the sema
 `OPEN_QUESTIONS.md` is the memory of the project. A decision has a question, the choice, and why. The numbers are
 grouped by the step that made them: Q1 to Q11 setup, Q12 to Q15 runtime, Q16 to Q29 syntax, Q30 to Q41 semantic
 check, Q50 to Q56 formatter and lint, Q70 to Q82 binder, Q90 to Q95 lowering and IR, Q110 to Q117 command line, Q130 to Q140 code generation, Q150
-to Q158 examples and fixtures, Q170 to Q175 documentation, Q190 and up review fixes and library trust. `docs/reference.md` cites the entries that change what a
+to Q158 examples and fixtures, Q170 to Q175 documentation, Q190 and up review fixes and library trust, Q200 to Q203 `result of T` and how `check` binds, Q300 to Q307 enums and `match`, Q320 to Q328 collection words, Q340 to Q349 the built-in library, Q360 to Q373 handles, Q380 to Q389 user-defined tools and the default command, Q400 to Q407 the non-agent examples. `docs/reference.md` cites the entries that change what a
 user sees. When you face a new ambiguity: write the entry, apply the choice, continue.
 
 ## 9. The language server

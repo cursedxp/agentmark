@@ -2,6 +2,11 @@
 
 *For a developer who knows another language (TypeScript, Python, Go, Java) but not Rust.*
 
+AgentMark is a Markdown programming language, and a lot is built in before you need a library: the modules `text`, `regex`,
+`number`, `money`, `date`, `path`, `json` and `csv`, and the `file` tool (`docs/reference.md`, section 22.3). Reach for a
+crate for what is not there: hashing, PDF, a database, an HTTP client. Libraries are used the same way by every kind of
+program (a command, a service, an agent), and so is the rest of this page.
+
 AgentMark programs can use any Rust library, called a **crate**, without you writing a line of Rust. You
 name the crate; AgentMark reads the crate's public interface and writes a small *binding* file that
 turns each usable function into a plain statement. This page walks through the workflow once, end to
@@ -13,7 +18,7 @@ That is all the Rust vocabulary the first half of this page needs.
 
 ## 1. The three-line workflow
 
-The goal: write down a fingerprint of every invoice. The crate that does hashing is called `sha2`. The workflow is
+The goal: write down a fingerprint of an invoice. The crate that does hashing is called `sha2`. The workflow is
 **import, check, approve**.
 
 **Line 1. Say you want the crate, and use it.** In the file that uses it:
@@ -21,19 +26,16 @@ The goal: write down a fingerprint of every invoice. The crate that does hashing
 ```agentmark invalid name=report.agent.md says=has_no_binding_yet
 # Import: crate sha2
 
-# Record: Invoice
-- id: text
-- amount: money
+> Fingerprints an invoice, so a changed invoice is easy to spot: `fingerprint-invoice <id> <amount>`.
+# Command: fingerprint-invoice
+- args: id: text, amount: money
 
-> Fingerprints every invoice, so a changed invoice is easy to spot.
-# Agent: fingerprinter
-- model: claude
-- tools: crm, log
+## Run
+- sha2 sha256_digest "{id}{amount}" -> digest
+- print: "fingerprinted {id}"
 
-## Every day at 09:00
-- for each invoice in crm.invoices:
-  - sha2 sha256_digest "{invoice.id}{invoice.amount}" -> digest
-  - log: "fingerprinted {invoice.id}"
+# Run
+- fingerprint-invoice
 ```
 
 A statement against a library is the binding's name, the item's name, the arguments, and where to keep the result.
@@ -49,7 +51,7 @@ it works offline. With a real key you would see the same lines for the live vers
 $ agentmark check report.agent.md
 binding sha2: generated
 Effects (what each block can touch)
-  fingerprinter / Every day at 09:00: network(crm), local(log), unverified(sha2)
+  fingerprint-invoice / Run: local(print), unverified(sha2)
 
 Libraries nobody approved yet (one line each to approve)
   sha2 (library sha2): bindings/sha2.agent.md:5: change "- effect: unverified" to "- effect: pure" (or the right class) to approve
@@ -109,7 +111,7 @@ the right class is `pure`:
 ```console
 $ agentmark check report.agent.md
 Effects (what each block can touch)
-  fingerprinter / Every day at 09:00: network(crm), local(log)
+  fingerprint-invoice / Run: local(print)
 
 ok: 0 errors, 0 warnings.
 ```
@@ -279,6 +281,13 @@ is an error that names the line it was used up on. A handle can be passed to you
 it) and returned from them, but it cannot be printed, compared, saved in a record or sent anywhere. Methods of different
 handle types may share a name (`update` exists for Sha224 and Sha256): the handle type tells them apart. The rules and
 error codes are in `docs/reference.md`, section 15.4.
+
+Which features of a crate are switched on is a project setting, the `[crates]` table of `agentmark.toml`, for example
+`sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }`. The binder and the generated `Cargo.toml` both read
+it, so the handles you get (`handle of sqlx.SqlitePool`) are the ones for the database you configured. Types that borrow
+(a query that holds its text) and generic types with a single instantiation in that configuration are bound as handles too,
+and an integer wider than `int` (`u64`) is converted with a check that fails the call on overflow. `examples/08-notes-api`
+is a web service built on this.
 
 ### Not bound yet: just write the statement
 
@@ -478,6 +487,11 @@ registry. A first-class registry that `bind` consults before running the binder 
 to change.
 
 ## 7. Connecting the tools to real systems: `rust/connect.rs`
+
+Not every tool needs this. The built-in `file` tool and any tool you write in AgentMark itself (a `# Tool` declaration,
+`docs/reference.md` section 22.5) are part of the program; a project that uses only those has no `tools.toml` and no
+`rust/connect.rs`. This section is for the tools that live outside the program: a CRM, a mail provider, a database you
+manage yourself.
 
 Tools such as `crm` and `email` (the manifest, `docs/reference.md` section 7) are only names to the language. In a mock
 run, fixtures answer for them. In a real run, something has to talk to your CRM and your mail server, and that
