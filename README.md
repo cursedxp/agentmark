@@ -64,7 +64,7 @@ You need git and a Rust toolchain (stable, edition 2021; get it from https://rus
 curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh
 ```
 
-The script clones https://github.com/cursedxp/agentmark into `~/.agentmark/src`, runs `cargo install --locked` for `agentmark` and `agentmark-lsp`, and prints `agentmark --version`. Both binaries end up in `~/.cargo/bin`. Run the same command again to update. `AGENTMARK_HOME` moves the folder, `AGENTMARK_REF` picks a branch or tag, and `AGENTMARK_NO_LSP=1` skips the language server. To remove everything, run `sh ~/.agentmark/src/install.sh --uninstall`.
+The script clones https://github.com/cursedxp/agentmark into `~/.agentmark/src`, runs `cargo install --locked` for `agentmark` and `agentmark-lsp`, and prints `agentmark --version`. Both binaries end up in `~/.cargo/bin`. Run the same command again to update. `AGENTMARK_HOME` moves the folder, `AGENTMARK_REF` picks a branch or tag, and `AGENTMARK_NO_LSP=1` skips the language server. To remove everything, run `sh ~/.agentmark/src/install.sh --uninstall`, or `curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh -s -- --uninstall`. If you installed with a custom `AGENTMARK_HOME`, set it again for the uninstall. It removes the binaries and the `src` folder only, and refuses a folder that is not an AgentMark checkout.
 
 Keep `~/.agentmark/src` where it is: a generated project depends on `crates/agentmark-rt` of the checkout the compiler was built from, by absolute path (so builds work offline). Moving or deleting that folder breaks `agentmark build`.
 

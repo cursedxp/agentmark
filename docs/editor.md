@@ -48,6 +48,8 @@ Both settings are machine-scoped: a workspace cannot set them, and they are igno
 | `agentmark.server.path` | `agentmark-lsp` | the language server binary; give the full path if it is not on your `PATH` |
 | `agentmark.cli.path` | `agentmark` | the CLI the touch panel runs (`check --json`) |
 
+The paths below are examples (on Linux the home folder is `/home/you` instead of `/Users/you`):
+
 ```json
 {
   "agentmark.server.path": "/Users/you/.cargo/bin/agentmark-lsp",

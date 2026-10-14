@@ -28,6 +28,8 @@ fn fake_origin(dir: &Path) -> String {
     std::fs::create_dir_all(&repo).unwrap();
     git(&repo, &["init", "-q", "-b", "main"]);
     std::fs::write(repo.join("file.txt"), "one\n").unwrap();
+    std::fs::create_dir_all(repo.join("crates/agentmark-rt")).unwrap();
+    std::fs::write(repo.join("crates/agentmark-rt/.keep"), "").unwrap();
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-q", "-m", "one"]);
     repo.to_string_lossy().into_owned()
@@ -136,10 +138,77 @@ fn install_update_and_uninstall_flow() {
     // uninstall: both binaries, then the folder
     let out = run(&["--uninstall"], &envs);
     assert!(out.status.success(), "{}", text(&out));
-    assert!(text(&out).contains(home.to_str().unwrap()), "the folder is printed before it is removed");
-    assert!(!home.exists());
+    assert!(text(&out).contains(src.to_str().unwrap()), "the folder is printed before it is removed");
+    assert!(!src.exists() && !home.exists(), "the checkout goes, and the then-empty home folder with it");
     let log = std::fs::read_to_string(dir.path().join("cargo.log")).unwrap();
     assert!(log.contains("uninstall agentmark\n") && log.contains("uninstall agentmark-lsp\n"), "{log}");
+}
+
+/// A download that stops half way must run nothing: no command, no folder.
+#[test]
+fn a_truncated_script_does_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let origin = fake_origin(dir.path());
+    let bin = fake_cargo(dir.path());
+    let home = dir.path().join("home");
+    let full = std::fs::read(script()).unwrap();
+    let cut = dir.path().join("cut.sh");
+    std::fs::write(&cut, &full[..full.len() * 6 / 10]).unwrap();
+    let path = path_with(&bin);
+    let out = Command::new("sh")
+        .arg(&cut)
+        .env("PATH", &path)
+        .env("AGENTMARK_REPO", &origin)
+        .env("AGENTMARK_HOME", &home)
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "a cut script is a syntax error");
+    assert!(!dir.path().join("cargo.log").exists(), "no cargo command ran");
+    assert!(!home.exists(), "nothing was created");
+}
+
+/// Uninstall removes only an AgentMark checkout, never an arbitrary folder.
+#[test]
+fn uninstall_refuses_a_folder_that_is_not_a_checkout() {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = fake_cargo(dir.path());
+    let home = dir.path().join("precious");
+    std::fs::create_dir_all(home.join("src")).unwrap();
+    std::fs::write(home.join("src/notes.txt"), "keep me").unwrap();
+    std::fs::write(home.join("other.txt"), "keep me too").unwrap();
+    let path = path_with(&bin);
+    let out = run(&["--uninstall"], &[("PATH", path.as_str()), ("AGENTMARK_HOME", home.to_str().unwrap())]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(text(&out).contains("does not look like an AgentMark checkout"), "{}", text(&out));
+    assert!(home.join("src/notes.txt").exists() && home.join("other.txt").exists());
+    assert!(!dir.path().join("cargo.log").exists(), "cargo uninstall did not run either");
+    for bad in ["/", ""] {
+        let out = run(&["--uninstall"], &[("PATH", path.as_str()), ("AGENTMARK_HOME", bad)]);
+        assert_eq!(out.status.code(), Some(1), "AGENTMARK_HOME={bad:?}: {}", text(&out));
+    }
+}
+
+/// An update never discards the user's edits.
+#[test]
+fn update_with_local_changes_stops_and_keeps_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let origin = fake_origin(dir.path());
+    let bin = fake_cargo(dir.path());
+    let home = dir.path().join("home");
+    let path = path_with(&bin);
+    let envs = [("PATH", path.as_str()), ("AGENTMARK_REPO", origin.as_str()), ("AGENTMARK_HOME", home.to_str().unwrap()), ("CARGO_INSTALL_ROOT", dir.path().to_str().unwrap())];
+    assert!(run(&[], &envs).status.success());
+    let src = home.join("src");
+    std::fs::write(src.join("file.txt"), "my edit\n").unwrap();
+    let origin_path = Path::new(&origin);
+    std::fs::write(origin_path.join("file.txt"), "two\n").unwrap();
+    git(origin_path, &["commit", "-q", "-am", "two"]);
+    let installs_before = std::fs::read_to_string(dir.path().join("cargo.log")).unwrap().lines().count();
+    let out = run(&[], &envs);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(text(&out).contains(&format!("local changes in {}; commit or discard them, then run again", src.display())), "{}", text(&out));
+    assert_eq!(std::fs::read_to_string(src.join("file.txt")).unwrap(), "my edit\n");
+    assert_eq!(std::fs::read_to_string(dir.path().join("cargo.log")).unwrap().lines().count(), installs_before, "nothing was installed");
 }
 
 /// The real thing: clones this workspace, compiles both binaries into a scratch install root and
