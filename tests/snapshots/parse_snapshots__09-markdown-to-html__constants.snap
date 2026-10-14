@@ -1,0 +1,84 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/09-markdown-to-html/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 2
+        col: 3
+        len: 22
+      doc: "Inline Markdown patterns. In each one, `[*]` is a literal star and `$1` is the text caught between the marks."
+      name:
+        name: bold_pattern
+        span:
+          line: 2
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 3
+          col: 10
+          len: 21
+        kind:
+          Str: "[*][*]([^*]+)[*][*]"
+  - Constant:
+      span:
+        line: 5
+        col: 3
+        len: 24
+      doc: ~
+      name:
+        name: italic_pattern
+        span:
+          line: 5
+          col: 13
+          len: 14
+      value:
+        span:
+          line: 6
+          col: 10
+          len: 15
+        kind:
+          Str: "[*]([^*]+)[*]"
+  - Constant:
+      span:
+        line: 9
+        col: 3
+        len: 22
+      doc: "A link is `[label](address)`: the label is the first catch, the address the second."
+      name:
+        name: link_pattern
+        span:
+          line: 9
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 10
+          col: 10
+          len: 30
+        kind:
+          Str: "\\[([^\\]]+)\\]\\(([^)]+)\\)"
+  - Constant:
+      span:
+        line: 13
+        col: 3
+        len: 26
+      doc: "A run of list items, each on its own line. The whole run is caught so it can be wrapped in one list."
+      name:
+        name: list_run_pattern
+        span:
+          line: 13
+          col: 13
+          len: 16
+      value:
+        span:
+          line: 14
+          col: 10
+          len: 26
+        kind:
+          Str: "((?:<li>[^\n]*</li>\n)+)"

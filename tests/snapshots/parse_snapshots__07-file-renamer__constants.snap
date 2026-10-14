@@ -1,0 +1,65 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/07-file-renamer/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 2
+        col: 3
+        len: 24
+      doc: Camera file names look like IMG_20261003_141500.jpg; the first group is the date as digits.
+      name:
+        name: camera_pattern
+        span:
+          line: 2
+          col: 13
+          len: 14
+      value:
+        span:
+          line: 3
+          col: 10
+          len: 32
+        kind:
+          Str: "^IMG_([0-9]+)_[0-9]+[.][a-z]+$"
+  - Constant:
+      span:
+        line: 6
+        col: 3
+        len: 27
+      doc: "The digits of a camera date, year first: 20261003."
+      name:
+        name: digit_date_format
+        span:
+          line: 6
+          col: 13
+          len: 17
+      value:
+        span:
+          line: 7
+          col: 10
+          len: 8
+        kind:
+          Str: "%Y%m%d"
+  - Constant:
+      span:
+        line: 9
+        col: 3
+        len: 22
+      doc: ~
+      name:
+        name: stamp_format
+        span:
+          line: 9
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 10
+          col: 10
+          len: 10
+        kind:
+          Str: "%Y-%m-%d"

@@ -491,8 +491,17 @@ type TargetsPayloadInto = (Vec<TargetPart>, Option<Payload>, Option<Ident>);
 
 /// ` target target...` `: payload` `-> into`, every part optional.
 fn targets_payload_into<'a>(expr: P<'a, Expr>) -> P<'a, TargetsPayloadInto> {
+    // `draft.title` (a field of a variable) is a value; a bare word stays a word
+    let field_path = ident()
+        .then(just('.').ignore_then(ident()).repeated().at_least(1).collect::<Vec<_>>())
+        .map_with(|(first, rest), e| {
+            let mut segs = vec![first];
+            segs.extend(rest);
+            TargetPart::Value(Expr { span: at(e), kind: ExprKind::Path(segs) })
+        });
     let part = choice((
         expr_string().map(TargetPart::Value),
+        field_path,
         name().map(TargetPart::Word),
     ));
     let targets = sp1().ignore_then(part).repeated().collect::<Vec<_>>();

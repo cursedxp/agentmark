@@ -1,0 +1,29 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/06-sales-report/main.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 40
+    doc: ~
+    kind:
+      File:
+        path: "./commands/sales-report.agent.md"
+        alias: ~
+decls:
+  - Run:
+      span:
+        line: 4
+        col: 3
+        len: 3
+      doc: "Entry point. The program is one command, so `sales-report <path> <out>` runs it directly."
+      items:
+        - name: sales-report
+          span:
+            line: 5
+            col: 3
+            len: 12

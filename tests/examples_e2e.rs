@@ -97,11 +97,48 @@ fn example_05_invoice_service() {
     e2e("05-invoice-service", "invoice-service", &["missing-csv"]);
 }
 
+/// A v0.3 program example (SPEC 22.7): built by the real binary, then every fixture folder is run.
+fn program_e2e(name: &str, project: &str, expect_variants: &[&str]) {
+    let fixtures = program_fixture_dirs_of(name);
+    let variants: Vec<&str> = fixtures.iter().filter_map(|(l, _)| l.rsplit_once("/variants/").map(|(_, v)| v)).collect();
+    assert_eq!(variants, expect_variants, "{name}: the fixture variants changed; cover them here");
+    let (_out, bin) = build_example(name, project);
+    for (label, dir) in &fixtures {
+        run_program_fixture(&bin, label, dir);
+    }
+}
+
+#[test]
+fn example_06_sales_report() {
+    program_e2e("06-sales-report", "sales-report", &[]);
+}
+
+#[test]
+fn example_07_file_renamer() {
+    program_e2e("07-file-renamer", "file-renamer", &["dry-run"]);
+}
+
+#[test]
+fn example_08_notes_api() {
+    program_e2e("08-notes-api", "notes-api", &[]);
+}
+
+#[test]
+fn example_09_markdown_to_html() {
+    program_e2e("09-markdown-to-html", "markdown-to-html", &[]);
+}
+
+#[test]
+fn example_10_log_analyzer() {
+    program_e2e("10-log-analyzer", "log-analyzer", &[]);
+}
+
 #[test]
 fn every_fixture_folder_belongs_to_a_tested_example() {
     let names = fixture_examples();
     let tested = ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"];
-    let mut covered: Vec<String> = tested.iter().chain(V03_PENDING.iter()).map(|s| s.to_string()).collect();
+    let v03 = ["06-sales-report", "07-file-renamer", "08-notes-api", "09-markdown-to-html", "10-log-analyzer"];
+    let mut covered: Vec<String> = tested.iter().chain(v03.iter()).map(|s| s.to_string()).collect();
     covered.sort();
     assert_eq!(names, covered, "a new example needs its own e2e test above");
     for n in &names {

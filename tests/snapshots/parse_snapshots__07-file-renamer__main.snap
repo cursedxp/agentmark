@@ -1,0 +1,29 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/07-file-renamer/main.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 41
+    doc: ~
+    kind:
+      File:
+        path: "./commands/rename-photos.agent.md"
+        alias: ~
+decls:
+  - Run:
+      span:
+        line: 4
+        col: 3
+        len: 3
+      doc: "Entry point. The program is one command, so `rename-photos <folder>` runs it directly."
+      items:
+        - name: rename-photos
+          span:
+            line: 5
+            col: 3
+            len: 13

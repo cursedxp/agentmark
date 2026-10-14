@@ -449,10 +449,14 @@ fn number_lit<'a>() -> P<'a, ExprKind> {
         currency().map(|c: &str| (Some(c), None)),
         duration_unit().map(|u| (None, Some(u))),
     )));
-    whole
+    // a `-` written directly before the digits makes a negative number (`-5`, `-12.50 EUR`)
+    just('-')
+        .or_not()
+        .then(whole)
         .then(frac)
         .then(suffix.or_not())
-        .map_with(|((whole, frac), suffix): ((&str, Option<&str>), _), e| {
+        .map_with(|(((minus, whole), frac), suffix): (((Option<char>, &str), Option<&str>), _), e| {
+            let neg = minus.is_some();
             let bad = |e: &mut MapExtra<'a, '_, &'a str, Ex<'a>>, msg: &str| {
                 flag(e, msg, None);
                 ExprKind::Int(0)
@@ -460,7 +464,7 @@ fn number_lit<'a>() -> P<'a, ExprKind> {
             match suffix {
                 Some((Some(cur), _)) => match money_minor(whole, frac, cur) {
                     Ok(minor) => ExprKind::Money {
-                        minor,
+                        minor: if neg { -minor } else { minor },
                         currency: cur.to_string(),
                     },
                     Err(m) => bad(e, &m),
@@ -468,6 +472,9 @@ fn number_lit<'a>() -> P<'a, ExprKind> {
                 Some((None, Some(unit))) => {
                     if frac.is_some() {
                         return bad(e, "Durations are whole numbers, like \"14 days\".");
+                    }
+                    if neg {
+                        return bad(e, "A duration cannot be negative.");
                     }
                     match whole.parse::<i64>() {
                         Ok(amount) => ExprKind::Duration(DurationLit { amount, unit }),
@@ -481,7 +488,7 @@ fn number_lit<'a>() -> P<'a, ExprKind> {
                             "Decimal numbers need a currency, like \"12.50 EUR\". AgentMark has no floating point numbers.",
                         );
                     }
-                    match whole.parse::<i64>() {
+                    match format!("{}{whole}", if neg { "-" } else { "" }).parse::<i64>() {
                         Ok(n) => ExprKind::Int(n),
                         Err(_) => bad(e, "This number is too large."),
                     }
@@ -746,8 +753,26 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .boxed();
             let none_expr = kw("none").map_with(|_, e| mk(ExprKind::None, e));
 
+            // `-x`, `-(a + b)`, `-f(x)`: a `-` directly before a name or parenthesis is `x * -1`
+            // (Q408); `-5` and `-12.50 EUR` are literals
+            let negated = just('-')
+                .ignore_then(choice((paren.clone(), path_or_call.clone())))
+                .map_with(|x: Expr, e| {
+                    let minus_one = mk(ExprKind::Int(-1), e);
+                    mk(
+                        ExprKind::Binary {
+                            op: BinOp::Mul,
+                            lhs: Box::new(x),
+                            rhs: Box::new(minus_one),
+                        },
+                        e,
+                    )
+                })
+                .boxed();
+
             let atom = choice((
                 some_expr,
+                negated,
                 none_expr,
                 string,
                 record,

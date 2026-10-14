@@ -193,6 +193,7 @@ impl Checker<'_> {
                             self.maybe_error(cx, x.span, "written into text", &t);
                         }
                         self.whole_enum_in_text(cx, x.span, &t);
+                        self.collection_in_text(cx, x.span, &t);
                     }
                 }
                 Type::Text

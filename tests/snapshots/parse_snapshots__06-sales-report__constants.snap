@@ -1,0 +1,46 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/06-sales-report/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 1
+        col: 3
+        len: 22
+      doc: ~
+      name:
+        name: column_width
+        span:
+          line: 1
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 2
+          col: 10
+          len: 1
+        kind:
+          Int: 8
+  - Constant:
+      span:
+        line: 5
+        col: 3
+        len: 20
+      doc: "Tied to the columns: two columns of column_width plus 11 characters for the widest revenue (\"1005.50 EUR\")."
+      name:
+        name: rule_width
+        span:
+          line: 5
+          col: 13
+          len: 10
+      value:
+        span:
+          line: 6
+          col: 10
+          len: 2
+        kind:
+          Int: 27

@@ -1,0 +1,103 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/10-log-analyzer/constants.agent.md
+doc: ~
+imports: []
+decls:
+  - Constant:
+      span:
+        line: 2
+        col: 3
+        len: 21
+      doc: "One log line: date, time, level, service and message, separated by single spaces."
+      name:
+        name: log_pattern
+        span:
+          line: 2
+          col: 13
+          len: 11
+      value:
+        span:
+          line: 3
+          col: 10
+          len: 46
+        kind:
+          Str: "^([0-9-]+) ([0-9:]+) ([A-Z]+) ([a-z]+) (.*)$"
+  - Constant:
+      span:
+        line: 6
+        col: 3
+        len: 22
+      doc: "The start of a log line up to and including the level, so \" ERROR \" in a message is not counted."
+      name:
+        name: error_prefix
+        span:
+          line: 6
+          col: 13
+          len: 12
+      value:
+        span:
+          line: 7
+          col: 10
+          len: 21
+        kind:
+          Str: "^[^ ]+ [^ ]+ ERROR "
+  - Constant:
+      span:
+        line: 9
+        col: 3
+        len: 21
+      doc: ~
+      name:
+        name: warn_prefix
+        span:
+          line: 9
+          col: 13
+          len: 11
+      value:
+        span:
+          line: 10
+          col: 10
+          len: 20
+        kind:
+          Str: "^[^ ]+ [^ ]+ WARN "
+  - Constant:
+      span:
+        line: 12
+        col: 3
+        len: 21
+      doc: ~
+      name:
+        name: info_prefix
+        span:
+          line: 12
+          col: 13
+          len: 11
+      value:
+        span:
+          line: 13
+          col: 10
+          len: 20
+        kind:
+          Str: "^[^ ]+ [^ ]+ INFO "
+  - Constant:
+      span:
+        line: 16
+        col: 3
+        len: 23
+      doc: "Date and time at the start of a line, caught as one piece."
+      name:
+        name: stamp_pattern
+        span:
+          line: 16
+          col: 13
+          len: 13
+      value:
+        span:
+          line: 17
+          col: 10
+          len: 21
+        kind:
+          Str: "^([0-9-]+ [0-9:]+) "

@@ -1,0 +1,531 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/09-markdown-to-html/commands/md-to-html.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 43
+    doc: ~
+    kind:
+      File:
+        path: "../functions/classify-line.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 42
+    doc: ~
+    kind:
+      File:
+        path: "../functions/render-block.agent.md"
+        alias: ~
+  - span:
+      line: 3
+      col: 3
+      len: 40
+    doc: ~
+    kind:
+      File:
+        path: "../functions/wrap-lists.agent.md"
+        alias: ~
+decls:
+  - Command:
+      span:
+        line: 6
+        col: 3
+        len: 19
+      doc: "Converts a small Markdown file into HTML: headings, bullet lists, paragraphs, bold, italic and links."
+      name:
+        name: md-to-html
+        span:
+          line: 6
+          col: 12
+          len: 10
+      args:
+        - name:
+            name: source
+            span:
+              line: 7
+              col: 9
+              len: 6
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 7
+              col: 17
+              len: 4
+          default: ~
+        - name:
+            name: out
+            span:
+              line: 7
+              col: 23
+              len: 3
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 7
+              col: 28
+              len: 4
+          default: ~
+      body:
+        - span:
+            line: 10
+            col: 3
+            len: 32
+          kind:
+            Try:
+              stmt:
+                span:
+                  line: 10
+                  col: 7
+                  len: 28
+                kind:
+                  File:
+                    verb:
+                      name: read
+                      span:
+                        line: 10
+                        col: 12
+                        len: 4
+                    path:
+                      span:
+                        line: 10
+                        col: 17
+                        len: 6
+                      kind:
+                        Path:
+                          - name: source
+                            span:
+                              line: 10
+                              col: 17
+                              len: 6
+                    arg: ~
+                    into:
+                      name: markdown
+                      span:
+                        line: 10
+                        col: 27
+                        len: 8
+              otherwise:
+                - span:
+                    line: 12
+                    col: 7
+                    len: 32
+                  kind:
+                    Print:
+                      span:
+                        line: 12
+                        col: 14
+                        len: 25
+                      kind:
+                        Interp:
+                          - Text: "Could not read "
+                          - Expr:
+                              span:
+                                line: 12
+                                col: 31
+                                len: 6
+                              kind:
+                                Path:
+                                  - name: source
+                                    span:
+                                      line: 12
+                                      col: 31
+                                      len: 6
+                - span:
+                    line: 13
+                    col: 7
+                    len: 4
+                  kind: Stop
+        - span:
+            line: 14
+            col: 3
+            len: 32
+          kind:
+            Set:
+              var:
+                name: lines
+                span:
+                  line: 14
+                  col: 7
+                  len: 5
+              expr:
+                span:
+                  line: 14
+                  col: 15
+                  len: 20
+                kind:
+                  Call:
+                    func:
+                      - name: text
+                        span:
+                          line: 14
+                          col: 15
+                          len: 4
+                      - name: lines
+                        span:
+                          line: 14
+                          col: 20
+                          len: 5
+                    args:
+                      - span:
+                          line: 14
+                          col: 26
+                          len: 8
+                        kind:
+                          Path:
+                            - name: markdown
+                              span:
+                                line: 14
+                                col: 26
+                                len: 8
+        - span:
+            line: 15
+            col: 3
+            len: 33
+          kind:
+            Set:
+              var:
+                name: elements
+                span:
+                  line: 15
+                  col: 7
+                  len: 8
+              expr:
+                span:
+                  line: 15
+                  col: 18
+                  len: 18
+                kind:
+                  Coll:
+                    EmptyList:
+                      kind:
+                        Named: text
+                      span:
+                        line: 15
+                        col: 32
+                        len: 4
+        - span:
+            line: 16
+            col: 3
+            len: 23
+          kind:
+            ForEach:
+              filter_rule: ~
+              var:
+                name: line
+                span:
+                  line: 16
+                  col: 12
+                  len: 4
+              source:
+                span:
+                  line: 16
+                  col: 20
+                  len: 5
+                kind:
+                  Path:
+                    - name: lines
+                      span:
+                        line: 16
+                        col: 20
+                        len: 5
+              body:
+                - span:
+                    line: 17
+                    col: 5
+                    len: 48
+                  kind:
+                    Set:
+                      var:
+                        name: rendered
+                        span:
+                          line: 17
+                          col: 9
+                          len: 8
+                      expr:
+                        span:
+                          line: 17
+                          col: 20
+                          len: 33
+                        kind:
+                          Call:
+                            func:
+                              - name: render_block
+                                span:
+                                  line: 17
+                                  col: 20
+                                  len: 12
+                            args:
+                              - span:
+                                  line: 17
+                                  col: 33
+                                  len: 19
+                                kind:
+                                  Call:
+                                    func:
+                                      - name: classify_line
+                                        span:
+                                          line: 17
+                                          col: 33
+                                          len: 13
+                                    args:
+                                      - span:
+                                          line: 17
+                                          col: 47
+                                          len: 4
+                                        kind:
+                                          Path:
+                                            - name: line
+                                              span:
+                                                line: 17
+                                                col: 47
+                                                len: 4
+                - span:
+                    line: 18
+                    col: 5
+                    len: 25
+                  kind:
+                    If:
+                      cond:
+                        span:
+                          line: 18
+                          col: 8
+                          len: 21
+                        kind:
+                          IsNotEmpty:
+                            span:
+                              line: 18
+                              col: 8
+                              len: 8
+                            kind:
+                              Path:
+                                - name: rendered
+                                  span:
+                                    line: 18
+                                    col: 8
+                                    len: 8
+                      then:
+                        - span:
+                            line: 19
+                            col: 7
+                            len: 27
+                          kind:
+                            Append:
+                              value:
+                                span:
+                                  line: 19
+                                  col: 14
+                                  len: 8
+                                kind:
+                                  Path:
+                                    - name: rendered
+                                      span:
+                                        line: 19
+                                        col: 14
+                                        len: 8
+                              list:
+                                span:
+                                  line: 19
+                                  col: 26
+                                  len: 8
+                                kind:
+                                  Path:
+                                    - name: elements
+                                      span:
+                                        line: 19
+                                        col: 26
+                                        len: 8
+                      else_: []
+        - span:
+            line: 20
+            col: 3
+            len: 34
+          kind:
+            Set:
+              var:
+                name: body
+                span:
+                  line: 20
+                  col: 7
+                  len: 4
+              expr:
+                span:
+                  line: 20
+                  col: 14
+                  len: 23
+                kind:
+                  Coll:
+                    Join:
+                      source:
+                        span:
+                          line: 20
+                          col: 19
+                          len: 8
+                        kind:
+                          Path:
+                            - name: elements
+                              span:
+                                line: 20
+                                col: 19
+                                len: 8
+                      sep:
+                        span:
+                          line: 20
+                          col: 33
+                          len: 4
+                        kind:
+                          Str: "\n"
+        - span:
+            line: 21
+            col: 3
+            len: 32
+          kind:
+            File:
+              verb:
+                name: write
+                span:
+                  line: 21
+                  col: 8
+                  len: 5
+              path:
+                span:
+                  line: 21
+                  col: 14
+                  len: 3
+                kind:
+                  Path:
+                    - name: out
+                      span:
+                        line: 21
+                        col: 14
+                        len: 3
+              arg:
+                Content:
+                  span:
+                    line: 21
+                    col: 19
+                    len: 16
+                  kind:
+                    Call:
+                      func:
+                        - name: wrap_lists
+                          span:
+                            line: 21
+                            col: 19
+                            len: 10
+                      args:
+                        - span:
+                            line: 21
+                            col: 30
+                            len: 4
+                          kind:
+                            Path:
+                              - name: body
+                                span:
+                                  line: 21
+                                  col: 30
+                                  len: 4
+              into: ~
+        - span:
+            line: 22
+            col: 3
+            len: 87
+          kind:
+            Print:
+              span:
+                line: 22
+                col: 10
+                len: 80
+              kind:
+                Interp:
+                  - Text: "Converted "
+                  - Expr:
+                      span:
+                        line: 22
+                        col: 22
+                        len: 14
+                      kind:
+                        CountOf:
+                          rule: ~
+                          noun: ~
+                          source:
+                            span:
+                              line: 22
+                              col: 31
+                              len: 5
+                            kind:
+                              Path:
+                                - name: lines
+                                  span:
+                                    line: 22
+                                    col: 31
+                                    len: 5
+                  - Text: " lines of "
+                  - Expr:
+                      span:
+                        line: 22
+                        col: 48
+                        len: 6
+                      kind:
+                        Path:
+                          - name: source
+                            span:
+                              line: 22
+                              col: 48
+                              len: 6
+                  - Text: " into "
+                  - Expr:
+                      span:
+                        line: 22
+                        col: 62
+                        len: 17
+                      kind:
+                        CountOf:
+                          rule: ~
+                          noun: ~
+                          source:
+                            span:
+                              line: 22
+                              col: 71
+                              len: 8
+                            kind:
+                              Path:
+                                - name: elements
+                                  span:
+                                    line: 22
+                                    col: 71
+                                    len: 8
+                  - Text: " elements"
+        - span:
+            line: 23
+            col: 3
+            len: 20
+          kind:
+            Print:
+              span:
+                line: 23
+                col: 10
+                len: 13
+              kind:
+                Interp:
+                  - Text: "Wrote "
+                  - Expr:
+                      span:
+                        line: 23
+                        col: 18
+                        len: 3
+                      kind:
+                        Path:
+                          - name: out
+                            span:
+                              line: 23
+                              col: 18
+                              len: 3

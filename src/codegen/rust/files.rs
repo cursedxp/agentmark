@@ -39,12 +39,12 @@ fn use_line(path: &str, items: &[&str]) -> String {
     }
 }
 
-/// `body` with the text of its string literals blanked out: a word inside a string (`"log.txt"`) is
-/// not a use of the item of that name.
+/// `body` with the text of its string literals and `//` comments blanked out: a word inside a string
+/// (`"log.txt"`) or a comment (`// commands/analyze-log.agent.md:9`) is not a use of the item of that name.
 fn without_strings(body: &str) -> String {
     let mut out = String::with_capacity(body.len());
     let mut in_str = false;
-    let mut chars = body.chars();
+    let mut chars = body.chars().peekable();
     while let Some(c) = chars.next() {
         match (in_str, c) {
             (true, '\\') => {
@@ -59,6 +59,14 @@ fn without_strings(body: &str) -> String {
             (false, '"') => {
                 in_str = true;
                 out.push('"');
+            }
+            (false, '/') if chars.peek() == Some(&'/') => {
+                while let Some(&n) = chars.peek() {
+                    if n == '\n' {
+                        break;
+                    }
+                    chars.next();
+                }
             }
             (false, _) => out.push(c),
         }

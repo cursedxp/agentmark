@@ -70,6 +70,11 @@ pub struct CargoChecker {
     /// Rust type of handles that are not `<crate>::<Type>`.
     pub handle_types: BTreeMap<String, String>,
     dir: PathBuf,
+    /// Unique per checker: the package name goes into cargo's output hash, so scratch crates that
+    /// share a build folder (`build.target-dir` in a cargo config, `CARGO_TARGET_DIR`) never share
+    /// a fingerprint. With one fixed name cargo could call a body "fresh" because another checker
+    /// had just passed its own (Q410).
+    package: String,
 }
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -78,7 +83,8 @@ impl CargoChecker {
     pub fn new(offline: bool) -> CargoChecker {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir().join(format!("agentmark-bind-check-{}-{n}", std::process::id()));
-        CargoChecker { offline, default_features: true, features: vec![], handle_types: BTreeMap::new(), dir }
+        let package = format!("agentmark_bind_check_{}_{n}", std::process::id());
+        CargoChecker { offline, default_features: true, features: vec![], handle_types: BTreeMap::new(), dir, package }
     }
 
     /// Same dependency features (and offline-ness) as a rustdoc fetch.
@@ -109,10 +115,10 @@ impl CargoChecker {
         };
         let feats = self.features.iter().map(|f| format!("\"{f}\"")).collect::<Vec<_>>().join(", ");
         let manifest = format!(
-            "[package]\nname = \"agentmark_bind_check\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
+            "[package]\nname = \"{}\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
              [workspace]\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n\
              {crate_name} = {{ version = \"={version}\", default-features = {}, features = [{feats}] }}\n{chrono}",
-            self.default_features
+            self.package, self.default_features
         );
         write_if_changed(&self.dir.join("Cargo.toml"), &manifest)
     }

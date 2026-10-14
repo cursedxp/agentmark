@@ -1,0 +1,332 @@
+---
+source: tests/parse_snapshots.rs
+expression: file
+---
+path: examples/10-log-analyzer/functions/rank-services.agent.md
+doc: ~
+imports:
+  - span:
+      line: 1
+      col: 3
+      len: 29
+    doc: ~
+    kind:
+      File:
+        path: "../constants.agent.md"
+        alias: ~
+  - span:
+      line: 2
+      col: 3
+      len: 42
+    doc: ~
+    kind:
+      File:
+        path: "../records/service-errors.agent.md"
+        alias: ~
+decls:
+  - Function:
+      span:
+        line: 5
+        col: 3
+        len: 23
+      doc: "Counts the error lines of every service and ranks the services, most errors first."
+      name:
+        name: rank_services
+        span:
+          line: 5
+          col: 13
+          len: 13
+      params:
+        - name:
+            name: error_lines
+            span:
+              line: 6
+              col: 7
+              len: 11
+          ty:
+            kind:
+              List:
+                kind:
+                  Named: text
+                span:
+                  line: 6
+                  col: 28
+                  len: 4
+            span:
+              line: 6
+              col: 20
+              len: 12
+          default: ~
+      out:
+        kind:
+          List:
+            kind:
+              Named: ServiceErrors
+            span:
+              line: 7
+              col: 16
+              len: 13
+        span:
+          line: 7
+          col: 8
+          len: 21
+      effect:
+        value: Pure
+        span:
+          line: 8
+          col: 11
+          len: 4
+      body:
+        - span:
+            line: 9
+            col: 5
+            len: 76
+          kind:
+            Set:
+              var:
+                name: by_service
+                span:
+                  line: 9
+                  col: 9
+                  len: 10
+              expr:
+                span:
+                  line: 9
+                  col: 22
+                  len: 59
+                kind:
+                  Coll:
+                    GroupBy:
+                      source:
+                        span:
+                          line: 9
+                          col: 28
+                          len: 11
+                        kind:
+                          Path:
+                            - name: error_lines
+                              span:
+                                line: 9
+                                col: 28
+                                len: 11
+                      key:
+                        span:
+                          line: 9
+                          col: 43
+                          len: 38
+                        kind:
+                          Call:
+                            func:
+                              - name: regex
+                                span:
+                                  line: 9
+                                  col: 43
+                                  len: 5
+                              - name: replace
+                                span:
+                                  line: 9
+                                  col: 49
+                                  len: 7
+                            args:
+                              - span:
+                                  line: 9
+                                  col: 57
+                                  len: 4
+                                kind:
+                                  Path:
+                                    - name: item
+                                      span:
+                                        line: 9
+                                        col: 57
+                                        len: 4
+                              - span:
+                                  line: 9
+                                  col: 63
+                                  len: 11
+                                kind:
+                                  Path:
+                                    - name: log_pattern
+                                      span:
+                                        line: 9
+                                        col: 63
+                                        len: 11
+                              - span:
+                                  line: 9
+                                  col: 76
+                                  len: 4
+                                kind:
+                                  Str: $4
+        - span:
+            line: 10
+            col: 5
+            len: 41
+          kind:
+            Set:
+              var:
+                name: ranking
+                span:
+                  line: 10
+                  col: 9
+                  len: 7
+              expr:
+                span:
+                  line: 10
+                  col: 19
+                  len: 27
+                kind:
+                  Coll:
+                    EmptyList:
+                      kind:
+                        Named: ServiceErrors
+                      span:
+                        line: 10
+                        col: 33
+                        len: 13
+        - span:
+            line: 11
+            col: 5
+            len: 37
+          kind:
+            Coll:
+              ForEachEntry:
+                key:
+                  name: service
+                  span:
+                    line: 11
+                    col: 14
+                    len: 7
+                value:
+                  name: rows
+                  span:
+                    line: 11
+                    col: 23
+                    len: 4
+                source:
+                  span:
+                    line: 11
+                    col: 31
+                    len: 10
+                  kind:
+                    Path:
+                      - name: by_service
+                        span:
+                          line: 11
+                          col: 31
+                          len: 10
+                body:
+                  - span:
+                      line: 12
+                      col: 7
+                      len: 75
+                    kind:
+                      Append:
+                        value:
+                          span:
+                            line: 12
+                            col: 14
+                            len: 57
+                          kind:
+                            Variant:
+                              qualifier: ~
+                              name:
+                                name: ServiceErrors
+                                span:
+                                  line: 12
+                                  col: 14
+                                  len: 13
+                              fields:
+                                - name:
+                                    name: service
+                                    span:
+                                      line: 12
+                                      col: 30
+                                      len: 7
+                                  value:
+                                    span:
+                                      line: 12
+                                      col: 39
+                                      len: 7
+                                    kind:
+                                      Path:
+                                        - name: service
+                                          span:
+                                            line: 12
+                                            col: 39
+                                            len: 7
+                                - name:
+                                    name: errors
+                                    span:
+                                      line: 12
+                                      col: 48
+                                      len: 6
+                                  value:
+                                    span:
+                                      line: 12
+                                      col: 56
+                                      len: 13
+                                    kind:
+                                      CountOf:
+                                        rule: ~
+                                        noun: ~
+                                        source:
+                                          span:
+                                            line: 12
+                                            col: 65
+                                            len: 4
+                                          kind:
+                                            Path:
+                                              - name: rows
+                                                span:
+                                                  line: 12
+                                                  col: 65
+                                                  len: 4
+                        list:
+                          span:
+                            line: 12
+                            col: 75
+                            len: 7
+                          kind:
+                            Path:
+                              - name: ranking
+                                span:
+                                  line: 12
+                                  col: 75
+                                  len: 7
+        - span:
+            line: 13
+            col: 5
+            len: 40
+          kind:
+            Return:
+              span:
+                line: 13
+                col: 12
+                len: 33
+              kind:
+                Coll:
+                  Sort:
+                    source:
+                      span:
+                        line: 13
+                        col: 17
+                        len: 7
+                      kind:
+                        Path:
+                          - name: ranking
+                            span:
+                              line: 13
+                              col: 17
+                              len: 7
+                    key:
+                      span:
+                        line: 13
+                        col: 28
+                        len: 6
+                      kind:
+                        Path:
+                          - name: errors
+                            span:
+                              line: 13
+                              col: 28
+                              len: 6
+                    descending: true

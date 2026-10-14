@@ -22,6 +22,8 @@ pub const E_JOIN: &str = "E325";
 pub const E_ENTRY: &str = "E326";
 pub const E_HIDES_FIELD: &str = "E327";
 pub const E_TARGET: &str = "E328";
+/// A list, a map or a record written into text as a whole (Q408).
+pub const E_COLLECTION_IN_TEXT: &str = "E400";
 
 /// What a list or map key may be: values with a total order that print as a JSON object key.
 fn key_type(t: &Type) -> bool {
@@ -530,5 +532,19 @@ impl Checker<'_> {
                 cx.acc.add(Effect::Local, "state");
             }
         }
+    }
+}
+
+impl Checker<'_> {
+    /// A list, a map or a record written into text as a whole: there is no single right text for it (Q408).
+    pub(super) fn collection_in_text(&mut self, cx: &Cx, span: Span, t: &Type) {
+        let help = match t {
+            Type::List(_) => "Join a list of text with \"join names with \\\", \\\"\", or write one element at a time (\"for each\").",
+            Type::Map(..) => "Write it entry by entry with \"for each key, value in map:\", or read one value with \"map at key\".",
+            Type::Record(_) | Type::Object(_) => "Write the fields you want, like {record.field}.",
+            _ => return,
+        };
+        let d = Diagnostic::error(E_COLLECTION_IN_TEXT, self.path(cx.file), span, format!("A value of type {t} cannot be written into text as a whole.")).with_help(help);
+        self.diags.push(d);
     }
 }
