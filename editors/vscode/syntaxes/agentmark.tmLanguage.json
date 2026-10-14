@@ -19,7 +19,7 @@
     "declaration": {
       "patterns": [
         {
-          "match": "^(#)\\s+(Agent|Record|Rule|Function|Service|Command|Constant|Binding)(:)\\s*([A-Za-z][\\w-]*)?",
+          "match": "^(#)\\s+(Agent|Record|Rule|Function|Service|Command|Constant|Binding|Tool)(:)\\s*([A-Za-z][\\w-]*)?",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },
             "2": { "name": "keyword.declaration.agentmark" },

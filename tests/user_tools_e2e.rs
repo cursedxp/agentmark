@@ -1,0 +1,135 @@
+//! Tools written in AgentMark and the default command, end to end (SPEC 22.5, 22.6):
+//! `tests/user_tools/shop/` has no `tools.toml` and no `rust/connect.rs`. The real `agentmark` builds it, cargo
+//! compiles it, and the program runs in a fresh working directory with its command's arguments given
+//! positionally, as `--name value` and as a flag. What it traces and writes is compared with what is written
+//! down here.
+
+mod support;
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+use serde_json::{json, Value};
+
+use support::*;
+
+/// The project is copied first, so nothing a build creates lands in the repository. Returns the
+/// source copy, the generated project and the program.
+fn build_shop() -> (Tmp, Tmp, PathBuf) {
+    let src = temp("shop-src");
+    copy_dir(Path::new(&format!("{ROOT}/tests/user_tools/shop")), &src);
+    let out = temp("shop-out");
+    let o = agentmark(&["build", s(&src), "--target", "rust", "-o", s(&out)]).output_locked();
+    assert!(o.status.success(), "agentmark build failed:\n{}", stderr(&o));
+    assert!(!src.join("rust").exists(), "a project without external tools gets no rust/connect.rs");
+    let bin = build_bin(&out, "shop");
+    (src, out, bin)
+}
+
+fn run_in(bin: &Path, work: &Path, args: &[&str]) -> Output {
+    Command::new(bin).args(["--trace", "-"]).args(args).current_dir(work).output().unwrap()
+}
+
+fn tool(tool: &str, verb: &str, args: Value) -> Value {
+    json!({"kind": "tool", "tool": tool, "verb": verb, "args": args})
+}
+
+fn append() -> Value {
+    json!({"kind": "file", "verb": "append", "path": "ledger.txt"})
+}
+
+#[test]
+fn the_shop_builds_without_tools_toml_and_runs_its_default_command() {
+    let (_src, _out, bin) = build_shop();
+
+    // positional arguments, in declared order
+    let work = temp("shop-work");
+    let o = run_in(&bin, &work, &["Hello World", "2"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        parse_lines(&stdout(&o)),
+        [
+            tool("slugger", "slug", json!({"title": "Hello World"})),
+            tool("slugger", "shout", json!({"word": "hello-world"})),
+            tool("ledger", "add", json!({"entry": "HELLO-WORLD x2"})),
+            append(),
+            tool("ledger", "add_twice", json!({"entry": "hello-world", "mark": "again"})),
+            tool("ledger", "add", json!({"entry": "hello-world"})),
+            append(),
+            tool("ledger", "add", json!({"entry": "again hello-world"})),
+            append(),
+            json!({"kind": "print", "message": "wrote hello-world"}),
+        ]
+    );
+    assert_eq!(
+        std::fs::read_to_string(work.join("ledger.txt")).unwrap(),
+        "HELLO-WORLD x2\nhello-world\nagain hello-world\n"
+    );
+
+    // `--name value`, in any order, and the default of `count`
+    let work = temp("shop-work");
+    let o = run_in(&bin, &work, &["--count", "5", "--title", "A  b!"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(std::fs::read_to_string(work.join("ledger.txt")).unwrap(), "A-B- x5\na-b-\nagain a-b-\n");
+    let work = temp("shop-work");
+    assert!(run_in(&bin, &work, &["Menu"]).status.success());
+    assert_eq!(std::fs::read_to_string(work.join("ledger.txt")).unwrap(), "MENU x1\nmenu\nagain menu\n");
+
+    // a mix of both, and the flag
+    let work = temp("shop-work");
+    let o = run_in(&bin, &work, &["Menu", "--dry-run"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        parse_lines(&stdout(&o)),
+        [tool("slugger", "slug", json!({"title": "Menu"})), json!({"kind": "print", "message": "would write menu"})]
+    );
+    assert!(!work.join("ledger.txt").exists(), "a dry run writes nothing");
+    let work = temp("shop-work");
+    assert!(run_in(&bin, &work, &["--dry_run", "--title", "x"]).status.success(), "the underscore spelling works too");
+
+    // a missing argument is a usage error, not a crash
+    let work = temp("shop-work");
+    let o = run_in(&bin, &work, &[]);
+    assert_eq!(o.status.code(), Some(2));
+    let e = stderr(&o);
+    assert!(e.contains("the argument <TITLE> is required"), "{e}");
+    assert!(e.contains("Usage:"), "{e}");
+    assert!(stdout(&o).is_empty());
+}
+
+#[test]
+fn agentmark_run_passes_the_arguments_after_the_double_dash() {
+    let src = temp("shop-run");
+    copy_dir(Path::new(&format!("{ROOT}/tests/user_tools/shop")), &src);
+    let work = temp("shop-run-work");
+    let o = agentmark(&["trace", s(&src), "--", "Ünï Code", "--count", "3"]).current_dir(&work).output_locked();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let trace = parse_lines(&stdout(&o));
+    assert_eq!(trace.first().unwrap(), &tool("slugger", "slug", json!({"title": "Ünï Code"})));
+    assert_eq!(trace.last().unwrap()["kind"], "print");
+    assert_eq!(std::fs::read_to_string(work.join("ledger.txt")).unwrap().lines().next().unwrap(), "-N-CODE x3");
+    assert!(!src.join("rust").exists());
+}
+
+#[test]
+fn a_verb_that_can_fail_is_called_with_try() {
+    let src = temp("doubler-src");
+    copy_dir(Path::new(&format!("{ROOT}/tests/user_tools/doubler")), &src);
+    let out = temp("doubler-out");
+    let o = agentmark(&["build", s(&src), "--target", "rust", "-o", s(&out)]).output_locked();
+    assert!(o.status.success(), "agentmark build failed:\n{}", stderr(&o));
+    let bin = build_bin(&out, "doubler");
+    let work = temp("doubler-work");
+    let o = run_in(&bin, &work, &["21"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        parse_lines(&stdout(&o)),
+        [tool("conv", "double", json!({"word": "21"})), json!({"kind": "print", "message": "double 42"})]
+    );
+    let o = run_in(&bin, &work, &["abc"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        parse_lines(&stdout(&o)),
+        [tool("conv", "double", json!({"word": "abc"})), json!({"kind": "print", "message": "not a number: abc"})]
+    );
+}

@@ -488,7 +488,7 @@ fn cache_dir(path: &str) -> PathBuf {
     std::env::temp_dir().join("agentmark-build").join(format!("{name}-{:x}", h.finish()))
 }
 
-fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverified: bool, trace: bool) -> u8 {
+fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverified: bool, trace: bool, args: &[String]) -> u8 {
     if mock && fixtures.is_none() {
         return fail("--mock needs --fixtures <folder> with model.json and the tool fixtures");
     }
@@ -534,18 +534,19 @@ fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverifie
     if trace {
         cmd.arg("--trace").arg("-");
     }
+    cmd.args(args);
     match cmd.status() {
         Ok(s) => s.code().unwrap_or(2).clamp(0, 255) as u8,
         Err(e) => fail(format!("cannot run the built program: {e}")),
     }
 }
 
-pub(crate) fn run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverified: bool) -> u8 {
-    build_and_run(path, mock, fixtures, allow_unverified, false)
+pub(crate) fn run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverified: bool, args: &[String]) -> u8 {
+    build_and_run(path, mock, fixtures, allow_unverified, false, args)
 }
 
-pub(crate) fn trace(path: &str, mock: bool, fixtures: Option<&str>, allow_unverified: bool) -> u8 {
-    build_and_run(path, mock, fixtures, allow_unverified, true)
+pub(crate) fn trace(path: &str, mock: bool, fixtures: Option<&str>, allow_unverified: bool, args: &[String]) -> u8 {
+    build_and_run(path, mock, fixtures, allow_unverified, true, args)
 }
 
 #[cfg(test)]

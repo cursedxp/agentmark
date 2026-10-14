@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 
 use super::body::{lit, Body, Kind};
+use super::default_cmd;
 use super::files::Ctxt;
 use super::names::value_ident;
 use super::ty::{field_ident, rust_type};
@@ -69,6 +70,7 @@ pub fn main_rs(c: &Ctxt) -> String {
     let has_entries = !p.entries.is_empty();
     let has_services = !p.services.is_empty();
     let has_commands = !p.commands.is_empty();
+    let default_cmd = default_cmd::default_command(c).map(|(_, cmd)| cmd);
     let order = run_order(c);
     let driver = {
         let mut d: Option<String> = None;
@@ -133,7 +135,7 @@ pub fn main_rs(c: &Ctxt) -> String {
     rt.sort();
     s.push_str(&format!("use agentmark_rt::{{{}}};\n", rt.join(", ")));
     s.push_str("use async_trait::async_trait;\nuse clap::Parser;\n");
-    if has_commands {
+    if has_commands && default_cmd.is_none() {
         s.push_str("use clap::Subcommand;\n");
     }
     s.push('\n');
@@ -143,11 +145,15 @@ pub fn main_rs(c: &Ctxt) -> String {
 
     // command line
     s.push_str(CLI_HEAD);
-    if has_commands {
+    if default_cmd.is_some() {
+        s.push_str("    #[command(flatten)]\n    args: CmdArgs,\n");
+    } else if has_commands {
         s.push_str("    #[command(subcommand)]\n    command: Option<Cmd>,\n");
     }
     s.push_str("}\n\n");
-    if has_commands {
+    if let Some(cmd) = default_cmd {
+        s.push_str(&default_cmd::args_struct(c, cmd));
+    } else if has_commands {
         s.push_str("#[derive(Subcommand)]\nenum Cmd {\n");
         for (i, cmd) in p.commands.iter().enumerate() {
             let _ = i;
@@ -192,7 +198,9 @@ pub fn main_rs(c: &Ctxt) -> String {
     // start
     s.push_str("async fn start(cli: Cli) -> Result<usize, AgentError> {\n");
     s.push_str(START_HEAD);
-    if has_commands {
+    if default_cmd.is_some() {
+        s.push_str("    if !(cli.once && cli.mock && std::path::Path::new(\"command.json\").exists()) {\n        return run_default(&ctx, cli.args).await;\n    }\n");
+    } else if has_commands {
         s.push_str("    if let Some(cmd) = cli.command {\n        return run_command(&ctx, cmd, cli.mock).await;\n    }\n");
     }
     s.push_str("    let mut failed = 0;\n");
@@ -377,9 +385,13 @@ pub fn main_rs(c: &Ctxt) -> String {
     }
 
     // commands
+    if let Some(cmd) = default_cmd {
+        s.push_str(&default_cmd::run_default(c, cmd, &init(&cmd.state)));
+    }
     if has_commands {
-        s.push_str("/// Run a command given on the command line.\n#[allow(unused_variables)]\nasync fn run_command(ctx: &Ctx, cmd: Cmd, mock: bool) -> Result<usize, AgentError> {\n    match cmd {\n");
-        for (i, cmd) in p.commands.iter().enumerate() {
+        if default_cmd.is_none() {
+            s.push_str("/// Run a command given on the command line.\n#[allow(unused_variables)]\nasync fn run_command(ctx: &Ctx, cmd: Cmd, mock: bool) -> Result<usize, AgentError> {\n    match cmd {\n");
+            for (i, cmd) in p.commands.iter().enumerate() {
             let variant = super::names::camel(&cmd.name);
             let names: Vec<String> = cmd.args.iter().map(|a| c.n.local(&a.name)).collect();
             let pat = if names.is_empty() { String::new() } else { format!(" {{ {} }}", names.join(", ")) };
@@ -392,6 +404,7 @@ pub fn main_rs(c: &Ctxt) -> String {
             ));
         }
         s.push_str("    }\n    Ok(0)\n}\n\n");
+        }
         s.push_str("/// Mock runs: the command of `command.json` (`{\"command\": \"name\", \"args\": {...}}`).\n#[allow(unused_variables)]\nasync fn run_command_file(ctx: &Ctx, mock: bool) -> Result<usize, AgentError> {\n    let file: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(\"command.json\")?)?;\n    let args = file.get(\"args\").cloned().unwrap_or_else(|| serde_json::json!({}));\n    match file[\"command\"].as_str().unwrap_or_default() {\n");
         for (i, cmd) in p.commands.iter().enumerate() {
             let mut lets = String::new();

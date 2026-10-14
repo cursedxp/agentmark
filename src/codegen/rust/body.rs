@@ -578,6 +578,15 @@ impl<'a> Body<'a> {
             EffectCall::Trace(TraceEvent::Guard { name, ok }) => {
                 Eff::lines(vec![format!("ctx.trace_guard({}, {})?;", lit(name), self.ex(ok).s)])
             }
+            EffectCall::Trace(TraceEvent::ToolCall { tool, verb, args }) => {
+                let fields: Vec<String> = args.iter().map(|(n, e)| format!("{}: {}", lit(n), self.json_of(e))).collect();
+                Eff::lines(vec![format!(
+                    "ctx.trace.record(&json!({{\"kind\": \"tool\", \"tool\": {}, \"verb\": {}, \"args\": {{{}}}}}))?;",
+                    lit(tool),
+                    lit(verb),
+                    fields.join(", ")
+                )])
+            }
         }
     }
 
@@ -1323,6 +1332,7 @@ fn call_exprs(call: &EffectCall) -> Vec<&Expr> {
         EffectCall::File(f) => std::iter::once(&f.path).chain(f.arg.iter()).collect(),
         EffectCall::Std(x) => vec![x],
         EffectCall::Trace(TraceEvent::Guard { ok, .. }) => vec![ok],
+        EffectCall::Trace(TraceEvent::ToolCall { args, .. }) => args.iter().map(|(_, e)| e).collect(),
     }
 }
 

@@ -17,6 +17,7 @@ use crate::syntax::lexer::{lex, Line, LineKind};
 pub mod expr;
 pub mod heading;
 pub mod stmt;
+mod tool;
 
 use expr::{run, LineCtx, P};
 use heading::*;
@@ -561,6 +562,7 @@ impl<'l> Builder<'l> {
             DeclKind::Service => self.service(span, doc, name, &prop_nodes, blocks),
             DeclKind::Command => self.command(span, doc, name, &prop_nodes, blocks),
             DeclKind::Binding => self.binding(span, doc, name, &prop_nodes, blocks),
+            DeclKind::Tool => self.tool(span, doc, name, &prop_nodes, blocks),
         }
     }
 

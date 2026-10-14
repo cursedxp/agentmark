@@ -37,7 +37,7 @@ fn kind_of(k: Kind) -> CompletionItemKind {
         Kind::Record => CompletionItemKind::STRUCT,
         Kind::Rule | Kind::Function | Kind::RustBlock => CompletionItemKind::FUNCTION,
         Kind::Constant => CompletionItemKind::CONSTANT,
-        Kind::Binding => CompletionItemKind::MODULE,
+        Kind::Binding | Kind::Tool => CompletionItemKind::MODULE,
         Kind::Agent | Kind::Service | Kind::Command => CompletionItemKind::CLASS,
     }
 }
@@ -212,6 +212,23 @@ fn binding_names(a: &Analysis) -> Vec<(String, Vec<String>)> {
     v
 }
 
+/// The tools written in AgentMark (SPEC 22.5): name, effect word, verbs.
+fn user_tools(a: &Analysis) -> Vec<(String, &'static str, Vec<String>)> {
+    let mut v = Vec::new();
+    for f in &a.project.files {
+        for d in &f.ast.decls {
+            if let Decl::Tool(t) = d {
+                v.push((
+                    t.name.name.clone(),
+                    agentmark::sema::effects::effect_name(t.effect.value),
+                    t.verbs.iter().map(|x| x.name.name.clone()).collect(),
+                ));
+            }
+        }
+    }
+    v
+}
+
 fn tool_items(a: &Analysis, _path: &str) -> Vec<CompletionItem> {
     let mut out: Vec<CompletionItem> = a
         .project
@@ -224,12 +241,18 @@ fn tool_items(a: &Analysis, _path: &str) -> Vec<CompletionItem> {
     for (b, _) in binding_names(a) {
         out.push(item(b, CompletionItemKind::MODULE, Some("binding".to_string()), None));
     }
+    for (t, effect, _) in user_tools(a) {
+        out.push(item(t, CompletionItemKind::MODULE, Some(format!("tool, {effect}")), None));
+    }
     out
 }
 
 fn tool_statement(a: &Analysis, _path: &str, word: &str) -> bool {
     let word = word.trim_end_matches(':');
-    word == "file" || a.project.manifest.tool(word).is_some() || binding_names(a).iter().any(|(b, _)| b == word)
+    word == "file"
+        || a.project.manifest.tool(word).is_some()
+        || binding_names(a).iter().any(|(b, _)| b == word)
+        || user_tools(a).iter().any(|(t, _, _)| t == word)
 }
 
 fn verb_items(a: &Analysis, _path: &str, tool: &str, rest_words: usize) -> Vec<CompletionItem> {
@@ -252,6 +275,9 @@ fn verb_items(a: &Analysis, _path: &str, tool: &str, rest_words: usize) -> Vec<C
         };
     }
     if rest_words == 1 {
+        if let Some((_, _, verbs)) = user_tools(a).into_iter().find(|(t, _, _)| t == tool) {
+            return verbs.into_iter().map(|v| item(v, CompletionItemKind::METHOD, Some(format!("{tool} verb")), None)).collect();
+        }
         if let Some((_, items)) = binding_names(a).into_iter().find(|(b, _)| b == tool) {
             return items.into_iter().map(|i| item(i, CompletionItemKind::FUNCTION, Some(format!("{tool} binding item")), None)).collect();
         }

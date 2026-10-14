@@ -152,3 +152,20 @@ test("handle types in a binding heading", async () => {
   assert.ok(has(t[0], "bytes", "support.type"));
   assert.ok(has(t[1], "handle of sha2.Sha256", "support.type"));
 });
+
+test("a user-defined tool: heading, verb headings and the Rust fence of a verb", async () => {
+  const g = await loadGrammar();
+  const src = [
+    "# Tool: slugger",
+    "- effect: pure",
+    "",
+    "## slug(title: text) -> text",
+    "- return regex.replace(title, \"[^a-z0-9]+\", \"-\")",
+  ].join("\n");
+  const t = tokens(g, src);
+  assert.ok(has(t[0], "Tool", "keyword.declaration"));
+  assert.ok(has(t[0], "slugger", "entity.name.type"));
+  assert.ok(has(t[1], "effect", "variable.other.property"));
+  assert.ok(has(t[3], "slug", "entity.name.function"));
+  assert.ok(has(t[3], "->", "keyword.operator.arrow"));
+});

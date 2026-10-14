@@ -561,6 +561,18 @@
           },
           "named": false,
           "value": "binding"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PATTERN",
+              "value": "[tT][oO][oO][lL]"
+            }
+          },
+          "named": false,
+          "value": "tool"
         }
       ]
     },

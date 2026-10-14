@@ -667,6 +667,47 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q373 — Review fixes to handles (step 23)
 - `fmt` prints `## Handle:` blocks. A handle made again with `->` inside a branch or loop is a new variable of that block (the generated code declares a new one): sema shadows it and restores the outer one's state when the block ends (a handle used up outside stays used up). Single-implementor instantiation is keyed by the trait's resolved path, tried only after the v0.2 lift fails and kept only if the item then involves a handle; the Rust type of a handle is recorded only for an item that is bound or goes to the model. `parallel:` counts a handle in any argument, not only as receiver.
 
+## Q380 — A tool verb is a function the IR names `<tool>__<verb>` (step 24)
+- Question: SPEC 22.5 says a verb's declared effect is checked "exactly like a `# Function`" and that a tool is called like any tool. How do the passes see it?
+- Choice: `# Tool` is its own declaration (`Decl::Tool`, `Kind::Tool`, `BlockKind::Tool`) through parser, fmt, lint, sema and `agent_lower`. In sema each verb has a signature under `(Kind::Tool, "<tool>__<verb>")` (kept out of `Checked.functions`) and a body checked like a function body (`cx.func`, so E206 reads "The tool \"t\" says \"- effect: pure\", but this line has the effect …"). From the IR on the verb is an ordinary `ir::Fn` named `<tool>__<verb>`, and both call forms resolve to it (`Resolution::Call{Function, "<tool>__<verb>"}`; the statement form is `ToolKind::User` and becomes `EffectCall::Fn`). Codegen therefore needed only the trace line (Q385). A Rust-bodied verb is an `ir::RustFn` named `<tool>_<verb>_rust` (so the generated name is snake case) called by the function.
+- Why: one call path for functions and tools, no second calling convention in codegen; the layer rule holds (nothing new below the IR except one trace event).
+
+## Q381 — Tool names, verbs and the library (step 24)
+- Choice: a tool name must differ from every tool of `tools.toml`, from `file` and from every binding (E380); a verb name is unique inside its tool (E381); tool names are unique among tools (E200, as for every declaration). A tool called like a library module (`text`) wins only for the verbs it has: `text.lower(x)` is still the library when the tool has no `lower` (Q347 says the author's names win, but a wrong guess here would break working programs when a tool is added).
+- Why: the statement `- name verb …` and `file`/manifest tools share one namespace; the expression form shares `module.fn(` with the library.
+
+## Q382 — Shapes of a call (step 24)
+- Choice: statement `- slugger slug title -> s`: the words and values after the verb are the arguments in parameter order (a word is a variable, as in bindings); `: value` after them is one more, last argument (`- notes save "a.txt": body`); `field = value` after the colon is E384. A missing `-> var` is fine, a `-> var` on a verb that returns nothing is E385. Expression `slugger.slug(title)` only when the tool is `pure` (E382) and the verb returns a value (E385); `tool.verb(...)` of an imported tool is written with the module prefix (`tools.slugger.slug(x)`). A verb that returns `result of T` is called as a statement after `try`, never inside an expression (same rule as a function). Parameter defaults work as for functions.
+- Why: the statement form reads like every other tool call; `:` is the one place the existing tool syntax puts a payload.
+
+## Q383 — Effect of a call (step 24)
+- Choice: calling a verb has the effect of its body, raised to the tool's declared effect with the tool's name as the source (`network(audit)` for a network tool whose body only prints). A Rust-bodied verb has exactly the declared effect (trusted, like `## Rust`). The effect summary lists one line per verb (`ledger / add: local(file)`).
+- Why: the same rule `callee_effect` has for functions; a reviewer sees both what the body touches and what the author promised.
+
+## Q384 — `tools.toml` and `rust/connect.rs` stay optional (step 24)
+- Choice: nothing in the v0.2 path needed to change except wording: a project whose tools are only `# Tool` and `file` has an empty manifest, so no tool trait is written, `Connected {}` is the whole real-run connection, `agentmark build` and `run` neither create nor ask for `<project>/rust/connect.rs`, and the generated `src/connect.rs` says there is nothing to connect. A user tool is never a `Connected` entry. External tools keep the v0.2 path unchanged.
+- Why: SPEC 22.5 last sentence.
+
+## Q385 — Trace line of a user tool call (step 24)
+- Choice: `{"kind":"tool","tool":"ledger","verb":"add","args":{"entry":"x"}}`: the generic tool line with `args` an object of the verb's parameters by name (values as JSON; handle parameters left out). It is the first line of the verb's function, so every call is traced, statement or expression, before the body's own lines (a `file` line of the body follows it), and a call whose arguments are expressions with effects traces them first.
+- Why: tool calls of the manifest are traced the same kind; "before it runs" is how `file` is traced (a failing program still shows what it tried). Pure expression calls are traced as well: a test can see that `slugger.slug` ran with what.
+
+## Q386 — A verb whose body never returns (step 24)
+- Choice: E386 when the heading says `-> type` and no `return` occurs anywhere in a statement body (the same test as E210 for functions). A Rust-bodied verb is trusted. `stop` inside a verb is an error as in functions.
+- Why: parity with `# Function`.
+
+## Q387 — Agents and user tools (step 24)
+- Choice: an agent's `- tools:` may name a user tool; a tool statement inside the agent then needs the tool listed (E208), exactly like a manifest tool. A pure expression call (`slugger.slug(x)`) is a function call and needs no listing. `tools:` decides which statements an agent may write; it does not change what the model is asked.
+- Why: SPEC 22.5 says agents "may list" them; the listing rule is the one for every tool.
+
+## Q388 — The default command (step 24)
+- Choice: a program is started without a subcommand name when its `# Run` lists exactly one name, a `# Command`, and the program has no agent or service (SPEC 22.6). Every non-`bool` argument is positional (declared order) and also `--name value` (dashes and underscores are the same: `--out-dir`, `--out_dir`); the value given by name wins over the positional one; a missing argument without a default is a usage error (exit 2, message with the usage line). A `bool` argument is the flag `--name` (a `bool` whose default is `true` takes `--name false`). `--help` lists them. `--once --mock` with a `command.json` still runs the mock command file. With several commands, or an agent or service next to the command, the v0.2 subcommands stay.
+- Why: SPEC 22.6 and Q403. The merge of positional and named is done by the generated program because clap cannot give one argument both forms.
+
+## Q389 — `agentmark run` and `trace` take the program's arguments (step 24)
+- Choice: everything after `--` is handed to the built program: `agentmark run my-tool --mock --fixtures f -- notes.csv --top 3`. Without `--`, nothing changes (the program gets `--once`).
+- Why: a default command needs its arguments, and `run` was the one way to start a program from the compiler.
+
 ## Q400 — `text.pad`, `text.lines`, `file write` / `file append` (step 25)
 - Question: SPEC 22.3 names `pad(t, width)`, `lines(t)`, `file write`, `file append` without saying exactly what they do.
 - Choice used by examples 06, 09, 10: `pad` adds spaces on the right up to `width` and never cuts text that is longer; `lines` splits like Rust `str::lines` (no empty entry for a final newline, an empty line in the middle is kept); `file write path: content` writes exactly `content` (examples add `\n` themselves); `file append path: line` adds `line` plus a newline.

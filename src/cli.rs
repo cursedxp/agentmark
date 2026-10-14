@@ -103,7 +103,7 @@ pub enum Command {
         #[arg(long)]
         no_check: bool,
     },
-    /// Build the project and run every entry once.
+    /// Build the project and run every entry once (or its command: arguments go after `--`).
     Run {
         /// A `.agent.md` file or a project folder.
         path: String,
@@ -116,6 +116,10 @@ pub enum Command {
         /// Build even while a library binding is not approved (development only).
         #[arg(long)]
         allow_unverified: bool,
+        /// Arguments of the program itself, after `--`: the default command's (SPEC 22.6), or a
+        /// command name and its arguments.
+        #[arg(last = true)]
+        args: Vec<String>,
     },
     /// Like `run`, but print the trace (one JSON object per line) on stdout.
     Trace {
@@ -130,6 +134,9 @@ pub enum Command {
         /// Build even while a library binding is not approved (development only).
         #[arg(long)]
         allow_unverified: bool,
+        /// Arguments of the program itself, after `--` (see `run`).
+        #[arg(last = true)]
+        args: Vec<String>,
     },
 }
 
@@ -153,8 +160,8 @@ where
         Command::Doc { target, project } => docgen::run(target.as_deref(), &project),
         Command::Bind { name, force, all, version, latest, project } => bind::run(name.as_deref(), force, all, version, latest, &project),
         Command::Build { path, target, out, allow_unverified, no_check } => build::build(&path, &target, &out, allow_unverified, no_check),
-        Command::Run { path, mock, fixtures, allow_unverified } => build::run(&path, mock, fixtures.as_deref(), allow_unverified),
-        Command::Trace { path, mock, fixtures, allow_unverified } => build::trace(&path, mock, fixtures.as_deref(), allow_unverified),
+        Command::Run { path, mock, fixtures, allow_unverified, args } => build::run(&path, mock, fixtures.as_deref(), allow_unverified, &args),
+        Command::Trace { path, mock, fixtures, allow_unverified, args } => build::trace(&path, mock, fixtures.as_deref(), allow_unverified, &args),
     };
     ExitCode::from(code)
 }

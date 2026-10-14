@@ -22,6 +22,7 @@ mod stmt;
 mod tools;
 mod types;
 mod unused;
+pub mod user_tools;
 
 pub mod effects;
 mod handles;
@@ -92,6 +93,8 @@ pub enum CallKind {
 pub enum ToolKind {
     Manifest,
     Binding,
+    /// A `# Tool` written in AgentMark (SPEC 22.5): the IR calls the function `<tool>__<verb>`.
+    User,
 }
 
 /// Resolution of a tool-call statement (`email send customer: …`, `pdf render doc -> b`).
@@ -192,6 +195,8 @@ pub enum BlockKind {
     Route,
     /// `## Run` of a command
     Command,
+    /// One verb of a `# Tool` (SPEC 22.5): `unit` is the tool, `label` the verb.
+    Tool,
 }
 
 /// The effect of one block, function, rule or entry.
@@ -392,6 +397,8 @@ pub(crate) struct Checker<'a> {
     /// bindings that do.
     pub handle_types: BTreeMap<String, Vec<String>>,
     pub rust_blocks: Vec<RustInfo>,
+    /// Verbs of user tools by function name (`slugger__slug`).
+    pub tool_verbs: HashMap<String, user_tools::VerbRef>,
     /// Record each rule is `for`.
     pub rule_records: HashMap<String, String>,
     consts: HashMap<String, ConstState>,
@@ -427,6 +434,7 @@ impl<'a> Checker<'a> {
             bindings: BTreeMap::new(),
             handle_types: Default::default(),
             rust_blocks: Vec::new(),
+            tool_verbs: HashMap::new(),
             rule_records: HashMap::new(),
             consts: HashMap::new(),
             const_infos: BTreeMap::new(),
@@ -495,6 +503,7 @@ impl<'a> Checker<'a> {
         self.collect_handle_types();
         self.declare_records();
         self.declare_signatures();
+        self.declare_tools();
         self.check_agent_headers();
         self.check_service_states();
         self.check_constants();

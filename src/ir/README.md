@@ -10,7 +10,7 @@ The IR has no agent, rule, trigger, `ask model` or guard node. Constants are inl
 `Expr` has an `effect: EffectSet` (from `Checked`; unioned from the children for nodes lowering made up).
 Types are `sema::Type`; `Type::Unknown` means "untyped JSON value" (e.g. `http post … -> x`).
 `SourceRef { file, line }` on every statement is for the `// <file>.agent.md:<line>` comments.
-All names are the DECLARED names (functions, records, services, commands, `-` included); codegen maps them to Rust identifiers and dedups. Names lowering makes are `<agent>__<block>` (a rule that shares a name with a function becomes `<name>__rule`); `Fn.display` holds `(unit, label)` for a former `## Do` block so the effect summary does not show the internal name.
+All names are the DECLARED names (functions, records, services, commands, `-` included); codegen maps them to Rust identifiers and dedups. Names lowering makes are `<agent>__<block>` (a rule that shares a name with a function becomes `<name>__rule`); a verb of a `# Tool` is the `Fn` `<tool>__<verb>` (`display` = `(tool, verb)`), and a Rust-bodied verb adds the `RustFn` `<tool>_<verb>_rust` that it calls (SPEC 22.5, Q380); `Fn.display` holds `(unit, label)` for a former `## Do` block so the effect summary does not show the internal name.
 
 ## Runtime context (not in the IR)
 `Entry.unit`/`label` are the trace labels. Codegen calls `ctx.enter(unit, label)` once at the start of an
@@ -51,6 +51,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Io(ReadFile{path,ty} | ReadBody{ty} | ReadInput | Print{message})` — `ReadInput`: all of standard input as `text`.
 - `File(FileCall{verb, path, arg})` — the built-in `file` tool (SPEC 22.3, Q344): `verb` is `read | write | append | list | rename | exists | delete`, `arg` the new path of `rename` or the content of `write`/`append`; `into` types: `read` text, `list` list of text, `exists` bool. Codegen emits `agentmark_rt::stdlib::file::<verb>(ctx, …)`, which traces `{"kind":"file",…}`.
 - `Std(expr)` — a failing library call (`number.parse`, `csv.parse … as …`) whose value is stored by a `try`: `expr` is an `ExprKind::Std` whose `ty` is `Result(T)`; the statement's `into` has the plain `T`.
+- `Trace(ToolCall{tool, verb, args})` — the first statement of every tool verb's `Fn`: `{"kind":"tool","tool":…,"verb":…,"args":{param: value}}` (Q385). A statement `- slugger slug title -> s` is an `Effect{Fn{"slugger__slug", args}}`; the expression `slugger.slug(title)` is `Call{Fn, "slugger__slug"}`.
 - `Trace(Guard{name, ok})` — one `guard` trace line; `name` is the guard source with constants inlined (`reminder length < 800`), `ok` a `bool` expression. Every guard, in agents, services, commands and functions alike, is `Let guard_ok_<line> = cond; Effect(Trace); If(not tmp){else | Stop}` (Q90).
 
 ## Expressions (`ExprKind`, each with `ty` and `effect`)

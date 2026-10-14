@@ -330,6 +330,14 @@ fn decl_bodies(d: &Decl) -> Vec<&[Stmt]> {
         Decl::Function(f) => vec![&f.body],
         Decl::Service(s) => s.routes.iter().map(|r| r.body.as_slice()).collect(),
         Decl::Command(c) => vec![&c.body],
+        Decl::Tool(t) => t
+            .verbs
+            .iter()
+            .filter_map(|v| match &v.body {
+                ToolBody::Stmts(b) => Some(b.as_slice()),
+                ToolBody::Rust(_) => None,
+            })
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -340,6 +348,7 @@ fn decl_params(d: &Decl) -> Vec<&Param> {
         Decl::Command(c) => c.args.iter().collect(),
         Decl::RustBlock(r) => r.params.iter().collect(),
         Decl::Binding(b) => b.items.iter().flat_map(|i| i.params.iter()).collect(),
+        Decl::Tool(t) => t.verbs.iter().flat_map(|v| v.params.iter()).collect(),
         _ => Vec::new(),
     }
 }
@@ -382,6 +391,15 @@ fn body_lines(file: &File) -> u32 {
                 b.not_bound.iter().for_each(|n| see(n.span.line));
             }
             Decl::RustBlock(r) => see(r.rust.line + r.rust.code.lines().count() as u32),
+            Decl::Tool(t) => {
+                see(t.span.line.max(t.effect.span.line));
+                for v in &t.verbs {
+                    see(v.span.line);
+                    if let ToolBody::Rust(r) = &v.body {
+                        see(r.line + r.code.lines().count() as u32);
+                    }
+                }
+            }
         }
         for body in decl_bodies(d) {
             each_stmt(body, &mut |s| see(s.span.line));
@@ -660,6 +678,12 @@ fn vague_name(ctx: &mut Ctx, file: &File) {
             }
             Decl::Constant(c) => add(&mut names, &c.name),
             Decl::RustBlock(r) => add(&mut names, &r.name),
+            Decl::Tool(t) => {
+                add(&mut names, &t.name);
+                for v in &t.verbs {
+                    add(&mut names, &v.name);
+                }
+            }
             Decl::Run(_) | Decl::Entry(_) => {}
         }
         for p in decl_params(d) {
