@@ -38,37 +38,13 @@ fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
     for _round in 0..2 {
         let project = Project::load(path);
         // SPEC 15.1: every imported crate has a binding before the project is checked
-        let mut generated_any = false;
-        let mut crates: Vec<(String, Option<usize>)> = Vec::new();
-        for f in &project.files {
-            for imp in &f.imports {
-                if let ResolvedImport::Crate { name, binding } = imp {
-                    if !crates.iter().any(|(n, _)| n == name) {
-                        crates.push((name.clone(), *binding));
-                    }
-                }
+        let generated_any = match bind_missing(&project, &mut announced, true) {
+            Ok(g) => g,
+            Err((name, e)) => {
+                eprintln!("agentmark: cannot bind \"{name}\": {e}");
+                return Err(1);
             }
-        }
-        for (name, binding) in &crates {
-            if announced.contains(name) {
-                continue;
-            }
-            announced.push(name.clone());
-            if binding.is_some() {
-                eprintln!("binding {name}: cached");
-                continue;
-            }
-            match auto_bind(name, &project) {
-                Ok(()) => {
-                    eprintln!("binding {name}: generated");
-                    generated_any = true;
-                }
-                Err(e) => {
-                    eprintln!("agentmark: cannot bind \"{name}\": {e}");
-                    return Err(1);
-                }
-            }
-        }
+        };
         if generated_any {
             continue;
         }
@@ -108,6 +84,43 @@ fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
     }
     eprintln!("agentmark: the binding was written but the project still cannot find it");
     Err(1)
+}
+
+/// Bind every imported crate that has no binding yet (SPEC 15.1); shared by `build` and `check`.
+/// `Ok(true)` when something was generated (the project has to be loaded again), `Err` carries
+/// the crate and why it could not be bound. `announced` keeps each crate to one status line.
+pub(crate) fn bind_missing(
+    project: &Project,
+    announced: &mut Vec<String>,
+    say_cached: bool,
+) -> Result<bool, (String, String)> {
+    let mut generated_any = false;
+    let mut crates: Vec<(String, Option<usize>)> = Vec::new();
+    for f in &project.files {
+        for imp in &f.imports {
+            if let ResolvedImport::Crate { name, binding } = imp {
+                if !crates.iter().any(|(n, _)| n == name) {
+                    crates.push((name.clone(), *binding));
+                }
+            }
+        }
+    }
+    for (name, binding) in &crates {
+        if announced.contains(name) {
+            continue;
+        }
+        announced.push(name.clone());
+        if binding.is_some() {
+            if say_cached {
+                eprintln!("binding {name}: cached");
+            }
+            continue;
+        }
+        auto_bind(name, project).map_err(|e| (name.clone(), e))?;
+        eprintln!("binding {name}: generated");
+        generated_any = true;
+    }
+    Ok(generated_any)
 }
 
 fn auto_bind(name: &str, project: &Project) -> Result<(), String> {

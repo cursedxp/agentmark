@@ -286,6 +286,7 @@ impl Checker<'_> {
                 for t in &a.tools {
                     if p.manifest.tool(&t.name).is_some()
                         || self.lookup(fi, &t.name, &[Kind::Binding]).is_some()
+                        || self.unbound_crate_tool(fi, &t.name)
                     {
                         continue;
                     }

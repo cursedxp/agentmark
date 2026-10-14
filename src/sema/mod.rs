@@ -355,6 +355,8 @@ pub(crate) struct Checker<'a> {
     pub used: HashSet<Key>,
     /// `(file, import index)` of imports from which something was used.
     pub used_imports: HashSet<(usize, usize)>,
+    /// `(file, import index)` of crate imports without a binding whose name the file used as a tool.
+    pub unbound_used: HashSet<(usize, usize)>,
     pub records: BTreeMap<String, RecordInfo>,
     pub sigs: HashMap<Key, Sig>,
     pub bindings: BTreeMap<String, BindingInfo>,
@@ -388,6 +390,7 @@ impl<'a> Checker<'a> {
             scopes: Vec::new(),
             used: HashSet::new(),
             used_imports: HashSet::new(),
+            unbound_used: HashSet::new(),
             records: BTreeMap::new(),
             sigs: HashMap::new(),
             bindings: BTreeMap::new(),
@@ -424,6 +427,21 @@ impl<'a> Checker<'a> {
         self.diags
             .push(Diagnostic::error(code, self.path(file), span, msg));
         self.diags.len() - 1
+    }
+
+    /// Is `name` the tool name of a crate this file imports but that has no binding yet? Then the
+    /// missing binding is the one problem to report (on the import line), not an unknown tool.
+    pub fn unbound_crate_tool(&mut self, file: usize, name: &str) -> bool {
+        let p = self.p;
+        for (ii, imp) in p.files[file].imports.iter().enumerate() {
+            if let crate::project::ResolvedImport::Crate { name: c, binding: None } = imp {
+                if c == name || c.replace('-', "_") == name {
+                    self.unbound_used.insert((file, ii));
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn warn(

@@ -558,6 +558,39 @@ fn unverified_library_is_reported_once_in_text_and_kept_in_json_diagnostics() {
     assert!(v["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "W005"));
 }
 
+#[test]
+fn check_binds_a_missing_crate_like_build_does() {
+    // `# Import: crate sha2` -> `check` -> approve: check runs the binder first
+    let d = sha2_project("checkbinds");
+    let o = agentmark(&["check", s(&d)])
+        .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+        .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))
+        .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"))
+        .env("AGENTMARK_OFFLINE", "1")
+        .output()
+        .unwrap();
+    assert!(err(&o).contains("binding sha2: generated"), "{}", err(&o));
+    assert!(d.join("bindings/sha2.agent.md").is_file());
+    let t = out(&o);
+    assert!(t.contains("Libraries nobody approved yet") && t.contains("change \"- effect: unverified\" to \"- effect: pure\""), "{t}");
+    assert!(!err(&o).contains("Unknown tool") && !err(&o).contains("Unused import"), "{}", err(&o));
+}
+
+#[test]
+fn check_that_cannot_bind_says_how_and_reports_one_error_on_the_import_line() {
+    let d = sha2_project("checknobind");
+    let o = agentmark(&["check", s(&d)]).env("AGENTMARK_OFFLINE", "1").output().unwrap();
+    assert_eq!(code(&o), 1);
+    let e = err(&o);
+    assert!(e.contains("cannot bind \"sha2\""), "{e}");
+    assert!(e.contains("# Import: crate sha2") && e.contains("has no binding yet, but this file uses it"), "{e}");
+    assert!(e.contains("agentmark bind sha2"), "{e}");
+    // the follow-ons of the missing binding are gone
+    assert!(!e.contains("Unknown tool \"sha2\""), "{e}");
+    assert!(!e.contains("Unused import"), "{e}");
+    assert!(out(&o).contains("1 error, 0 warnings: not ok."), "{}", out(&o));
+}
+
 // ---------------------------------------------------------------------------------- misc
 
 #[test]
