@@ -358,6 +358,7 @@ impl Checker<'_> {
                         self.diags.push(d);
                     }
                 }
+                self.want_variable(cx, list, "append");
                 if let ExprKind::Path(segs) = &list.kind {
                     if segs[0].name == "state" {
                         cx.acc.add(Effect::Local, "state");

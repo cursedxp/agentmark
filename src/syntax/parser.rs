@@ -83,11 +83,50 @@ pub fn parse_file(path: &str, src: &str) -> Result<File, Vec<Diagnostic>> {
     })
 }
 
+/// How many parentheses or braces one line may nest. The grammar recurses once per level; past
+/// this a line is refused with a plain message instead of exhausting the stack (E329).
+const MAX_NESTING: usize = 100;
+
+fn too_deep(path: &str, lines: &[Line]) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for l in lines {
+        if !matches!(l.kind, LineKind::Item | LineKind::Control | LineKind::Heading1 | LineKind::Heading2) {
+            continue;
+        }
+        let (mut depth, mut chars) = (0usize, 0u32);
+        for c in l.text.chars() {
+            chars += 1;
+            match c {
+                '(' | '{' => depth += 1,
+                ')' | '}' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            if depth > MAX_NESTING {
+                out.push(
+                    Diagnostic::error(
+                        "E329",
+                        path,
+                        Span::new(l.line_no, l.col + chars - 1, 1),
+                        format!("This line nests more than {MAX_NESTING} levels of parentheses or braces."),
+                    )
+                    .with_help("Name the inner part with \"set\" on a line of its own."),
+                );
+                break;
+            }
+        }
+    }
+    out
+}
+
 fn parse_file_here(path: &str, src: &str) -> Result<File, Vec<Diagnostic>> {
     let (lines, diags) = lex(path, src);
     if !diags.is_empty() {
         // Lines were dropped by the lexer, so the structure cannot be trusted any further.
         return Err(diags);
+    }
+    let deep = too_deep(path, &lines);
+    if !deep.is_empty() {
+        return Err(deep);
     }
     let mut b = Builder::new(path);
     let file = b.file(&lines);

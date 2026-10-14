@@ -1936,7 +1936,7 @@ How the words read, in the places where a reader could hesitate:
 * **Maps** iterate, print and serialise in key order; as JSON a map is an object (`{"DE": 1, "EU": 2}`).
 * **Purity.** The expression that runs per element may read values and call pure functions, nothing else.
   `names where shout(item) = "a"` is an error when `shout` prints; use a `for each` loop for that.
-* **Names.** Inside a word, `item` is the innermost element: `nested where (count of item where item > 1) > 1` counts the
+* **Names.** A variable that has the name of a field of the element is an error inside the word (`set region = "US"`, then `sales where region = "EU"`): write `item.region` for the field, or rename the variable. A variable called `item` is hidden by the element inside the expression. Inside a word, `item` is the innermost element: `nested where (count of item where item > 1) > 1` counts the
   inner `item` in the second one. A parameter or loop variable that is appended to is a copy; the caller keeps its list.
 
 ```agentmark invalid
@@ -1945,7 +1945,7 @@ How the words read, in the places where a reader could hesitate:
   - set mixed = list of 1, "two"
 ```
 
-Decisions behind these rules are `Q320` to `Q328` in `OPEN_QUESTIONS.md`; the errors are `E320` to `E326`.
+Decisions behind these rules are `Q320` to `Q328` in `OPEN_QUESTIONS.md`; the errors are `E320` to `E329`. `append`, `put` and `remove` change a variable or a `state.…` path, never a computed value; `put` and `remove` are statement words, so a tool cannot have those names.
 
 ### 22.3 The built-in library
 

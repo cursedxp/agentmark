@@ -616,7 +616,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .ignore_then(sp1())
                 .ignore_then(kw("of"))
                 .ignore_then(sp1())
-                .ignore_then(choice((
+                .ignore_then(
                     name()
                         .then_ignore(sp1())
                         .then(word())
@@ -625,8 +625,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
                         .then_ignore(sp1())
                         .then(path_only.clone())
                         .map(|((rule, noun), src)| (Some(rule), Some(noun), src)),
-                    source.clone().map(|src| (None, None, src)),
-                )))
+                )
                 .map_with(|(rule, noun, src), e| {
                     mk(
                         ExprKind::CountOf {
@@ -693,6 +692,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 source,
                 operand.clone(),
                 type_expr(),
+                count_of.boxed(),
             );
             let path_or_call =
                 super::collections::postfix(path_or_call.boxed(), expr.clone().boxed(), operand);
@@ -704,7 +704,6 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 paren,
                 date,
                 number,
-                count_of,
                 first_in,
                 no_amounts,
                 atom_kw,

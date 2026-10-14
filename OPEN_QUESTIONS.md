@@ -573,12 +573,14 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q321 — What a collection word is applied to, and the two tails (step 21)
 - Question: `sort rows by amount` needs a clear end for `rows`; `rows where cond` and `totals at "EU"` are written after the thing they work on.
 - Choice: the **source** of a word is a name or path (`rows`, `report.rows`), a call, a parenthesised expression, or `keys of …` / `values of …` of another source (`sum of values of totals`, `join keys of m with ", "`). Another collection word as a source needs parentheses: `sort (rows where amount > 5) by amount`. `source where cond` and `source at key` are tails of a name, call or parenthesis; `cond` runs to the end of the expression (so it is weaker than `and`), `key` is a literal, a name, a call or a parenthesis. `source at key` is not read when ` in` follows it, so `put total at "EU" in m` keeps its own `at`. `count of rows`, `count of open invoices in …` and `first x in … where …` keep their v0.2 meaning; `count of <source>` now takes any source (`count of (take 2 from rows)`).
+- `put` and `remove` are statement words like `append`: a tool cannot be named `put` or `remove` (a `- put …` line is always the map statement). `sum of`, `min of`, `max of` and `unique` read their operand once: `x in source` when an ` in ` follows on the line, else just the source (`sum of a + sum of b` is a sum plus a sum). A line may nest at most 100 parentheses or braces (E329, plain message) so the recursive grammar cannot exhaust the stack.
 - Why: a bounded source keeps the language readable without precedence rules for words; `keys of` / `values of` end where their source ends, so they cost nothing.
 
 ## Q322 — The element of a word: `item`, bare fields, nesting (step 21)
 - Question: what is in scope in the expression a word runs per element, and what when words nest?
 - Choice: the element is the variable `item`; when it is a record, its fields are also in scope by their bare names (`rows where region = "EU"`, `sum of amount in rows`), exactly like a `for each` over a record. The innermost word wins: in `rows where (count of item.lines where item.ok) > 1` the second `item` is the line. When the element is not a record, the bare fields of an enclosing loop stay visible (nothing hides them). `item` outside such an expression is an ordinary "Unknown name". Only the expressions after `where`, `to`, `by`, `of … in` and `unique … in` run per element; sources, counts and separators are evaluated once.
-- Why: SPEC 22.2 says so for fields and `item`; shadowing is the one rule that is stable under nesting.
+- A variable with the name of a field of the element is an error (E327: "`region` is a variable here and also a field of Sale …", help: write `item.region` for the field, or rename the variable): letting the variable win silently made `count of sales where region = "EU"` count nothing after `set region = "US"`. A variable named `item` is shadowed by the element inside the expression (documented in the reference); outside a word nothing changes.
+- Why: SPEC 22.2 says so for fields and `item`; shadowing is the one rule that is stable under nesting, and a silent wrong answer is the worst outcome.
 
 ## Q323 — The expression of a word must be pure (step 21)
 - Question: may `names where shout(item) = "a"` call something with an effect?
@@ -600,6 +602,7 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 
 ## Q327 — Changing a list or map in place (step 21)
 - Choice: `append x to list` (v0.2) and the new `put`/`remove` change the variable they name (or `state.…`), also a function parameter or a loop variable: those are copies, so the caller's list is unchanged (values, no references, as everywhere in AgentMark). `put`/`remove` work on maps only; `append` on lists only.
+- The target must be a variable or a `state.…` path, not a computed value (E328: `put 1 at "a" in (map of …)` changes nothing anyone can see). Integer `sum of` adds with plain `+=`, exactly like `+` on numbers elsewhere (no extra overflow check). `unique` compares values by their JSON form (linear time). Loop variables, the index and `item` that the generated code never reads are bound as `_name`, so legal programs build without Rust warnings.
 - Why: no aliasing means no ownership rules in the language; the generated Rust marks the binding `mut`.
 
 ## Q328 — Where the grammar is not extended (step 21)

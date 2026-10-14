@@ -97,12 +97,24 @@ pub fn sum_money(values: Vec<Money>) -> Result<Money, RtError> {
     Ok(total.unwrap_or(Money::new(0, Currency::EUR)))
 }
 
-/// Every value once, in the order of its first occurrence.
-pub fn unique<T: PartialEq>(values: Vec<T>) -> Vec<T> {
+/// Every value once, in the order of its first occurrence. Values are compared by their JSON
+/// form (every AgentMark value has one), so the cost is linear, not quadratic; a value that
+/// cannot be serialised is compared with `==` against the ones kept so far.
+pub fn unique<T: PartialEq + serde::Serialize>(values: Vec<T>) -> Vec<T> {
+    let mut seen = std::collections::HashSet::new();
     let mut out: Vec<T> = Vec::with_capacity(values.len());
     for v in values {
-        if !out.contains(&v) {
-            out.push(v);
+        match serde_json::to_string(&v) {
+            Ok(key) => {
+                if seen.insert(key) {
+                    out.push(v);
+                }
+            }
+            Err(_) => {
+                if !out.contains(&v) {
+                    out.push(v);
+                }
+            }
         }
     }
     out

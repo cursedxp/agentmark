@@ -466,3 +466,91 @@ fn the_service_checks_with_its_effects() {
         vec!["POST /count/{name} local(state)", "POST /forget/{name} local(state)", "GET /summary pure"]
     );
 }
+
+// ---------------------------------------------------------------------------------- review fixes
+
+#[test]
+fn a_variable_may_not_hide_a_field_of_the_element() {
+    // before: the variable silently won and `count of sales where region = "EU"` counted nothing
+    let (line, under, msg) = one("  - set region = \"US\"\n  - set n = count of sales where region = \"EU\"\n");
+    assert_eq!((line, under.as_str()), (2, "region"));
+    assert_eq!(
+        msg,
+        "\"region\" is a variable here and also a field of Sale, so it is unclear which one is meant.\nWrite \"item.region\" for the field, or rename the variable."
+    );
+    // both ways out are fine
+    assert_eq!(explain("  - set region = \"US\"\n  - set n = count of sales where item.region = \"EU\"\n"), vec![]);
+    assert_eq!(explain("  - set country = \"US\"\n  - set n = count of sales where region = country\n"), vec![]);
+    // outside a word the variable is simply the variable
+    assert_eq!(explain("  - set region = \"US\"\n  - for each sale in sales:\n    - set where_from = region\n"), vec![]);
+}
+
+#[test]
+fn append_put_and_remove_need_a_variable() {
+    let note = "Name the value first with \"set\", change that, and use it afterwards.";
+    says("  - put 1 at \"a\" in (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"put\" changes a variable, but this is not one.\n{note}"));
+    says("  - remove \"a\" from (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"remove\" changes a variable, but this is not one.\n{note}"));
+    says("  - append 1 to (list of 2)\n", 1, "list of 2", &format!("\"append\" changes a variable, but this is not one.\n{note}"));
+    assert_eq!(explain("  - set xs = list of 2\n  - append 1 to xs\n"), vec![]);
+}
+
+/// Parse only (the 120-character line limit is a check, not a parse, rule).
+fn parse_errors(src: &str) -> String {
+    match parse_file("t.agent.md", src) {
+        Ok(_) => String::new(),
+        Err(d) => render_all(&d, src),
+    }
+}
+
+#[test]
+fn a_line_nested_too_deep_is_refused_not_a_crash() {
+    let deep = format!("{}1{}", "(".repeat(150), ")".repeat(150));
+    let e = parse_errors(&format!("# Function: f\n- out: int\n- effect: pure\n  - return {deep}\n"));
+    assert!(e.contains("This line nests more than 100 levels of parentheses or braces."), "{e}");
+    assert!(e.contains("Name the inner part with \"set\" on a line of its own."), "{e}");
+    // 90 levels still parse
+    let ok = format!("{}1{}", "(".repeat(90), ")".repeat(90));
+    assert_eq!(parse_errors(&format!("# Function: f\n- out: int\n- effect: pure\n  - return {ok}\n")), "");
+}
+
+#[test]
+fn nested_words_parse_in_linear_time() {
+    // regression: `unique (…)`, `sum of (…)` and `count of (…)` parsed their operand twice per level (2^depth)
+    let nest = |word: &str, depth: usize| (0..depth).fold("rows".to_string(), |e, _| format!("{word} ({e})"));
+    for src in [
+        format!("  - return {}", nest("unique", 20)),
+        format!("  - return {}", nest("sum of", 20)),
+        format!("  - return {}", nest("count of", 20)),
+        format!("  - return {}", nest("min of", 20)),
+    ] {
+        let t = std::time::Instant::now();
+        assert_eq!(parse_errors(&format!("# Function: f\n- effect: pure\n{src}\n")), "");
+        assert!(t.elapsed().as_secs() < 10, "{src}: took {:?}", t.elapsed());
+    }
+}
+
+#[test]
+fn a_sum_followed_by_more_is_still_a_sum_of_its_source() {
+    // regression of the single-pass operand: `sum of a + sum of b` is `(sum of a) + (sum of b)`
+    assert_eq!(errors_of("# Function: f\n- in: xs: list of int, ys: list of int\n- out: int\n- effect: pure\n  - return sum of xs + sum of ys\n"), "");
+    // and the element form still works with an operator inside it
+    assert_eq!(errors_of("# Function: f\n- in: xs: list of int\n- out: int\n- effect: pure\n  - return sum of item * 2 in xs\n"), "");
+}
+
+#[test]
+fn unused_loop_variables_and_element_names_build_warning_free() {
+    let d = temp("quiet");
+    let o = agentmark(&["build", &format!("{ROOT}/tests/collections/warnings"), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    // build_bin fails the test on any rustc warning
+    let bin = build_bin(&d.join("out"), "quiet");
+    let fx = d.join("fx");
+    write(&fx, "model.json", r#"{"today":"2026-10-14","responses":[]}"#);
+    let o = run_bin(&bin, &fx, "quiet");
+    assert!(o.status.success(), "{}", stderr(&o));
+    let lines: Vec<String> = parse_lines(&stdout(&o)).iter().map(|t| t["message"].as_str().unwrap().to_string()).collect();
+    assert_eq!(
+        lines,
+        vec!["row", "row", "row", "entry a", "again", "again", "again", "3 3 3 1"]
+    );
+}

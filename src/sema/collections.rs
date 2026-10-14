@@ -20,6 +20,8 @@ pub const E_SUM: &str = "E323";
 pub const E_NOT_COLLECTION: &str = "E324";
 pub const E_JOIN: &str = "E325";
 pub const E_ENTRY: &str = "E326";
+pub const E_HIDES_FIELD: &str = "E327";
+pub const E_TARGET: &str = "E328";
 
 /// What a list or map key may be: values with a total order that print as a JSON object key.
 fn key_type(t: &Type) -> bool {
@@ -54,6 +56,35 @@ impl Checker<'_> {
                 format!("A map cannot be keyed by {}.", key.with_article()),
             )
             .with_help("Map keys are text, numbers, dates, datetimes or yes/no values.");
+            self.diags.push(d);
+        }
+    }
+
+    /// A variable that has the name of a field of the element would silently win over the field
+    /// inside a word's expression (`set region = "US"` then `sales where region = "EU"`): refuse.
+    pub(super) fn check_hides_field(&mut self, cx: &Cx, first: &crate::syntax::ast::Ident) {
+        if first.name == "item" {
+            return;
+        }
+        let Some(imp) = cx.element_bare() else { return };
+        let has = self
+            .records
+            .get(&imp.record)
+            .is_some_and(|r| r.fields.iter().any(|f| f.name == first.name));
+        if has {
+            let d = Diagnostic::error(
+                E_HIDES_FIELD,
+                self.path(cx.file),
+                first.span,
+                format!(
+                    "\"{0}\" is a variable here and also a field of {1}, so it is unclear which one is meant.",
+                    first.name, imp.record
+                ),
+            )
+            .with_help(format!(
+                "Write \"item.{0}\" for the field, or rename the variable.",
+                first.name
+            ));
             self.diags.push(d);
         }
     }
@@ -108,6 +139,7 @@ impl Checker<'_> {
         cx.push();
         cx.top().vars.insert("item".into(), elem.clone());
         cx.top().defs.insert("item".into(), at);
+        cx.top().element = true;
         if let Type::Record(r) = elem {
             cx.top().bare = Some(Implicit {
                 var: "item".into(),
@@ -406,6 +438,7 @@ impl Checker<'_> {
                     );
                     self.diags.push(d);
                 }
+                self.want_variable(cx, map, "put");
                 self.writes_state(cx, map);
                 self.check_limit(cx, s);
             }
@@ -422,6 +455,7 @@ impl Checker<'_> {
                     );
                     self.diags.push(d);
                 }
+                self.want_variable(cx, map, "remove");
                 self.writes_state(cx, map);
                 self.check_limit(cx, s);
             }
@@ -467,6 +501,25 @@ impl Checker<'_> {
                 var: name.to_string(),
                 record: r.clone(),
             });
+        }
+    }
+
+    /// `append`, `put` and `remove` change a variable (or `state.…`), not a value they compute.
+    pub(super) fn want_variable(&mut self, cx: &Cx, target: &Expr, what: &str) {
+        let ok = matches!(&target.kind, ExprKind::Path(_))
+            && matches!(
+                self.resolutions.get(&super::NodeKey::new(cx.file, target.span)),
+                Some(super::Resolution::Var { .. } | super::Resolution::Field { .. }) | None
+            );
+        if !ok {
+            let d = Diagnostic::error(
+                E_TARGET,
+                self.path(cx.file),
+                target.span,
+                format!("\"{what}\" changes a variable, but this is not one."),
+            )
+            .with_help("Name the value first with \"set\", change that, and use it afterwards.");
+            self.diags.push(d);
         }
     }
 

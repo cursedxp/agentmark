@@ -397,6 +397,7 @@ impl Checker<'_> {
         // a variable (loop variable, `set`/`->` result, parameter, route parameter, `state`)
         let handle_ok = std::mem::take(&mut cx.handle_ok);
         if let Some(t) = cx.var(&first.name).cloned() {
+            self.check_hides_field(cx, first);
             self.resolutions.insert(
                 key,
                 Resolution::Var {

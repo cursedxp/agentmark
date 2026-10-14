@@ -63,7 +63,7 @@ Record names are unique in a project (OPEN_QUESTIONS Q31), so `Record(String)` i
 expressions run per element: those are checked in a frame where `item` is the element and, for a record, its fields are bare
 names (`Implicit { var: "item", .. }`), with `PureKind::Element` so an effect is an error (Q323). `Resolution::Var { name: "item" }`
 and `Resolution::Field { var: Some("item"), .. }` are therefore what the IR sees. Results: Q325; map keys: `check_map_key` (E321);
-codes E320 to E326 (list items, key, order, sum, not a collection, join, map entry).
+codes E320 to E328 (list items, key, order, sum, not a collection, join, map entry, variable hides a field, target is not a variable); E329 (nesting) comes from the parser.
 
 ## Effects (`sema::EffectSet`)
 

@@ -49,7 +49,7 @@ All items are re-exported at the crate root (`use agentmark_rt::*;`). Every fall
 - `sorted(Vec<(K, T)>, descending) -> Result<Vec<T>, RtError>` - stable sort by key; equal keys keep their order in both directions. `K: SortKey` (`i64`, `String`, `bool`, `NaiveDate`, `DateTime<Utc>`, `Duration`, `Money`).
 - `extreme(Vec<K>, max) -> Result<Option<K>, RtError>` - smallest or largest, the first of equals; `None` when empty.
 - `sum_money(Vec<Money>) -> Result<Money, RtError>` - one currency; two currencies are `RtError::Money(CurrencyMismatch)`; an empty list is `0 EUR`. Money keys of different currencies also make `sorted` and `extreme` fail instead of guessing.
-- `unique(Vec<T: PartialEq>) -> Vec<T>` - first occurrence kept.
+- `unique(Vec<T: PartialEq + Serialize>) -> Vec<T>` - first occurrence kept; linear (values are compared by their JSON form).
 
 ## Built-in library (step 22, SPEC 22.3)
 - `agentmark_rt::stdlib::{text, regex, number, money, date, path, json, csv, file}` plus `stdlib::read_input()`. Pure functions take `&str`/values and return values; the ones the language types as `result of T` (`number::parse`, `money::parse`, `date::parse`, `json::parse::<T>`, `csv::parse::<T>` -> `Vec<T>`) return `Result<_, RtError>` with `RtError::Lib(plain message)`; `regex::*`, `number::{round,min,max,abs}`, `json::encode`, `csv::encode` return `Result` too (bad pattern, currency mismatch, too large, unencodable) and generated code writes `?`.

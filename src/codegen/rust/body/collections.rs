@@ -15,6 +15,29 @@ fn pad(s: &str, n: usize) -> String {
     s.replace('\n', &format!("\n{p}"))
 }
 
+/// Does the generated Rust `code` use the identifier `name` (outside string literals)?
+pub(super) fn mentions(code: &str, name: &str) -> bool {
+    let mut plain = String::with_capacity(code.len());
+    let (mut in_str, mut esc) = (false, false);
+    for c in code.chars() {
+        if in_str {
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+        } else if c == '"' {
+            in_str = true;
+            plain.push(' ');
+        } else {
+            plain.push(c);
+        }
+    }
+    super::super::files::has_word(&plain, name)
+}
+
 /// A block expression from its lines (each line one level in).
 fn block(lines: Vec<String>) -> E {
     let mut s = String::from("{\n");
@@ -61,9 +84,27 @@ impl Body<'_> {
         }
     }
 
-    /// The per-element value converted to what the collection holds.
-    fn elem_val(&self, x: &Expr) -> String {
-        self.val(x)
+    /// The name to bind the element to: `_item` when the generated code never reads it.
+    fn elem_binding(&self, code: &[&String]) -> String {
+        let item = self.item();
+        if code.iter().any(|c| mentions(c, &item)) {
+            item
+        } else {
+            format!("_{item}")
+        }
+    }
+
+    /// Collect the per-element value `x` of every element into `values`, then `finish(values)`.
+    fn values_loop(&self, source: &Expr, x: &Expr, finish: impl std::ops::Fn(&str) -> String) -> E {
+        let value = self.val(x);
+        let var = self.elem_binding(&[&value]);
+        block(vec![
+            "let mut values = Vec::new();".into(),
+            format!("for {var} in {} {{", pad(&self.val(source), 1)),
+            format!("    values.push({value});"),
+            "}".into(),
+            finish("values"),
+        ])
     }
 
     pub(super) fn coll_expr(&self, e: &Expr, op: &CollOp) -> E {
@@ -100,22 +141,30 @@ impl Body<'_> {
                 "}".into(),
                 "out".into(),
             ]),
-            CollOp::CountWhere { source, cond } => block(vec![
+            CollOp::CountWhere { source, cond } => {
+                let cond = self.ex(cond).s;
+                let var = self.elem_binding(&[&cond]);
+                block(vec![
                 "let mut count: i64 = 0;".into(),
-                format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                format!("    if {} {{", self.ex(cond).s),
+                format!("for {var} in {} {{", pad(&self.val(source), 1)),
+                format!("    if {cond} {{"),
                 "        count += 1;".into(),
                 "    }".into(),
                 "}".into(),
                 "count".into(),
-            ]),
-            CollOp::MapTo { source, expr } => block(vec![
-                format!("let mut out = {};", self.new_vec(&e.ty)),
-                format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                format!("    out.push({});", self.elem_val(expr)),
-                "}".into(),
-                "out".into(),
-            ]),
+                ])
+            }
+            CollOp::MapTo { source, expr } => {
+                let value = self.val(expr);
+                let var = self.elem_binding(&[&value]);
+                block(vec![
+                    format!("let mut out = {};", self.new_vec(&e.ty)),
+                    format!("for {var} in {} {{", pad(&self.val(source), 1)),
+                    format!("    out.push({value});"),
+                    "}".into(),
+                    "out".into(),
+                ])
+            }
             CollOp::Sort {
                 source,
                 key,
@@ -123,7 +172,7 @@ impl Body<'_> {
             } => block(vec![
                 "let mut keyed = Vec::new();".into(),
                 format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                format!("    let key = {};", self.elem_val(key)),
+                format!("    let key = {};", self.val(key)),
                 format!("    keyed.push((key, {item}));"),
                 "}".into(),
                 format!("{RT}::sorted(keyed, {descending})?"),
@@ -131,7 +180,7 @@ impl Body<'_> {
             CollOp::Group { source, key } => block(vec![
                 format!("let mut groups = {};", self.new_map(&e.ty)),
                 format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                format!("    let key = {};", self.elem_val(key)),
+                format!("    let key = {};", self.val(key)),
                 format!("    groups.entry(key).or_insert_with(Vec::new).push({item});"),
                 "}".into(),
                 "groups".into(),
@@ -141,31 +190,24 @@ impl Body<'_> {
                 match (expr, money) {
                     (None, true) => atom(format!("{RT}::sum_money({})?", self.val(source))),
                     (None, false) => atom(format!("{}.into_iter().sum::<i64>()", paren(atom(self.val(source)), P_ATOM))),
-                    (Some(x), true) => block(vec![
-                        "let mut values = Vec::new();".into(),
-                        format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                        format!("    values.push({});", self.elem_val(x)),
-                        "}".into(),
-                        format!("{RT}::sum_money(values)?"),
-                    ]),
-                    (Some(x), false) => block(vec![
-                        "let mut total: i64 = 0;".into(),
-                        format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                        format!("    total += {};", self.elem_val(x)),
-                        "}".into(),
-                        "total".into(),
-                    ]),
+                    (Some(x), true) => self.values_loop(source, x, |v| format!("{RT}::sum_money({v})?")),
+                    (Some(x), false) => {
+                        // plain `+=`, like `+` on numbers anywhere else
+                        let value = self.val(x);
+                        let var = self.elem_binding(&[&value]);
+                        block(vec![
+                            "let mut total: i64 = 0;".into(),
+                            format!("for {var} in {} {{", pad(&self.val(source), 1)),
+                            format!("    total += {value};"),
+                            "}".into(),
+                            "total".into(),
+                        ])
+                    }
                 }
             }
             CollOp::Extreme { max, source, expr } => match expr {
                 None => atom(format!("{RT}::extreme({}, {max})?", self.val(source))),
-                Some(x) => block(vec![
-                    "let mut values = Vec::new();".into(),
-                    format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                    format!("    values.push({});", self.elem_val(x)),
-                    "}".into(),
-                    format!("{RT}::extreme(values, {max})?"),
-                ]),
+                Some(x) => self.values_loop(source, x, |v| format!("{RT}::extreme({v}, {max})?")),
             },
             CollOp::Edge { last, source } => {
                 if is_place(source) {
@@ -188,13 +230,7 @@ impl Body<'_> {
             }
             CollOp::Unique { source, expr } => match expr {
                 None => atom(format!("{RT}::unique({})", self.val(source))),
-                Some(x) => block(vec![
-                    "let mut values = Vec::new();".into(),
-                    format!("for {item} in {} {{", pad(&self.val(source), 1)),
-                    format!("    values.push({});", self.elem_val(x)),
-                    "}".into(),
-                    format!("{RT}::unique(values)"),
-                ]),
+                Some(x) => self.values_loop(source, x, |v| format!("{RT}::unique({v})")),
             },
             CollOp::Join { source, sep } => {
                 let src = paren(self.ex(source), P_ATOM);
@@ -202,7 +238,7 @@ impl Body<'_> {
             }
             CollOp::At { map, key } => {
                 let m = paren(self.ex(map), P_ATOM);
-                atom(format!("{m}.get(&{}).cloned()", paren(self.ex_val_key(key), P_UNARY)))
+                atom(format!("{m}.get(&{}).cloned()", paren(self.ex(key), P_UNARY)))
             }
             CollOp::MapPart { values, map } => {
                 let m = paren(self.ex(map), P_ATOM);
@@ -210,11 +246,6 @@ impl Body<'_> {
                 atom(format!("{m}.{word}().cloned().collect::<Vec<_>>()"))
             }
         }
-    }
-
-    /// A map key as an expression (a text literal stays an owned `String`).
-    fn ex_val_key(&self, key: &Expr) -> E {
-        self.ex(key)
     }
 
     pub(super) fn coll_stmt(&mut self, c: &CollStmt) {
@@ -240,14 +271,22 @@ impl Body<'_> {
                 body,
             } => {
                 let src = self.val(source);
-                let pos = format!("{}_pos", self.n.local(&index.name));
-                let mutq = |this: &Self, v: &LocalVar| if this.assigned.contains(&v.name) { "mut " } else { "" };
-                self.line(&format!("for ({pos}, {}{}) in {src}.into_iter().enumerate() {{", mutq(self, var), self.n.local(&var.name)));
-                self.indent += 1;
-                self.line(&format!("let {}{} = {pos} as i64 + 1;", mutq(self, index), self.n.local(&index.name)));
-                self.indent -= 1;
+                let (v, i) = (self.n.local(&var.name), self.n.local(&index.name));
+                let start = self.out.len();
+                self.line("for _ in {}");
                 self.nested(body);
                 self.line("}");
+                let used = |this: &Self, name: &str| this.body_mentions(start + 1, name);
+                let vm = if self.assigned.contains(&var.name) { "mut " } else { "" };
+                let v_bound = if used(self, &v) { format!("{vm}{v}") } else { format!("_{v}") };
+                let pos = format!("{i}_pos");
+                let (im, i_used) = (if self.assigned.contains(&index.name) { "mut " } else { "" }, used(self, &i));
+                let ind = "    ".repeat(self.indent);
+                if i_used {
+                    self.out.insert(start + 1, format!("{ind}    let {im}{i} = {pos} as i64 + 1;"));
+                }
+                let pos_bound = if i_used { pos } else { "_pos".to_string() };
+                self.out[start] = format!("{ind}for ({pos_bound}, {v_bound}) in {src}.into_iter().enumerate() {{");
             }
             CollStmt::ForEachEntry {
                 key,
@@ -256,18 +295,30 @@ impl Body<'_> {
                 body,
             } => {
                 let src = self.val(source);
-                let mutq = |this: &Self, v: &LocalVar| if this.assigned.contains(&v.name) { "mut " } else { "" };
-                self.line(&format!(
-                    "for ({}{}, {}{}) in {src} {{",
-                    mutq(self, key),
-                    self.n.local(&key.name),
-                    mutq(self, value),
-                    self.n.local(&value.name)
-                ));
+                let (k, v) = (self.n.local(&key.name), self.n.local(&value.name));
+                let start = self.out.len();
+                self.line("for _ in {}");
                 self.nested(body);
                 self.line("}");
+                let bind = |this: &Self, var: &LocalVar, id: &str| {
+                    if !this.body_mentions(start + 1, id) {
+                        format!("_{id}")
+                    } else if this.assigned.contains(&var.name) {
+                        format!("mut {id}")
+                    } else {
+                        id.to_string()
+                    }
+                };
+                let (kb, vb) = (bind(self, key, &k), bind(self, value, &v));
+                let ind = "    ".repeat(self.indent);
+                self.out[start] = format!("{ind}for ({kb}, {vb}) in {src} {{");
             }
         }
+    }
+
+    /// Does any line written since `from` use the identifier `name`?
+    pub(super) fn body_mentions(&self, from: usize, name: &str) -> bool {
+        self.out[from..].iter().any(|l| !l.trim_start().starts_with("//") && mentions(l, name))
     }
 }
 

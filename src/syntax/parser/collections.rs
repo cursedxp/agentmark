@@ -65,10 +65,65 @@ fn boxed(e: Expr) -> Box<Expr> {
     Box::new(e)
 }
 
-/// `expr in source` (the first part is the per-element expression) or just `source`.
+/// Is there an ` in ` ahead on this line, outside strings and nested brackets? Looks only; leaves
+/// the input where it was and says nothing when there is none.
+fn in_ahead<'a>() -> impl Parser<'a, &'a str, (), Ex<'a>> + Clone {
+    custom(|inp| {
+        let before = inp.save();
+        let start = inp.cursor();
+        let (mut depth, mut in_str, mut word, mut found) = (0i32, false, String::new(), false);
+        let mut spaced = false; // the word being read started after a space
+        let mut prev = ' ';
+        while let Some(c) = inp.next() {
+            let c: char = c;
+            if in_str {
+                if c == '"' && prev != '\\' {
+                    in_str = false;
+                }
+            } else if c == '"' {
+                in_str = true;
+            } else if c.is_alphanumeric() || c == '_' {
+                if word.is_empty() {
+                    spaced = prev == ' ';
+                }
+                word.push(c);
+            } else {
+                if depth == 0 && spaced && word == "in" && c == ' ' {
+                    found = true;
+                    break;
+                }
+                word.clear();
+                match c {
+                    '(' | '{' => depth += 1,
+                    ')' | '}' => {
+                        depth -= 1;
+                        if depth < 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            prev = c;
+        }
+        let span = inp.span_since(&start);
+        inp.rewind(before);
+        if found {
+            Ok(())
+        } else {
+            Err(wrong_word("in", "", span))
+        }
+    })
+}
+
+/// `expr in source` (the first part is the per-element expression) or just `source`. The
+/// element expression is only tried when an ` in ` follows somewhere on the line, so a nested
+/// `sum of (sum of (…))` is parsed once per level, not twice.
 fn elem_in_source<'a>(expr: P<'a, Expr>, source: P<'a, Expr>) -> P<'a, (Option<Box<Expr>>, Box<Expr>)> {
     choice((
-        expr.then_ignore(ws("in"))
+        in_ahead()
+            .ignore_then(expr)
+            .then_ignore(ws("in"))
             .then(source.clone())
             .map(|(e, s)| (Some(boxed(e)), boxed(s))),
         source.map(|s| (None, boxed(s))),
@@ -129,6 +184,7 @@ pub fn forms<'a>(
     source: P<'a, Expr>,
     operand: P<'a, Expr>,
     ty: P<'a, TypeExpr>,
+    count_rule: P<'a, Expr>,
 ) -> P<'a, Expr> {
     let comma = just(',').padded_by(sp());
 
@@ -203,19 +259,31 @@ pub fn forms<'a>(
     let sum = lead_of("sum")
         .ignore_then(elem_in_source(expr.clone(), source.clone()))
         .map_with(|(x, s), e| node(CollExpr::Sum { expr: x, source: s }, e));
-    let count_where = lead_of("count")
-        .ignore_then(source.clone())
-        .then_ignore(ws("where"))
-        .then(expr.clone())
-        .map_with(|(s, c), e| {
-            node(
-                CollExpr::CountWhere {
-                    source: boxed(s),
-                    cond: boxed(c),
+    // `count of open invoices in …` (a rule), else `count of source [where cond]`
+    let count_where = choice((
+        count_rule,
+        lead_of("count")
+            .ignore_then(source.clone())
+            .then(soft_ws("where", "where…").ignore_then(expr.clone()).or_not())
+            .map_with(|(s, c), e| match c {
+                Some(c) => node(
+                    CollExpr::CountWhere {
+                        source: boxed(s),
+                        cond: boxed(c),
+                    },
+                    e,
+                ),
+                None => Expr {
+                    span: at(e),
+                    kind: ExprKind::CountOf {
+                        rule: None,
+                        noun: None,
+                        source: boxed(s),
+                    },
                 },
-                e,
-            )
-        });
+            }),
+    ))
+    .boxed();
     let (expr_last, operand_last) = (expr.clone(), operand.clone());
     let part = |word: &'static str, values: bool| {
         lead_of(word)

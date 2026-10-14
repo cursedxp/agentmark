@@ -267,10 +267,20 @@ impl<'a> Body<'a> {
             }
             StmtKind::ForEach { var, source, body } => {
                 let v = self.val(source);
-                let m = if self.assigned.contains(&var.name) { "mut " } else { "" };
-                self.line(&format!("for {m}{} in {v} {{", self.n.local(&var.name)));
+                let id = self.n.local(&var.name);
+                let start = self.out.len();
+                self.line("for _ in {}");
                 self.nested(body);
                 self.line("}");
+                // a variable the body never reads is bound as `_name`
+                let bound = if !self.body_mentions(start + 1, &id) {
+                    format!("_{id}")
+                } else if self.assigned.contains(&var.name) {
+                    format!("mut {id}")
+                } else {
+                    id
+                };
+                self.out[start] = format!("{}for {bound} in {v} {{", "    ".repeat(self.indent));
             }
             StmtKind::Return(e) => {
                 let ret = self.ret.clone().unwrap_or(e.ty.clone());
