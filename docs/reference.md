@@ -2527,47 +2527,7 @@ The decisions behind these rules are Q320 to Q328 in `OPEN_QUESTIONS.md`.
 
 ### 22.3 The built-in library
 
-The library is part of the language, not a binding. Its functions are written `module.name(arguments)`, are all
-`pure`, and need no `# Import`. Eight modules:
-
-| module | functions |
-|---|---|
-| `text` | `split(t, sep)`, `lines(t)`, `trim(t)`, `lower(t)`, `upper(t)`, `replace(t, from, to)`, `contains(t, part)`, `starts_with(t, p)`, `ends_with(t, p)`, `length(t)`, `pad(t, width)`, `repeat(t, n)` |
-| `regex` | `matches(t, pattern)`, `find(t, pattern)`, `captures(t, pattern)`, `replace(t, pattern, with)` |
-| `number` | `round(x, places)`, `parse(t)`, `min(a, b)`, `max(a, b)`, `abs(x)`, `format(x, places)` |
-| `money` | `parse(t)`, `format(m)` |
-| `date` | `parse(t, pattern)`, `format(d, pattern)`, `days_between(a, b)` |
-| `path` | `join(a, b)`, `name(p)`, `stem(p)`, `extension(p)`, `parent(p)` |
-| `json` | `parse(t) as T`, `encode(v)` |
-| `csv` | `parse(t) as list of T`, `encode(rows)` |
-
-`agentmark check` lists the same table (a wrong name says which functions the module has), and an editor completes
-it after `text.`. What each function gives:
-
-* `text`: `split` the pieces between `sep`; `lines` like Rust `str::lines` (no empty entry for a final newline);
-  `replace` every occurrence; `length` counts characters; `pad` adds spaces on the right up to `width` characters and
-  never cuts longer text; `repeat` writes `t` `n` times.
-* `regex` uses the Rust `regex` syntax and finds a match anywhere in the text. `matches` is a `bool`; `find` is
-  `maybe text`; `captures` is `maybe list of text`: the capture groups of the first match, without the whole match
-  (a group that took no part is empty text); `replace` replaces every match, `$1` standing for group 1. A literal
-  pattern that does not compile is an error when you check the program.
-* `number` works on `int` (and `min`, `max`, `abs` and `round` also on `money` of one currency). `round(x, places)`
-  rounds half away from zero: for money to `places` decimals (`round(12.35 EUR, 1)` is `12.40 EUR`), for a whole
-  number only a negative `places` changes it (`round(1235, -1)` is `1240`). `format(x, places)` writes `places`
-  decimals (`format(12, 2)` is `12.00`).
-* `money.format(m)` writes the amount like a literal (`12.50 EUR`); `money.parse` reads one.
-* `date.format(d, pattern)` and `date.parse(t, pattern)`: a pattern that contains a `%` is strftime
-  (`%Y-%m-%d`, `%Y%m%d`); any other pattern is written with `YYYY` `YY` `MMMM` `MMM` `MM` `DD` `dddd` `ddd` `HH` `mm`
-  `ss`, other characters stand for themselves and `[text]` protects letters (`DD.MM.YYYY HH:mm`). `format` also takes a
-  `datetime`. `days_between(a, b)` is the number of days from `a` to `b`, negative when `b` is earlier.
-* `path` works on text only: `extension("a/b.jpg")` is `jpg` (no dot, empty when there is none), `parent("a/b.jpg")` is `a`.
-* `json.parse(t) as T` reads JSON into a record, a list or any type (field names are the JSON keys; money is text like
-  `"12.50 EUR"`, a date `"2026-10-13"`). `csv.parse(t) as list of T` reads one record per row, the first row naming the
-  fields. `encode` writes the other way: compact JSON, or CSV with a header row.
-
-A function that can fail returns `result of T` (`number.parse`, `money.parse`, `date.parse`, `json.parse`, `csv.parse`).
-Call it with `try`, which takes the call directly (a leading `do` is allowed), or with `match` (section 22.1); calling
-it any other way is error E341. After `try` the variable has the plain `T`:
+The library is part of the language, not a binding. This command uses four of its modules, `text`, `money`, `date` and `number`:
 
 ```agentmark
 > A shipping label: street padded, price as money, deadline as a date.
@@ -2594,7 +2554,47 @@ it any other way is error E341. After `try` the variable has the plain `T`:
 - print: "{date.days_between(today, due) - days} days to spare"
 ```
 
-The error for a result used as a plain value:
+**Rules**
+- Library functions are written `module.name(arguments)`, are all `pure`, and need no `# Import`.
+- There are eight modules, listed in the table below.
+- `agentmark check` lists the same table, and a wrong name says which functions the module has. An editor completes the names after `text.`.
+- A function that can fail returns `result of T`. These are `number.parse`, `money.parse`, `date.parse`, `json.parse` and `csv.parse`.
+- Call such a function with `try`, which takes the call directly. A leading `do` is allowed. You can also call it with `match`, as section [22.1](#221-user-defined-types) shows.
+- Calling it any other way is error E341. After `try`, the variable has the plain `T`.
+- Library errors have plain messages that name the value, such as `"4x" is not a whole number`, `line 3, column 2: …` for a CSV cell and `cannot read "x.txt": it does not exist`.
+
+**Modules**
+
+| module | functions |
+|---|---|
+| `text` | `split(t, sep)`, `lines(t)`, `trim(t)`, `lower(t)`, `upper(t)`, `replace(t, from, to)`, `contains(t, part)`, `starts_with(t, p)`, `ends_with(t, p)`, `length(t)`, `pad(t, width)`, `repeat(t, n)` |
+| `regex` | `matches(t, pattern)`, `find(t, pattern)`, `captures(t, pattern)`, `replace(t, pattern, with)` |
+| `number` | `round(x, places)`, `parse(t)`, `min(a, b)`, `max(a, b)`, `abs(x)`, `format(x, places)` |
+| `money` | `parse(t)`, `format(m)` |
+| `date` | `parse(t, pattern)`, `format(d, pattern)`, `days_between(a, b)` |
+| `path` | `join(a, b)`, `name(p)`, `stem(p)`, `extension(p)`, `parent(p)` |
+| `json` | `parse(t) as T`, `encode(v)` |
+| `csv` | `parse(t) as list of T`, `encode(rows)` |
+
+**What each function gives**
+- **text:** `split` gives the pieces between `sep`. `lines` works like Rust `str::lines`, with no empty entry for a final newline. `replace` replaces every occurrence.
+- **text:** `length` counts characters. `pad` adds spaces on the right up to `width` characters and never cuts longer text. `repeat` writes `t` `n` times.
+- **regex:** the Rust `regex` syntax applies, and a match is found anywhere in the text. `matches` is a `bool`, `find` is `maybe text` and `captures` is `maybe list of text`.
+- **regex:** `captures` gives the capture groups of the first match, without the whole match. A group that took no part is empty text.
+- **regex:** `replace` replaces every match, with `$1` standing for group 1. A literal pattern that does not compile is an error when you check the program.
+- **number:** it works on `int`. `min`, `max`, `abs` and `round` also work on `money` of one currency.
+- **number:** `round(x, places)` rounds half away from zero. For money it rounds to `places` decimals, so `round(12.35 EUR, 1)` is `12.40 EUR`. For a whole number only a negative `places` changes it, so `round(1235, -1)` is `1240`.
+- **number:** `format(x, places)` writes `places` decimals, so `format(12, 2)` is `12.00`.
+- **money:** `money.format(m)` writes the amount like a literal, as in `12.50 EUR`. `money.parse` reads one.
+- **date:** `date.format(d, pattern)` and `date.parse(t, pattern)` take a pattern. A pattern that contains a `%` is strftime, such as `%Y-%m-%d` or `%Y%m%d`.
+- **date:** any other pattern is written with `YYYY`, `YY`, `MMMM`, `MMM`, `MM`, `DD`, `dddd`, `ddd`, `HH`, `mm` and `ss`. Other characters stand for themselves, and `[text]` protects letters, as in `DD.MM.YYYY HH:mm`.
+- **date:** `format` also takes a `datetime`. `days_between(a, b)` is the number of days from `a` to `b`, negative when `b` is earlier.
+- **path:** it works on text only. `extension("a/b.jpg")` is `jpg`, without the dot, and empty when there is none. `parent("a/b.jpg")` is `a`.
+- **json:** `json.parse(t) as T` reads JSON into a record, a list or any type. Field names are the JSON keys, money is text like `"12.50 EUR"` and a date is `"2026-10-13"`.
+- **csv:** `csv.parse(t) as list of T` reads one record per row, and the first row names the fields.
+- **json and csv:** `encode` writes the other way, as compact JSON or as CSV with a header row.
+
+**A result used as a plain value is an error:**
 
 ```agentmark invalid
 > A result must be handled with try.
@@ -2616,26 +2616,7 @@ wrong.agent.md:6
 
 #### Files and standard input
 
-Files are the built-in tool `file`, with effect `local` (shown as `local(file)` by `check`). It needs no entry in
-`tools.toml` (a `[file]` table there is error E347). Paths are used as written, so a relative path starts at the working directory.
-
-| statement | does |
-|---|---|
-| `file read <path> -> content` | the file as `text`; it can fail, so use `try` |
-| `file write <path>: <text>` | writes exactly the text (replaces the file) |
-| `file append <path>: <line>` | adds the line and a newline (creates the file) |
-| `file list <folder> -> names` | `list of text`, sorted |
-| `file rename <old> to <new>` | moves or renames; an error when `<new>` exists |
-| `file exists <path> -> present` | `bool`, for a file or a folder |
-| `file delete <path>` | a file or an empty folder |
-
-`- read input -> text` reads all of standard input (effect `local(input)`). Every `file` call is written to the trace
-before it runs, so a test sees what a program touched even when it failed:
-
-```json
-{"kind":"file","verb":"write","path":"report.txt"}
-{"kind":"file","verb":"rename","path":"report.txt","to":"archive/report-1.txt"}
-```
+This command reads a sales CSV and writes the rows back as JSON:
 
 ```agentmark
 > Reads a sales CSV (region, product, amount) and writes the rows back as JSON.
@@ -2660,17 +2641,47 @@ before it runs, so a test sees what a program touched even when it failed:
 - print: "Wrote {count of sales} sales"
 ```
 
-Library errors have plain messages that name the value (`"4x" is not a whole number`, `line 3, column 2: …`
-for a CSV cell, `cannot read "x.txt": it does not exist`). Error codes: E340 unknown function, E341 result without
-`try`, E342 `json.parse` / `csv.parse` without a usable `as` type, E343 a literal pattern that cannot work, E344 unknown
-`file` verb, E345 a `file` statement with a missing or extra part, E347 `[file]` in `tools.toml`.
+**Rules**
+- Files are the built-in tool `file`, with effect `local`. `check` shows it as `local(file)`.
+- It needs no entry in `tools.toml`. A `[file]` table there is error E347.
+- Paths are used as written, so a relative path starts at the working directory.
+- `- read input -> text` reads all of standard input, with effect `local(input)`.
+- Every `file` call is written to the trace before it runs, so a test sees what a program touched even when it failed.
+
+| statement | does |
+|---|---|
+| `file read <path> -> content` | the file as `text`; it can fail, so use `try` |
+| `file write <path>: <text>` | writes exactly the text (replaces the file) |
+| `file append <path>: <line>` | adds the line and a newline (creates the file) |
+| `file list <folder> -> names` | `list of text`, sorted |
+| `file rename <old> to <new>` | moves or renames; an error when `<new>` exists |
+| `file exists <path> -> present` | `bool`, for a file or a folder |
+| `file delete <path>` | a file or an empty folder |
+
+A trace shows the calls like this:
+
+```json
+{"kind":"file","verb":"write","path":"report.txt"}
+{"kind":"file","verb":"rename","path":"report.txt","to":"archive/report-1.txt"}
+```
+
+**Errors**
+
+| code | message | fix |
+|---|---|---|
+| E340 | `The module "x" has no function "y".` | use one of the functions the message lists |
+| E341 | `"module.f" can fail (it returns "result of T"), so it has to be called with "try".` The same holds for `file read`, which may find no file. | write `- try module.f(...) -> value`, optionally with an `otherwise:` branch |
+| E342 | `json.parse` or `csv.parse` needs to know what to read, so the type is missing. `csv.encode` writes a list of records. | write the type after the call, as in `csv.parse(content) as list of Sale` |
+| E343 | A literal pattern cannot work. | fix the pattern |
+| E344 | `The built-in tool "file" has no verb "x".` | use one of the verbs the message lists |
+| E345 | A `file` statement has a missing or an extra part. | write it like the form the message shows |
+| E347 | `"file" is a built-in tool, so it cannot be declared in tools.toml.` | remove the `[file]` table |
+
+**Next:** [22.4 Opaque library types](#224-opaque-library-types)
 
 ### 22.4 Opaque library types
 
-When the binder meets a Rust type that has no AgentMark equivalent, it declares the type as `handle of <crate>.<Type>` and
-binds its constructors and methods instead of skipping the API around it. A handle is created by a library statement, used by
-method statements whose first word is the variable, and passed to your own functions; a method that takes `self` by value
-consumes it, and a later use is an error naming the line. A handle cannot be printed, compared, stored in a record or traced.
+A **handle** is created by a library statement, used by method statements whose first word is the variable, and passed to your own functions:
 
 ```text
 - sha2 sha256_new -> hasher
@@ -2678,14 +2689,18 @@ consumes it, and a later use is an error naming the line. A handle cannot be pri
 - hasher finalize -> digest
 ```
 
-The rules and the error messages are in section 15.4, the workflow in `docs/libraries.md`. Crate features come from the
-`[crates]` table of `agentmark.toml`.
+**Rules**
+- When the binder meets a Rust type that has no AgentMark equivalent, it declares the type as `handle of <crate>.<Type>`. It binds the constructors and methods instead of skipping the API around them.
+- A method that takes `self` by value consumes the handle. A later use is an error that names the line.
+- A handle cannot be printed, compared, stored in a record or traced.
+- The rules and the error messages are in section [15.4](#154-binding-file-format), and the workflow is in `docs/libraries.md`.
+- Crate features come from the `[crates]` table of `agentmark.toml`.
+
+**Next:** [22.5 User-defined tools](#225-user-defined-tools)
 
 ### 22.5 User-defined tools
 
-A tool can be written in AgentMark itself. `# Tool: name` has an `- effect:` line and one `## verb(params) -> type` block
-per verb; the block holds the statements of the verb. The tool is called like any tool, as a statement, or, when it is
-`pure`, as an expression:
+A tool can be written in AgentMark itself. `# Tool: name` has an `- effect:` line and one `## verb(params) -> type` block per verb:
 
 ```agentmark
 > Words for file names.
@@ -2707,17 +2722,25 @@ per verb; the block holds the statements of the verb. The tool is called like an
 - print: "{same}.md"
 ```
 
-How a call is written:
+**Rules**
+- The block of a verb holds the statements of the verb.
+- A tool is called like any tool, as a statement. When it is `pure`, it can also be called as an expression.
+- The declared effect is checked against the body exactly like a `# Function`. A verb may not do more than its tool says.
+- A call has the effect of what the body does, at least the effect the tool declares.
+- `check` lists one line per verb, such as `ledger / add: local(file)`.
+- A verb with a `rust` fence instead of statements is layer 1, like a `## Rust` block. Its effect is the declared one, and it is trusted.
+- A tool that only uses other `# Tool` declarations and the built-in `file` tool needs no `tools.toml` and no `rust/connect.rs`.
+- Both files stay for tools implemented outside the program, such as a real CRM or an email provider. A name cannot be used by both.
+- A tool can be listed in an agent's `- tools:` like any other.
+
+**How a call is written**
 
 | form | when |
 |---|---|
 | `- tool verb a b -> result` | any tool. The words and values after the verb are the arguments, in the order of the parameters; `-> result` is optional. One more value may follow a colon (`- notes save "a.txt": body`). |
 | `tool.verb(a, b)` | an expression, only for a `pure` tool whose verb returns a value. A tool of an imported folder is written with its module name (`tools.slugger.slug(title)`); the statement form takes the module too (`- tools.ledger add title`). |
 
-The declared effect is checked against the body exactly like a `# Function`: a verb may not do more than its tool says, and
-a call has the effect of what the body does, at least the effect the tool declares. `check` lists one line per verb
-(`ledger / add: local(file)`). A verb with a `rust` fence instead of statements is Layer 1, like a `## Rust` block: its
-effect is the declared one and is trusted:
+**Verbs that call each other, and a Rust verb**
 
 ````agentmark
 > A plain text ledger in the working directory.
@@ -2750,17 +2773,15 @@ effect is the declared one and is trusted:
 - ledger add_twice loud "again"
 ````
 
-A tool that only uses other `# Tool` declarations and the built-in `file` tool needs no `tools.toml` and no
-`rust/connect.rs`: both stay for tools implemented outside the program (a real CRM, an email provider), and a name cannot
-be used by both. Every call is written to the trace, before the body runs, like a tool call:
+Every call is written to the trace before the body runs, like a tool call. `args` holds the verb's parameters by name:
 
 ```json
 {"kind":"tool","tool":"ledger","verb":"add","args":{"entry":"HELLO"}}
 ```
 
-`args` holds the verb's parameters by name. A tool can be listed in an agent's `- tools:` like any other.
+**A verb that exceeds its tool's effect**
 
-A verb that exceeds the effect of its tool is an error on the line that does it:
+This is an error on the line that does it:
 
 ```agentmark invalid
 > A pure tool cannot print.
@@ -2779,17 +2800,26 @@ greeter.agent.md:6
   Change the tool to "- effect: local", or move this line out of the tool.
 ```
 
-Error codes: E380 a tool named like a tool of `tools.toml`, like `file` or like a binding, E381 a verb twice in one tool, E382
-an expression call of a tool that is not `pure`, E383 an unknown verb (or none), E384 `field = value` after a tool
-statement, E385 the result of a verb that returns nothing, E386 a verb that says it returns a value and never does, E387 an argument of the default command named like a flag every program has (`--once`, `--mock`, …). A tool named like a library module is warned about (W380); a tool also cannot be named like an agent, command, service or binding (E380). The
-effect error is E206, as for functions.
+**Errors**
+
+| code | message | fix |
+|---|---|---|
+| E206 | `The tool "greeter" says "- effect: pure", but this line has the effect local (print).` | change the tool to `- effect: local`, or move the line out of the tool |
+| E380 | A tool is named like a tool of `tools.toml`, like `file`, like a binding, or like an agent, command or service. | rename the tool |
+| E381 | A verb appears twice in one tool. | remove or rename one |
+| E382 | `The tool "x" has the effect <class>, so "name(...)" cannot be used inside an expression.` | call it as a statement: `- tool verb ... -> value` |
+| E383 | The tool needs a verb, or the verb is unknown. | use one of the verbs the message lists |
+| E384 | `The tool "x" takes values, not "field = value" assignments.` | write the values after the verb, and one value after a colon if you like |
+| E385 | A verb that returns nothing is used as a value or has its result stored. | call it as a statement |
+| E386 | A verb says it returns a value and never does. | return a value, or drop the `-> type` |
+| E387 | An argument of the default command is named like a flag every program has, such as `--once` or `--mock`. | rename the argument |
+| W380 | A tool is named like a library module. | rename the tool |
+
+**Next:** [22.6 Programs](#226-programs)
 
 ### 22.6 Programs
 
-A project whose `# Run` lists a single `# Command` (and no agent or service) makes that command the binary's default:
-`my-tool <args>` runs it without a subcommand name. Each argument is positional, in the order it is declared, or
-`--name value`, and the two mix: the positional values go, in declared order, to the arguments not given by name. A `bool` argument is the flag `--name`. Too many values (including one for an argument already given by name) is a usage error. `text`, `int`, `money` (`"12.50 EUR"`), `date` and `datetime` arguments are written as they are; any other value (a list `["a","b"]`, an enum `{"kind":"Empty"}`, a record) is written as JSON. A name written with underscores also takes dashes (`--dry-run`,
-`--dry_run`). An argument with a default may be left out:
+A project whose `# Run` lists a single `# Command` and no agent or service makes that command the binary's default:
 
 ```agentmark
 > Says how many copies of a title it would print: `label <title> [<copies>] [--dry-run]`.
@@ -2806,70 +2836,98 @@ A project whose `# Run` lists a single `# Command` (and no agent or service) mak
 - label
 ```
 
-`label "Hello" 3`, `label --copies 3 --title Hello` and `label Hello --copies 3` do the same; `label Hello --dry-run`
-sets `dry_run`. A missing argument without a default is a usage error (exit code 2) that shows the usage line. With
-several commands, or an agent or service next to the command, the commands stay subcommands (`my-tool import-csv …`).
-`agentmark run <project> -- <arguments>` and `agentmark trace <project> -- <arguments>` build the project and give the
-arguments after `--` to the program.
+`label "Hello" 3`, `label --copies 3 --title Hello` and `label Hello --copies 3` do the same. `label Hello --dry-run` sets `dry_run`.
+
+**Rules**
+- `my-tool <args>` runs the default command without a subcommand name.
+- Each argument is positional, in the order it is declared, or `--name value`. The two mix: the positional values go, in declared order, to the arguments not given by name.
+- A `bool` argument is the flag `--name`.
+- Too many values is a usage error. This includes a value for an argument already given by name.
+- `text`, `int`, `money`, `date` and `datetime` arguments are written as they are. Money is written as `"12.50 EUR"`.
+- Any other value is written as JSON: a list `["a","b"]`, an enum `{"kind":"Empty"}` or a record.
+- A name written with underscores also takes dashes, so `--dry-run` and `--dry_run` both work.
+- An argument with a default may be left out. A missing argument without a default is a usage error with exit code 2, and it shows the usage line.
+- With several commands, or an agent or service next to the command, the commands stay subcommands, as in `my-tool import-csv …`.
+- `agentmark run <project> -- <arguments>` and `agentmark trace <project> -- <arguments>` build the project and give the arguments after `--` to the program.
+
+**Next:** [22.7 Examples and testing contract](#227-v03-examples-and-testing-contract)
 
 ### 22.7 v0.3 examples and testing contract
 
-Five examples, none an agent and none with a `## Rust` block: `06-sales-report` (CSV, `group by`, `sum of`, money, a report file),
-`07-file-renamer` (`file list`, patterns, dates, `file rename`, a `--dry-run` flag), `08-notes-api` (a REST service over SQLite
-through library handles), `09-markdown-to-html` (text and pattern functions, an `# Enum`, `match`) and `10-log-analyzer`
-(`lines`, patterns, `group by`, `count of`, `take … from`).
+Five examples show the v0.3 language. None is an agent, and none has a `## Rust` block.
 
-A fixture folder of a program that is not an agent holds `run.json` (`{"args": […]}` and an optional `"stdin"`), an `input/`
-folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional
-`expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`.
-A folder under `variants/<case>/` holds only what differs from its parent. Services use `requests.json`, where an entry may
-carry `expect_status` and `expect_body`. The program replays the requests (`--once --mock`) and exits with an error for the first answer whose status or body differs (Q413).
+| example | shows |
+|---|---|
+| `06-sales-report` | CSV, `group by`, `sum of`, money, a report file |
+| `07-file-renamer` | `file list`, patterns, dates, `file rename`, a `--dry-run` flag |
+| `08-notes-api` | a REST service over SQLite through library handles |
+| `09-markdown-to-html` | text and pattern functions, an `# Enum`, `match` |
+| `10-log-analyzer` | `lines`, patterns, `group by`, `count of`, `take … from` |
+
+The fixture folder of a program that is not an agent looks like this:
+
+```text
+fixtures/07-file-renamer/
+  run.json                 {"args": ["photos"]}
+  input/photos/            copied into a fresh working directory
+  expected.stdout          what the program prints
+  expected/photos/         compared with the working directory after the run
+  variants/dry-run/        only what differs from the parent
+```
+
+**Rules**
+- `run.json` holds `{"args": […]}` and an optional `"stdin"`.
+- An `input/` folder is copied into a fresh working directory before the run.
+- The expected results are `expected.stdout`, an optional `expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`.
+- A folder under `variants/<case>/` holds only what differs from its parent.
+- Services use `requests.json`, where an entry may carry `expect_status` and `expect_body`.
+- The program replays the requests with `--once --mock`. It exits with an error for the first answer whose status or body differs, per Q413.
 
 ### 22.8 Out of scope for v0.3
 
-* Closures, first-class functions and user generics (collection words never take a function value).
-* Async user code (handles to async library APIs are awaited by the generated code).
-* Operator overloading: every operator keeps the meaning of section 5.
+- Closures, first-class functions and user generics. Collection words never take a function value.
+- Async user code. Handles to async library APIs are awaited by the generated code.
+- Operator overloading. Every operator keeps the meaning of section [5](#5-expressions).
 
 ## Appendix A. Statement index
 
-Every statement form of the language, with where it is explained:
+Every statement form of the language, with where it is explained. The [cheat sheet](#cheat-sheet) lists the most common ones.
 
 | form | section |
 |---|---|
-| `for each <var> in <source>:` | 4.1 |
-| `for each <rule> <var> in <source>:` | 4.1 |
-| `if <condition>:` / `else:` | 4.1 |
-| `if <expr> is some <name>:` / `else:` | 14 |
-| `stop` | 4.1 |
-| `do <name>` / `do <name>(args) -> var` | 4.1, 13.1 |
-| `ask model[ with <var>]: "<prompt>"[ as <Record>] -> var` | 4.2 |
-| `<tool> <verb> [<target>]: <payload>[ -> var]` | 4.3 |
-| `guard: <condition>[ else <statement>]` | 4.4 |
-| `set <var> = <expression>` | 4.5 |
-| `return <expr>` | 13.1 |
-| `respond <status>[ <expr>]` | 13.3 |
-| `read body as <Type> -> var` | 13.3 |
-| `read file <path> as <Type> -> var` | 13.3 |
-| `read input -> var` | 22.3 |
-| `file <verb> <path>[ to <new>\|: <text>][ -> var]` | 22.3 |
-| `try [do] <call>(args)[ as <Type>] -> var` (a built-in or user function that returns `result of T`) | 14, 22.3 |
-| `print: "<text>"` | 13.3 |
-| `<binding> <item> <arguments>[ -> var]` (a library call) | 15 |
-| `<handle> <method> [<arguments>][ -> var]` (a method on a library handle) | 15.4, 22.4 |
-| `<tool> <verb> <arguments>[: <value>][ -> var]` (a user-defined tool) | 22.5 |
-| `<tool>.<verb>(arguments)` (an expression, pure tools only) | 22.5 |
-| `put <value> at <key> in <map>` / `remove <key> from <map>` | 22.2 |
-| `append <value> to <list>` | 13.3, 22.2 |
-| `for each <var> in <list> with index <i>:` / `for each <key>, <value> in <map>:` | 22.2 |
-| `try <statement>` + `otherwise:` | 14 |
-| `parallel:` | 16 |
-| `match <value>:` with `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | 22.1 |
-| `## Rust: <name>[ -> <type>]` | 17 |
+| `for each <var> in <source>:` | [4.1](#41-control) |
+| `for each <rule> <var> in <source>:` | [4.1](#41-control) |
+| `if <condition>:` / `else:` | [4.1](#41-control) |
+| `if <expr> is some <name>:` / `else:` | [14](#14-errors) |
+| `stop` | [4.1](#41-control) |
+| `do <name>` / `do <name>(args) -> var` | [4.1](#41-control), [13.1](#131-function) |
+| `ask model[ with <var>]: "<prompt>"[ as <Record>] -> var` | [4.2](#42-model) |
+| `<tool> <verb> [<target>]: <payload>[ -> var]` | [4.3](#43-tool-calls) |
+| `guard: <condition>[ else <statement>]` | [4.4](#44-guards) |
+| `set <var> = <expression>` | [4.5](#45-assignment) |
+| `return <expr>` | [13.1](#131-function) |
+| `respond <status>[ <expr>]` | [13.3](#133-service-and-command) |
+| `read body as <Type> -> var` | [13.3](#133-service-and-command) |
+| `read file <path> as <Type> -> var` | [13.3](#133-service-and-command) |
+| `read input -> var` | [22.3](#223-the-built-in-library) |
+| `file <verb> <path>[ to <new>\|: <text>][ -> var]` | [22.3](#223-the-built-in-library) |
+| `try [do] <call>(args)[ as <Type>] -> var` (a built-in or user function that returns `result of T`) | [14](#14-errors), [22.3](#223-the-built-in-library) |
+| `print: "<text>"` | [13.3](#133-service-and-command) |
+| `<binding> <item> <arguments>[ -> var]` (a library call) | [15](#15-library-access-automatic-bindings) |
+| `<handle> <method> [<arguments>][ -> var]` (a method on a library handle) | [15.4](#154-binding-file-format), [22.4](#224-opaque-library-types) |
+| `<tool> <verb> <arguments>[: <value>][ -> var]` (a user-defined tool) | [22.5](#225-user-defined-tools) |
+| `<tool>.<verb>(arguments)` (an expression, pure tools only) | [22.5](#225-user-defined-tools) |
+| `put <value> at <key> in <map>` / `remove <key> from <map>` | [22.2](#222-collection-words) |
+| `append <value> to <list>` | [13.3](#133-service-and-command), [22.2](#222-collection-words) |
+| `for each <var> in <list> with index <i>:` / `for each <key>, <value> in <map>:` | [22.2](#222-collection-words) |
+| `try <statement>` + `otherwise:` | [14](#14-errors) |
+| `parallel:` | [16](#16-concurrency) |
+| `match <value>:` with `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | [22.1](#221-user-defined-types) |
+| `## Rust: <name>[ -> <type>]` | [17](#17-escape-hatch--rust-blocks-layer-1) |
 
 ## Appendix B. Decisions the specification left open
 
-The choices made while implementing, by topic. Each is written out in `OPEN_QUESTIONS.md`.
+These are the choices made while implementing, grouped by topic. Each one is written out in `OPEN_QUESTIONS.md`.
 
 | topic | questions |
 |---|---|
