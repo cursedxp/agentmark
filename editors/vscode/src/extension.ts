@@ -59,7 +59,7 @@ async function showTouchPanel(): Promise<void> {
   const target = projectTarget(file);
   lastRoot = checkInvocation("agentmark", target).cwd;
   if (!panel) {
-    panel = vscode.window.createWebviewPanel("agentmarkTouch", "What can this agent touch", vscode.ViewColumn.Beside, {
+    panel = vscode.window.createWebviewPanel("agentmarkTouch", "What can this program touch", vscode.ViewColumn.Beside, {
       enableScripts: true,
     });
     panel.onDidDispose(() => (panel = undefined));

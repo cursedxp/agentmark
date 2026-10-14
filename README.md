@@ -1,22 +1,60 @@
 # AgentMark
 
-AgentMark is a Markdown-based language for agents, services and commands: you write plain `.agent.md` files, and `agentmark build` compiles them to a standalone Rust binary. Every block states what it may touch (model, network, files, local state), `agentmark check` computes that from the code and refuses a program that does more than it says, and every run can print a trace that tests compare. Libraries are used by importing a crate; the author never sees Rust, and approves one effect line per library.
+AgentMark is a programming language written as Markdown. A program is a few `.agent.md` files that read like a document: headings say what a part is, bullet points say what it does, `>` lines are its description. `agentmark build` turns them into one standalone binary, with no runtime to install next to it.
+
+It is a general-purpose language: records and enums, functions, `match`, lists and maps with words such as `group`, `sort` and `sum of`, a built-in library for text, patterns, numbers, dates, paths, JSON and CSV, files, commands with arguments, web services, and any Rust library you can name. Agents (programs that ask an AI model) are one more feature built on the same parts, described [at the end](#agents-ai-workflows-as-a-feature) of this page.
+
+This is a whole program. It reads a sales file and prints what every region brought in (`examples/06-sales-report` is the full version, which also sorts the regions and writes a report file):
 
 ```agentmark
-> Says hello every Monday.
-# Agent: greeter
-- model: claude
-- tools: log
+> One line of the sales file: where it was sold and for how much.
+# Record: Sale
+- region: text
+- amount: money
 
-## Every Monday at 08:00
-- ask model: "Write one friendly sentence for the week." -> line
-- guard: line is not empty
-- log: "{line}"
+> Prints the revenue of every region in a sales file: `sales-summary <path>`.
+# Command: sales-summary
+- args: path: text
+
+## Run
+- try file read path -> content
+  otherwise:
+    - print: "Could not read {path}"
+    - stop
+- try csv.parse(content) as list of Sale -> sales
+  otherwise:
+    - print: "{path} is not a valid sales file"
+    - stop
+- set by_region = group sales by region
+- for each region, rows in by_region:
+  - print: "{region}: {sum of amount in rows}"
+- print: "Total: {sum of amount in sales}"
+
+# Run
+- sales-summary
 ```
 
-The language is specified in [SPEC.md](SPEC.md), the compiler is described in [DESIGN.md](DESIGN.md), and decisions the spec left open are written down in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). Five example projects live in `examples/`; `fixtures/` holds the model answers, tool data and expected traces for running them offline.
+Some things to notice. `money` is a type with a currency (`120.00 EUR`), and money never mixes with a plain number or another currency. Reading a file can fail, so it is written with `try … otherwise:`; there are no exceptions and no `null` (a value that may be missing is `maybe`). `agentmark check` reads the program and prints what each part can touch, computed from the code, not declared by hand. Here it is on `examples/06-sales-report`, the full version of this program, which reads and writes files and prints, nothing else:
 
-Editor support (VS Code extension, language server, tree-sitter grammar for Zed, Neovim and Helix) is described in [docs/editor.md](docs/editor.md). To have an AI assistant write AgentMark for you, copy [templates/CLAUDE.md](templates/CLAUDE.md) (Claude Code) or [templates/.cursorrules](templates/.cursorrules) (Cursor) into your project; both point the assistant at [docs/reference.md](docs/reference.md), the one file it needs.
+```console
+$ agentmark check examples/06-sales-report
+Effects (what each block can touch)
+  sales-report / Run: local(file, print)
+  function region_totals: pure
+  function table_row: pure
+ok: 0 errors, 0 warnings.
+```
+
+The language is specified in [SPEC.md](SPEC.md) (section 22 is the part that makes it general-purpose), the compiler is described in [DESIGN.md](DESIGN.md), and decisions the spec left open are written down in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). New to programming? Start with [docs/guide.md](docs/guide.md), which builds a report program step by step and adds an agent at the end. Every construct, with a tested example each, is in [docs/reference.md](docs/reference.md). Ten example projects live in `examples/`; `fixtures/` holds the input files, model answers, tool data and expected output and traces for running them offline.
+
+| example | what it is |
+|---|---|
+| `06-sales-report` | reads a CSV file, totals per region, writes a report file |
+| `07-file-renamer` | renames the photos of a folder by the date in their names; `--dry-run` only says what it would do |
+| `08-notes-api` | a REST service over SQLite, using the `sqlx` crate |
+| `09-markdown-to-html` | text and pattern functions, an `# Enum` of kinds of line, `match` |
+| `10-log-analyzer` | reads a log, counts problems per service, prints the top N |
+| `01` to `05` | agents and services: invoice chaser, lead qualifier, support triage, daily report, invoice service |
 
 ## Install
 
@@ -31,18 +69,17 @@ cargo install --path .
 
 ## The commands
 
-Every command takes a `.agent.md` file or a project folder (a folder with an `agentmark.toml` and a `tools.toml`). Exit code 0 is fine, 1 means the project has problems, 2 means the command itself could not run. Problems are printed as `file:line`, the source line, a caret and a plain-language message; a rustc error is never shown for an AgentMark mistake. The commands below are run from a checkout of this repository.
+Every command takes a `.agent.md` file or a project folder (a folder with an `agentmark.toml`, and a `tools.toml` when the program uses tools from outside). Exit code 0 is fine, 1 means the project has problems, 2 means the command itself could not run. Problems are printed as `file:line`, the source line, a caret and a plain-language message; a rustc error is never shown for an AgentMark mistake. The commands below are run from a checkout of this repository.
 
 ### check
 
-Reads everything, reports errors and warnings, and prints what each block can touch. This is the line you approve: `invoice-chaser / Every day at 09:00` may use the model, the network (only `crm` and `email`) and write a local log, nothing else.
+Reads everything, reports errors and warnings, and prints what each block can touch. This is the line you approve: a block that says `pure` touches nothing, `local(file, print)` works on this computer, `network(crm, email)` talks to those tools, `model` asks an AI.
 
 ```console
-$ agentmark check examples/01-invoice-chaser
+$ agentmark check examples/10-log-analyzer
 Effects (what each block can touch)
-  invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)
-  invoice-chaser / Do remind: model, network(email, crm), local(log)
-  rule overdue: pure
+  analyze-log / Run: local(file, print)
+  function rank_services: pure
 ok: 0 errors, 0 warnings.
 ```
 
@@ -53,57 +90,61 @@ ok: 0 errors, 0 warnings.
 Writes the Cargo project of a program, and runs `cargo check` on it. `--no-check` only writes the files. The generated code is readable: one function per block, each statement preceded by a `// <file>.agent.md:<line>` comment.
 
 ```console
-$ agentmark build examples/01-invoice-chaser -o out
+$ agentmark build examples/06-sales-report -o out
 built out (8 files). Compile it with: cargo build --release --manifest-path out/Cargo.toml
 ```
 
-`--target rust` is the default and the only target in v0.1; see "Adding a target" below.
+`--target rust` is the default and the only target; see "Adding a target" below.
 
 ### run and trace
 
-`run` builds the program and runs every entry once (a schedule such as "every day at 09:00" fires once, so a run ends). `trace` does the same and prints the trace on stdout, one JSON object per line. `--mock --fixtures <folder>` answers model and tool calls from files instead (`model.json`, `crm.invoices.json`, …), so nothing touches the network.
+`run` builds the program and runs it. A program with one `# Command` in its `# Run` makes that command the default: the arguments go after `--`, `analyze-log <path> [--top N]` here. A program with schedules (an agent's "every day at 09:00") fires each once, so a run ends. `trace` does the same and prints the trace on stdout, one JSON object per line: every file touched, every line printed, every tool and model call.
 
 ```console
-$ agentmark run examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
-[log] Reminded Müller GmbH about 1200.00 EUR
+$ agentmark run examples/10-log-analyzer -- fixtures/10-log-analyzer/input/app.log --top 2
+Log report for fixtures/10-log-analyzer/input/app.log
+Lines read: 15
+Entries: 13
+Errors: 7  Warnings: 2  Info: 4
+First error at 2026-10-12 08:15:09
+Top 2 services by errors:
+  payments  4
+  mail      2
 ```
 
 ```console
-$ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
-{"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
-{"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
-{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
-{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
-{"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
+$ agentmark trace examples/10-log-analyzer -- fixtures/10-log-analyzer/input/app.log --top 2
+{"kind":"file","verb":"read","path":"fixtures/10-log-analyzer/input/app.log"}
+{"kind":"print","message":"Log report for fixtures/10-log-analyzer/input/app.log"}
+…
+{"kind":"print","message":"  mail      2"}
 ```
 
-The trace is the behavior of the program, and the tests of this repository compare traces, not generated source: `fixtures/<example>/expected.trace.jsonl`. Without `--mock`, a run uses the real model (`ANTHROPIC_API_KEY`) and the tools you connect (next sections).
+The trace is the behavior of the program, and the tests of this repository compare behavior, not generated source: the output of every example against `fixtures/<example>/`. A program that uses a model or tools from outside runs with `--mock --fixtures <folder>`, which answers those calls from files instead (see "Agents" below), so nothing touches the network.
 
 ### fmt and lint
 
 `fmt` rewrites files into the one canonical style (`--check` changes nothing and exits 1 when a file is not canonical). `lint` runs the style rules; the ones listed under `[lint] deny` in `agentmark.toml` are errors.
 
 ```console
-$ agentmark fmt --check examples/01-invoice-chaser
-5 files are canonical.
-$ agentmark lint examples/01-invoice-chaser
-lint: 0 errors, 0 warnings in 5 files.
+$ agentmark fmt --check examples/06-sales-report
+7 files are canonical.
+$ agentmark lint examples/06-sales-report
+lint: 0 errors, 0 warnings in 7 files.
 ```
 
 ### doc
 
-Prints the documentation page of a project (agents, records, rules, what each block can touch), or the cheat sheet of a bound library.
+Prints the documentation page of a project (commands, records, functions, services, agents, what each block can touch), or the cheat sheet of a bound library.
 
 ```console
-$ agentmark doc examples/01-invoice-chaser
-# invoice-chaser
+$ agentmark doc examples/06-sales-report
+# sales-report
 …
-### invoice-chaser
-Chases unpaid invoices once a day. Never changes amounts; only sends reminders.
+### sales-report
+Reads a sales CSV file and writes a revenue report per region, biggest region first.
 …
-- can touch: model, network(crm, email), local(log)
-…
-**Every day at 09:00** (can touch: model, network(crm, email), local(log))
+- can touch: local(file, print)
 …
 ```
 
@@ -130,7 +171,13 @@ effect: pure
       Compute hash of `data`.
 ```
 
-## Using any crate: three lines
+## Libraries
+
+**Built in.** `text`, `regex`, `number`, `money`, `date`, `path`, `json` and `csv` are part of the language, with a fixed effect each that `check` shows (all of them are pure). `file` is a built-in tool (`file read`, `write`, `append`, `list`, `rename`, `exists`, `delete`) that needs no `tools.toml` entry; reading standard input is `- read input -> text`. They are listed in [docs/reference.md](docs/reference.md), section 22.3.
+
+**Any Rust crate.** The rest of the Rust ecosystem is available too, through the binder (`agentmark bind`, above) and three lines in your program. Objects a crate hands you (a hasher, a database pool) are `handle`s: you create one with a statement, call methods on it, and the checker knows which method uses it up. A handle cannot be printed, compared or stored in a record. [docs/libraries.md](docs/libraries.md) has the whole story.
+
+### Any crate: three lines
 
 1. Write `# Import: crate sha2` at the top of the file and use the library in a plain statement: `- sha2 sha256_digest "{invoice.id}{invoice.amount}" -> digest`.
 2. Run `agentmark check`. The first time, it generates `bindings/sha2.agent.md` and stops, because nobody has approved what the library may touch.
@@ -152,7 +199,82 @@ ok: 0 errors, 0 warnings.
 
 (`app` is a copy of `examples/05-invoice-service` without its `bindings/sha2.agent.md`. While you develop, `--allow-unverified` on `check`, `build`, `run` and `trace` assumes the proposed effect and warns once per binding; `build`, `run` and `trace` without the flag refuse a program that uses an unapproved binding.) The effect line is the only thing you approve: it is what `check` holds every caller to, so a function that says `- effect: pure` and calls a library you marked `network` is an error. The pin is the version in the binding header: the generated `Cargo.toml` depends on `sha2 = "=0.10.9"`.
 
-## Writing a real tool implementation
+## Tools you write, tools you connect
+
+A tool is something a program calls with a statement: `- slugger slug title -> s`. Two kinds exist.
+
+**A tool written in AgentMark** is a `# Tool` declaration with one `## verb(params) -> type` block per verb. Its declared effect is checked against its body exactly like a function's. A program that only uses these and the built-in `file` tool needs no `tools.toml` and no Rust:
+
+```agentmark
+> Turns a title into a web address: lower case, dashes between words.
+# Tool: slugger
+- effect: pure
+
+## slug(title: text) -> text
+- set lowered = text.lower(title)
+- return regex.replace(lowered, "[^a-z0-9]+", "-")
+
+> Prints the address of a title: `address <title>`.
+# Command: address
+- args: title: text
+
+## Run
+- print: "/posts/{slugger.slug(title)}"
+
+# Run
+- address
+```
+
+**A tool implemented outside the program** (a real CRM, an email provider) is listed in `tools.toml` and implemented in `rust/connect.rs`; it comes up with agents, which use such tools most, in [Connecting real tools](#connecting-real-tools-rustconnectrs) below.
+
+## Editors and AI assistants
+
+Editor support (VS Code extension, language server, tree-sitter grammar for Zed, Neovim and Helix) is described in [docs/editor.md](docs/editor.md). To have an AI assistant write AgentMark for you, copy [templates/CLAUDE.md](templates/CLAUDE.md) (Claude Code) or [templates/.cursorrules](templates/.cursorrules) (Cursor) into your project; both point the assistant at [docs/reference.md](docs/reference.md), the one file it needs.
+
+## Agents: AI workflows as a feature
+
+An agent is a program that wakes up on a schedule or an event, uses tools, and may ask a model. It is built from the parts above, not beside them: the checker rewrites an agent into plain functions and entries before anything is generated. What agents add is the vocabulary for the risky part. Every block states what it may touch (model, network, files, local state), `ask model` is followed by a `guard:` on the answer, and `check` refuses an agent that does more than its `tools:` line says.
+
+```agentmark
+> Says hello every Monday.
+# Agent: greeter
+- model: claude
+- tools: log
+
+## Every Monday at 08:00
+- ask model: "Write one friendly sentence for the week." -> line
+- guard: line is not empty
+- log: "{line}"
+```
+
+`examples/01-invoice-chaser` is a complete agent. `check` prints what it can touch, and `run` and `trace` answer the model and the tools from fixtures when you pass `--mock --fixtures`:
+
+```console
+$ agentmark check examples/01-invoice-chaser
+Effects (what each block can touch)
+  invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)
+  invoice-chaser / Do remind: model, network(email, crm), local(log)
+  rule overdue: pure
+ok: 0 errors, 0 warnings.
+```
+
+```console
+$ agentmark run examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+[log] Reminded Müller GmbH about 1200.00 EUR
+```
+
+```console
+$ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+{"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
+{"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
+{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
+{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
+{"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
+```
+
+Without `--mock`, a run uses the real model (`ANTHROPIC_API_KEY`) and the tools you connect (next). The chapter that adds an agent step by step is the second half of [docs/guide.md](docs/guide.md).
+
+### Connecting real tools: `rust/connect.rs`
 
 `tools.toml` lists the tools a program may use and their verbs:
 
@@ -179,7 +301,7 @@ pub trait Crm: Send + Sync {
 
 `Email` (`send`) and `Http` (`get`, `post`) are generated the same way; `log` has no verbs and is built in (stderr and the trace). `--mock` runs answer from fixtures, so mock and real runs share all other code. For a real run, `Connected { crm: Box<dyn Crm>, email: Box<dyn Email>, http: Box<dyn Http> }` is what the program uses, and you build it in **`rust/connect.rs`**, a file of your project beside `agentmark.toml` (for a single file: `rust/` next to it). `build`, `run` and `trace` create it once, with a stub for every tool whose methods fail with `not connected yet: implement Crm::list in rust/connect.rs`, and never change it again. Every build copies it to `src/connect.rs` of the generated project, so deleting the output loses nothing; a compiler error in it is reported against your file. When `tools.toml` gains a tool, add it to `Connected` there.
 
-The arguments are exactly what the generated code sends: `crm list` gets `{"source": "invoices"}` and answers an array of rows shaped like the record; `crm update` gets `{"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}`; `email send` gets `{"target": "customer", "to": "ap@mueller.de", "text": "…"}`. Here is `rust/connect.rs` for `examples/01-invoice-chaser` with an in-memory CRM and an "email provider" that prints; `http` stays a stub because this program never calls it.
+The arguments are exactly what the generated code sends: `crm list` gets `{"source": "invoices"}` and answers an array of rows shaped like the record; `crm update` gets `{"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}`; `email send` gets `{"target": "customer", "to": "ap@mueller.de", "text": "…"}`.
 
 A real backend usually needs a client crate. `agentmark.toml` has an optional `[rust.dependencies]` table that is copied verbatim into the `[dependencies]` of the generated `Cargo.toml` (each entry is a version text or a table, as in Cargo; naming a dependency the generated project already has, such as `serde_json`, `tokio` or an imported crate, is an error):
 
@@ -370,10 +492,11 @@ A target is a module under `src/codegen/` that reads the IR and nothing else. `s
 | Path | What |
 |---|---|
 | `src/syntax`, `src/sema`, `src/lower`, `src/ir` | lexer and parser (chumsky), semantic check and effects, agent lowering, the IR |
+| `src/stdlib.rs`, `src/sema/stdlib.rs` | the built-in library and the `file` tool |
 | `src/codegen/rust` | the Rust target |
 | `src/binder` | `agentmark bind`: rustdoc JSON to a binding |
 | `src/cli` | the commands |
-| `crates/agentmark-rt` | runtime of generated programs: money, scheduler, model client, mock tools, trace |
-| `examples/`, `fixtures/` | five projects; model answers, tool data, expected traces |
+| `crates/agentmark-rt` | runtime of generated programs: money, collections and the built-in library, scheduler, model client, mock tools, trace |
+| `examples/`, `fixtures/` | ten projects; input files, model answers, tool data, expected output and traces |
 
 `cargo test --workspace` runs everything offline, including the commands and code blocks of this README (`tests/readme.rs`).

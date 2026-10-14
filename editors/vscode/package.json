@@ -1,7 +1,7 @@
 {
   "name": "agentmark",
   "displayName": "AgentMark",
-  "description": "Language support for AgentMark (.agent.md): highlighting, language server, agentmark.toml schema and a panel showing what an agent can touch.",
+  "description": "Language support for AgentMark (.agent.md): highlighting, language server, agentmark.toml schema and a panel showing what a program can touch.",
   "version": "0.1.0",
   "publisher": "agentmark",
   "license": "MIT",
@@ -62,7 +62,7 @@
     "commands": [
       {
         "command": "agentmark.showTouchPanel",
-        "title": "AgentMark: Show what this agent can touch"
+        "title": "AgentMark: Show what this program can touch"
       },
       {
         "command": "agentmark.restartServer",
