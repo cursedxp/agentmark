@@ -286,8 +286,7 @@ Which features of a crate are switched on is a project setting, the `[crates]` t
 `sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }`. The binder and the generated `Cargo.toml` both read
 it, so the handles you get (`handle of sqlx.SqlitePool`) are the ones for the database you configured. Types that borrow
 (a query that holds its text) and generic types with a single instantiation in that configuration are bound as handles too,
-and an integer wider than `int` (`u64`) is converted with a check that fails the call on overflow. `examples/08-notes-api`
-is a web service built on this.
+and an integer wider than `int` (`u64`) is converted with a check that fails the call on overflow.
 
 ### Not bound yet: just write the statement
 

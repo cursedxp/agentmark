@@ -62,14 +62,14 @@ Where each part of the language is described:
 
 | you want | read |
 |---|---|
-| records, constants, files and imports | 2.1, 1, 18 |
+| records, rules, constants, files and imports | 2.1, 2.2, 1, 18 |
 | functions, commands, services | 13 |
 | enums, `match`, collection words (`group`, `sort`, `sum of`), the built-in library, the `file` tool, user-defined tools, default commands | 22 |
 | `try`, `maybe`, errors | 14 |
 | Rust libraries (`# Import: crate …`, handles) and `## Rust` blocks | 15, 17 |
 | types and units (money, date, duration) | 6 |
 | what a block can touch (`pure`, `local`, `network`, `model`) | 8 |
-| agents: `# Rule`, `# Agent`, triggers, `ask model`, `guard`, model providers | 2.2, 2.3, 3, 4.2, 4.4, 19 |
+| agents: `# Agent`, triggers, `ask model`, `guard`, model providers | 2.3, 3, 4.2, 4.4, 19 |
 
 Agents are one feature of the language, not its center. They are sugar over the core: before anything is generated, every
 agent construct is rewritten into functions and entries (section 0). Their sections keep the places the specification gives
@@ -2466,6 +2466,25 @@ several commands, or an agent or service next to the command, the commands stay 
 `agentmark run <project> -- <arguments>` and `agentmark trace <project> -- <arguments>` build the project and give the
 arguments after `--` to the program.
 
+### 22.7 v0.3 examples and testing contract
+
+Five examples, none an agent and none with a `## Rust` block: `06-sales-report` (CSV, `group by`, `sum of`, money, a report file),
+`07-file-renamer` (`file list`, patterns, dates, `file rename`, a `--dry-run` flag), `08-notes-api` (a REST service over SQLite
+through library handles), `09-markdown-to-html` (text and pattern functions, an `# Enum`, `match`) and `10-log-analyzer`
+(`lines`, patterns, `group by`, `count of`, `take … from`).
+
+A fixture folder of a program that is not an agent holds `run.json` (`{"args": […]}` and an optional `"stdin"`), an `input/`
+folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional
+`expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`.
+A folder under `variants/<case>/` holds only what differs from its parent. Services use `requests.json`, where an entry may
+carry `expect_status` and `expect_body`.
+
+### 22.8 Out of scope for v0.3
+
+* Closures, first-class functions and user generics (collection words never take a function value).
+* Async user code (handles to async library APIs are awaited by the generated code).
+* Operator overloading: every operator keeps the meaning of section 5.
+
 ## Appendix A. Statement index
 
 Every statement form of the language, with where it is explained:
@@ -2486,12 +2505,17 @@ Every statement form of the language, with where it is explained:
 | `respond <status>[ <expr>]` | 13.3 |
 | `read body as <Type> -> var` | 13.3 |
 | `read file <path> as <Type> -> var` | 13.3 |
-| `append <value> to <list>` | 13.3 |
 | `read input -> var` | 22.3 |
 | `file <verb> <path>[ to <new>\|: <text>][ -> var]` | 22.3 |
-| `try [do] <module.function>(args)[ as <Type>] -> var` | 22.3 |
+| `try [do] <call>(args)[ as <Type>] -> var` (a built-in or user function that returns `result of T`) | 14, 22.3 |
 | `print: "<text>"` | 13.3 |
 | `<binding> <item> <arguments>[ -> var]` (a library call) | 15 |
+| `<handle> <method> [<arguments>][ -> var]` (a method on a library handle) | 15.4, 22.4 |
+| `<tool> <verb> <arguments>[: <value>][ -> var]` (a user-defined tool) | 22.5 |
+| `<tool>.<verb>(arguments)` (an expression, pure tools only) | 22.5 |
+| `put <value> at <key> in <map>` / `remove <key> from <map>` | 22.2 |
+| `append <value> to <list>` | 13.3, 22.2 |
+| `for each <var> in <list> with index <i>:` / `for each <key>, <value> in <map>:` | 22.2 |
 | `try <statement>` + `otherwise:` | 14 |
 | `parallel:` | 16 |
 | `match <value>:` with `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | 22.1 |

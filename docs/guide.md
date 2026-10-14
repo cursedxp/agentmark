@@ -605,7 +605,7 @@ says so in a warning). The developer's page, `docs/libraries.md`, shows the whol
 Everything so far ran without an AI. An **agent** is a program that wakes up on a schedule (or when
 something happens), looks at a system such as your CRM, may ask an AI to write or decide something, and
 acts. It is built from the same parts you already know: records, rules, steps. What is new is the
-worker (the agent), the **tools** it may use, and the safety checks on what the AI says.
+worker (the agent), the **tools** it may use, and the guards that check what the AI says.
 
 Start a new file, `invoice-chaser.agent.md`. It begins like the report: a record, and a rule.
 
@@ -776,7 +776,7 @@ New pieces, one by one:
   "now follow that card, for this invoice". It keeps the trigger short and the card readable.
 * **`ask model with invoice: "..." -> reminder`** asks the AI. It is shown the invoice, plus your
   instruction in quotes. Whatever it answers is kept under the name `reminder`.
-* **`guard:`** is a **safety check on what the AI wrote**. The AI is clever but not careful, so before
+* **`guard:`** is a **check on what the AI wrote**. The AI is clever but not careful, so before
   anything leaves the building the agent checks the answer:
   * `no amounts changed in reminder`: every amount of money in the text must also be in the invoice.
     If the AI wrote "1,500 EUR" where the invoice says 1200 EUR, the check fails.
@@ -843,7 +843,7 @@ $ agentmark trace invoice-chaser.agent.md --mock --fixtures fixtures
 ```
 
 Read it top to bottom. Only INV-1 is chased: INV-2 is not yet past its grace period and INV-3 is paid.
-For INV-1 the agent asked the AI, both safety checks passed, one email went to `ap@mueller.de`, the
+For INV-1 the agent asked the AI, both guards passed, one email went to `ap@mueller.de`, the
 invoice was marked, and one line went to the log. Nothing was really sent anywhere. If a guard had
 failed, you would see `"result":"fail"` and the diary would stop there for that invoice.
 
@@ -871,9 +871,27 @@ The `examples/` folder has ten finished programs. Reading them is the fastest wa
 | `10-log-analyzer` | reading a log file, counting problems per service, printing the worst three |
 | `01-invoice-chaser` | the agent of this guide: rule, constants, `ask model` with two guards |
 | `02-lead-qualifier` | an agent that wakes up when a lead arrives and asks the AI for a *structured* answer (a score and a reason) |
-| `03-support-triage` | `stop`, `if`, and a safety check that only lets three exact words through |
+| `03-support-triage` | `stop`, `if`, and a guard that only lets three exact words through |
 | `04-daily-report` | counting with rules, a weekly trigger, and a report mailed to you |
 | `05-invoice-service` | no AI at all: a small web service and a command, using a library |
+
+Here is the heart of the log analyzer, a function that counts the error lines of every service and ranks the services:
+
+```agentmark file=examples/10-log-analyzer/functions/rank-services.agent.md
+# Import: ../constants.agent.md
+# Import: ../records/service-errors.agent.md
+
+> Counts the error lines of every service and ranks the services, most errors first.
+# Function: rank_services
+- in: error_lines: list of text
+- out: list of ServiceErrors
+- effect: pure
+  - set by_service = group error_lines by regex.replace(item, log_pattern, "$4")
+  - set ranking = empty list of ServiceErrors
+  - for each service, rows in by_service:
+    - append ServiceErrors { service: service, errors: count of rows } to ranking
+  - return sort ranking by errors descending
+```
 
 Here is the second agent. The record it works on comes first, then the agent:
 
@@ -928,8 +946,8 @@ have that shape. And `email send address "..."` mails a fixed address instead of
 | agent | a worker that wakes up on a trigger, uses tools and may ask an AI (`# Agent:`) |
 | trigger | the heading that says when an agent's block runs (`## Every ...`, `## When ...`) |
 | block | the steps under one heading; `## Do name` is a block you can call |
-| tool | a system an agent may reach, from the menu in `tools.toml` |
-| guard | a safety check on what the AI wrote; if it fails the work stops and nothing more happens |
+| tool | something a program calls with a statement: the built-in `file`, one you write yourself (`# Tool:`), or a system from the menu in `tools.toml` (an agent may use only the tools on its list) |
+| guard | a check on what the AI wrote; if it fails the work stops and nothing more happens |
 | constant | a number or text with a name (`# Constant:`) |
 | library | outside building blocks a program can use; they start unapproved |
 | test data | the pretend CRM and pretend AI answers a trial run uses |

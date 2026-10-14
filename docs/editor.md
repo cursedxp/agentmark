@@ -58,7 +58,7 @@ Both settings are machine-scoped: a workspace cannot set them, and they are igno
 
 Two commands are in the command palette:
 
-* **AgentMark: Show what this agent can touch** opens the panel (also a button in the title bar of every `.agent.md` file).
+* **AgentMark: Show what this program can touch** opens the panel (also a button in the title bar of every `.agent.md` file).
 * **AgentMark: Restart language server** after you reinstall `agentmark-lsp`.
 
 ## 3. What can this program touch
@@ -89,7 +89,7 @@ ok: 0 errors, 0 warnings.
 and the panel shows, as text (the real panel prints the absolute path of the project where the sample says `examples/01-invoice-chaser`):
 
 ```text
-What can this agent touch
+What can this program touch
 
 Check passed for examples/01-invoice-chaser · 0 error(s), 0 warning(s)
 

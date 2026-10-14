@@ -4,7 +4,7 @@ AgentMark is a programming language written as Markdown. A program is a few `.ag
 
 It is a general-purpose language: records and enums, functions, `match`, lists and maps with words such as `group`, `sort` and `sum of`, a built-in library for text, patterns, numbers, dates, paths, JSON and CSV, files, commands with arguments, web services, and any Rust library you can name. Agents (programs that ask an AI model) are one more feature built on the same parts, described [at the end](#agents-ai-workflows-as-a-feature) of this page.
 
-This is a whole program. It reads a sales file and prints what every region brought in:
+This is a whole program. It reads a sales file and prints what every region brought in (`examples/06-sales-report` is the full version, which also sorts the regions and writes a report file):
 
 ```agentmark
 > One line of the sales file: where it was sold and for how much.
@@ -225,9 +225,56 @@ A tool is something a program calls with a statement: `- slugger slug title -> s
 - address
 ```
 
-**A tool implemented outside the program** (a real CRM, an email provider) is listed in `tools.toml` and implemented in `rust/connect.rs`, described next.
+**A tool implemented outside the program** (a real CRM, an email provider) is listed in `tools.toml` and implemented in `rust/connect.rs`; it comes up with agents, which use such tools most, in [Connecting real tools](#connecting-real-tools-rustconnectrs) below.
 
-### Connecting tools: `rust/connect.rs`
+## Editors and AI assistants
+
+Editor support (VS Code extension, language server, tree-sitter grammar for Zed, Neovim and Helix) is described in [docs/editor.md](docs/editor.md). To have an AI assistant write AgentMark for you, copy [templates/CLAUDE.md](templates/CLAUDE.md) (Claude Code) or [templates/.cursorrules](templates/.cursorrules) (Cursor) into your project; both point the assistant at [docs/reference.md](docs/reference.md), the one file it needs.
+
+## Agents: AI workflows as a feature
+
+An agent is a program that wakes up on a schedule or an event, uses tools, and may ask a model. It is built from the parts above, not beside them: the checker rewrites an agent into plain functions and entries before anything is generated. What agents add is the vocabulary for the risky part. Every block states what it may touch (model, network, files, local state), `ask model` is followed by a `guard:` on the answer, and `check` refuses an agent that does more than its `tools:` line says.
+
+```agentmark
+> Says hello every Monday.
+# Agent: greeter
+- model: claude
+- tools: log
+
+## Every Monday at 08:00
+- ask model: "Write one friendly sentence for the week." -> line
+- guard: line is not empty
+- log: "{line}"
+```
+
+`examples/01-invoice-chaser` is a complete agent. `check` prints what it can touch, and `run` and `trace` answer the model and the tools from fixtures when you pass `--mock --fixtures`:
+
+```console
+$ agentmark check examples/01-invoice-chaser
+Effects (what each block can touch)
+  invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)
+  invoice-chaser / Do remind: model, network(email, crm), local(log)
+  rule overdue: pure
+ok: 0 errors, 0 warnings.
+```
+
+```console
+$ agentmark run examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+[log] Reminded Müller GmbH about 1200.00 EUR
+```
+
+```console
+$ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+{"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
+{"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
+{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
+{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
+{"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
+```
+
+Without `--mock`, a run uses the real model (`ANTHROPIC_API_KEY`) and the tools you connect (next). The chapter that adds an agent step by step is the second half of [docs/guide.md](docs/guide.md).
+
+### Connecting real tools: `rust/connect.rs`
 
 `tools.toml` lists the tools a program may use and their verbs:
 
@@ -254,7 +301,7 @@ pub trait Crm: Send + Sync {
 
 `Email` (`send`) and `Http` (`get`, `post`) are generated the same way; `log` has no verbs and is built in (stderr and the trace). `--mock` runs answer from fixtures, so mock and real runs share all other code. For a real run, `Connected { crm: Box<dyn Crm>, email: Box<dyn Email>, http: Box<dyn Http> }` is what the program uses, and you build it in **`rust/connect.rs`**, a file of your project beside `agentmark.toml` (for a single file: `rust/` next to it). `build`, `run` and `trace` create it once, with a stub for every tool whose methods fail with `not connected yet: implement Crm::list in rust/connect.rs`, and never change it again. Every build copies it to `src/connect.rs` of the generated project, so deleting the output loses nothing; a compiler error in it is reported against your file. When `tools.toml` gains a tool, add it to `Connected` there.
 
-The arguments are exactly what the generated code sends: `crm list` gets `{"source": "invoices"}` and answers an array of rows shaped like the record; `crm update` gets `{"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}`; `email send` gets `{"target": "customer", "to": "ap@mueller.de", "text": "…"}`. Here is `rust/connect.rs` for `examples/01-invoice-chaser` with an in-memory CRM and an "email provider" that prints; `http` stays a stub because this program never calls it.
+The arguments are exactly what the generated code sends: `crm list` gets `{"source": "invoices"}` and answers an array of rows shaped like the record; `crm update` gets `{"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}`; `email send` gets `{"target": "customer", "to": "ap@mueller.de", "text": "…"}`.
 
 A real backend usually needs a client crate. `agentmark.toml` has an optional `[rust.dependencies]` table that is copied verbatim into the `[dependencies]` of the generated `Cargo.toml` (each entry is a version text or a table, as in Cargo; naming a dependency the generated project already has, such as `serde_json`, `tokio` or an imported crate, is an error):
 
@@ -435,53 +482,6 @@ $ AGENTMARK_MODEL=mock:$PWD/fixtures/01-invoice-chaser/model.json agentmark trac
 ```
 
 Errors you return become `error` lines in the trace and stop the block, like any failing tool.
-
-## Editors and AI assistants
-
-Editor support (VS Code extension, language server, tree-sitter grammar for Zed, Neovim and Helix) is described in [docs/editor.md](docs/editor.md). To have an AI assistant write AgentMark for you, copy [templates/CLAUDE.md](templates/CLAUDE.md) (Claude Code) or [templates/.cursorrules](templates/.cursorrules) (Cursor) into your project; both point the assistant at [docs/reference.md](docs/reference.md), the one file it needs.
-
-## Agents: AI workflows as a feature
-
-An agent is a program that wakes up on a schedule or an event, uses tools, and may ask a model. It is built from the parts above, not beside them: the checker rewrites an agent into plain functions and entries before anything is generated. What agents add is the vocabulary for the risky part. Every block states what it may touch (model, network, files, local state), `ask model` is followed by a `guard:` on the answer, and `check` refuses an agent that does more than its `tools:` line says.
-
-```agentmark
-> Says hello every Monday.
-# Agent: greeter
-- model: claude
-- tools: log
-
-## Every Monday at 08:00
-- ask model: "Write one friendly sentence for the week." -> line
-- guard: line is not empty
-- log: "{line}"
-```
-
-`examples/01-invoice-chaser` is a complete agent. `check` prints what it can touch, and `run` and `trace` answer the model and the tools from fixtures when you pass `--mock --fixtures`:
-
-```console
-$ agentmark check examples/01-invoice-chaser
-Effects (what each block can touch)
-  invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)
-  invoice-chaser / Do remind: model, network(email, crm), local(log)
-  rule overdue: pure
-ok: 0 errors, 0 warnings.
-```
-
-```console
-$ agentmark run examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
-[log] Reminded Müller GmbH about 1200.00 EUR
-```
-
-```console
-$ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
-{"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
-{"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
-{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
-{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
-{"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
-```
-
-Without `--mock`, a run uses the real model (`ANTHROPIC_API_KEY`) and the tools you connect (see above). The chapter that adds an agent step by step is the second half of [docs/guide.md](docs/guide.md).
 
 ## Adding a target
 
