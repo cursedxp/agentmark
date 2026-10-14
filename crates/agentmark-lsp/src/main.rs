@@ -2,7 +2,7 @@
 
 fn main() -> std::process::ExitCode {
     let (conn, io) = lsp_server::Connection::stdio();
-    let result = agentmark_lsp::serve(conn, agentmark_lsp::model_from_env());
+    let result = agentmark_lsp::serve_from_env(conn);
     if let Err(e) = io.join() {
         eprintln!("agentmark-lsp: {e}");
     }
