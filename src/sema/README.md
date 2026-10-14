@@ -46,7 +46,7 @@ project.render(&diags)                                           // SPEC 10 text
 | `functions: BTreeMap<String, Sig>` | `# Function` signatures (`params`, `out`, declared `effect`) |
 | `rust_blocks: Vec<RustInfo>` | every `## Rust` block: name, file, span, parent, `Sig` (declared, trusted effect) |
 | `bindings: Vec<BindingInfo>` | every `# Binding`: crate, effect (`Unverified` until approved), proposed effect, items with `Sig`; `Checked::unverified_bindings()` |
-| `warnings` | inferred field types (W001, only when it falls back to text), unused import/declaration (W002/W003), crate without binding (W004), unverified binding (W005), several runnable declarations in a single file (W006), line longer than 120 only because of string text (W007) |
+| `warnings` | inferred field types (W001, only when it falls back to text), unused import/declaration (W002/W003), crate without binding (W004), unverified binding (W005), several runnable declarations in a single file (W006), line longer than 120 only because of string text (W007), unverified binding assumed to be its proposed effect under `--allow-unverified` (W008, Q203) |
 
 Helpers: `Checked::unit_effect(unit)`, `expr_type(file, span)`, `stmt_effect(file, span)`.
 

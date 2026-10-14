@@ -36,7 +36,8 @@ fn prepare(path: &str, allow_unverified: bool, show_notes: bool) -> Result<Prepa
     require_source(path)?;
     let mut announced: Vec<String> = Vec::new();
     for _round in 0..2 {
-        let project = Project::load(path);
+        let mut project = Project::load(path);
+        project.assume_proposed = allow_unverified;
         // SPEC 15.1: every imported crate has a binding before the project is checked
         let generated_any = match bind_missing(&project, &mut announced, true) {
             Ok(g) => g,

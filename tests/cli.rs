@@ -595,6 +595,31 @@ fn unverified_library_is_reported_once_in_text_and_kept_in_json_diagnostics() {
     assert!(v["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "W005"));
 }
 
+const PURE_FN_SHA2: &str = "# Import: crate sha2\n\n> Hashes text.\n# Function: fingerprint\n- in: s: text\n- out: bytes\n- effect: pure\n  - sha2 sha256_digest s -> d\n  - return d\n";
+
+#[test]
+fn allow_unverified_checks_effects_with_the_proposed_effect_and_warns_once() {
+    let d = temp("assume");
+    write(&d, "agentmark.toml", "name = \"p\"\n");
+    write(&d, "main.agent.md", PURE_FN_SHA2);
+    assert_eq!(code(&bind(&d, &[])), 0);
+    // refused as before, and the advice is not the illegal "- effect: unverified"
+    let o = run(&["check", s(&d)]);
+    assert_eq!(code(&o), 1, "{}{}", out(&o), err(&o));
+    let e = err(&o);
+    assert!(e.contains("Approve the binding's \"- effect:\" line"), "{e}");
+    assert!(!e.contains("Change the function to \"- effect: unverified\""), "{e}");
+    // with the flag the proposal (pure) stands in, with one warning that says so
+    let o = run(&["check", s(&d), "--allow-unverified"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    let e = err(&o);
+    assert_eq!(e.matches("its effect is assumed to be \"pure\" from the proposal").count(), 1, "{e}");
+    assert!(e.contains("Approve it before a release build"), "{e}");
+    // build without the flag still refuses
+    let o = run(&["build", s(&d), "-o", s(&d.join("out")), "--no-check"]);
+    assert_eq!(code(&o), 1, "{}{}", out(&o), err(&o));
+}
+
 #[test]
 fn check_binds_a_missing_crate_like_build_does() {
     // `# Import: crate sha2` -> `check` -> approve: check runs the binder first

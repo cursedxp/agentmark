@@ -59,9 +59,15 @@ impl Checker<'_> {
             s.span,
             format!("The function \"{name}\" says \"- effect: {declared}\", but this line has the effect {have}."),
         )
-        .with_help(format!(
-            "Change the function to \"- effect: {class}\", or move this line out of the function."
-        ));
+        .with_help(if cx.acc.class() == Effect::Unverified {
+            // `unverified` is not an effect a function can declare (SPEC 13.1)
+            format!(
+                "A library call nobody approved is unverified ({}). Approve the binding's \"- effect:\" line, or move this line out of the function.",
+                cx.acc.unverified.join(", ")
+            )
+        } else {
+            format!("Change the function to \"- effect: {class}\", or move this line out of the function.")
+        });
         self.diags.push(d);
     }
 

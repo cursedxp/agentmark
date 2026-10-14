@@ -786,7 +786,7 @@ impl Checker<'_> {
             cx.define(&i.name, out, i.span);
         }
         if let Some(info) = &info {
-            cx.acc.add(info.effect, bname);
+            cx.acc.add(info.effective(self.p.assume_proposed), bname);
         }
     }
 }

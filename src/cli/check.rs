@@ -162,9 +162,13 @@ pub(crate) fn run(path: &str, json_out: bool, allow_unverified: bool) -> u8 {
     // is impossible (no model, offline) say why and go on: the import line reports the rest.
     let mut announced = Vec::new();
     let mut project = Project::load(path);
+    project.assume_proposed = allow_unverified;
     for _round in 0..2 {
         match super::build::bind_missing(&project, &mut announced, false) {
-            Ok(true) => project = Project::load(path),
+            Ok(true) => {
+                project = Project::load(path);
+                project.assume_proposed = allow_unverified;
+            }
             Ok(false) => break,
             Err((name, e)) => {
                 eprintln!("agentmark: cannot bind \"{name}\": {e}");

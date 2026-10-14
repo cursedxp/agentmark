@@ -250,6 +250,15 @@ pub struct BindingInfo {
 }
 
 impl BindingInfo {
+    /// The effect to check calls against: the real one, or under `--allow-unverified` the proposal
+    /// of an unverified binding (Q203).
+    pub fn effective(&self, assume_proposed: bool) -> Effect {
+        match (self.effect, self.proposed_effect) {
+            (Effect::Unverified, Some(p)) if assume_proposed => p,
+            (e, _) => e,
+        }
+    }
+
     pub fn is_unverified(&self) -> bool {
         self.effect == Effect::Unverified
     }
