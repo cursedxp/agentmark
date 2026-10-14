@@ -75,8 +75,8 @@ fn enclosing(text: &str, line: usize) -> Enclosing {
         if t.starts_with("## ") && decl.is_none() && !in_block {
             in_block = true;
         }
-        if t.starts_with("# ") {
-            decl = t[2..].split(':').next().map(|w| w.trim().to_lowercase());
+        if let Some(rest) = t.strip_prefix("# ") {
+            decl = rest.split(':').next().map(|w| w.trim().to_lowercase());
             break;
         }
     }

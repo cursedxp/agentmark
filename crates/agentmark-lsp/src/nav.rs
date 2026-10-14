@@ -2,6 +2,7 @@
 
 use agentmark::diag::Span;
 use agentmark::project::ResolvedImport;
+use agentmark::syntax::ast::Ident;
 use agentmark::sema::{BlockInfo, BlockKind, CallKind, Checked, Resolution, Type};
 use lsp_types::{Hover, HoverContents, Location, MarkupContent, MarkupKind, Position, Range};
 
@@ -98,7 +99,10 @@ fn resolved_definition(
     match res {
         Resolution::Var { name, def } => {
             if word.at == 0 && seg == name {
-                return location(a, here, (*def)?);
+                return match def {
+                    Some(d) => location(a, here, *d),
+                    None => loop_binding(a, ck, fid, line, name),
+                };
             }
             let prefer = block_param(ck, fid, key.span.line).map(|p| p.1);
             let last = word.segs.len() - 1;
@@ -146,13 +150,78 @@ fn resolved_definition(
                     location(a, file_path(ck, d.file)?, d.span)
                 }
                 CallKind::DoBlock => {
+                    // only the `## Do` blocks of the agent that calls it
                     let want = format!("do {decl}");
-                    let b = ck.blocks.iter().find(|b| b.kind == BlockKind::Action && b.label.eq_ignore_ascii_case(&want))?;
+                    let unit = &block_at(ck, fid, line)?.unit;
+                    let b = ck.blocks.iter().find(|b| {
+                        b.kind == BlockKind::Action && b.file == fid && b.unit == *unit && b.label.eq_ignore_ascii_case(&want)
+                    })?;
                     location(a, file_path(ck, b.file)?, b.span)
                 }
             }
         }
     }
+}
+
+/// The block (function, rule, entry, action...) the line is in.
+fn block_at(ck: &Checked, fid: usize, line: usize) -> Option<&BlockInfo> {
+    ck.blocks.iter().filter(|b| b.file == fid && b.span.line as usize <= line + 1).max_by_key(|b| b.span.line)
+}
+
+/// A `## Do` block receives the record of its caller's `for each`: the variable of the loop that
+/// calls the block (read from the current syntax tree; `None` while the file does not parse).
+fn loop_binding(a: &Analysis, ck: &Checked, fid: usize, line: usize, name: &str) -> Option<Location> {
+    use agentmark::syntax::ast::{Decl, Stmt, StmtKind};
+    fn find<'s>(body: &'s [Stmt], target: &str, var: Option<&'s Ident>) -> Option<&'s Ident> {
+        for s in body {
+            match &s.kind {
+                StmtKind::Do { name, .. } if name.name == target && var.is_some() => return var,
+                StmtKind::ForEach { var, body, .. } => {
+                    if let Some(v) = find(body, target, Some(var)) {
+                        return Some(v);
+                    }
+                }
+                StmtKind::If { then, else_, .. } | StmtKind::IfSome { then, else_, .. } => {
+                    if let Some(v) = find(then, target, var).or_else(|| find(else_, target, var)) {
+                        return Some(v);
+                    }
+                }
+                StmtKind::Try { stmt, otherwise } => {
+                    if let Some(v) = find(std::slice::from_ref(stmt), target, var)
+                        .or_else(|| otherwise.as_deref().and_then(|o| find(o, target, var)))
+                    {
+                        return Some(v);
+                    }
+                }
+                StmtKind::Parallel(b) => {
+                    if let Some(v) = find(b, target, var) {
+                        return Some(v);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+    let b = block_at(ck, fid, line)?;
+    if b.kind != BlockKind::Action || b.param.as_ref().map(|p| p.0.as_str()) != Some(name) {
+        return None;
+    }
+    let action = b.label.get(3..)?.trim().to_string();
+    let f = &a.project.files[a.file_id(ck.files.get(fid)?)?];
+    for d in &f.ast.decls {
+        if let Decl::Agent(ag) = d {
+            if ag.name.name != b.unit {
+                continue;
+            }
+            for blk in &ag.blocks {
+                if let Some(v) = find(&blk.body, &action, None) {
+                    return location_current(a, &f.path, v.span);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Look the word up among the declarations (and tools) of the project. `segs` are the parts of

@@ -218,6 +218,13 @@ fn go_to_definition_follows_imports_constants_variables_and_tools() {
     assert_eq!(l[0].uri, uri(&root.join("constants.agent.md")));
     assert_eq!(l[0].range.start.line, 3);
 
+    // the record a `## Do` block receives -> the `for each` that calls it
+    let l = definition(&mut c, &file, at(&text, "with invoice", 0, 6));
+    assert_eq!(l.len(), 1, "{l:?}");
+    assert_eq!((l[0].uri.clone(), l[0].range.start.line), (uri(&file), line_of(&text, "for each overdue invoice")));
+    let loop_line = text.lines().nth(line_of(&text, "for each overdue invoice") as usize).unwrap();
+    assert_eq!(l[0].range.start.character as usize, loop_line.find("invoice in").unwrap());
+
     // a `## Do` action
     let l = definition(&mut c, &file, at(&text, "do remind", 0, 4));
     assert_eq!(l[0].uri, uri(&file));

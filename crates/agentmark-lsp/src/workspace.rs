@@ -1,5 +1,6 @@
 //! Open buffers, project roots and one analysis (load + check + lint) per project.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
@@ -160,6 +161,8 @@ pub struct Analysis {
     pub good: Option<Rc<Good>>,
     /// `good` is from this very check.
     pub fresh: bool,
+    /// Line maps by path, made on first use.
+    maps: RefCell<HashMap<String, Rc<LineMap>>>,
 }
 
 impl Analysis {
@@ -206,17 +209,22 @@ impl Analysis {
             .map(|f| (&f.ast, f.text.as_str()))
             .collect();
         let lint = lint_with_sources(&files, &cfg);
-        Analysis { root, project, compiler, lint, good, fresh }
+        Analysis { root, project, compiler, lint, good, fresh, maps: RefCell::default() }
     }
 
     /// The facts of the last good check for `path`, with the map from the current lines of that
     /// file to the lines the facts talk about. The file may have changed since: lines that did not
     /// are mapped, the others are not (Q252).
-    pub fn facts(&self, path: &str) -> Option<(&Checked, LineMap)> {
+    pub fn facts(&self, path: &str) -> Option<(&Checked, Rc<LineMap>)> {
         let good = self.good.as_ref()?;
         let now = self.project.sources.get(path)?;
+        if let Some(m) = self.maps.borrow().get(path) {
+            return Some((&good.checked, m.clone()));
+        }
         let old = if self.fresh { now } else { good.texts.get(path)? };
-        Some((&good.checked, LineMap::between(old, now)))
+        let map = Rc::new(LineMap::between(old, now));
+        self.maps.borrow_mut().insert(path.to_string(), map.clone());
+        Some((&good.checked, map))
     }
 
     /// A span of the facts, in the lines of the current text of `path`; `None` when that line was

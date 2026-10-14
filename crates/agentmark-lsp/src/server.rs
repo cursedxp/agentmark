@@ -38,6 +38,8 @@ use crate::{complete, diagnostics, nav};
 /// The message of an error that is answered with `null` instead (Q259).
 const QUIET: &str = "(quiet)";
 
+type Reply = Result<Value, (ErrorCode, String)>;
+
 type BoxErr = Box<dyn Error + Sync + Send>;
 
 pub struct Server {
@@ -221,9 +223,7 @@ impl Server {
             new.entry(uri).or_insert((Vec::new(), version));
         }
         for old in self.published.clone() {
-            if !new.contains_key(&old) {
-                new.insert(old, (Vec::new(), None));
-            }
+            new.entry(old).or_insert_with(|| (Vec::new(), None));
         }
         self.published = new.iter().filter(|(_, (d, _))| !d.is_empty()).map(|(u, _)| u.clone()).collect();
         for (uri, (diagnostics, version)) in new {
@@ -301,8 +301,8 @@ impl Server {
     fn with<P: DeserializeOwned>(
         &mut self,
         req: Request,
-        f: fn(&mut Self, P) -> Result<Value, (ErrorCode, String)>,
-    ) -> Result<Value, (ErrorCode, String)> {
+        f: fn(&mut Self, P) -> Reply,
+    ) -> Reply {
         let p = cast::<P>(req.params).map_err(|e| (ErrorCode::InvalidParams, e))?;
         f(self, p)
     }

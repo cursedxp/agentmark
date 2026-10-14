@@ -159,7 +159,6 @@ fn hover_and_definition_survive_an_error_in_the_file_being_edited() {
     ] {
         c.change(&agent, &broken, version);
         assert!(!c.diagnostics(&agent, Some(version)).is_empty());
-        eprintln!("VERSION {version}");
         let heading = at(&broken, "## Do remind", 0, 4);
         let h = c
             .request::<HoverRequest>(HoverParams {

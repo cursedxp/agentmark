@@ -238,6 +238,32 @@ pub fn mark_snippets(action: &mut Value) {
     }
 }
 
+/// Where the misspelled word of a "Did you mean" finding is. In `.agent.md` files the span is the
+/// word. Config findings (`agentmark.toml`, `tools.toml`) point at a line, so the word (the first
+/// quoted text of the message) is looked up in that line; quotes around it stay where they are.
+fn dym_range(a: &Analysis, d: &Diagnostic, text: &str) -> Option<Range> {
+    let r = diagnostics::range(a, d);
+    if d.file.ends_with(".agent.md") {
+        return Some(r);
+    }
+    let line0 = d.span.line.checked_sub(1)? as usize;
+    let line = line_text(text, line0);
+    let word = d.message.split('"').nth(1).filter(|w| !w.is_empty())?;
+    let word_char = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+    let mut from = 0;
+    while let Some(i) = line[from..].find(word) {
+        let (s, e) = (from + i, from + i + word.len());
+        let before_ok = line[..s].chars().next_back().is_none_or(|c| !word_char(c));
+        let after_ok = line[e..].chars().next().is_none_or(|c| !word_char(c));
+        if before_ok && after_ok {
+            let col = line[..s].chars().count();
+            return Some(Range::new(position(text, line0, col), position(text, line0, col + word.chars().count())));
+        }
+        from = s + 1;
+    }
+    None
+}
+
 /// Quick fixes for the findings that touch `range` of the document `path`.
 pub fn quick_fixes(a: &Analysis, path: &str, text: &str, range: Range, snippets: bool) -> Vec<CodeAction> {
     let uri = uri_from_path(path);
@@ -263,10 +289,11 @@ pub fn quick_fixes(a: &Analysis, path: &str, text: &str, range: Range, snippets:
         }
     }
     for d in a.compiler.iter().filter(|d| d.file == path) {
-        let (Some(c), r) = (&d.did_you_mean, diagnostics::range(a, d)) else { continue };
-        if !intersects(r, range) {
+        let Some(c) = &d.did_you_mean else { continue };
+        if !intersects(diagnostics::range(a, d), range) {
             continue;
         }
+        let Some(r) = dym_range(a, d, text) else { continue };
         out.push(CodeAction {
             title: format!("Change to \"{c}\""),
             kind: Some(CodeActionKind::QUICKFIX),

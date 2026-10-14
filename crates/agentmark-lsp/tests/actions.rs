@@ -291,3 +291,40 @@ fn doc_and_comment_stubs_are_snippets_for_clients_that_can_take_them() {
         c.shutdown();
     }
 }
+
+/// Open `file`, apply the "Change to" fix of its first Did-you-mean finding, return the new text.
+fn apply_dym(root: &Path, file: &str, text: &str, want: &str) -> String {
+    let path = root.join(file);
+    let mut c = Client::start(None);
+    c.open(&path, text, 1);
+    let d = c.diagnostics(&path, Some(1));
+    let err = d.iter().find(|d| d.message.contains("Did you mean")).unwrap_or_else(|| panic!("{d:?}")).clone();
+    let acts = actions(&mut c, &path, err.range, vec![err.clone()]);
+    let a = acts.iter().find(|a| a.title == format!("Change to \"{want}\"")).unwrap_or_else(|| panic!("{:?}", acts.iter().map(|a| &a.title).collect::<Vec<_>>()));
+    let edits = a.edit.as_ref().unwrap().changes.as_ref().unwrap().get(&uri(&path)).unwrap();
+    c.shutdown();
+    agentmark_lsp::apply(text, edits)
+}
+
+#[test]
+fn did_you_mean_in_config_files_replaces_only_the_word() {
+    let main = "# Import: ./records/invoice.agent.md\n\n> Says.\n# Agent: a\n- model: mock\n- tools: log\n\n## On start\n- log: \"hi\"\n";
+    // agentmark.toml: an unknown [lsp] key
+    let (_d, root) = project(&files(main, PLAIN));
+    let fixed = apply_dym(&root, "agentmark.toml", "name = \"p\"\n[lsp]\nmodel_action = true\n", "model_actions");
+    assert_eq!(fixed, "name = \"p\"\n[lsp]\nmodel_actions = true\n");
+    std::fs::write(root.join("agentmark.toml"), &fixed).unwrap();
+    let p = agentmark::project::Project::load(&root.to_string_lossy());
+    assert!(p.load_diagnostics.is_empty(), "{:?}", p.load_diagnostics);
+    assert!(p.config.lsp_model_actions);
+
+    // tools.toml: a misspelled effect keeps its quotes
+    let bad_tools = TOOLS.replace("effect = \"local\"", "effect = \"locl\"");
+    let (_d, root) = project(&files(main, PLAIN));
+    let fixed = apply_dym(&root, "tools.toml", &bad_tools, "local");
+    assert_eq!(fixed, TOOLS);
+    std::fs::write(root.join("tools.toml"), &fixed).unwrap();
+    let p = agentmark::project::Project::load(&root.to_string_lossy());
+    assert!(p.load_diagnostics.is_empty(), "{:?}", p.load_diagnostics);
+    assert!(agentmark::sema::check(&p).is_ok());
+}
