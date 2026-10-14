@@ -358,3 +358,7 @@ Written into `fixtures/05-invoice-service/`: (a) the `http` line's `path` is the
 
 ## Q158 — Boundary of `overdue` (04)
 `today > due + grace_period` is strict, so an invoice due exactly 14 days ago (`INV-6`, due 2026-09-28, today 2026-10-12) is open but not overdue: counts 5 open, 2 overdue.
+
+## Q190 — `--allow-unverified` cannot build 05 with a freshly generated binding (step 10)
+The brief for the sha2 generated-once test said to build 05 without its binding using `--allow-unverified`. The flag does not get past the check here: `invoice_fingerprint` is declared `- effect: pure`, and a call to an unverified binding has effect "unverified", so sema also reports "the function says pure, but this line has the effect unverified". That second error is correct (the function's promise is not proven).
+**Choice:** the test follows the real flow of SPEC 15.2/15.3 instead: build 1 generates the binding and stops (exit 1, `binding sha2: generated`, "is unverified"); the test then approves the one line (`- effect: pure`), and build 2 succeeds with `binding sha2: cached`. Generated exactly once across both logs. No compiler change.

@@ -1,82 +1,25 @@
 //! Rust codegen, build/run/trace (PROMPT steps 6 and 7): the generated programs are built with cargo
 //! and judged by their traces, never by their text.
 
+mod support;
+
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Stdio};
 
 use serde_json::{json, Value};
 
-const ROOT: &str = env!("CARGO_MANIFEST_DIR");
-
-/// All generated projects share one target folder, so dependencies compile once.
-fn gen_target() -> String {
-    format!("{ROOT}/target/gen")
-}
-
-fn agentmark(args: &[&str]) -> Command {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_agentmark"));
-    c.args(args).current_dir(ROOT);
-    c.env("CARGO_TARGET_DIR", gen_target())
-        .env("AGENTMARK_OFFLINE", "1")
-        .env_remove("AGENTMARK_MODEL")
-        .env_remove("AGENTMARK_RUSTDOC_JSON")
-        .env_remove("AGENTMARK_RUSTDOC_JSON_DIR")
-        .env_remove("ANTHROPIC_API_KEY");
-    c
-}
-
-fn bind_env(c: &mut Command) {
-    c.env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
-        .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))
-        .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"));
-}
-
-/// A unique temp folder, removed when dropped (so reruns never meet leftovers).
-struct Tmp(tempfile::TempDir);
-
-impl std::ops::Deref for Tmp {
-    type Target = Path;
-    fn deref(&self) -> &Path {
-        self.0.path()
-    }
-}
-
-fn temp(tag: &str) -> Tmp {
-    Tmp(tempfile::Builder::new().prefix(&format!("agentmark-codegen-{tag}-")).tempdir().unwrap())
-}
-
-fn write(dir: &Path, rel: &str, text: &str) {
-    let p = dir.join(rel);
-    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-    std::fs::write(p, text).unwrap();
-}
-
-fn s(p: &Path) -> &str {
-    p.to_str().unwrap()
-}
-
-fn stdout(o: &Output) -> String {
-    String::from_utf8_lossy(&o.stdout).to_string()
-}
-
-fn stderr(o: &Output) -> String {
-    String::from_utf8_lossy(&o.stderr).to_string()
-}
-
-fn parse_lines(text: &str) -> Vec<Value> {
-    text.lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("not JSON: {l}: {e}"))).collect()
-}
+use support::*;
 
 /// `agentmark trace <path> --mock --fixtures <dir>`: the trace lines.
 fn trace_of(path: &str, fixtures: &Path) -> Vec<Value> {
-    let o = agentmark(&["trace", path, "--mock", "--fixtures", s(fixtures)]).output().unwrap();
+    let o = agentmark(&["trace", path, "--mock", "--fixtures", s(fixtures)]).output_locked();
     assert!(o.status.success(), "trace failed:\n{}", stderr(&o));
     parse_lines(&stdout(&o))
 }
 
 fn tools_toml() -> String {
-    std::fs::read_to_string(format!("{ROOT}/examples/tools.toml")).unwrap()
+    std::fs::read_to_string(format!("{ROOT}/tests/errors/tools.toml")).unwrap()
 }
 
 /// A single-file project (`name.agent.md` + tools.toml) in a temp folder; returns the file path.
@@ -133,41 +76,21 @@ fn build_writes_the_spec_layout_and_the_project_compiles_warning_free() {
 #[test]
 fn run_prints_the_log_and_trace_prints_json_lines_only() {
     let fx = format!("{ROOT}/fixtures/01-invoice-chaser");
-    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output().unwrap();
+    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output_locked();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("Reminded Müller GmbH about 1200.00 EUR"));
-    let t = agentmark(&["trace", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output().unwrap();
+    let t = agentmark(&["trace", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock", "--fixtures", &fx]).output_locked();
     assert_eq!(parse_lines(&stdout(&t)).len(), 6);
 }
 
 #[test]
 fn mock_without_fixtures_is_asked_for_them() {
-    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock"]).output().unwrap();
+    let o = agentmark(&["run", &format!("{ROOT}/examples/01-invoice-chaser"), "--mock"]).output_locked();
     assert_eq!(o.status.code(), Some(2));
     assert!(stderr(&o).contains("--fixtures"), "{}", stderr(&o));
 }
 
 // ---------------------------------------------------------------------------------- fixtures
-
-/// Every fixture folder (and its `variants/<case>/`) with an `expected.trace.jsonl`: the program's
-/// trace must equal it, line by line.
-fn fixture_dirs() -> Vec<(String, PathBuf)> {
-    let mut out = Vec::new();
-    let mut names: Vec<_> = std::fs::read_dir(format!("{ROOT}/fixtures")).unwrap().flatten().map(|e| e.path()).collect();
-    names.sort();
-    for dir in names.into_iter().filter(|p| p.is_dir()) {
-        let name = dir.file_name().unwrap().to_string_lossy().to_string();
-        if dir.join("expected.trace.jsonl").is_file() {
-            out.push((name.clone(), dir.clone()));
-        }
-        let mut vs: Vec<_> = std::fs::read_dir(dir.join("variants")).into_iter().flatten().flatten().map(|e| e.path()).collect();
-        vs.sort();
-        for v in vs.into_iter().filter(|v| v.join("expected.trace.jsonl").is_file()) {
-            out.push((name.clone(), v));
-        }
-    }
-    out
-}
 
 #[test]
 fn every_example_reproduces_the_expected_trace_of_every_fixture() {
@@ -186,7 +109,7 @@ fn a_missing_model_answer_is_reported_not_swallowed() {
     let fx = temp("fx04b");
     write(&fx, "crm.invoices.json", "[]");
     write(&fx, "model.json", &model_json(&[]));
-    let o = agentmark(&["trace", &format!("{ROOT}/examples/04-daily-report"), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["trace", &format!("{ROOT}/examples/04-daily-report"), "--mock", "--fixtures", s(&fx)]).output_locked();
     // the block fails, the run says so, and the trace records the error
     assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
     let t = parse_lines(&stdout(&o));
@@ -207,15 +130,7 @@ fn built_05() -> (Tmp, PathBuf) {
     for f in ["src/service_api.rs", "src/command_import_csv.rs"] {
         assert!(d.join("out").join(f).is_file(), "{f}");
     }
-    let b = Command::new("cargo")
-        .args(["build", "--offline", "--manifest-path"])
-        .arg(d.join("out/Cargo.toml"))
-        .env("CARGO_TARGET_DIR", gen_target())
-        .output()
-        .unwrap();
-    assert!(b.status.success(), "{}", stderr(&b));
-    assert!(!stderr(&b).contains("warning"), "{}", stderr(&b));
-    let bin = gen_bin("invoice-service");
+    let bin = build_bin(&d.join("out"), "invoice-service");
     (d, bin)
 }
 
@@ -243,21 +158,6 @@ fn build_binds_missing_crates_and_refuses_unapproved_ones() {
     assert!(stderr(&o).contains("binding sha2: cached"));
 }
 
-fn copy_dir(from: &Path, to: &Path) {
-    for e in std::fs::read_dir(from).unwrap().flatten() {
-        let t = to.join(e.file_name());
-        if e.path().is_dir() {
-            std::fs::create_dir_all(&t).unwrap();
-            copy_dir(&e.path(), &t);
-        } else {
-            std::fs::copy(e.path(), t).unwrap();
-        }
-    }
-}
-
-fn gen_bin(name: &str) -> PathBuf {
-    PathBuf::from(gen_target()).join("debug").join(name)
-}
 
 
 #[test]
@@ -400,7 +300,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     assert!(o.status.success(), "the test source must be valid:\n{}\n{}", stdout(&o), stderr(&o));
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
-    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("shout.agent.md:13"), "points at the line of the mistake:\n{e}");
@@ -411,26 +311,6 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
 
 // ---------------------------------------------------------------------------------- review fixes
 
-fn cargo_build_in(out: &Path) -> Output {
-    Command::new("cargo")
-        .args(["build", "--offline", "--manifest-path"])
-        .arg(out.join("Cargo.toml"))
-        .env("CARGO_TARGET_DIR", gen_target())
-        .output()
-        .unwrap()
-}
-
-#[test]
-fn every_example_compiles_without_a_single_warning() {
-    for name in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
-        let out = temp("nowarn");
-        let o = agentmark(&["build", &format!("{ROOT}/examples/{name}"), "-o", s(&out), "--no-check"]).output().unwrap();
-        assert!(o.status.success(), "{name}: {}", stderr(&o));
-        let b = cargo_build_in(&out);
-        assert!(b.status.success(), "{name}: {}", stderr(&b));
-        assert!(!stderr(&b).contains("warning"), "{name} must compile warning free:\n{}", stderr(&b));
-    }
-}
 
 const BROKEN_SEMICOLON: &str = "# Record: Invoice\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: invoice: Invoice\n- effect: pure\n  ```rust\n  let loud = invoice.id.to_uppercase();\n  loud;\n  ```\n\n## On start\n- set loud = shout({ id: \"a\" })\n- log: \"hi {loud}\"\n";
 
@@ -439,7 +319,7 @@ fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
     let (d, file) = single("semicolon", "semi.agent.md", BROKEN_SEMICOLON);
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
-    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("semi.agent.md:8"), "points at the block heading:\n{e}");
@@ -451,7 +331,7 @@ fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
 fn build_checks_the_generated_project_and_reports_user_rust_plainly() {
     let (d, file) = single("buildcheck", "semi.agent.md", BROKEN_SEMICOLON);
     let out = temp("buildcheck-out");
-    let o = agentmark(&["build", s(&file), "-o", s(&out)]).output().unwrap();
+    let o = agentmark(&["build", s(&file), "-o", s(&out)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("semi.agent.md:8") && e.contains("does not compile"), "{e}");
@@ -539,11 +419,9 @@ fn connect_rs_is_written_once_and_a_real_run_uses_it() {
     assert!(build().status.success());
     assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), CONNECT);
 
-    let b = cargo_build_in(&out);
-    assert!(b.status.success(), "{}", stderr(&b));
-    assert!(!stderr(&b).contains("warning"), "{}", stderr(&b));
+    let bin = build_bin(&out, "seen-real");
     let trace = out.join("trace.jsonl");
-    let o = Command::new(gen_bin("seen-real")).args(["--once", "--trace", s(&trace)]).output().unwrap();
+    let o = Command::new(bin).args(["--once", "--trace", s(&trace)]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     let t = parse_lines(&std::fs::read_to_string(trace).unwrap());
     let updates: Vec<&Value> = t.iter().filter(|l| l["verb"] == "update").collect();
@@ -557,9 +435,8 @@ fn a_real_run_without_connecting_says_what_to_implement() {
     let (_d, file) = single("unconnected", "seen-stub.agent.md", SEEN);
     let out = temp("unconnected-out");
     assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
-    let b = cargo_build_in(&out);
-    assert!(b.status.success(), "{}", stderr(&b));
-    let o = Command::new(gen_bin("seen-stub")).args(["--once"]).output().unwrap();
+    let bin = build_bin(&out, "seen-stub");
+    let o = Command::new(bin).args(["--once"]).output().unwrap();
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("not connected yet: implement Crm::list in src/connect.rs"), "{}", stderr(&o));
 }
@@ -600,7 +477,7 @@ fn a_failing_command_leaves_an_error_line_in_the_trace() {
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
     write(&fx, "command.json", r#"{"command":"slurp","args":{"path":"missing.txt"}}"#);
-    let o = agentmark(&["trace", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    let o = agentmark(&["trace", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
     let t = parse_lines(&stdout(&o));
     assert_eq!(t.len(), 1, "{t:#?}");

@@ -29,20 +29,14 @@ fn example_files() -> Vec<PathBuf> {
 
 #[test]
 fn every_example_is_a_project_folder_with_an_entry_point() {
-    // 01-05 are project folders (SPEC 18.1); the old single files 02-05 may still sit next to them
-    // until the code generator's tests stop referencing them.
     for n in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
         for f in ["agentmark.toml", "tools.toml", "main.agent.md"] {
             assert!(Path::new("examples").join(n).join(f).is_file(), "examples/{n}/{f} is missing");
         }
     }
-    // 30 files in the five projects, plus the legacy single files directly under examples/
-    // (02-05, removed once the code generator's tests stop using them).
-    let legacy = std::fs::read_dir("examples")
-        .unwrap()
-        .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().ends_with(".agent.md"))
-        .count();
-    assert_eq!(example_files().len(), 30 + legacy);
+    // no single-file drafts remain directly under examples/ (step 9)
+    assert!(std::fs::read_dir("examples").unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".agent.md")));
+    assert_eq!(example_files().len(), 30);
 }
 
 #[test]
