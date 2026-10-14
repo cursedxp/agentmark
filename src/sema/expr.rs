@@ -198,6 +198,7 @@ impl Checker<'_> {
                 Type::Bool
             }
             ExprKind::Call { func, args } => self.call(cx, e, func, args),
+            ExprKind::Decode { call, ty } => self.std_decode(cx, e, call, ty),
             ExprKind::Record(fields) => {
                 let mut out = Vec::new();
                 for f in fields {
@@ -742,6 +743,10 @@ impl Checker<'_> {
         let arg_types: Vec<Type> = args.iter().map(|a| self.expr(cx, a)).collect();
         let Some((kind, decl)) = self.lookup(cx.file, &name, &[Kind::Function, Kind::RustBlock])
         else {
+            if func.len() == 2 && crate::stdlib::is_module(&func[0].name) {
+                let ok = cx.std_ok == Some(e.span);
+                return self.std_call(cx, &super::stdlib::StdCall { e, func, args, types: &arg_types }, None, ok);
+            }
             let mut cands = self.scopes[cx.file].names_of(&[Kind::Function, Kind::RustBlock]);
             cands.sort();
             let span = func[0].span.to(func[func.len() - 1].span);

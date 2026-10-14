@@ -500,11 +500,15 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .labelled("a quoted text");
 
             // ---- paths and calls
+            // `regex.matches(...)`: after a dot a reserved word is fine when a call follows
+            let later = choice((word(), ident().then_ignore(just('(').rewind())));
             let path_idents = word()
                 .labelled("a value")
-                .separated_by(just('.'))
-                .at_least(1)
-                .collect::<Vec<Ident>>();
+                .then(just('.').ignore_then(later).repeated().collect::<Vec<Ident>>())
+                .map(|(first, mut rest)| {
+                    rest.insert(0, first);
+                    rest
+                });
             let args = expr
                 .clone()
                 .padded_by(sp())
@@ -512,6 +516,20 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .allow_trailing()
                 .collect::<Vec<_>>()
                 .delimited_by(just('('), just(')'));
+            // `json.parse(t) as Note`, `csv.parse(t) as list of Sale`
+            let decode = path_idents
+                .clone()
+                .then(args.clone())
+                .try_map(|(p, a), span| {
+                    if p.len() == 2 && matches!(p[0].name.as_str(), "json" | "csv") && p[1].name == "parse" {
+                        Ok((p, a))
+                    } else {
+                        Err(Rich::custom(span, "only json.parse and csv.parse take \"as\""))
+                    }
+                })
+                .map_with(|(p, a), e| mk(ExprKind::Call { func: p, args: a }, e))
+                .then(sp1().ignore_then(kw("as")).ignore_then(sp1()).ignore_then(type_expr()))
+                .map_with(|(call, ty), e| mk(ExprKind::Decode { call: Box::new(call), ty }, e));
             let path_or_call = path_idents
                 .clone()
                 .then(args.or_not())
@@ -627,6 +645,7 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 first_in,
                 no_amounts,
                 atom_kw,
+                decode,
                 path_or_call,
             ))
             .labelled("a value");

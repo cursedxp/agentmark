@@ -287,6 +287,21 @@ pub enum EffectCall {
     Fn { name: String, args: Vec<Expr> },
     Io(IoCall),
     Trace(TraceEvent),
+    /// The built-in `file` tool (SPEC 22.3).
+    File(FileCall),
+    /// A call of the built-in library that can fail (`number.parse`, `csv.parse … as …`): its
+    /// value is the `T` of the `result of T` expression (a failure is the error of the `try`).
+    Std(Expr),
+}
+
+/// `file <verb> <path> [to <new> | : <text>]`, traced `{"kind":"file","verb":…,"path":…}`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FileCall {
+    /// `read`, `write`, `append`, `list`, `rename`, `exists` or `delete`.
+    pub verb: String,
+    pub path: Expr,
+    /// The new path of `rename`, the content of `write` / `append`.
+    pub arg: Option<Expr>,
 }
 
 /// A call of a manifest tool, with everything resolved (codegen never looks names up).
@@ -349,6 +364,8 @@ pub struct ModelCall {
 pub enum IoCall {
     ReadFile { path: Expr, ty: Type },
     ReadBody { ty: Type },
+    /// `read input -> text`: all of standard input.
+    ReadInput,
     Print { message: Expr },
 }
 
@@ -404,6 +421,15 @@ pub enum ExprKind {
     },
     /// A record literal `{ id: x }` (its `ty` is `Type::Object`).
     Record(Vec<(String, Expr)>),
+    /// A call of the built-in library (`text.split(t, ",")`, SPEC 22.3). `decode` is the type of
+    /// `json.parse(t) as T` / the element type of `csv.parse(t) as list of T`; `ty` is the type
+    /// of the whole call (`result of …` for the ones that can fail).
+    Std {
+        module: String,
+        name: String,
+        args: Vec<Expr>,
+        decode: Option<Type>,
+    },
     /// `crm.invoices`: read a tool's collection.
     Source {
         tool: String,

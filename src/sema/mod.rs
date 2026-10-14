@@ -17,6 +17,7 @@ mod expr;
 mod limits;
 mod parallel;
 mod scope;
+mod stdlib;
 mod stmt;
 mod tools;
 mod types;

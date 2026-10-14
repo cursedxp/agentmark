@@ -92,3 +92,6 @@ A `# Import: crate x` whose `bindings/x.agent.md` (or `.agentmark/bindings/`) ex
 loader as a file of the project; its `# Binding` is typed like any declaration, so `- sha2 sha256_digest data -> h`
 checks against the bound signature, takes the binding's `- effect:` (or `unverified`, listed by
 `Checked::unverified_bindings()` and by `agentmark check`). This needed no extra code in sema.
+
+## Built-in library (step 22)
+`src/stdlib.rs` is the one table (`FUNCS`, `FILE_VERBS`, `MODULES`); `src/sema/stdlib.rs` types from it. `module.fn(args)` where `module` is `text regex number money date path json csv` and no imported function has that name is a library call: no `Resolution` is recorded (the IR recognises it by the table), the type is the table row's (`Num` = the type of the first argument; `Decoded` = `result of T` from the `as T` that the parser wraps in `ExprKind::Decode`). A call that can fail is `Type::Result(T)` and is accepted only directly after `try` (`Cx.std_ok`); `StmtKind::CallInto` defines its variable with the plain `T`. Statements: `file …` (effect `local(file)`), `read input -> t` (`local(input)`). Errors E340 (unknown function), E341 (result without `try`), E342 (`as T`), E343 (literal pattern, also looked up through a constant), E344/E345 (`file` verb / shape), E347 (`[file]` in tools.toml, raised by the manifest).
