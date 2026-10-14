@@ -240,3 +240,24 @@ SPEC 15.3 says "uses std::fs -> local, reqwest/tokio::net -> network, otherwise 
 The brief wants tests to work offline; real use may need to download a crate. **Choice:** every cargo call the binder makes (resolve version, build rustdoc JSON, type-check scratch crate) takes `--offline` iff `BindOptions::offline`/`FetchSpec::offline` is set; default is online. Fixtures were built with `default-features = false` for `reqwest` and `chrono` so they resolve from the offline cache; the public API of the fixtures is therefore the no-default-features API.
 
 Q82 addendum: `AGENTMARK_RUSTDOC_JSON` (main crate) and `AGENTMARK_RUSTDOC_JSON_DIR` (dependencies) treat an empty value as unset everywhere (`ENV_JSON=""` used to disable one code path but not another). Dependency lookup order: files in `BindOptions::foreign_rustdoc`, the `foreign_fetch` hook, the JSON dir, then a build next to the main JSON (only when the binder built that itself and `AGENTMARK_RUSTDOC_JSON` is unset).
+
+## Q110 — Binder `## Not bound` lines versus the 120-character limit
+Generated bindings list unbound items as `- name: reason (library::path)`; real reasons and paths regularly exceed 120 characters, so a freshly bound crate made `check` fail with hard-limit errors in a file the author never wrote. **Choice:** `sema/limits.rs` skips list entries (`- …`) under a `## Not bound` heading. Every other line of a binding file (comments, signatures, fenced bodies) still counts. Alternative (shortening in the binder) rejected: the full path is the useful part.
+
+## Q111 — `fmt` and `lint` skip `bindings/`
+Generated bindings are rewritten by `agentmark bind` (and carry the lines Q110 describes); linting them reports `vague-name` for parameters like `data` that mirror the library, and formatting would only fight the binder. **Choice:** the folder walk of `fmt` and the file set of `lint` skip every path with a `bindings` component. `check` still loads and checks them. Passing one binding file to `fmt` by path formats it.
+
+## Q112 — What `--allow-unverified` means on `check`
+SPEC 15.3: `check` lists unverified bindings and the release build refuses them. The brief gives `check` the flag. **Choice:** `check` exits 1 while any binding is `unverified` (the listing says which line to change) unless `--allow-unverified` is passed; the listing is printed either way. Rationale: `check` is the CI gate, and an unapproved library must not pass it silently. Sema keeps W005 a warning; the gate is in the CLI. `build` (codegen task) reuses the same rule.
+
+## Q113 — Exit codes and streams
+**Choice:** 0 = ok; 1 = the user's project has problems (errors, denied lints, non-canonical files with `--check`, unapproved libraries, a bind that failed); 2 = the command itself cannot run (bad arguments, missing path for `fmt`, no model for `bind`). Diagnostics go to stderr in the SPEC 10 format; reports and the final count go to stdout. `check --json` prints only JSON on stdout. `check` on a path that does not exist is exit 1 (the project loader reports "Cannot find …" as a diagnostic).
+
+## Q114 — `doc <target>`: project or library?
+`agentmark doc [<dir>]` (SPEC 18.7) and `agentmark doc <crate>` (brief) share one argument. **Choice:** if the argument exists on disk it is a project (file or folder); otherwise it is a library name looked up as `<project>/bindings/<name>.agent.md` (`--project`, default `.`; also `.agentmark/bindings/`). No argument = the current folder. A library whose name equals a local folder must be asked for with `--project`.
+
+## Q115 — Model and clock for `bind`
+**Choice:** `AGENTMARK_MODEL` selects the `ModelClient`: unset or `claude` = `AnthropicModel` with model id `claude-sonnet-4-5` and `ANTHROPIC_API_KEY`; `claude:<id>` picks the id; `mock:<path>` loads a `MockModel` `model.json` (tests, offline). Anything else (`openai:…`, `local:…`) is refused with a plain message until those drivers exist (SPEC 19). `AGENTMARK_OFFLINE=1` passes `--offline` to every cargo call of the binder. The header date is the mock's `today` when it has one, else the system date (UTC). The agent's own `- model:` line and `[models]` environments are not consulted: they describe the program, not the toolchain.
+
+## Q116 — Effect summary lines for functions and rules
+SPEC 8 only shows agent blocks (`invoice-chaser / Every day at 09:00: …`). **Choice:** agents, services and commands print `unit / heading: effects` (heading as written, `GET /invoices/{id}`, `Run`); functions and rules, which have no heading, print `function name: effects` / `rule name: effects`. In JSON both are `units[]` with `kind`.

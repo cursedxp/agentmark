@@ -11,6 +11,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
+mod bind;
 mod check;
 mod docgen;
 mod files;
@@ -59,6 +60,21 @@ pub enum Command {
         #[arg(long, default_value = ".")]
         project: String,
     },
+    /// Create or refresh the binding of a library (`bindings/<crate>.agent.md`).
+    Bind {
+        /// The library (crate) name.
+        #[arg(required_unless_present = "all")]
+        name: Option<String>,
+        /// Regenerate even when the binding is up to date (overwrites an approved one).
+        #[arg(long)]
+        force: bool,
+        /// Refresh every `bindings/*.agent.md` of the project.
+        #[arg(long)]
+        all: bool,
+        /// Project folder whose `bindings/` is used.
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
 }
 
 /// Parse `args` (the first is the program name) and run the command.
@@ -79,6 +95,7 @@ where
         Command::Fmt { path, check } => fmtlint::fmt(&path, check),
         Command::Lint { path } => fmtlint::lint(&path),
         Command::Doc { target, project } => docgen::run(target.as_deref(), &project),
+        Command::Bind { name, force, all, project } => bind::run(name.as_deref(), force, all, &project),
     };
     ExitCode::from(code)
 }

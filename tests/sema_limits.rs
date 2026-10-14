@@ -293,3 +293,21 @@ fn the_statement_fix_points_inside_a_huge_statement() {
     assert!(!help.contains("Move lines 10–"), "{help}");
     assert!(help.contains("Move lines 33–"), "{help}");
 }
+
+// ------------------------------------------------------------------ generated binding files
+
+#[test]
+fn binder_not_bound_entries_may_exceed_the_line_limit() {
+    // `agentmark bind` lists unbound items with the library's own paths; those lines cannot be
+    // wrapped, so the 120-character limit skips the `## Not bound` list (Q110).
+    let long = "x".repeat(150);
+    let binding = format!(
+        "# Binding: lib\n- crate: lib\n- effect: pure\n\n## Not bound\n- thing: no AgentMark type ({long})\n"
+    );
+    let p = Project::from_memory("app", vec![("app/bindings/lib.agent.md", binding.as_str())]);
+    assert_eq!(render_errors(&p), "");
+    // other lines of the same file still count
+    let bad = format!("> {long}\n# Binding: lib\n- crate: lib\n- effect: pure\n");
+    let p = Project::from_memory("app", vec![("app/bindings/lib.agent.md", bad.as_str())]);
+    assert!(render_errors(&p).contains("characters long"), "{}", render_errors(&p));
+}

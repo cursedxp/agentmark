@@ -84,3 +84,11 @@ Reading `crm.invoices` is `network(crm)`.
 signatures, constants · `body.rs` per-body context, on-demand body checking · `expr.rs` expressions ·
 `stmt.rs` statements · `tools.rs` manifest checks · `types.rs` · `effects.rs` · `limits.rs` (SPEC 18.3) ·
 `parallel.rs` (SPEC 16) · `unused.rs` (SPEC 18.2).
+
+## Bindings from `bindings/` (CLI `check`)
+
+A `# Import: crate x` whose `bindings/x.agent.md` (or `.agentmark/bindings/`) exists is loaded by the project
+loader as a file of the project; its `# Binding` is typed like any declaration, so `- sha2 sha256_digest data -> h`
+checks against the bound signature, takes the binding's `- effect:` (or `unverified`, listed by
+`Checked::unverified_bindings()` and by `agentmark check`). This needed no extra code in sema. One adjustment: the
+binder's `## Not bound` list is exempt from the 120-character line limit (`limits.rs`, OPEN_QUESTIONS Q110).

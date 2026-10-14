@@ -108,11 +108,20 @@ fn counted_len(line: &str, exempt: bool) -> (usize, Option<usize>) {
 
 fn line_lengths(path: &str, text: &str, out: &mut Vec<Diagnostic>) {
     let mut in_fence = false;
+    let mut in_not_bound = false;
     for (i, line) in text.lines().enumerate() {
         let trimmed = line.trim_start();
         let is_fence = trimmed.starts_with("```");
         if is_fence {
             in_fence = !in_fence;
+        }
+        // The binder's `## Not bound` list (SPEC 15.2) is a generated report: one entry per
+        // item with the reason and the library's own path, which cannot be wrapped (Q110).
+        if !in_fence && line.starts_with('#') {
+            in_not_bound = line.trim_end() == "## Not bound";
+        }
+        if in_not_bound && !in_fence && line.starts_with("- ") {
+            continue;
         }
         let exempt = !(in_fence || is_fence || trimmed.starts_with('>'));
         let (len, over) = counted_len(line, exempt);

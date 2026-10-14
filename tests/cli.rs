@@ -291,13 +291,193 @@ fn doc_refuses_a_project_with_errors() {
     assert!(err(&o).contains("a.agent.md:6"));
 }
 
+#[test]
+fn doc_of_an_unknown_name_says_how_to_bind() {
+    let d = temp("docnone");
+    let o = run(&["doc", "sha2", "--project", s(&d)]);
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("agentmark bind sha2"), "{}", err(&o));
+}
+
+// ---------------------------------------------------------------------------------- bind
+
+/// `bind sha2` against the checked-in rustdoc fixtures and the canned model.
+fn bind(project: &Path, extra: &[&str]) -> Output {
+    let mut args = vec!["bind", "sha2", "--project", s(project)];
+    args.extend_from_slice(extra);
+    agentmark(&args)
+        .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+        .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))
+        .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"))
+        .env("AGENTMARK_OFFLINE", "1")
+        .output()
+        .unwrap()
+}
+
+const USES_SHA2: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha256_digest payload -> digest\n- print: \"done\"\n";
+
+fn sha2_project(tag: &str) -> PathBuf {
+    let d = temp(tag);
+    write(&d, "agentmark.toml", "name = \"p\"\n");
+    write(&d, "main.agent.md", "# Import: ./fingerprint.agent.md\n\n# Run\n- fingerprint\n");
+    write(&d, "fingerprint.agent.md", USES_SHA2);
+    d
+}
+
+#[test]
+fn bind_generates_then_serves_from_cache() {
+    let d = sha2_project("bind");
+    let first = bind(&d, &[]);
+    assert_eq!(code(&first), 0, "{}{}", out(&first), err(&first));
+    assert!(out(&first).contains("sha2 0.10.9: generated"), "{}", out(&first));
+    assert!(out(&first).contains("0 direct, 1 assisted, "), "{}", out(&first));
+    assert!(out(&first).contains("change the line \"- effect: unverified\" to \"- effect: pure\""), "{}", out(&first));
+    let file = d.join("bindings/sha2.agent.md");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("## sha256_digest(data: bytes) -> bytes"));
+
+    let second = bind(&d, &[]);
+    assert_eq!(code(&second), 0);
+    assert!(out(&second).contains("sha2 0.10.9: cached"), "{}", out(&second));
+    assert!(!out(&second).contains("generated"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+
+    let forced = bind(&d, &["--force"]);
+    assert!(out(&forced).contains("generated") && out(&forced).contains("(forced)"), "{}", out(&forced));
+}
+
+#[test]
+fn bind_all_refreshes_every_binding_and_keeps_approved_ones() {
+    let d = sha2_project("bindall");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    let file = d.join("bindings/sha2.agent.md");
+    let approved = std::fs::read_to_string(&file).unwrap().replace("- effect: unverified", "- effect: pure");
+    std::fs::write(&file, &approved).unwrap();
+    let o = agentmark(&["bind", "--all", "--project", s(&d)])
+        .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+        .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))
+        .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"))
+        .env("AGENTMARK_OFFLINE", "1")
+        .output()
+        .unwrap();
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    assert!(out(&o).contains("sha2 0.10.9: cached"), "{}", out(&o));
+    assert!(out(&o).contains("Effect: pure (approved)"), "{}", out(&o));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), approved);
+}
+
+#[test]
+fn bind_all_without_bindings_says_so() {
+    let d = temp("bindnone");
+    let o = agentmark(&["bind", "--all", "--project", s(&d)])
+        .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+        .output()
+        .unwrap();
+    assert_eq!(code(&o), 0);
+    assert!(out(&o).contains("No bindings"), "{}", out(&o));
+}
+
+#[test]
+fn bind_without_a_model_or_a_name_is_a_usage_error() {
+    let d = temp("bindmodel");
+    let o = run(&["bind", "sha2", "--project", s(&d)]);
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("ANTHROPIC_API_KEY"), "{}", err(&o));
+    let o = run(&["bind"]);
+    assert_eq!(code(&o), 2);
+    let o = agentmark(&["bind", "sha2"]).env("AGENTMARK_MODEL", "openai:gpt").output().unwrap();
+    assert_eq!(code(&o), 2);
+    assert!(err(&o).contains("not supported here"), "{}", err(&o));
+}
+
+#[test]
+fn bind_reports_missing_library_metadata_in_plain_words() {
+    let d = temp("bindmeta");
+    let o = agentmark(&["bind", "sha2", "--project", s(&d)])
+        .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+        .env("AGENTMARK_RUSTDOC_JSON", d.join("nothing.json"))
+        .output()
+        .unwrap();
+    assert_eq!(code(&o), 1);
+    assert!(err(&o).contains("cannot read the interface of \"sha2\""), "{}", err(&o));
+}
+
+#[test]
+fn check_loads_the_binding_and_lists_it_until_approved() {
+    let d = sha2_project("bindcheck");
+    assert_eq!(code(&bind(&d, &[])), 0);
+
+    // unverified: listed with the one line to approve, check fails ...
+    let o = run(&["check", s(&d)]);
+    assert_eq!(code(&o), 1, "{}{}", out(&o), err(&o));
+    let t = out(&o);
+    assert!(t.contains("Libraries nobody approved yet"), "{t}");
+    assert!(t.contains("sha2 (library sha2): "), "{t}");
+    assert!(t.contains("bindings/sha2.agent.md:5: change \"- effect: unverified\" to \"- effect: pure\""), "{t}");
+    assert!(t.contains("1 unapproved library"), "{t}");
+    // ... the statement `- sha2 sha256_digest payload -> digest` type-checked: no errors
+    assert!(!err(&o).contains("error"), "{}", err(&o));
+
+    // --allow-unverified lets development go on
+    let o = run(&["check", s(&d), "--allow-unverified"]);
+    assert_eq!(code(&o), 0);
+    assert!(out(&o).contains("Libraries nobody approved yet"));
+
+    // json lists it too
+    let o = run(&["check", s(&d), "--json"]);
+    assert_eq!(code(&o), 1);
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    let u = &v["unverified_bindings"][0];
+    assert_eq!((u["name"].as_str(), u["crate"].as_str(), u["proposed_effect"].as_str()), (Some("sha2"), Some("sha2"), Some("pure")));
+    assert_eq!(u["line"], 5);
+
+    // approving the line makes it a trusted pure call
+    let file = d.join("bindings/sha2.agent.md");
+    let approved = std::fs::read_to_string(&file).unwrap().replace("- effect: unverified", "- effect: pure");
+    std::fs::write(&file, approved).unwrap();
+    let o = run(&["check", s(&d)]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    assert!(!out(&o).contains("nobody approved"));
+    assert!(out(&o).contains("fingerprint / Run: local(print)"), "{}", out(&o));
+}
+
+#[test]
+fn check_types_binding_calls_against_the_bound_signature() {
+    let d = sha2_project("bindtype");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    write(&d, "fingerprint.agent.md", &USES_SHA2.replace("payload: bytes", "payload: text"));
+    let o = run(&["check", s(&d), "--allow-unverified"]);
+    assert_eq!(code(&o), 1);
+    assert!(err(&o).contains("\"data\" of \"sha2 sha256_digest\" must be bytes, but this is text."), "{}", err(&o));
+}
+
+#[test]
+fn doc_of_a_crate_prints_the_cheat_sheet() {
+    let d = sha2_project("bindsheet");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    let o = run(&["doc", "sha2", "--project", s(&d)]);
+    assert_eq!(code(&o), 0, "{}", err(&o));
+    assert!(out(&o).contains("sha256_digest"), "{}", out(&o));
+}
+
+#[test]
+fn generated_bindings_pass_lint_and_fmt_are_left_alone() {
+    let d = sha2_project("bindlint");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    let file = d.join("bindings/sha2.agent.md");
+    let before = std::fs::read_to_string(&file).unwrap();
+    assert_eq!(code(&run(&["lint", s(&d)])), 0);
+    assert_eq!(code(&run(&["fmt", s(&d)])), 0);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+}
+
 // ---------------------------------------------------------------------------------- misc
 
 #[test]
 fn help_and_unknown_commands() {
     let o = run(&["--help"]);
     assert_eq!(code(&o), 0);
-    for c in ["check", "fmt", "lint", "doc"] {
+    for c in ["check", "fmt", "lint", "doc", "bind"] {
         assert!(out(&o).contains(c), "help lists {c}");
     }
     assert_eq!(code(&run(&["frobnicate"])), 2);
