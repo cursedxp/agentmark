@@ -104,7 +104,7 @@ snapshots are stable `insta` YAML.
 - **Scope**: a file sees only its imports (18.2). Names: records, rules, functions, constants,
   agents/services/commands, Rust blocks, bindings, tools (from `tools.toml` next to the project root).
 - **Types** (SPEC 6): `Text Int Money Date DateTime Duration Bool Bytes List(T) Maybe(T) Record(name)`.
-  Field inference per 2.1 is a warning `W001` printing the inferred type. Units are real types:
+  Field inference per 2.1 applies the name rules to the last word of the field name (`due_date`, `createdAt`); only when no rule matches and the type falls back to `text` is it a warning `W001` printing the inferred type (SPEC: "inference failure is a warning"). Every inferred field is listed in `Checked.inferred_fields` so `check` can print it. Units are real types:
   `money + duration` is an error; money arithmetic requires matching currency when both sides are
   literals and is otherwise checked at runtime; `money * int`, `money / int` → money;
   `date ± duration` → date; `Maybe(T)` must be unwrapped with `is some` / `is not empty`.

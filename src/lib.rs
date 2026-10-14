@@ -4,5 +4,7 @@ pub mod diag;
 pub mod fmt;
 pub mod lint;
 pub mod syntax;
-
 pub mod binder;
+pub mod manifest;
+pub mod project;
+pub mod sema;
