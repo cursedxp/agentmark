@@ -59,7 +59,7 @@ fn diag_json(d: &Diagnostic) -> Value {
 }
 
 /// Where the `- effect:` line of a binding is, for "change this line".
-fn effect_line(project: &Project, file: usize, name: &str) -> u32 {
+pub(crate) fn effect_line(project: &Project, file: usize, name: &str) -> u32 {
     project.files[file]
         .ast
         .decls
