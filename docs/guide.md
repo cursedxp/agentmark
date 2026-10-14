@@ -699,7 +699,7 @@ $ agentmark run slugger.agent.md -- Hello_World
 
 Everything so far ran without an AI. An **agent** is a program that wakes up on a schedule or when something happens. It looks at a system such as your CRM, may ask an AI to write or decide something, and acts.
 
-An agent is built from the parts you already know: records, rules, steps. What is new is the worker (the agent), the **tools** it may use, and the guards that check what the AI says.
+An agent is built from the parts you already know: records, rules, steps. What is new is the worker, which is the agent. The other new parts are the **tools** it may use and the guards that check what the AI says.
 
 Start a new file, `invoice-chaser.agent.md`. It begins like the report: a record, and a rule.
 
@@ -723,7 +723,9 @@ Read the rule: "The rule `overdue` is about an Invoice. It is true when today is
 
 An agent has a name, an AI model to ask, and a list of **tools**. A tool here is a system the agent can reach: your CRM, your email, a log. The agent can use only the tools on its list.
 
-Which tools exist, and what each one can do, is written once in a file called `tools.toml` next to your agent. Whoever set up your computer writes it. Reading and writing files, printing and the other things you did above are built in. They need no menu entry. A typical menu looks like this:
+Which tools exist, and what each one can do, is written once in a file called `tools.toml` next to your agent. Whoever set up your computer writes it.
+
+Reading and writing files, printing and the other things you did above are built in. They need no menu entry. A typical menu looks like this:
 
 ```toml file=examples/01-invoice-chaser/tools.toml
 [email]
@@ -963,7 +965,9 @@ $ agentmark run invoice-chaser.agent.md --mock --fixtures fixtures
 [log] Reminded Müller GmbH about 1200.00 EUR
 ```
 
-**Watch out:** connecting the agent to your real systems, so that "send an email" really sends one, is a developer's job. It lives in one file of your project, `rust/connect.rs`. The first real run creates that file for them. The steps of your agent do not change. The README has the details: [Connecting real tools](../README.md#connecting-real-tools-rustconnectrs).
+**Watch out:** connecting the agent to your real systems, so that "send an email" really sends one, is a developer's job.
+
+It lives in one file of your project, `rust/connect.rs`. The first real run creates that file for them. The steps of your agent do not change. The details are in [Connecting real tools](connect.md).
 
 **Next:** [Lesson 15: Read ten finished programs](#lesson-15-read-ten-finished-programs).
 

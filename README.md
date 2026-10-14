@@ -57,11 +57,13 @@ What to notice:
 - A value that may be missing is `maybe`.
 - `agentmark check` prints what each part can touch. It computes this from the code. Nobody declares it by hand.
 
-It is a general-purpose language: records and enums, functions, `match`, lists and maps, a built-in library for text, patterns, numbers, dates, paths, JSON and CSV, files, commands, web services and any Rust library you can name. Agents (programs that ask an AI model) are one more feature built on the same parts. They are described [near the end](#agents-ai-workflows-as-a-feature).
+It is a general-purpose language: records and enums, functions, `match`, lists and maps, a built-in library for text, patterns, numbers, dates, paths, JSON and CSV, files, commands, web services and any Rust library you can name.
+
+An **agent** is a program that asks an AI model. Agents are one more feature built on the same parts. They are described [near the end](#agents-ai-workflows-as-a-feature).
 
 ## Install
 
-You need git and a Rust toolchain (stable, edition 2021; get it from https://rustup.rs). On macOS and Linux one command installs the compiler and the language server:
+You need git and a Rust toolchain. Use stable, edition 2021. Get it from https://rustup.rs. On macOS and Linux one command installs the compiler and the language server:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh
@@ -75,7 +77,14 @@ The script clones https://github.com/cursedxp/agentmark into `~/.agentmark/src`,
 | `AGENTMARK_REF` | picks a branch or tag |
 | `AGENTMARK_NO_LSP=1` | skips the language server |
 
-To remove everything, run `sh ~/.agentmark/src/install.sh --uninstall`, or `curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh -s -- --uninstall`. If you installed with a custom `AGENTMARK_HOME`, set it again for the uninstall. It removes the binaries and the `src` folder only. It refuses a folder that is not an AgentMark checkout.
+To remove everything, run one of these:
+
+```sh
+sh ~/.agentmark/src/install.sh --uninstall
+curl -fsSL https://raw.githubusercontent.com/cursedxp/agentmark/main/install.sh | sh -s -- --uninstall
+```
+
+If you installed with a custom `AGENTMARK_HOME`, set it again for the uninstall. The uninstall removes the binaries and the `src` folder only. It refuses a folder that is not an AgentMark checkout.
 
 **Watch out:** keep `~/.agentmark/src` where it is. A generated project depends on `crates/agentmark-rt` of the checkout the compiler was built from, by absolute path, so builds work offline. Moving or deleting that folder breaks `agentmark build`.
 
@@ -135,6 +144,7 @@ ok: 0 errors, 0 warnings.
 | learn step by step | [docs/guide.md](docs/guide.md) |
 | look up a statement or a type | [docs/reference.md](docs/reference.md) |
 | use a Rust library | [docs/libraries.md](docs/libraries.md) |
+| connect an agent to real systems | [docs/connect.md](docs/connect.md) |
 | set up my editor or an AI assistant | [Editors and AI assistants](#editors-and-ai-assistants) |
 | read the language specification | [SPEC.md](SPEC.md) (section 22 makes it general-purpose) |
 | see how the compiler works | [DESIGN.md](DESIGN.md) |
@@ -153,7 +163,7 @@ Ten example projects live in `examples/`. `fixtures/` holds the input files, mod
 
 ## The commands
 
-Every command takes a `.agent.md` file or a project folder. A project folder has an `agentmark.toml`, and a `tools.toml` when the program uses tools from outside. The examples below run from the AgentMark source (`~/.agentmark/src` after `install.sh`, or your own clone), so the paths under `examples/` exist.
+Every command takes a `.agent.md` file or a project folder. A project folder has an `agentmark.toml`, and a `tools.toml` when the program uses tools from outside. The examples below run from the AgentMark source. That is `~/.agentmark/src` after `install.sh`, or your own clone. The paths under `examples/` exist there.
 
 | Exit code | Meaning |
 |---|---|
@@ -182,7 +192,7 @@ Effects (what each block can touch)
 ok: 0 errors, 0 warnings.
 ```
 
-`--json` prints one JSON document instead (schema: `docs/check-json.md`).
+`--json` prints one JSON document instead. Its schema is in `docs/check-json.md`.
 
 ### build
 
@@ -222,11 +232,14 @@ $ agentmark trace examples/10-log-analyzer -- fixtures/10-log-analyzer/input/app
 {"kind":"print","message":"  mail      2"}
 ```
 
-The trace is the behavior of the program. The tests of AgentMark compare behavior, not generated source: the output of every example against `fixtures/<example>/`. A program that uses a model or tools from outside runs with `--mock --fixtures <folder>`. That answers those calls from files, so nothing touches the network. See [Agents](#agents-ai-workflows-as-a-feature).
+The trace is the behavior of the program. The tests of AgentMark compare behavior, not generated source. They compare the output of every example against `fixtures/<example>/`.
+
+A program that uses a model or tools from outside runs with `--mock --fixtures <folder>`. That answers those calls from files, so nothing touches the network. See [Agents](#agents-ai-workflows-as-a-feature).
 
 ### fmt and lint
 
-`fmt` rewrites files into the one canonical style. `--check` changes nothing and exits 1 when a file is not canonical. `lint` runs the style rules. The ones listed under `[lint] deny` in `agentmark.toml` are errors.
+- `fmt` rewrites files into the one canonical style. `--check` changes nothing and exits 1 when a file is not canonical.
+- `lint` runs the style rules. The ones listed under `[lint] deny` in `agentmark.toml` are errors.
 
 ```console
 $ agentmark fmt --check examples/06-sales-report
@@ -237,7 +250,7 @@ lint: 0 errors, 0 warnings in 7 files.
 
 ### doc
 
-Prints the documentation page of a project (commands, records, functions, services, agents, what each block can touch), or the cheat sheet of a bound library.
+Prints the documentation page of a project, or the cheat sheet of a bound library. The page lists commands, records, functions, services, agents and what each block can touch.
 
 ```console
 $ agentmark doc examples/06-sales-report
@@ -252,7 +265,12 @@ Reads a sales CSV file and writes a revenue report per region, biggest region fi
 
 ### bind
 
-Creates or refreshes the binding of a library, `bindings/<crate>.agent.md`. You rarely call it yourself: `check` and `build` bind a crate the first time they meet it. It reads the public API from rustdoc JSON. What maps cleanly to AgentMark types is bound directly. A model proposes the rest ("assisted") or it is listed under `## Not bound`. An existing binding stays on the version in its header, so nothing moves silently.
+Creates or refreshes the binding of a library, `bindings/<crate>.agent.md`. You rarely call it yourself, because `check` and `build` bind a crate the first time they meet it.
+
+- It reads the public API from rustdoc JSON.
+- What maps cleanly to AgentMark types is bound directly.
+- A model proposes the rest ("assisted"), or it is listed under `## Not bound`.
+- An existing binding stays on the version in its header, so nothing moves silently.
 
 | Command | Effect |
 |---|---|
@@ -262,7 +280,14 @@ Creates or refreshes the binding of a library, `bindings/<crate>.agent.md`. You 
 | `agentmark bind <crate> --force` | regenerate the same version; an approved binding becomes unverified again |
 | `agentmark bind --all` | refresh every binding of the project |
 
-Moving or regenerating marks the binding unverified until you approve it again. A real bind needs `ANTHROPIC_API_KEY` and the network. The commands below run offline: `AGENTMARK_MODEL=mock:<model.json>` stands in for the model and `AGENTMARK_RUSTDOC_JSON(_DIR)` for the rustdoc output. The files are the ones the tests of the binder use.
+Moving or regenerating marks the binding unverified until you approve it again.
+
+A real bind needs `ANTHROPIC_API_KEY` and the network. The commands below run offline:
+
+- `AGENTMARK_MODEL=mock:<model.json>` stands in for the model.
+- `AGENTMARK_RUSTDOC_JSON` and `AGENTMARK_RUSTDOC_JSON_DIR` stand in for the rustdoc output.
+
+The files are the ones the tests of the binder use.
 
 ```console
 $ AGENTMARK_MODEL=mock:$PWD/tests/binder/model.json AGENTMARK_RUSTDOC_JSON=$PWD/tests/binder/sha2.json AGENTMARK_RUSTDOC_JSON_DIR=$PWD/tests/binder agentmark bind sha2 --project examples/05-invoice-service
@@ -277,9 +302,15 @@ effect: pure
 
 ## Libraries
 
-**Built in.** `text`, `regex`, `number`, `money`, `date`, `path`, `json` and `csv` are part of the language. Each has a fixed effect that `check` shows, and all of them are pure. `file` is a built-in tool (`file read`, `write`, `append`, `list`, `rename`, `exists`, `delete`) that needs no `tools.toml` entry. Reading standard input is `- read input -> text`. They are listed in [docs/reference.md](docs/reference.md), section 22.3.
+**Built in.** `text`, `regex`, `number`, `money`, `date`, `path`, `json` and `csv` are part of the language. Each has a fixed effect that `check` shows, and all of them are pure. They are listed in [docs/reference.md](docs/reference.md), section 22.3.
 
-**Any Rust crate.** The rest of the Rust ecosystem is available through the binder (`agentmark bind`, above) and three lines in your program. Objects a crate hands you (a hasher, a database pool) are **handles**: you create one with a statement, call methods on it, and the checker knows which method uses it up. A handle cannot be printed, compared or stored in a record. [docs/libraries.md](docs/libraries.md) has the whole story.
+`file` is a built-in tool that needs no `tools.toml` entry. Its verbs are `file read`, `write`, `append`, `list`, `rename`, `exists` and `delete`. Reading standard input is `- read input -> text`.
+
+**Any Rust crate.** The rest of the Rust ecosystem is available through the binder (`agentmark bind`, above) and three lines in your program.
+
+Objects a crate hands you are **handles**. A hasher and a database pool are examples. You create a handle with a statement and call methods on it, and the checker knows which method uses it up. A handle cannot be printed, compared or stored in a record.
+
+[docs/libraries.md](docs/libraries.md) has the whole story.
 
 ### Any crate: three lines
 
@@ -316,13 +347,17 @@ A tool is something a program calls with a statement, such as `- slugger slug ti
 | Kind | Where it lives | Needs |
 |---|---|---|
 | written in AgentMark | a `# Tool` declaration | nothing else |
-| implemented outside the program (a real CRM, an email provider) | `tools.toml` and `rust/connect.rs` | Rust code, see [Connecting real tools](#connecting-real-tools-rustconnectrs) |
+| implemented outside the program (a real CRM, an email provider) | `tools.toml` and `rust/connect.rs` | Rust code, see [Connecting real tools](docs/connect.md) |
 
-A `# Tool` has one `## verb(params) -> type` block per verb. Its declared effect is checked against its body exactly like a function's. A program that only uses these tools and the built-in `file` tool needs no `tools.toml` and no Rust. [docs/guide.md](docs/guide.md) shows a complete example in the lesson "Write your own tool".
+A `# Tool` has one `## verb(params) -> type` block per verb. Its declared effect is checked against its body exactly like a function's.
+
+A program that only uses these tools and the built-in `file` tool needs no `tools.toml` and no Rust. [docs/guide.md](docs/guide.md) shows a complete example in Lesson 11, "Write your own tool".
+
+**Next:** [Editors and AI assistants](#editors-and-ai-assistants).
 
 ## Editors and AI assistants
 
-Editor support (VS Code extension, language server, tree-sitter grammar for Zed, Neovim and Helix) is described in [docs/editor.md](docs/editor.md).
+Editor support is described in [docs/editor.md](docs/editor.md). It covers the VS Code extension, the language server, and the tree-sitter grammar for Zed, Neovim and Helix.
 
 To have an AI assistant write AgentMark for you, copy one file into your project:
 
@@ -332,6 +367,8 @@ To have an AI assistant write AgentMark for you, copy one file into your project
 | Cursor | [templates/.cursorrules](templates/.cursorrules) |
 
 Both point the assistant at [docs/reference.md](docs/reference.md), the one file it needs.
+
+**Next:** [Agents](#agents-ai-workflows-as-a-feature).
 
 ## Agents: AI workflows as a feature
 
@@ -382,238 +419,15 @@ $ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoi
 {"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
 ```
 
-Without `--mock`, a run uses the real model (`ANTHROPIC_API_KEY`) and the tools you connect (next section).
+Without `--mock`, a run uses the real model (`ANTHROPIC_API_KEY`) and the tools you connect. Connecting them is the next section.
 
-**Next:** the lessons "Now add an agent" to "Try it on pretend data" in [docs/guide.md](docs/guide.md).
+**Next:** Lessons 12 to 14 of [docs/guide.md](docs/guide.md) build an agent step by step.
 
 ## Connecting real tools: `rust/connect.rs`
 
-Reference for the step where an agent talks to real systems. Skip it until you want a real run.
+An agent talks to real systems through one Rust file of your project, `rust/connect.rs`. Until you write it, every real call fails with "not connected yet", and `--mock` runs still work.
 
-`tools.toml` lists the tools a program may use and their verbs:
-
-```toml
-[crm]
-verbs = ["list", "get", "update"]
-sources = ["invoices", "leads", "tickets"]
-events = ["lead", "ticket"]
-effect = "network"
-
-# … [email], [http] and [log] follow
-```
-
-For every tool that has verbs, `agentmark build` generates one trait in `src/tools.rs` with one method per verb. A method takes the call's arguments as JSON and returns the answer as JSON:
-
-```rust
-#[async_trait]
-pub trait Crm: Send + Sync {
-    async fn list(&self, args: Value) -> Result<Value, RtError>;
-    async fn get(&self, args: Value) -> Result<Value, RtError>;
-    async fn update(&self, args: Value) -> Result<Value, RtError>;
-}
-```
-
-`Email` (`send`) and `Http` (`get`, `post`) are generated the same way. `log` has no verbs and is built in (stderr and the trace). `--mock` runs answer from fixtures, so mock and real runs share all other code.
-
-For a real run, the program uses `Connected { crm: Box<dyn Crm>, email: Box<dyn Email>, http: Box<dyn Http> }`. You build it in **`rust/connect.rs`**, a file of your project beside `agentmark.toml`. For a single file, put `rust/` next to it.
-
-- `build`, `run` and `trace` create the file once, with a stub for every tool. Each stub fails with `not connected yet: implement Crm::list in rust/connect.rs`.
-- They never change the file again.
-- Every build copies it to `src/connect.rs` of the generated project, so deleting the output loses nothing.
-- A compiler error in it is reported against your file.
-- When `tools.toml` gains a tool, add it to `Connected` there.
-
-The arguments are exactly what the generated code sends:
-
-| Call | Arguments |
-|---|---|
-| `crm list` | `{"source": "invoices"}`, answered with an array of rows shaped like the record |
-| `crm update` | `{"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}` |
-| `email send` | `{"target": "customer", "to": "ap@mueller.de", "text": "…"}` |
-
-A real backend usually needs a client crate. `agentmark.toml` has an optional `[rust.dependencies]` table. It is copied verbatim into the `[dependencies]` of the generated `Cargo.toml`. Each entry is a version text or a table, as in Cargo.
-
-**Watch out:** naming a dependency the generated project already has, such as `serde_json`, `tokio` or an imported crate, is an error.
-
-```toml agentmark.toml
-[rust.dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-```
-
-With that, `Crm::list` can be HTTP-backed. This is a complete `rust/connect.rs` that reads `GET <base>/<source>` (the base URL from the environment) and leaves the other methods to implement. `build` compiles it. Nothing in the tests calls a network.
-
-```rust http
-use agentmark_rt::RtError;
-use async_trait::async_trait;
-use serde_json::Value;
-
-use crate::tools::{Connected, Crm, Email, Http};
-
-/// The CRM behind an HTTP API: `GET <base>/invoices` answers the rows as a JSON array.
-struct HttpCrm {
-    base: String,
-    client: reqwest::Client,
-}
-
-#[async_trait]
-impl Crm for HttpCrm {
-    // args: {"source": "invoices"}
-    async fn list(&self, args: Value) -> Result<Value, RtError> {
-        let source = args["source"].as_str().unwrap_or_default();
-        let fail = |e: reqwest::Error| RtError::Tool(format!("crm list {source}: {e}"));
-        let reply = self.client.get(format!("{}/{source}", self.base)).send().await.map_err(fail)?;
-        reply.error_for_status().map_err(fail)?.json::<Value>().await.map_err(fail)
-    }
-    async fn get(&self, _args: Value) -> Result<Value, RtError> {
-        Err(RtError::Tool("not connected yet: implement Crm::get in rust/connect.rs".into()))
-    }
-    async fn update(&self, _args: Value) -> Result<Value, RtError> {
-        Err(RtError::Tool("not connected yet: implement Crm::update in rust/connect.rs".into()))
-    }
-}
-
-/// Nobody connected the other tools yet: every call says what to implement.
-struct NotConnected;
-
-#[async_trait]
-impl Email for NotConnected {
-    async fn send(&self, _args: Value) -> Result<Value, RtError> {
-        Err(RtError::Tool("not connected yet: implement Email::send in rust/connect.rs".into()))
-    }
-}
-
-#[async_trait]
-impl Http for NotConnected {
-    async fn get(&self, _args: Value) -> Result<Value, RtError> {
-        Err(RtError::Tool("not connected yet: implement Http::get in rust/connect.rs".into()))
-    }
-    async fn post(&self, _args: Value) -> Result<Value, RtError> {
-        Err(RtError::Tool("not connected yet: implement Http::post in rust/connect.rs".into()))
-    }
-}
-
-pub fn connect() -> Connected {
-    Connected {
-        crm: Box::new(HttpCrm {
-            base: std::env::var("CRM_URL").unwrap_or_else(|_| "http://localhost:8080".into()),
-            client: reqwest::Client::new(),
-        }),
-        email: Box::new(NotConnected),
-        http: Box::new(NotConnected),
-    }
-}
-```
-
-The in-memory version below is what `examples/01-invoice-chaser` needs to run end to end offline. It has an in-memory CRM (two invoices, updated in place) and an "email provider" that prints. `http` stays a stub because this program never calls it.
-
-```rust file=rust/connect.rs
-//! Connect the tools to the real world (this file is yours; `build` never overwrites it).
-
-use std::sync::Mutex;
-
-use agentmark_rt::RtError;
-use async_trait::async_trait;
-use serde_json::{json, Value};
-
-use crate::tools::{Connected, Crm, Email, Http};
-
-/// A CRM that lives in memory: two invoices, updated in place.
-struct MemoryCrm {
-    invoices: Mutex<Vec<Value>>,
-}
-
-impl MemoryCrm {
-    fn new() -> Self {
-        let invoices = vec![
-            json!({"id": "INV-1", "customer": "Müller GmbH", "customer_email": "ap@mueller.de",
-                   "amount": "1200.00 EUR", "due": "2026-09-01", "status": "open"}),
-            json!({"id": "INV-2", "customer": "Schmidt AG", "customer_email": "buch@schmidt.de",
-                   "amount": "450.00 EUR", "due": "2026-12-10", "status": "open"}),
-        ];
-        MemoryCrm { invoices: Mutex::new(invoices) }
-    }
-}
-
-#[async_trait]
-impl Crm for MemoryCrm {
-    // args: {"source": "invoices"}  ->  the rows of that source
-    async fn list(&self, args: Value) -> Result<Value, RtError> {
-        match args["source"].as_str() {
-            Some("invoices") => Ok(Value::Array(self.invoices.lock().unwrap().clone())),
-            other => Err(RtError::Tool(format!("crm list: no source {other:?}"))),
-        }
-    }
-    // args: {"source": "invoices", "id": "INV-1"}  ->  one row
-    async fn get(&self, args: Value) -> Result<Value, RtError> {
-        let rows = self.invoices.lock().unwrap();
-        rows.iter()
-            .find(|r| r["id"] == args["id"])
-            .cloned()
-            .ok_or_else(|| RtError::Tool(format!("crm get: no row {}", args["id"])))
-    }
-    // args: {"source": "invoices", "id": "INV-1", "set": {"status": "reminded"}}
-    async fn update(&self, args: Value) -> Result<Value, RtError> {
-        let mut rows = self.invoices.lock().unwrap();
-        let row = rows
-            .iter_mut()
-            .find(|r| r["id"] == args["id"])
-            .ok_or_else(|| RtError::Tool(format!("crm update: no row {}", args["id"])))?;
-        for (field, value) in args["set"].as_object().into_iter().flatten() {
-            row[field] = value.clone();
-        }
-        Ok(row.clone())
-    }
-}
-
-/// An email "provider" that prints what it would send.
-struct PrintEmail;
-
-#[async_trait]
-impl Email for PrintEmail {
-    // args: {"target": "customer", "to": "ap@mueller.de", "text": "..."}
-    async fn send(&self, args: Value) -> Result<Value, RtError> {
-        println!("-> {}: {}", args["to"].as_str().unwrap_or("?"), args["text"].as_str().unwrap_or(""));
-        Ok(json!({"sent": true}))
-    }
-}
-
-/// Nobody connected `http` yet: every call says what to implement.
-struct NotConnected;
-
-#[async_trait]
-impl Http for NotConnected {
-    async fn get(&self, _args: Value) -> Result<Value, RtError> {
-        Err(RtError::Tool("not connected yet: implement Http::get in rust/connect.rs".into()))
-    }
-    async fn post(&self, _args: Value) -> Result<Value, RtError> {
-        Err(RtError::Tool("not connected yet: implement Http::post in rust/connect.rs".into()))
-    }
-}
-
-/// The tools of a real run.
-pub fn connect() -> Connected {
-    Connected {
-        crm: Box::new(MemoryCrm::new()),
-        email: Box::new(PrintEmail),
-        http: Box::new(NotConnected),
-    }
-}
-```
-
-With this file in `examples/01-invoice-chaser/rust/`, `agentmark run examples/01-invoice-chaser` reads the invoices from `MemoryCrm`, asks the real model (set `ANTHROPIC_API_KEY`), prints the reminder through `PrintEmail` and updates the row.
-
-To try it without a key, point `AGENTMARK_MODEL` at a model file: `AGENTMARK_MODEL=mock:fixtures/01-invoice-chaser/model.json` makes the generated program answer from it, in the same syntax the binder uses. The program is a copy of the example with that file in `rust/`:
-
-```console connect
-$ AGENTMARK_MODEL=mock:$PWD/fixtures/01-invoice-chaser/model.json agentmark run app
--> ap@mueller.de: Dear Müller GmbH, this is a friendly reminder that invoice INV-1 for 1200.00 EUR was due on 2026-09-01. …
-[log] Reminded Müller GmbH about 1200.00 EUR
-$ AGENTMARK_MODEL=mock:$PWD/fixtures/01-invoice-chaser/model.json agentmark trace app
-{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
-{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
-```
-
-Errors you return become `error` lines in the trace and stop the block, like any failing tool.
+**Next:** [docs/connect.md](docs/connect.md) has the traits, the file and two complete examples.
 
 ## Adding a target
 
@@ -634,7 +448,9 @@ Steps:
 
 `Options` and `GeneratedFile` are defined in `src/codegen/rust.rs` today. Move them to `codegen/mod.rs` when a second target shares them.
 
-`run` and `trace` have no `--target`. `build_and_run` in the same file calls the Rust generator and cargo directly, then starts the binary with `--once` (plus `--mock`, `--fixtures`, `--trace -`). A target that should run under `agentmark run` needs that function generalised: a build step, and a program that takes those flags.
+`run` and `trace` have no `--target`. `build_and_run` in the same file calls the Rust generator and cargo directly. It then starts the binary with `--once`, plus `--mock`, `--fixtures` and `--trace -`.
+
+A target that should run under `agentmark run` needs that function generalised: a build step, and a program that takes those flags.
 
 A target also needs a runtime with the contract of `crates/agentmark-rt`: `Money` in integer minor units, the model client, mock tools and fixtures, the JSONL trace of DESIGN §5.1. A target is correct when the trace of every example equals `fixtures/<example>/expected.trace.jsonl`. `tests/examples_e2e.rs` runs exactly that check for Rust.
 
