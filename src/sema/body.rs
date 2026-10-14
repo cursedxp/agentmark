@@ -62,6 +62,8 @@ pub struct Cx {
     pub lenient: bool,
     /// Heading text of the block, for suggested fixes.
     pub unit: String,
+    /// Segments unwrapped (known non-empty) while resolving the last path.
+    pub unwrap_log: Vec<usize>,
 }
 
 impl Cx {
@@ -76,6 +78,7 @@ impl Cx {
             route: false,
             lenient: false,
             unit: String::new(),
+            unwrap_log: Vec::new(),
         }
     }
 

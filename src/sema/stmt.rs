@@ -211,15 +211,8 @@ impl Checker<'_> {
                 cx.acc.add(Effect::Model, "model");
                 self.check_limit(cx, s);
             }
-            StmtKind::ToolCall {
-                tool,
-                verb,
-                target,
-                payload,
-                into,
-                ..
-            } => {
-                self.tool_call(cx, s, tool, verb, target, payload, into);
+            StmtKind::ToolCall { .. } => {
+                self.tool_call(cx, s);
                 self.check_limit(cx, s);
             }
             StmtKind::Guard { cond, else_ } => {
@@ -244,9 +237,10 @@ impl Checker<'_> {
                                 self.path(cx.file),
                                 expr.span,
                                 format!(
-                                    "\"{}\" holds {old}, but this is {}.",
+                                    "\"{}\" holds {old}, but this is {}.{}",
                                     var.name,
-                                    t.with_article()
+                                    t.with_article(),
+                                    self.note(&t, &old)
                                 ),
                             );
                             self.diags.push(d);
@@ -316,7 +310,11 @@ impl Checker<'_> {
                                 E_TYPE,
                                 self.path(cx.file),
                                 value.span,
-                                format!("This list holds {e}, but this is {}.", vt.with_article()),
+                                format!(
+                                    "This list holds {e}, but this is {}.{}",
+                                    vt.with_article(),
+                                    self.note(&vt, e)
+                                ),
                             );
                             self.diags.push(d);
                         }
@@ -415,8 +413,9 @@ impl Checker<'_> {
                 self.path(cx.file),
                 e.span,
                 format!(
-                    "This returns {}, but the function says it returns \"{out}\".",
-                    t.with_article()
+                    "This returns {}, but the function says it returns \"{out}\".{}",
+                    t.with_article(),
+                    self.note(&t, &out)
                 ),
             );
             self.diags.push(d);
@@ -454,6 +453,13 @@ impl Checker<'_> {
                 decl,
                 block: bi,
             };
+            self.resolutions.insert(
+                super::NodeKey::new(cx.file, s.span),
+                super::Resolution::Call {
+                    kind: super::CallKind::DoBlock,
+                    decl: name.name.clone(),
+                },
+            );
             self.called_blocks.insert((cx.file, decl, bi));
             for a in args {
                 self.expr(cx, a);
@@ -489,7 +495,7 @@ impl Checker<'_> {
                 None => {
                     self.do_ctx.insert(key, implicit);
                 }
-                Some(prev) if *prev != implicit => {
+                Some(prev) if prev.as_ref().map(|i| &i.record) != implicit.as_ref().map(|i| &i.record) => {
                     let show = |i: &Option<Implicit>| match i {
                         Some(i) => format!("\"{}\" ({})", i.var, i.record),
                         None => "no record".to_string(),
@@ -539,6 +545,17 @@ impl Checker<'_> {
             let _ = E_UNKNOWN_NAME;
             return;
         };
+        self.resolutions.insert(
+            super::NodeKey::new(cx.file, s.span),
+            super::Resolution::Call {
+                kind: if kind == Kind::RustBlock {
+                    super::CallKind::RustBlock
+                } else {
+                    super::CallKind::Function
+                },
+                decl: decl.clone(),
+            },
+        );
         if let Some(sig) = self.sigs.get(&(kind, decl.clone())).cloned() {
             self.check_args(cx, s.span, &name.name, &sig, args, &arg_types);
             if let Some(i) = into {

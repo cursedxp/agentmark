@@ -41,6 +41,16 @@ impl Checker<'_> {
         })
     }
 
+    /// Extra sentence for a mismatch involving a record literal (missing fields, misspelled keys).
+    pub fn note(&self, from: &Type, to: &Type) -> String {
+        let n = super::types::object_note(from, to, &|r| self.record_fields(r));
+        if n.is_empty() {
+            n
+        } else {
+            format!(" {n}")
+        }
+    }
+
     pub fn is_assignable(&self, from: &Type, to: &Type) -> bool {
         assignable(from, to, &|r| self.record_fields(r))
     }
@@ -86,6 +96,14 @@ impl Checker<'_> {
                         Some(te) => (self.resolve_type(fi, te), false),
                         None => {
                             let (t, matched) = infer_field_type(&fld.name.name);
+                            self.inferred_fields.push(super::InferredField {
+                                record: r.name.name.clone(),
+                                field: fld.name.name.clone(),
+                                ty: t.clone(),
+                                fallback: !matched,
+                                file: fi,
+                                span: fld.name.span,
+                            });
                             if !matched {
                                 self.warn(
                                     W_INFERRED,

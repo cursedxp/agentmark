@@ -116,7 +116,7 @@ Note: my entries Q16-Q25 (and Q26-Q29) were numbered from Q16 because the runtim
 
 ## Q30 — What does a `## Do` block work on? (step 3)
 Example 01: `## Every day at 09:00` runs `for each overdue invoice in crm.invoices: - do remind`, and `## Do remind` writes `ask model with invoice: …`, `{customer}`, `{amount}` although it has no parameter. DESIGN 4.1 lowers it to `Call(invoice_chaser__remind, invoice)`.
-**Choice:** a `## Do` block receives the record variable that is "in front of" its caller — the innermost `for each` record, the event record of `## When tool receives event`, or none. The first caller decides; any other caller with a different variable or record is an error ("works on `i` (Invoice), but here it is called with `l` (Lead)"). A `## Do` block nobody calls is only a warning (unused action) and its unresolvable names are not reported. `Checked.blocks[..].param` records the choice for `agent_lower`.
+**Choice:** a `## Do` block receives the record that is "in front of" its caller — the innermost `for each` record, the event record of `## When tool receives event`, or none. The first caller's variable name is the block's parameter name (`Checked.blocks[..].param`); other callers may use a different variable name as long as the **record** is the same (`for each j in crm.invoices: do show` after `for each i …` is fine). A different record is an error ("works on `i` (Invoice), but here it is called with `l` (Lead)"). A `## Do` block nobody calls is a warning (unused action); it is checked leniently: a bare name passes if some record has a field of that name, otherwise it is reported.
 **Why:** it is the only reading under which example 01 resolves; deciding by call sites keeps the source free of parameter lists.
 
 ## Q31 — Declared names are unique per project (step 3)
@@ -124,9 +124,9 @@ Types carry a record by name (`Type::Record("Invoice")`), generated Rust has one
 **Choice:** two declarations of the same kind and name anywhere in the project are an error at the second ("already declared in file:line"), even if no file imports both.
 **Why:** keeps `Type` and the side tables simple and avoids two `Invoice` types silently comparing equal.
 
-## Q32 — Field-type inference reads whole words (step 3)
+## Q32 — Field-type inference reads whole words (step 3, approved by the controller)
 SPEC 2.1 says "names ending in `date`, `at`, `on`"; letter-wise `reason`, `format`, `description` would become dates.
-**Choice:** the rule applies to the last word of the name, words separated by `_` or `-` (`due_date`, `created_at`, `paid_on`, `date`, `total_amount`). Only the fallback to `text` (no rule matched) is a warning (W001), as SPEC 2.1 says "inference failure"; successful inference is silent but `FieldInfo.inferred` is true.
+**Choice:** the rule applies to the last word of the name; words are separated by `_`, `-` or a lower-to-upper case change (`due_date`, `createdAt`, `paid_on`, `date`, `totalAmount`). Only the fallback to `text` (no rule matched) is a warning (W001), as SPEC 2.1 says "inference failure"; successful inference is silent but `FieldInfo.inferred` is true and every inferred field (with its type and whether it fell back) is in `Checked.inferred_fields` so `check` can print them. DESIGN §3 was amended to say the same.
 
 ## Q33 — "Statements per block" counts nested statements (step 3)
 **Choice:** every statement inside the block counts, nested ones included (a `for each` with 25 statements inside is 26). The suggested fix names the lines from the top-level statement that contains the 25th statement to the end of the block.
@@ -134,11 +134,11 @@ SPEC 2.1 says "names ending in `date`, `at`, `on`"; letter-wise `reason`, `forma
 
 ## Q34 — "Declarations per file" (step 3)
 SPEC 18.3: "1 of `# Agent` / `# Service` / `# Command`; records and rules may share a file only in `records/` and `rules/`". Example 05 holds a Service **and** a Command in one file, and examples 02–05 put records, rules and an agent into one file; all must check.
-**Choice:** at most one agent, at most one service and at most one command per file (05 passes). The record/rule placement limits apply to **folder projects** only (several records in one file only under `records/`, several rules only under `rules/`, records and rules never in the same file); a single-file project is a whole program in one file and is exempt.
+**Choice:** a **project folder** applies the row literally: at most ONE of Agent/Service/Command per file in total (an error at the second), several records in one file only under `records/`, several rules only under `rules/`, records and rules never in the same file. A **single-file project** is a whole program in one file and is exempt from the whole row; when the file holds more than one runnable declaration it gets one warning (W006, "single-file draft; split into a project folder").
 
 ## Q35 — Line length ignores the text of string literals (step 3)
 Examples 02 and 03 contain lines of 133 and 129 characters (long model prompts); all examples must check with zero errors.
-**Choice:** for the 120-character limit the text between the quotes of a string literal does not count (the quotes do); everything else, `>` comments and fenced Rust included, counts in full. The error's caret starts at column 121.
+**Choice:** for the 120-character limit the text between the quotes of a string literal does not count (the quotes do). `>` comment lines and fenced Rust count in full. When the counted length is over 120 the error's caret starts at the first counted character past the limit; when only string text pushes the raw line past 120 there is a warning (W007) suggesting a `# Constant`.
 **Why:** a prompt is prose that cannot be broken over lines; the limit stays meaningful for code.
 
 ## Q36 — Crate import without a binding file (step 3)
@@ -154,7 +154,7 @@ SPEC 2.3 restricts tool calls to the agent's `tools:` line, but `# Service`, `# 
 **Choice:** the restriction applies to agent blocks (tool calls and tool-source reads). Services, commands and functions may use any tool of the manifest; a function's effect declaration is what bounds it.
 
 ## Q39 — Built-in effect sources (step 3)
-**Choice:** `ask model` is class `model`; `print`, `read file` and `append … to state.…` are class `local` with the sources `print`, `file`, `state`; `append` to a local list is pure; `respond` / `read body` are pure. A tool read such as `crm.invoices` has the tool's manifest effect.
+**Choice:** `ask model` is class `model`; `print`, `read file` and `append … to state.…` are class `local` with the sources `print`, `file`, `state`; **reading** `state` is pure (it is the program's own memory, like a local variable); `append` to a local list is pure; `respond` / `read body` are pure. A tool read such as `crm.invoices` has the tool's manifest effect.
 
 ## Q40 — Other choices made by the semantic pass (step 3)
 - `maybe T` is stored by a plain `T` (wrapping), never the other way; `x = y` accepts `maybe T` against `T`.
@@ -162,3 +162,6 @@ SPEC 2.3 restricts tool calls to the agent's `tools:` line, but `# Service`, `# 
 - `stop` inside a function and `return` outside one are errors; a function with `out:` and no `return` is an error.
 - A tool's manifest `effect` may be `local`, `network` or `model`, never `pure`.
 - `agentmark.toml` unknown keys are errors with did-you-mean (keys: `name`, `version`, `targets`, `lint`).
+
+## Q41 — Resolution order and partial record literals (step 3 review)
+**Choice:** a name resolves as variable, then bare field of the record in front of the block, then constant, and only with a dot as a tool source (`crm.invoices`); a lone tool name is never a value, so a field called `email` is a field. A record literal must give every field that is not `maybe`, and every key must exist (misspelled keys get a did-you-mean). Plain-value payloads are checked: text tools (`email`, `log`) take text, a crm-like tool takes the target's record; binding arguments are checked against the bound function's parameters. More than one service with `state:` is an error (commands use it, Q9).

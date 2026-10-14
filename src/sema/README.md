@@ -33,14 +33,19 @@ project.render(&diags)                                           // SPEC 10 text
 | `files: Vec<String>` | display path per file id |
 | `records: BTreeMap<String, RecordInfo>` | every record; `fields: Vec<FieldInfo { name, ty, inferred, span }>`, declaration order, types resolved (SPEC 2.1 inference applied) |
 | `expr_types: HashMap<NodeKey, Type>` | type of every expression, interpolation parts included. `NodeKey { file, span }`: the span is the expression's own span (unique per node within a file) |
+| `expr_effects: HashMap<NodeKey, EffectSet>` | effect of every expression (sub-expressions included): `network(crm)` for `crm.invoices`, the callee's set for a call, `pure` otherwise |
 | `stmt_effects: HashMap<NodeKey, EffectSet>` | effect of every statement, children included; key = the statement's span |
 | `blocks: Vec<BlockInfo>` | one per function, rule, agent block (`Entry` = trigger blocks, `Action` = `## Do`), service route, command `## Run`; source order. `effect`, `declared` (functions, rules), `param` = `(variable, record)` the block works on (rule record, event record, or the loop record a `## Do` is called with) |
+| `resolutions: HashMap<NodeKey, Resolution>` | what a name stands for, keyed by the span of the path / call expression, the `do` statement, or the rule-filter ident: `Var{name}` (first segment of a path), `Field{var, record, field}` (bare field), `Const{name}` (declared name, prefix removed; inline it), `Source{tool, source, record}` (`crm.invoices`), `Call{kind: Function\|RustBlock\|Binding\|DoBlock\|Rule, decl}` (declared name, never the aliased spelling) |
+| `tool_calls: HashMap<NodeKey, ToolResolution>` | per tool-call statement (key = statement span): `tool`, `kind` (Manifest / Binding), `verb`, `target_word`, `record` (what the word names or stands in front of), `var` (the in-scope variable holding it), `field` (the field the runtime reads: `customer_email` else `customer` for `email send customer`, `id` for a crm target) |
+| `unwraps: HashMap<NodeKey, Vec<usize>>` | path expressions that read a `maybe` value known to be non-empty (after `is not empty`, `guard`, `is some`): the 0-based segment indices whose value codegen must unwrap. Type of the expression is already the unwrapped type |
+| `inferred_fields: Vec<InferredField>` | every field whose type came from SPEC 2.1 inference (`fallback` = no rule matched, the W001 case), for `check` to print |
 | `manifest: Manifest` | resolved `tools.toml` (`ToolDef { verbs, targets, sources, events, effect }`) |
 | `constants: BTreeMap<String, ConstInfo>` | name, file, type, value expression (to inline) |
 | `functions: BTreeMap<String, Sig>` | `# Function` signatures (`params`, `out`, declared `effect`) |
 | `rust_blocks: Vec<RustInfo>` | every `## Rust` block: name, file, span, parent, `Sig` (declared, trusted effect) |
 | `bindings: Vec<BindingInfo>` | every `# Binding`: crate, effect (`Unverified` until approved), proposed effect, items with `Sig`; `Checked::unverified_bindings()` |
-| `warnings` | inferred field types (W001), unused import/declaration (W002/W003), crate without binding (W004), unverified binding (W005) |
+| `warnings` | inferred field types (W001, only when it falls back to text), unused import/declaration (W002/W003), crate without binding (W004), unverified binding (W005), several runnable declarations in a single file (W006), line longer than 120 only because of string text (W007) |
 
 Helpers: `Checked::unit_effect(unit)`, `expr_type(file, span)`, `stmt_effect(file, span)`.
 
@@ -63,12 +68,13 @@ Reading `crm.invoices` is `network(crm)`.
 
 ## What the check resolved that the AST does not say
 
-- `## Do` blocks work on the record of the first caller's loop/event (Q30); `BlockInfo.param` records it.
+- `## Do` blocks work on the record of the callers' loop/event (all callers must agree on the record, Q30); `BlockInfo.param` is `(first caller's variable, record)`.
 - A source `crm.invoices` is `list of Invoice` (record found by the singular name, Q5); a `get`/`list` result
   is typed the same way.
 - A bare field name (`amount`) resolves against the record in front of the block; `invoice.amount` against
   the variable. Constants are looked up after variables and are meant to be inlined.
-- `state` in a route/command is a variable of the service's `state:` record (Q9).
+- `state` in a route/command is a variable of the service's `state:` record (Q9); only one service may have one. Reading it is pure, `append … to state.…` is `local(state)` (Q39).
+- Name order: variable, bare field, constant, tool source (needs the dot). `## Do` blocks nobody calls are checked leniently: a bare name passes if some record has such a field, otherwise it is reported (Q30).
 - Narrowing: `is not empty` / `is some` / `guard` unwrap `maybe` values in the rest of the block.
 
 ## Layout

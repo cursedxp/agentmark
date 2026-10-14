@@ -51,7 +51,9 @@ fn invoice_chaser_folder_checks_with_no_diagnostics() {
 #[test]
 fn lead_qualifier_checks() {
     let (p, c) = check("examples/02-lead-qualifier.agent.md");
-    assert!(c.warnings.is_empty(), "{}", warnings(&p, &c));
+    // the model prompt makes line 17 longer than 120 characters (Q35): a warning, not an error
+    assert!(c.warnings.iter().all(|w| w.code == "W007"), "{}", warnings(&p, &c));
+    assert_eq!(c.warnings.len(), 1);
     let b = c
         .blocks
         .iter()
@@ -66,7 +68,8 @@ fn lead_qualifier_checks() {
 #[test]
 fn support_triage_checks() {
     let (p, c) = check("examples/03-support-triage.agent.md");
-    assert!(c.warnings.is_empty(), "{}", warnings(&p, &c));
+    assert!(c.warnings.iter().all(|w| w.code == "W007"), "{}", warnings(&p, &c));
+    assert_eq!(c.warnings.len(), 1);
 }
 
 #[test]
@@ -85,11 +88,13 @@ fn daily_report_checks() {
 }
 
 #[test]
-fn invoice_service_checks_with_only_the_unbound_crate_warning() {
+fn invoice_service_checks_with_the_unbound_crate_and_single_file_warnings() {
     let (p, c) = check("examples/05-invoice-service.agent.md");
     let w = warnings(&p, &c);
-    assert_eq!(c.warnings.len(), 1, "{w}");
+    let codes: Vec<_> = c.warnings.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["W004", "W006"], "{w}");
     assert!(w.contains("The crate \"sha2\" has no binding yet."), "{w}");
+    assert!(w.contains("single-file draft"), "{w}");
     assert!(c.warnings.iter().all(|d| d.severity == Severity::Warning));
     assert_eq!(c.rust_blocks.len(), 1);
     assert_eq!(c.rust_blocks[0].name, "fingerprint");

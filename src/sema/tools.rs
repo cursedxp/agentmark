@@ -3,14 +3,14 @@
 
 use crate::diag::Diagnostic;
 use crate::manifest::{singular, ToolDef};
-use crate::syntax::ast::{Ident, Payload, Stmt, TargetPart};
+use crate::syntax::ast::{Ident, Payload, Stmt, StmtKind, TargetPart};
 
 use super::body::{Cx, Implicit};
 use super::effects::EffectSet;
 use super::expr::{E_TYPE, E_UNKNOWN_NAME};
 use super::scope::Kind;
 use super::types::Type;
-use super::Checker;
+use super::{Checker, Resolution, ToolKind, ToolResolution};
 
 pub const E_MANIFEST: &str = "E207";
 pub const E_UNLISTED: &str = "E208";
@@ -29,7 +29,7 @@ impl Checker<'_> {
     /// An agent may only use tools in its `tools:` line.
     pub fn require_listed(&mut self, cx: &Cx, tool: &Ident) {
         let Some(a) = &cx.agent else { return };
-        if a.tools.iter().any(|t| *t == tool.name) {
+        if a.tools.contains(&tool.name) {
             return;
         }
         let mut example = a.tools.clone();
@@ -64,7 +64,13 @@ impl Checker<'_> {
     }
 
     /// `crm.invoices`: a readable collection of a tool.
-    pub(super) fn source(&mut self, cx: &mut Cx, segs: &[Ident], def: &ToolDef) -> Type {
+    pub(super) fn source(
+        &mut self,
+        cx: &mut Cx,
+        segs: &[Ident],
+        def: &ToolDef,
+        key: super::NodeKey,
+    ) -> Type {
         let first = &segs[0];
         let span = first.span.to(segs[segs.len() - 1].span);
         self.require_listed(cx, first);
@@ -112,7 +118,16 @@ impl Checker<'_> {
         let eff = EffectSet::of(def.effect, &def.name);
         self.touch(cx, span, &label, &eff);
         let word = singular(&src.name);
-        match self.record_for_word(cx.file, &word) {
+        let record = self.record_for_word(cx.file, &word);
+        self.resolutions.insert(
+            key,
+            Resolution::Source {
+                tool: def.name.clone(),
+                source: src.name.clone(),
+                record: record.clone(),
+            },
+        );
+        match record {
             Some(rec) => Type::List(Box::new(Type::Record(rec))),
             None => {
                 if !cx.lenient {
@@ -187,23 +202,25 @@ impl Checker<'_> {
 
     /// `email send customer: "..."`, `crm update invoice: status = "x"`, `log: "..."`,
     /// `pdf render doc -> bytes`.
-    pub(super) fn tool_call(
-        &mut self,
-        cx: &mut Cx,
-        s: &Stmt,
-        tool: &Ident,
-        verb: &Option<Ident>,
-        target: &[TargetPart],
-        payload: &Option<Payload>,
-        into: &Option<Ident>,
-    ) {
-        let _ = s;
+    pub(super) fn tool_call(&mut self, cx: &mut Cx, s: &Stmt) {
+        let StmtKind::ToolCall {
+            tool,
+            verb,
+            target,
+            payload,
+            into,
+            ..
+        } = &s.kind
+        else {
+            return;
+        };
+        let sk = super::NodeKey::new(cx.file, s.span);
         if let Some(def) = self.p.manifest.tool(&tool.name).cloned() {
-            self.manifest_call(cx, &def, tool, verb, target, payload, into);
+            self.manifest_call(cx, sk, &def, tool, verb, target, payload, into);
             return;
         }
         if let Some((_, bname)) = self.lookup(cx.file, &tool.name, &[Kind::Binding]) {
-            self.binding_call(cx, &bname, tool, verb, target, payload, into);
+            self.binding_call(cx, sk, &bname, tool, verb, target, payload, into);
             return;
         }
         self.unknown_tool(cx, tool);
@@ -222,7 +239,7 @@ impl Checker<'_> {
                 }
                 TargetPart::Word(i) => {
                     if cx.var(&i.name).is_some() {
-                        self.path_expr(cx, std::slice::from_ref(i));
+                        self.path_expr(cx, std::slice::from_ref(i), super::NodeKey::new(cx.file, i.span));
                     }
                 }
             }
@@ -244,6 +261,7 @@ impl Checker<'_> {
     fn manifest_call(
         &mut self,
         cx: &mut Cx,
+        sk: super::NodeKey,
         def: &ToolDef,
         tool: &Ident,
         verb: &Option<Ident>,
@@ -327,7 +345,7 @@ impl Checker<'_> {
                 }
                 TargetPart::Word(w) => {
                     // a later word names a value: `crm get invoice id`
-                    self.path_expr(cx, std::slice::from_ref(w));
+                    self.path_expr(cx, std::slice::from_ref(w), super::NodeKey::new(cx.file, w.span));
                 }
                 TargetPart::Value(e) => {
                     let t = self.expr(cx, e);
@@ -350,7 +368,8 @@ impl Checker<'_> {
         // payload
         match payload {
             Some(Payload::Value(e)) => {
-                self.expr(cx, e);
+                let t = self.expr(cx, e);
+                self.check_plain_payload(cx, def, &target_record, e, &t);
             }
             Some(Payload::Assign(list)) => {
                 let rec_fields = target_record
@@ -367,11 +386,12 @@ impl Checker<'_> {
                                         self.path(cx.file),
                                         a.value.span,
                                         format!(
-                                            "The field \"{}\" of {} is {}, but this is {}.",
+                                            "The field \"{}\" of {} is {}, but this is {}.{}",
                                             f.name,
                                             rname,
                                             f.ty,
-                                            t.with_article()
+                                            t.with_article(),
+                                            self.note(&t, &f.ty)
                                         ),
                                     );
                                     self.diags.push(d);
@@ -402,16 +422,130 @@ impl Checker<'_> {
                 _ if def.sources.is_empty() && def.targets.is_empty() => Type::Text,
                 _ => Type::Unknown,
             };
-            let _ = target_word;
             cx.define(&i.name, ty);
         }
+        let (record, var, field) = self.target_binding(cx, def, target, target_word, &target_record);
+        self.tool_calls.insert(
+            sk,
+            ToolResolution {
+                tool: def.name.clone(),
+                kind: ToolKind::Manifest,
+                verb: verb.as_ref().map(|v| v.name.clone()),
+                target_word: target_word.map(|w| w.name.clone()),
+                record,
+                var,
+                field,
+            },
+        );
         cx.acc.add(def.effect, &def.name);
+    }
+
+    /// A plain value after the `:` must fit what the tool takes: text for tools that send or
+    /// log text, the target's record for a crm-like tool.
+    fn check_plain_payload(
+        &mut self,
+        cx: &Cx,
+        def: &ToolDef,
+        target_record: &Option<String>,
+        e: &crate::syntax::ast::Expr,
+        t: &Type,
+    ) {
+        if let Some(r) = target_record {
+            let want = Type::Record(r.clone());
+            if !self.is_assignable(t, &want) {
+                let d = Diagnostic::error(
+                    E_TYPE,
+                    self.path(cx.file),
+                    e.span,
+                    format!(
+                        "The tool {} takes a {r} here, but this is {}.{}",
+                        def.name,
+                        t.with_article(),
+                        self.note(t, &want)
+                    ),
+                );
+                self.diags.push(d);
+            }
+        } else if def.sources.is_empty()
+            && (def.verbs.is_empty() || !def.targets.is_empty())
+            && !matches!(t, Type::Text | Type::Unknown)
+        {
+            let d = Diagnostic::error(
+                E_TYPE,
+                self.path(cx.file),
+                e.span,
+                format!(
+                    "The tool {} takes text here, but this is {}.",
+                    def.name,
+                    t.with_article()
+                ),
+            )
+            .with_help("Write the text in quotes; use {name} inside it to include a value.");
+            self.diags.push(d);
+        }
+    }
+
+    /// The record, variable and field a target word stands for: `crm update invoice` ->
+    /// (Invoice, the in-scope Invoice variable, `id`); `email send customer` -> (the record in
+    /// front of the block, its variable, `customer_email` else `customer`).
+    fn target_binding(
+        &self,
+        cx: &Cx,
+        def: &ToolDef,
+        target: &[TargetPart],
+        word: Option<&Ident>,
+        target_record: &Option<String>,
+    ) -> (Option<String>, Option<String>, Option<String>) {
+        let has_field = |rec: &str, f: &str| {
+            self.records
+                .get(rec)
+                .is_some_and(|r| r.fields.iter().any(|x| x.name == f))
+        };
+        if let Some(r) = target_record {
+            let var = match cx.bare() {
+                Some(b) if b.record == *r => Some(b.var.clone()),
+                _ => cx
+                    .frames
+                    .iter()
+                    .rev()
+                    .flat_map(|f| {
+                        let mut v: Vec<_> = f.vars.iter().collect();
+                        v.sort_by(|a, b| a.0.cmp(b.0));
+                        v
+                    })
+                    .find(|(_, t)| **t == Type::Record(r.clone()))
+                    .map(|(n, _)| n.clone()),
+            };
+            let field = has_field(r, "id").then(|| "id".to_string());
+            return (Some(r.clone()), var, field);
+        }
+        let Some(w) = word else {
+            return (None, None, None);
+        };
+        if !def.targets.contains(&w.name) || target.len() > 1 {
+            return (None, None, None);
+        }
+        match cx.bare() {
+            Some(b) => {
+                let email = format!("{}_email", w.name);
+                let field = if has_field(&b.record, &email) {
+                    Some(email)
+                } else if has_field(&b.record, &w.name) {
+                    Some(w.name.clone())
+                } else {
+                    None
+                };
+                (Some(b.record.clone()), Some(b.var.clone()), field)
+            }
+            None => (None, None, None),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
     fn binding_call(
         &mut self,
         cx: &mut Cx,
+        sk: super::NodeKey,
         bname: &str,
         tool: &Ident,
         verb: &Option<Ident>,
@@ -421,6 +555,7 @@ impl Checker<'_> {
     ) {
         let info = self.bindings.get(bname).cloned();
         let mut out = Type::Unknown;
+        let mut item_params: Option<Vec<super::ParamInfo>> = None;
         if let Some(info) = &info {
             match verb {
                 None => {
@@ -453,6 +588,7 @@ impl Checker<'_> {
                     }
                     Some(item) => {
                         out = item.sig.out.clone().unwrap_or(Type::Unknown);
+                        item_params = Some(item.sig.params.clone());
                         let words = target
                             .iter()
                             .filter(|t| matches!(t, TargetPart::Word(_) | TargetPart::Value(_)))
@@ -480,14 +616,43 @@ impl Checker<'_> {
                 },
             }
         }
-        // the values written after the verb
+        // the values written after the verb, checked against the bound function's parameters
+        let mut args: Vec<(Type, crate::diag::Span)> = Vec::new();
         for t in target {
             match t {
                 TargetPart::Word(w) => {
-                    self.path_expr(cx, std::slice::from_ref(w));
+                    let ty = self.path_expr(
+                        cx,
+                        std::slice::from_ref(w),
+                        super::NodeKey::new(cx.file, w.span),
+                    );
+                    args.push((ty, w.span));
                 }
                 TargetPart::Value(e) => {
-                    self.expr(cx, e);
+                    let ty = self.expr(cx, e);
+                    args.push((ty, e.span));
+                }
+            }
+        }
+        if let Some(params) = &item_params {
+            if params.len() == args.len() {
+                for (p, (t, span)) in params.iter().zip(&args) {
+                    if !self.is_assignable(t, &p.ty) {
+                        let d = Diagnostic::error(
+                            E_TYPE,
+                            self.path(cx.file),
+                            *span,
+                            format!(
+                                "\"{}\" of \"{bname} {}\" must be {}, but this is {}.{}",
+                                p.name,
+                                verb.as_ref().map(|v| v.name.as_str()).unwrap_or(""),
+                                p.ty,
+                                t.with_article(),
+                                self.note(t, &p.ty)
+                            ),
+                        );
+                        self.diags.push(d);
+                    }
                 }
             }
         }
@@ -499,6 +664,18 @@ impl Checker<'_> {
                 self.expr(cx, &a.value);
             }
         }
+        self.tool_calls.insert(
+            sk,
+            ToolResolution {
+                tool: bname.to_string(),
+                kind: ToolKind::Binding,
+                verb: verb.as_ref().map(|v| v.name.clone()),
+                target_word: None,
+                record: None,
+                var: None,
+                field: None,
+            },
+        );
         if let Some(i) = into {
             cx.define(&i.name, out);
         }

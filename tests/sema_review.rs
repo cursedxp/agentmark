@@ -1,0 +1,218 @@
+//! Regressions and interface checks from the step-3 review: name resolution order, partial record
+//! literals, the resolution tables later passes consume, inference, payload types.
+
+mod common;
+use common::*;
+
+use agentmark::project::Project;
+use agentmark::sema::{self, CallKind, Resolution, ToolKind, Type};
+
+// ------------------------------------------------------------------ names versus tools
+
+const LEAD: &str = "# Record: Lead\n- id: text\n- email: text\n\n";
+
+#[test]
+fn a_field_named_like_a_tool_is_a_field_in_a_rule() {
+    let c = ok(&format!("{LEAD}# Rule: r\n- for: Lead\n- when: email = \"x\"\n"));
+    assert!(c.resolutions.values().any(|r| matches!(
+        r,
+        Resolution::Field { record, field, .. } if record == "Lead" && field == "email"
+    )));
+}
+
+#[test]
+fn a_field_named_like_a_tool_is_a_field_in_a_loop() {
+    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, email, log\n\n## On start\nfor each l in crm.leads:\n  - log: \"{{email}} {{l.email}}\"\n");
+    ok(&src);
+}
+
+#[test]
+fn a_tool_source_still_needs_the_dot_and_a_bare_tool_is_not_a_value() {
+    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each l in crm.leads:\n  - log: \"x\"\n  - set n = crm\n");
+    let e = first_error(&src);
+    assert!(e.contains("\"crm\" is a tool, not a value."), "{e}");
+}
+
+#[test]
+fn a_variable_wins_over_a_field_and_a_constant_loses_to_a_field() {
+    let src = format!("{LEAD}# Constant: id\n- value: 1\n\n# Function: f\n- in: l: Lead, email: int\n- out: int\n- effect: pure\n  - return email\n\n# Rule: r\n- for: Lead\n- when: id = \"x\"\n");
+    ok(&src);
+}
+
+// ------------------------------------------------------------------ record literals
+
+const INV: &str = "# Record: Invoice\n- id: text\n- amount: money\n- note: maybe text\n\n";
+
+fn ret(lit: &str) -> String {
+    format!("{INV}# Function: f\n- out: Invoice\n- effect: pure\n  - return {lit}\n")
+}
+
+#[test]
+fn a_record_literal_must_give_every_field_that_is_not_maybe() {
+    ok(&ret("{ id: \"a\", amount: 1 EUR }"));
+    ok(&ret("{ id: \"a\", amount: 1 EUR, note: \"n\" }"));
+    let e = first_error(&ret("{ id: \"a\" }"));
+    assert!(e.contains("Missing: amount."), "{e}");
+}
+
+#[test]
+fn misspelled_keys_get_a_suggestion() {
+    let e = first_error(&ret("{ idd: \"a\", amount: 1 EUR }"));
+    assert!(e.contains("Invoice has no field \"idd\". Did you mean \"id\"?"), "{e}");
+    assert!(e.contains("Missing: id."), "{e}");
+}
+
+#[test]
+fn partial_literals_are_rejected_in_payloads_and_arguments() {
+    let src = format!("{INV}# Record: Lead\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n- crm update invoice: {{ id: \"x\" }}\n");
+    let e = first_error(&src);
+    assert!(e.contains("The tool crm takes a Invoice here"), "{e}");
+    assert!(e.contains("Missing: amount."), "{e}");
+}
+
+// ------------------------------------------------------------------ resolution tables
+
+fn example_01() -> sema::Checked {
+    sema::check(&Project::load("examples/01-invoice-chaser")).unwrap()
+}
+
+#[test]
+fn resolutions_say_what_every_name_stands_for() {
+    let c = example_01();
+    let has = |f: &dyn Fn(&Resolution) -> bool| c.resolutions.values().any(f);
+    assert!(has(&|r| matches!(r, Resolution::Call { kind: CallKind::DoBlock, decl } if decl == "remind")));
+    assert!(has(&|r| matches!(r, Resolution::Call { kind: CallKind::Rule, decl } if decl == "overdue")));
+    assert!(has(&|r| matches!(r, Resolution::Source { tool, source, record }
+        if tool == "crm" && source == "invoices" && record.as_deref() == Some("Invoice"))));
+    assert!(has(&|r| matches!(r, Resolution::Const { name } if name == "max_reminder_length")));
+    assert!(has(&|r| matches!(r, Resolution::Const { name } if name == "grace_period")));
+    assert!(has(&|r| matches!(r, Resolution::Field { var: Some(v), record, field }
+        if v == "invoice" && record == "Invoice" && field == "customer")));
+    assert!(has(&|r| matches!(r, Resolution::Var { name } if name == "reminder")));
+}
+
+#[test]
+fn tool_calls_say_which_variable_and_field_they_read() {
+    let c = example_01();
+    let email = c.tool_calls.values().find(|t| t.tool == "email").unwrap();
+    assert_eq!(email.kind, ToolKind::Manifest);
+    assert_eq!(email.verb.as_deref(), Some("send"));
+    assert_eq!(email.target_word.as_deref(), Some("customer"));
+    assert_eq!(email.record.as_deref(), Some("Invoice"));
+    assert_eq!(email.var.as_deref(), Some("invoice"));
+    // Q4: customer_email wins over customer
+    assert_eq!(email.field.as_deref(), Some("customer_email"));
+    let crm = c.tool_calls.values().find(|t| t.tool == "crm").unwrap();
+    assert_eq!(crm.record.as_deref(), Some("Invoice"));
+    assert_eq!(crm.var.as_deref(), Some("invoice"));
+    assert_eq!(crm.field.as_deref(), Some("id"));
+    let log = c.tool_calls.values().find(|t| t.tool == "log").unwrap();
+    assert_eq!(log.target_word, None);
+}
+
+#[test]
+fn bindings_are_resolved_as_bindings() {
+    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: local\n  - pdf render t -> b\n  - return b\n";
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", main), ("app/bindings/printpdf.agent.md", binding)]);
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    let t = c.tool_calls.values().next().unwrap();
+    assert_eq!((t.tool.as_str(), t.kind), ("pdf", ToolKind::Binding));
+}
+
+#[test]
+fn calls_are_resolved_to_declared_names_even_through_an_alias() {
+    let main = "# Import: ./billing as billing\n\n# Function: f\n- out: int\n- effect: pure\n  - return billing.five()\n";
+    let fns = "# Function: five\n- out: int\n- effect: pure\n  - return 5\n";
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", main), ("app/billing/fns.agent.md", fns)]);
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    assert!(c.resolutions.values().any(|r| matches!(r, Resolution::Call { kind: CallKind::Function, decl } if decl == "five")));
+}
+
+#[test]
+fn unwraps_say_where_a_maybe_value_is_read_as_present() {
+    let c = sema::check(&Project::load("examples/05-invoice-service.agent.md")).unwrap();
+    // `found.id` after `guard: found is not empty` unwraps segment 0; `respond 200 found` too
+    assert!(c.unwraps.values().any(|v| v == &vec![0]), "{:?}", c.unwraps);
+    let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- effect: pure\n  - if i.s is some v:\n    - return i.s\n  - return 0\n";
+    let c = ok(src);
+    assert!(c.unwraps.values().any(|v| v == &vec![1]), "{:?}", c.unwraps);
+}
+
+#[test]
+fn every_expression_has_a_type_and_an_effect() {
+    let c = example_01();
+    assert!(!c.expr_types.is_empty());
+    for k in c.expr_types.keys() {
+        assert!(c.expr_effects.contains_key(k), "{k:?}");
+    }
+    let crm_reads: Vec<_> = c
+        .expr_effects
+        .values()
+        .filter(|e| e.to_string() == "network(crm)")
+        .collect();
+    assert_eq!(crm_reads.len(), 1);
+}
+
+#[test]
+fn reading_state_is_pure_and_appending_is_local_state() {
+    let c = sema::check(&Project::load("examples/05-invoice-service.agent.md")).unwrap();
+    let get = c.blocks.iter().find(|b| b.label == "GET /invoices/{id}").unwrap();
+    assert!(get.effect.is_pure());
+    let post = c.blocks.iter().find(|b| b.label == "POST /invoices").unwrap();
+    assert_eq!(post.effect.to_string(), "local(state)");
+}
+
+// ------------------------------------------------------------------ inference
+
+#[test]
+fn camel_case_names_are_inferred_and_listed() {
+    let src = "# Record: A\n- createdAt\n- totalAmount\n- retryCount\n- notes\n- dueDate: text\n";
+    let c = ok(src);
+    let tys: Vec<String> = c.records["A"].fields.iter().map(|f| f.ty.to_string()).collect();
+    assert_eq!(tys, ["date", "money", "int", "text", "text"]);
+    let listed: Vec<(&str, bool)> = c.inferred_fields.iter().map(|f| (f.field.as_str(), f.fallback)).collect();
+    assert_eq!(listed, [("createdAt", false), ("totalAmount", false), ("retryCount", false), ("notes", true)]);
+    assert_eq!(c.warnings.iter().filter(|w| w.code == "W001").count(), 1);
+}
+
+// ------------------------------------------------------------------ Do blocks, payloads, services
+
+#[test]
+fn do_callers_may_use_different_variable_names_for_the_same_record() {
+    let src = "# Record: Invoice\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - do show\nfor each j in crm.invoices:\n  - do show\n\n## Do show\n- log: \"{id}\"\n";
+    let c = ok(src);
+    let b = c.blocks.iter().find(|b| b.label == "Do show").unwrap();
+    assert_eq!(b.param, Some(("i".to_string(), "Invoice".to_string())));
+}
+
+#[test]
+fn text_tools_need_text_payloads() {
+    let src = "# Agent: a\n- model: claude\n- tools: email, log\n\n## On start\n- email send address \"a@b.c\": 5\n";
+    let e = first_error(src);
+    assert!(e.contains("The tool email takes text here, but this is a number."), "{e}");
+    let e = first_error("# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: 5\n");
+    assert!(e.contains("The tool log takes text here"), "{e}");
+}
+
+#[test]
+fn binding_arguments_are_type_checked() {
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
+    let main = "# Import: crate printpdf\n\n# Function: make\n- in: n: int\n- out: bytes\n- effect: local\n  - pdf render n -> b\n  - return b\n";
+    let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", main), ("app/bindings/printpdf.agent.md", binding)]);
+    let d = sema::check(&p).unwrap_err();
+    let out = p.render(&d.into_iter().filter(|x| x.severity == agentmark::diag::Severity::Error).collect::<Vec<_>>());
+    assert!(out.contains("\"title\" of \"pdf render\" must be text, but this is a number."), "{out}");
+}
+
+#[test]
+fn only_one_service_may_have_a_state() {
+    let src = "# Record: S\n- n: int\n\n# Service: a\n- state: S\n\n## GET /x\n- respond 200 state\n\n# Service: b\n- state: S\n\n## GET /y\n- respond 200 state\n";
+    let e = first_error(src);
+    assert!(e.contains("Only one service may have a \"state:\" (\"a\" in t.agent.md:5 has one)"), "{e}");
+}
+
+#[test]
+fn types_still_display_for_literals() {
+    assert_eq!(Type::Object(vec![("a".into(), Type::Text)]).to_string(), "{ a: text }");
+}

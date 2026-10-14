@@ -8,13 +8,14 @@ use super::body::{Cx, PureKind};
 use super::effects::{effect_name, EffectSet};
 use super::scope::Kind;
 use super::types::Type;
-use super::{Checker, NodeKey};
+use super::{CallKind, Checker, NodeKey, Resolution};
 
 pub const E_UNKNOWN_NAME: &str = "E202";
 pub const E_TYPE: &str = "E203";
 pub const E_MAYBE: &str = "E204";
 pub const E_IMPURE: &str = "E205";
 pub const E_CALL: &str = "E209";
+const E_MANIFEST_TOOL: &str = "E207";
 
 /// `invoice.amount` -> `"invoice.amount"`; `None` if the expression is not a plain path.
 pub fn path_key(e: &Expr) -> Option<String> {
@@ -91,9 +92,13 @@ fn currency_of(e: &Expr) -> Option<&str> {
 impl Checker<'_> {
     /// Type of `e`, recording it in `expr_types`.
     pub fn expr(&mut self, cx: &mut Cx, e: &Expr) -> Type {
+        let outer = std::mem::take(&mut cx.acc);
         let ty = self.expr_inner(cx, e);
-        self.expr_types
-            .insert(NodeKey::new(cx.file, e.span), ty.clone());
+        let eff = std::mem::replace(&mut cx.acc, outer);
+        cx.acc.merge(&eff);
+        let key = NodeKey::new(cx.file, e.span);
+        self.expr_types.insert(key, ty.clone());
+        self.expr_effects.insert(key, eff);
         ty
     }
 
@@ -155,7 +160,15 @@ impl Checker<'_> {
                 }
                 Type::Text
             }
-            ExprKind::Path(segs) => self.path_expr(cx, segs),
+            ExprKind::Path(segs) => {
+                cx.unwrap_log.clear();
+                let t = self.path_expr(cx, segs, NodeKey::new(cx.file, e.span));
+                if !cx.unwrap_log.is_empty() {
+                    let log = std::mem::take(&mut cx.unwrap_log);
+                    self.unwraps.insert(NodeKey::new(cx.file, e.span), log);
+                }
+                t
+            }
             ExprKind::Binary { op, lhs, rhs } => self.binary(cx, e, *op, lhs, rhs),
             ExprKind::Not(x) => {
                 let t = self.expr(cx, x);
@@ -298,6 +311,13 @@ impl Checker<'_> {
     pub fn check_rule_use(&mut self, cx: &Cx, rule: &Ident, elem: &Type) {
         match self.lookup(cx.file, &rule.name, &[Kind::Rule]) {
             Some((_, name)) => {
+                self.resolutions.insert(
+                    NodeKey::new(cx.file, rule.span),
+                    Resolution::Call {
+                        kind: CallKind::Rule,
+                        decl: name.clone(),
+                    },
+                );
                 if let (Some(rec), Type::Record(er)) = (self.rule_records.get(&name), elem) {
                     if rec != er {
                         let d = Diagnostic::error(
@@ -327,11 +347,38 @@ impl Checker<'_> {
 
     // ------------------------------------------------------------------------ paths
 
-    pub(super) fn path_expr(&mut self, cx: &mut Cx, segs: &[Ident]) -> Type {
+    /// Resolution order: variables, bare fields of the record in front of the block, constants,
+    /// and only with a dot a tool's source (`crm.invoices`). A single word never names a tool.
+    pub(super) fn path_expr(&mut self, cx: &mut Cx, segs: &[Ident], key: NodeKey) -> Type {
         let first = &segs[0];
         // a variable (loop variable, `set`/`->` result, parameter, route parameter, `state`)
         if let Some(t) = cx.var(&first.name).cloned() {
+            self.resolutions.insert(
+                key,
+                Resolution::Var {
+                    name: first.name.clone(),
+                },
+            );
             return self.chain(cx, t, segs, 1, first.name.clone());
+        }
+        // a bare field of the record in front of us
+        if let Some(imp) = cx.bare().cloned() {
+            let fty = self
+                .records
+                .get(&imp.record)
+                .and_then(|r| r.fields.iter().find(|f| f.name == first.name))
+                .map(|f| f.ty.clone());
+            if let Some(t) = fty {
+                self.resolutions.insert(
+                    key,
+                    Resolution::Field {
+                        var: Some(imp.var.clone()),
+                        record: imp.record.clone(),
+                        field: first.name.clone(),
+                    },
+                );
+                return self.chain(cx, t, segs, 1, first.name.clone());
+            }
         }
         // a constant, possibly qualified by a module alias
         for n in (1..=segs.len()).rev() {
@@ -342,26 +389,47 @@ impl Checker<'_> {
                 .join(".");
             if let Some((_, name)) = self.lookup(cx.file, &joined, &[Kind::Constant]) {
                 let t = self.const_type(&name);
+                self.resolutions.insert(key, Resolution::Const { name });
                 return self.chain(cx, t, segs, n, joined);
             }
         }
         // a readable source of a tool: `crm.invoices`
-        if let Some(def) = self.p.manifest.tool(&first.name).cloned() {
-            return self.source(cx, segs, &def);
-        }
-        // a bare field of the record in front of us
-        if let Some(imp) = cx.bare().cloned() {
-            let fty = self
-                .records
-                .get(&imp.record)
-                .and_then(|r| r.fields.iter().find(|f| f.name == first.name))
-                .map(|f| f.ty.clone());
-            if let Some(t) = fty {
-                return self.chain(cx, t, segs, 1, first.name.clone());
+        if segs.len() >= 2 {
+            if let Some(def) = self.p.manifest.tool(&first.name).cloned() {
+                return self.source(cx, segs, &def, key);
             }
-            if cx.lenient {
+        }
+        if cx.lenient {
+            // a `## Do` block nobody calls: we do not know its record, but a name that is no
+            // field of any record can never work
+            let known = self
+                .records
+                .values()
+                .any(|r| r.fields.iter().any(|f| f.name == first.name));
+            if known {
                 return Type::Unknown;
             }
+        }
+        if segs.len() == 1 && self.p.manifest.tool(&first.name).is_some() {
+            let d = Diagnostic::error(
+                E_MANIFEST_TOOL,
+                self.path(cx.file),
+                first.span,
+                format!("\"{}\" is a tool, not a value.", first.name),
+            )
+            .with_help(format!(
+                "To read from it, name a source, for example \"{}.{}\".",
+                first.name,
+                self.p
+                    .manifest
+                    .tool(&first.name)
+                    .and_then(|d| d.sources.first().cloned())
+                    .unwrap_or_else(|| "items".into())
+            ));
+            self.diags.push(d);
+            return Type::Unknown;
+        }
+        if let Some(imp) = cx.bare().cloned() {
             let mut cands: Vec<String> = self
                 .records
                 .get(&imp.record)
@@ -378,17 +446,27 @@ impl Checker<'_> {
             self.diags.push(d);
             return Type::Unknown;
         }
-        if cx.lenient {
+        if self.rule_without_record(cx) {
             return Type::Unknown;
         }
         let mut cands = cx.in_agent_names();
         cands.extend(self.scopes[cx.file].names_of(&[Kind::Constant]));
         cands.extend(self.p.manifest.tool_names().map(str::to_string));
-        let d = Diagnostic::error(E_UNKNOWN_NAME, self.path(cx.file), first.span, format!("Unknown name \"{}\".", first.name))
-            .with_did_you_mean(super::scope::suggest(&first.name, &cands))
-            .with_help("Names come from \"set\" and \"->\" lines above, loop variables, constants and imported declarations.");
+        let d = Diagnostic::error(
+            E_UNKNOWN_NAME,
+            self.path(cx.file),
+            first.span,
+            format!("Unknown name \"{}\".", first.name),
+        )
+        .with_did_you_mean(super::scope::suggest(&first.name, &cands))
+        .with_help("Names come from \"set\" and \"->\" lines above, loop variables, constants and imported declarations.");
         self.diags.push(d);
         Type::Unknown
+    }
+
+    /// A rule whose `for:` record was unknown (already reported): stay quiet about its names.
+    fn rule_without_record(&self, cx: &Cx) -> bool {
+        cx.lenient && cx.bare().is_none() && cx.agent.is_none() && cx.func.is_none()
     }
 
     /// Follow `.field` accesses from segment `start` on, with `ty` the type so far and `key` the
@@ -404,6 +482,7 @@ impl Checker<'_> {
         for i in start..segs.len() {
             if let Type::Maybe(inner) = &ty {
                 if cx.is_narrowed(&key) {
+                    cx.unwrap_log.push(i - 1);
                     ty = (**inner).clone();
                 } else {
                     let d = Diagnostic::error(
@@ -477,6 +556,7 @@ impl Checker<'_> {
         }
         if let Type::Maybe(inner) = &ty {
             if cx.is_narrowed(&key) {
+                cx.unwrap_log.push(segs.len() - 1);
                 return (**inner).clone();
             }
         }
@@ -648,6 +728,17 @@ impl Checker<'_> {
             self.diags.push(d);
             return Type::Unknown;
         };
+        self.resolutions.insert(
+            NodeKey::new(cx.file, e.span),
+            Resolution::Call {
+                kind: if kind == Kind::RustBlock {
+                    CallKind::RustBlock
+                } else {
+                    CallKind::Function
+                },
+                decl: decl.clone(),
+            },
+        );
         let sig = self.sigs.get(&(kind, decl.clone())).cloned();
         let ty = match &sig {
             Some(sig) => {
@@ -710,10 +801,11 @@ impl Checker<'_> {
                     self.path(cx.file),
                     a.span,
                     format!(
-                        "\"{}\" of \"{name}\" must be {}, but this is {}.",
+                        "\"{}\" of \"{name}\" must be {}, but this is {}.{}",
                         p.name,
                         p.ty,
-                        t.with_article()
+                        t.with_article(),
+                        self.note(t, &p.ty)
                     ),
                 );
                 self.diags.push(d);

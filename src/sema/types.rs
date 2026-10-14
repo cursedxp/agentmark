@@ -111,12 +111,15 @@ impl fmt::Display for Type {
     }
 }
 
+/// "What are the fields of record R" (name and type, in order), if R exists.
+pub type FieldsOf<'a> = dyn Fn(&str) -> Option<Vec<(String, Type)>> + 'a;
+
 /// Can a value of type `from` be stored where `to` is expected?
 /// `field_of` answers "what are the fields of record R" for record literals.
 pub fn assignable(
     from: &Type,
     to: &Type,
-    field_of: &dyn Fn(&str) -> Option<Vec<(String, Type)>>,
+    field_of: &FieldsOf,
 ) -> bool {
     if from.is_unknown() || to.is_unknown() || from == to {
         return true;
@@ -127,11 +130,17 @@ pub fn assignable(
         (Type::Maybe(f), Type::Maybe(t)) => assignable(f, t, field_of),
         (Type::List(f), Type::List(t)) => assignable(f, t, field_of),
         (Type::Object(fields), Type::Record(r)) => match field_of(r) {
-            Some(rec) => fields.iter().all(|(n, t)| {
-                rec.iter()
-                    .find(|(rn, _)| rn == n)
-                    .is_some_and(|(_, rt)| assignable(t, rt, field_of))
-            }),
+            // every key must exist with a fitting type, and every field that is not `maybe`
+            // must be given
+            Some(rec) => {
+                fields.iter().all(|(n, t)| {
+                    rec.iter()
+                        .find(|(rn, _)| rn == n)
+                        .is_some_and(|(_, rt)| assignable(t, rt, field_of))
+                }) && rec
+                    .iter()
+                    .all(|(rn, rt)| rt.is_maybe() || fields.iter().any(|(n, _)| n == rn))
+            }
             None => true,
         },
         (Type::Object(a), Type::Object(b)) => b.iter().all(|(n, t)| {
@@ -151,14 +160,67 @@ pub fn assignable(
 /// would become dates. OPEN_QUESTIONS Q32: the suffix must be a whole word of the name
 /// (`due_date`, `created_at`, `paid_on`, `date`), words being separated by `_` or `-`.
 pub fn infer_field_type(name: &str) -> (Type, bool) {
-    let words: Vec<&str> = name.split(['_', '-']).collect();
-    let last = words.last().copied().unwrap_or("");
-    match last {
+    let last = last_word(name);
+    match last.as_str() {
         "date" | "at" | "on" => (Type::Date, true),
         "amount" | "price" | "total" | "fee" => (Type::Money, true),
         "count" | "qty" | "number" => (Type::Int, true),
         _ => (Type::Text, false),
     }
+}
+
+/// Last word of a name, words split at `_`, `-` and lower-to-upper case changes
+/// (`createdAt` -> `at`, `due_date` -> `date`).
+fn last_word(name: &str) -> String {
+    let mut word = String::new();
+    let mut prev_lower = false;
+    for c in name.chars() {
+        if c == '_' || c == '-' {
+            word.clear();
+            prev_lower = false;
+        } else if c.is_uppercase() && prev_lower {
+            word.clear();
+            word.extend(c.to_lowercase());
+            prev_lower = false;
+        } else {
+            word.extend(c.to_lowercase());
+            prev_lower = c.is_lowercase() || c.is_ascii_digit();
+        }
+    }
+    word
+}
+
+/// Why an object literal does not fit a record: the missing fields and misspelled keys, as a
+/// sentence to append to a message (empty when nothing specific can be said).
+pub fn object_note(from: &Type, to: &Type, fields_of: &FieldsOf) -> String {
+    let (Type::Object(given), Type::Record(r)) = (from, to) else {
+        return String::new();
+    };
+    let Some(rec) = fields_of(r) else {
+        return String::new();
+    };
+    let mut notes = Vec::new();
+    let unknown: Vec<&str> = given
+        .iter()
+        .map(|(n, _)| n.as_str())
+        .filter(|n| !rec.iter().any(|(rn, _)| rn == n))
+        .collect();
+    for u in unknown {
+        let hit = crate::diag::did_you_mean(u, rec.iter().map(|(n, _)| n.as_str()));
+        notes.push(match hit {
+            Some(h) => format!("{r} has no field \"{u}\". Did you mean \"{h}\"?"),
+            None => format!("{r} has no field \"{u}\"."),
+        });
+    }
+    let missing: Vec<&str> = rec
+        .iter()
+        .filter(|(rn, rt)| !rt.is_maybe() && !given.iter().any(|(n, _)| n == rn))
+        .map(|(n, _)| n.as_str())
+        .collect();
+    if !missing.is_empty() {
+        notes.push(format!("Missing: {}.", missing.join(", ")));
+    }
+    notes.join(" ")
 }
 
 #[cfg(test)]
@@ -188,6 +250,11 @@ mod tests {
         assert_eq!(infer_field_type("retry_count"), (Type::Int, true));
         assert_eq!(infer_field_type("qty"), (Type::Int, true));
         assert_eq!(infer_field_type("customer"), (Type::Text, false));
+        assert_eq!(infer_field_type("createdAt"), (Type::Date, true));
+        assert_eq!(infer_field_type("totalAmount"), (Type::Money, true));
+        assert_eq!(infer_field_type("retryCount"), (Type::Int, true));
+        assert_eq!(infer_field_type("dueDate"), (Type::Date, true));
+        assert_eq!(infer_field_type("Date"), (Type::Date, true));
         // letters alone are not enough
         assert_eq!(infer_field_type("reason"), (Type::Text, false));
         assert_eq!(infer_field_type("format"), (Type::Text, false));
@@ -206,10 +273,21 @@ mod tests {
     }
 
     #[test]
+    fn record_literals_must_give_every_field_that_is_not_maybe() {
+        let rec = |n: &str| {
+            (n == "R").then(|| vec![("a".to_string(), Type::Text), ("b".to_string(), Type::Int.maybe())])
+        };
+        let only_a = Type::Object(vec![("a".into(), Type::Text)]);
+        assert!(assignable(&only_a, &Type::Record("R".into()), &rec));
+        let only_b = Type::Object(vec![("b".into(), Type::Int)]);
+        assert!(!assignable(&only_b, &Type::Record("R".into()), &rec));
+    }
+
+    #[test]
     fn record_literals_fit_records_with_matching_fields() {
         let rec = |n: &str| {
             (n == "Invoice")
-                .then(|| vec![("id".to_string(), Type::Text), ("n".to_string(), Type::Int)])
+                .then(|| vec![("id".to_string(), Type::Text), ("n".to_string(), Type::Int.maybe())])
         };
         let obj = Type::Object(vec![("id".into(), Type::Text)]);
         assert!(assignable(&obj, &Type::Record("Invoice".into()), &rec));

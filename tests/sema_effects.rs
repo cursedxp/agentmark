@@ -227,13 +227,15 @@ fn a_do_block_sees_the_loop_record_but_two_different_records_are_an_error() {
 
 #[test]
 fn an_uncalled_do_block_is_a_warning_not_an_error() {
-    let w = warnings(
-        "# Agent: a\n- model: claude\n- tools: log\n\n## Do lonely\n- log: \"{whatever}\"\n",
-    );
-    assert!(
-        w.contains("Unused action: no block calls \"do lonely\"."),
-        "{w}"
-    );
+    // we do not know which record it works on, so a name that is a field of some record passes
+    let w = warnings("# Record: R\n- id: text\n\n# Agent: a\n- model: claude\n- tools: log\n\n## Do lonely\n- log: \"{id}\"\n");
+    assert!(w.contains("Unused action: no block calls \"do lonely\"."), "{w}");
+}
+
+#[test]
+fn an_uncalled_do_block_still_reports_names_that_no_record_has() {
+    let e = first_error("# Record: R\n- id: text\n\n# Agent: a\n- model: claude\n- tools: log\n\n## Do lonely\n- log: \"{whatever}\"\n");
+    assert!(e.contains("Unknown name \"whatever\""), "{e}");
 }
 
 #[test]

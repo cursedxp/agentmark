@@ -57,7 +57,7 @@ fn imports_are_not_transitive() {
         "app/main.agent.md",
         vec![
             ("app/main.agent.md", "# Import: ./mid.agent.md\n\n# Function: f\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n"),
-            ("app/mid.agent.md", &format!("# Import: ./invoice.agent.md\n\n# Function: g\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n")),
+            ("app/mid.agent.md", "# Import: ./invoice.agent.md\n\n# Function: g\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n"),
             ("app/invoice.agent.md", INVOICE),
         ],
     );

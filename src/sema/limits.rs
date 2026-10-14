@@ -7,6 +7,8 @@ use crate::syntax::ast::{Decl, Stmt, StmtKind};
 use super::Checker;
 
 pub const E_LIMIT: &str = "E211";
+pub const W_SINGLE_FILE: &str = "W006";
+pub const W_LONG_LINE: &str = "W007";
 pub const MAX_NESTING: usize = 3;
 pub const MAX_STATEMENTS: usize = 25;
 pub const MAX_LINE: usize = 120;
@@ -63,17 +65,19 @@ pub fn check(ck: &mut Checker<'_>) {
 
 // ---------------------------------------------------------------------------------- line length
 
-/// Length of a line for the 120-character limit. The text of a string literal is prose that
-/// cannot be broken across lines, so it does not count (OPEN_QUESTIONS Q35); the quotes do.
-fn counted_len(line: &str, in_fence: bool) -> usize {
-    if in_fence {
-        return line.chars().count();
-    }
+/// Length of a line for the 120-character limit, and the 1-based column of the first counted
+/// character past the limit. The text of a string literal is prose that cannot be broken across
+/// lines, so it does not count (OPEN_QUESTIONS Q35); the quotes do. `exempt` is false for
+/// comments and fenced Rust, which count in full.
+fn counted_len(line: &str, exempt: bool) -> (usize, Option<usize>) {
     let mut n = 0;
+    let mut over = None;
     let mut in_str = false;
     let mut escaped = false;
-    for c in line.chars() {
-        if in_str {
+    for (i, c) in line.chars().enumerate() {
+        let counts = if !exempt {
+            true
+        } else if in_str {
             if escaped {
                 escaped = false;
             } else if c == '\\' {
@@ -81,15 +85,25 @@ fn counted_len(line: &str, in_fence: bool) -> usize {
             } else if c == '"' {
                 in_str = false;
                 n += 1;
+                if n == MAX_LINE + 1 {
+                    over = Some(i + 1);
+                }
             }
+            false
         } else {
-            n += 1;
             if c == '"' {
                 in_str = true;
             }
+            true
+        };
+        if counts {
+            n += 1;
+            if n == MAX_LINE + 1 && over.is_none() {
+                over = Some(i + 1);
+            }
         }
     }
-    n
+    (n, over)
 }
 
 fn line_lengths(path: &str, text: &str, out: &mut Vec<Diagnostic>) {
@@ -100,9 +114,11 @@ fn line_lengths(path: &str, text: &str, out: &mut Vec<Diagnostic>) {
         if is_fence {
             in_fence = !in_fence;
         }
-        let len = counted_len(line, in_fence || is_fence);
+        let exempt = !(in_fence || is_fence || trimmed.starts_with('>'));
+        let (len, over) = counted_len(line, exempt);
+        let total = line.chars().count();
         if len > MAX_LINE {
-            let total = line.chars().count();
+            let col = over.unwrap_or(MAX_LINE + 1);
             let help = if line.contains('"') && total > len + 20 {
                 "Shorten the statement around the text, or put the long text into a \"# Constant\" and use its name."
             } else {
@@ -112,14 +128,22 @@ fn line_lengths(path: &str, text: &str, out: &mut Vec<Diagnostic>) {
                 Diagnostic::error(
                     E_LIMIT,
                     path,
-                    Span::new(
-                        i as u32 + 1,
-                        MAX_LINE as u32 + 1,
-                        (total - MAX_LINE).max(1) as u32,
-                    ),
+                    Span::new(i as u32 + 1, col as u32, (total + 1 - col).max(1) as u32),
                     format!("This line is {len} characters long; the limit is {MAX_LINE}."),
                 )
                 .with_help(help),
+            );
+        } else if total > MAX_LINE {
+            out.push(
+                Diagnostic::warning(
+                    W_LONG_LINE,
+                    path,
+                    Span::new(i as u32 + 1, MAX_LINE as u32 + 1, (total - MAX_LINE) as u32),
+                    format!(
+                        "This line is {total} characters long; only the text of its strings makes it longer than {MAX_LINE}."
+                    ),
+                )
+                .with_help("Consider moving the long text into a \"# Constant\" and using its name."),
             );
         }
     }
@@ -134,41 +158,50 @@ fn declarations(
     decls: &[Decl],
     out: &mut Vec<Diagnostic>,
 ) {
-    let mut agents = Vec::new();
-    let mut services = Vec::new();
-    let mut commands = Vec::new();
+    let mut runnable = Vec::new();
     let mut records = Vec::new();
     let mut rules = Vec::new();
     for d in decls {
         match d {
-            Decl::Agent(a) => agents.push(&a.name),
-            Decl::Service(s) => services.push(&s.name),
-            Decl::Command(c) => commands.push(&c.name),
+            Decl::Agent(a) => runnable.push(("agent", &a.name)),
+            Decl::Service(s) => runnable.push(("service", &s.name)),
+            Decl::Command(c) => runnable.push(("command", &c.name)),
             Decl::Record(r) => records.push(&r.name),
             Decl::Rule(r) => rules.push(&r.name),
             _ => {}
         }
     }
-    for (noun, folder, list) in [
-        ("agent", "agents", &agents),
-        ("service", "services", &services),
-        ("command", "commands", &commands),
-    ] {
-        if let [first, second, ..] = list.as_slice() {
+    // OPEN_QUESTIONS Q34: a project folder applies the row literally; a single file is a whole
+    // program in one file, exempt from the row but flagged once.
+    if let [(first_kind, first), (second_kind, second), ..] = runnable.as_slice() {
+        if kind == ProjectKind::Folder {
             out.push(
                 Diagnostic::error(
                     E_LIMIT,
                     path,
                     second.span,
                     format!(
-                        "A file may hold only one {noun}, but \"{}\" is the second (the first is \"{}\").",
+                        "A file may hold only one agent, service or command, but the {second_kind} \"{}\" comes after the {first_kind} \"{}\".",
                         second.name, first.name
                     ),
                 )
                 .with_help(format!(
-                    "Move \"{}\" into its own file, for example \"{folder}/{}.agent.md\", and import it.",
-                    second.name, second.name
+                    "Move \"{}\" into its own file, for example \"{}s/{}.agent.md\", and import it.",
+                    second.name, second_kind, second.name
                 )),
+            );
+        } else {
+            out.push(
+                Diagnostic::warning(
+                    W_SINGLE_FILE,
+                    path,
+                    second.span,
+                    format!(
+                        "This file holds {} runnable declarations (agent, service or command): it is a single-file draft.",
+                        runnable.len()
+                    ),
+                )
+                .with_help("Split it into a project folder with one declaration per file when it grows."),
             );
         }
     }
@@ -287,6 +320,29 @@ fn last_line(s: &Stmt) -> u32 {
         .max(s.span.line)
 }
 
+/// Lines to move out: from the top-level statement holding the 25th statement to `end`. When that
+/// statement alone is larger than the limit, move the part inside it instead.
+fn overflow_range(stmts: &[Stmt], before: usize, end: u32) -> Option<(u32, u32)> {
+    let mut seen = before;
+    for s in stmts {
+        let n = 1 + children(s).iter().map(|c| count(c)).sum::<usize>();
+        if seen + n >= MAX_STATEMENTS {
+            if n > MAX_STATEMENTS {
+                let mut inner = seen + 1;
+                for c in children(s) {
+                    if let Some(r) = overflow_range(c, inner, last_line(s)) {
+                        return Some(r);
+                    }
+                    inner += count(c);
+                }
+            }
+            return Some((s.span.line, end));
+        }
+        seen += n;
+    }
+    None
+}
+
 fn body(
     path: &str,
     what: &str,
@@ -304,18 +360,9 @@ fn body(
     }
     let total = count(stmts);
     if total > MAX_STATEMENTS {
-        // the top-level statement that contains the 25th statement, up to the end of the block
-        let mut seen = 0;
-        let mut start = stmts[0].span.line;
-        for s in stmts {
-            let n = 1 + children(s).iter().map(|c| count(c)).sum::<usize>();
-            if seen + n >= MAX_STATEMENTS {
-                start = s.span.line;
-                break;
-            }
-            seen += n;
-        }
-        let end = stmts.iter().map(last_line).max().unwrap_or(start);
+        let end = stmts.iter().map(last_line).max().unwrap_or(heading.line);
+        let (start, end) = overflow_range(stmts, 0, end)
+            .unwrap_or((stmts[0].span.line, end));
         out.push(
             Diagnostic::error(
                 E_LIMIT,
@@ -362,9 +409,20 @@ mod tests {
     #[test]
     fn string_text_does_not_count_but_code_does() {
         let line = format!("- log: \"{}\"", "x".repeat(200));
-        assert_eq!(counted_len(&line, false), "- log: \"\"".len());
-        assert_eq!(counted_len(&line, true), line.len());
+        assert_eq!(counted_len(&line, true).0, "- log: \"\"".len());
+        assert_eq!(counted_len(&line, false).0, line.len());
         let line = "- say \"a \\\" b\" more";
-        assert_eq!(counted_len(line, false), "- say \"\" more".len());
+        assert_eq!(counted_len(line, true).0, "- say \"\" more".len());
+    }
+
+    #[test]
+    fn the_overflow_column_is_the_first_counted_character_past_the_limit() {
+        let line = format!("- log: \"{}\" {}", "x".repeat(300), "y".repeat(130));
+        let (n, over) = counted_len(&line, true);
+        assert!(n > MAX_LINE);
+        // the 121st counted character is a `y`, far to the right of column 121
+        let col = over.unwrap();
+        assert!(col > 300);
+        assert_eq!(line.chars().nth(col - 1), Some('y'));
     }
 }

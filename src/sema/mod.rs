@@ -45,6 +45,77 @@ impl NodeKey {
     }
 }
 
+/// What a name in the source stands for, so later passes never re-derive scope.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum Resolution {
+    /// A variable: loop variable, `->`/`set` result, parameter, route parameter, `state`,
+    /// event record. For a path (`invoice.amount`) this is the first segment.
+    Var { name: String },
+    /// A bare field of the record in front of the block (`amount` for `invoice.amount`);
+    /// `var` is that record's variable.
+    Field {
+        var: Option<String>,
+        record: String,
+        field: String,
+    },
+    /// A constant, by its declared name (module prefix removed). Meant to be inlined.
+    Const { name: String },
+    /// A tool's readable collection, `crm.invoices`; `record` is the element record.
+    Source {
+        tool: String,
+        source: String,
+        record: Option<String>,
+    },
+    /// A call (`f(x)`, `do f`, `do remind`, a rule used as a filter). `decl` is the declared
+    /// name, never the module-qualified spelling.
+    Call { kind: CallKind, decl: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum CallKind {
+    Function,
+    RustBlock,
+    Binding,
+    /// A `## Do` block of the same agent.
+    DoBlock,
+    Rule,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ToolKind {
+    Manifest,
+    Binding,
+}
+
+/// Resolution of a tool-call statement (`email send customer: …`, `pdf render doc -> b`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ToolResolution {
+    pub tool: String,
+    pub kind: ToolKind,
+    pub verb: Option<String>,
+    /// First target word (`customer`, `invoice`, `address`).
+    pub target_word: Option<String>,
+    /// Record the target word names or stands in front of (`Invoice`).
+    pub record: Option<String>,
+    /// The in-scope variable holding that record.
+    pub var: Option<String>,
+    /// Field of that record the runtime reads: the `to` address of `email send customer`
+    /// (`customer_email`, else `customer`, Q4) or the `id` of a crm target (Q5).
+    pub field: Option<String>,
+}
+
+/// A field whose type came from SPEC 2.1 inference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InferredField {
+    pub record: String,
+    pub field: String,
+    pub ty: Type,
+    /// No name rule matched and the type fell back to `text` (this is the W001 warning).
+    pub fallback: bool,
+    pub file: usize,
+    pub span: Span,
+}
+
 /// A record field with its resolved type.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FieldInfo {
@@ -171,8 +242,22 @@ pub struct Checked {
     pub records: BTreeMap<String, RecordInfo>,
     /// Type of every expression (including those inside interpolated strings).
     pub expr_types: HashMap<NodeKey, Type>,
+    /// Effect of every expression (sub-expressions included). Only effectful ones come from
+    /// tool sources and calls; everything else is `pure`.
+    pub expr_effects: HashMap<NodeKey, EffectSet>,
     /// Effect of every statement, nested statements included in their parent's set.
     pub stmt_effects: HashMap<NodeKey, EffectSet>,
+    /// What each path / call expression, `do` statement, rule filter ident (key = the ident's
+    /// span) stands for.
+    pub resolutions: HashMap<NodeKey, Resolution>,
+    /// Tool-call statements, keyed by the statement span.
+    pub tool_calls: HashMap<NodeKey, ToolResolution>,
+    /// Path expressions that read a `maybe` value known to be non-empty here: the 0-based
+    /// segment indices whose value must be unwrapped (`found.id` after `guard: found is not
+    /// empty` -> `[0]`). Codegen unwraps exactly there.
+    pub unwraps: HashMap<NodeKey, Vec<usize>>,
+    /// Every field whose type was inferred (SPEC 2.1), for `check` to print.
+    pub inferred_fields: Vec<InferredField>,
     /// Effect of every function, rule, entry, action, route and command, in source order.
     pub blocks: Vec<BlockInfo>,
     /// The resolved tool manifest.
@@ -249,7 +334,12 @@ pub(crate) struct Checker<'a> {
     consts: HashMap<String, ConstState>,
     pub const_infos: BTreeMap<String, ConstInfo>,
     pub expr_types: HashMap<NodeKey, Type>,
+    pub expr_effects: HashMap<NodeKey, EffectSet>,
     pub stmt_effects: HashMap<NodeKey, EffectSet>,
+    pub resolutions: HashMap<NodeKey, Resolution>,
+    pub tool_calls: HashMap<NodeKey, ToolResolution>,
+    pub unwraps: HashMap<NodeKey, Vec<usize>>,
+    pub inferred_fields: Vec<InferredField>,
     pub blocks: Vec<BlockInfo>,
     pub memo: HashMap<BodyKey, Memo>,
     /// The record variable a `## Do` block receives from its first caller (Q30).
@@ -275,7 +365,12 @@ impl<'a> Checker<'a> {
             consts: HashMap::new(),
             const_infos: BTreeMap::new(),
             expr_types: HashMap::new(),
+            expr_effects: HashMap::new(),
             stmt_effects: HashMap::new(),
+            resolutions: HashMap::new(),
+            tool_calls: HashMap::new(),
+            unwraps: HashMap::new(),
+            inferred_fields: Vec::new(),
             blocks: Vec::new(),
             memo: HashMap::new(),
             do_ctx: HashMap::new(),
@@ -318,6 +413,7 @@ impl<'a> Checker<'a> {
         self.declare_records();
         self.declare_signatures();
         self.check_agent_headers();
+        self.check_service_states();
         self.check_constants();
         self.check_all_bodies();
         self.check_runs();
@@ -356,7 +452,12 @@ impl<'a> Checker<'a> {
             warnings: self.diags,
             records: self.records,
             expr_types: self.expr_types,
+            expr_effects: self.expr_effects,
             stmt_effects: self.stmt_effects,
+            resolutions: self.resolutions,
+            tool_calls: self.tool_calls,
+            unwraps: self.unwraps,
+            inferred_fields: self.inferred_fields,
             blocks: self.blocks,
             manifest: self.p.manifest.clone(),
             constants: self.const_infos,
@@ -364,6 +465,29 @@ impl<'a> Checker<'a> {
             rust_blocks: self.rust_blocks,
             bindings: self.bindings.into_values().collect(),
         })
+    }
+
+    /// Commands use the `state` of the project's service (Q9), so only one service may have one.
+    fn check_service_states(&mut self) {
+        let mut first: Option<(usize, u32, String)> = None;
+        for (fi, f) in self.p.files.iter().enumerate() {
+            for d in &f.ast.decls {
+                let Decl::Service(s) = d else { continue };
+                let Some(st) = &s.state else { continue };
+                match &first {
+                    None => first = Some((fi, st.span.line, s.name.name.clone())),
+                    Some((ff, line, name)) => {
+                        let msg = format!(
+                            "Only one service may have a \"state:\" (\"{name}\" in {}:{line} has one), because commands use it.",
+                            self.p.files[*ff].path
+                        );
+                        let d = Diagnostic::error("E218", self.path(fi), st.span, msg)
+                            .with_help("Keep the state in one service, or pass data through a tool.");
+                        self.diags.push(d);
+                    }
+                }
+            }
+        }
     }
 
     /// Typing of constants happens once, on demand; this runs all of them.
