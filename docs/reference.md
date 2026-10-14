@@ -106,8 +106,7 @@ Where the specification left a question open, the text states the choice and `OP
 
 ## 0. Architecture: three layers
 
-A complete program that uses all three layers is the weekly report. The agent (layer 3) wakes up on
-Monday, counts invoices with two rules, asks a model for two sentences, checks them and mails them.
+This program is the weekly report. On Monday the agent counts invoices with two rules, asks a model for two sentences, checks them and mails them.
 
 ```agentmark
 # Record: Invoice
@@ -138,27 +137,33 @@ Monday, counts invoices with two rules, asks a model for two sentences, checks t
 - log: "Report sent: {open_count} open, {overdue_count} overdue"
 ```
 
+**Rules**
+- Layer 3 is the agent layer, layer 2 is the core language and layer 1 is the escape hatch.
+- Layer 3 is sugar over layer 2. Layer 1 is Rust written inside layer 2.
+- A feature enters layer 2 only after it has appeared in layer 1 three times.
+
 | layer | what lives there | where it is described |
 |---|---|---|
 | 3. Agent layer | `# Agent`, `# Rule`, triggers (`## Every ...`), `ask model`, `guard` | sections 2 to 4 |
 | 2. Core language | `# Record`, `# Enum`, `# Function`, `# Service`, `# Command`, `# Tool`, `# Constant`, control flow, `match`, collection words, the built-in library, `try`, library bindings | sections 13 to 16 and 22 |
 | 1. Escape hatch | `## Rust` blocks: verbatim Rust inside any block | section 17 |
 
-Layer 3 is sugar over layer 2. Before the program is turned into Rust, every agent construct is
-rewritten into layer 2: a rule becomes a pure function returning yes or no, a trigger block becomes an
-*entry* that runs on a schedule or an event, a `## Do` block becomes a function named
-`<agent>__<block>`, `ask model` becomes a model call, and a `guard` becomes "evaluate, write a trace
-line, stop if it failed". After that step no agent, rule, trigger or guard remains (the code that does
-it is `src/lower/agent_lower.rs`). The generator that writes Rust never sees an agent.
+**How layer 3 becomes layer 2**
 
-The rule for growing the language: a feature enters layer 2 only after it has appeared in layer 1
-three times.
+Before the program is turned into Rust, every agent construct is rewritten into layer 2.
+- A rule becomes a pure function that returns yes or no.
+- A trigger block becomes an **entry** that runs on a schedule or on an event.
+- A `## Do` block becomes a function named `<agent>__<block>`.
+- `ask model` becomes a model call.
+- A `guard` becomes: evaluate, write a trace line, stop if it failed.
+
+After this step no agent, rule, trigger or guard remains. The code that does it is `src/lower/agent_lower.rs`, and the generator that writes Rust never sees an agent.
+
+**Next:** [1. File structure](#1-file-structure)
 
 ## 1. File structure
 
-A file is a sequence of **declarations**. Each starts with a level-1 heading `# Kind: name`. Under it,
-`- key: value` lines are **properties**, `## heading` lines start **blocks**, and the lines of a block
-are **statements**.
+A file is a sequence of **declarations**. Each starts with a level-1 heading, and the lines under it are properties and blocks.
 
 ```agentmark
 > Counts open invoices. The comment above a heading documents it.
@@ -172,25 +177,35 @@ are **statements**.
 - log: "counting"
 ```
 
-* Declaration kinds: `Record`, `Rule`, `Agent`, `Function`, `Service`, `Command`, `Binding`,
-  `Constant`, `Import`, `Run`. Anything else is an error that suggests the closest kind.
-* Properties come before the first `##` heading. Statements sit at indentation 0 directly under
-  a `##` heading, and every nested body (`for each`, `if`, `else`, `otherwise`, `parallel`) is indented
-  by one more 2-space step (Q16). Function bodies are the exception: they are indented under the
-  `- effect:` property, as section 13.1 shows.
-* Statements are list items (`- `), except `otherwise:` and (in older files) bare `for each ...:` and
-  `stop` lines. The formatter writes every statement as a list item (Q51).
-* A line starting with `>` is a comment. A run of comment lines directly above a `#` or `##` heading
-  is that heading's documentation. A run at the top of a file followed by a blank line is the
-  documentation of the file. All other comments belong to the next statement, field or property
-  (Q17, Q28).
-* Identifiers are letters, digits, `-` and `_`, starting with a letter. Declaration, rule, record and
-  type names may contain `-` (`very-overdue`). Variables, fields and paths inside expressions may not,
-  because there `-` is subtraction and needs a space on both sides (`today - 1 month`, Q19, Q29).
-* Blank lines are ignored. A line that is neither a heading, a comment, a `- ` item, a fence nor a
-  control line is an error (Q22).
+**Rules**
+- A declaration starts with a level-1 heading `# Kind: name`.
+- `- key: value` lines under it are **properties**. `## heading` lines start **blocks**, and the lines of a block are **statements**.
+- Declaration kinds are `Record`, `Enum`, `Type`, `Rule`, `Agent`, `Function`, `Service`, `Command`, `Tool`, `Binding`, `Constant`, `Import` and `Run`. Any other word is an error that suggests the closest kind.
+- Properties come before the first `##` heading.
+- Statements sit at indentation 0 directly under a `##` heading, per Q16. Every nested body is indented by one more 2-space step.
+- Nested bodies are those of `for each`, `if`, `else`, `otherwise` and `parallel`.
+- Function bodies are the exception. They are indented under the `- effect:` property, as section [13.1](#131-function) shows.
+
+**Statements and comments**
+- Statements are list items that start with `- `. The exceptions are `otherwise:` and, in older files, bare `for each ...:` and `stop` lines.
+- The formatter writes every statement as a list item, per Q51.
+- A line that starts with `>` is a comment.
+- A run of comment lines directly above a `#` or `##` heading documents that heading.
+- A run at the top of a file followed by a blank line documents the file.
+- All other comments belong to the next statement, field or property, per Q17 and Q28.
+
+**Names and blank lines**
+- Identifiers are letters, digits, `-` and `_`, and start with a letter.
+- Declaration, rule, record and type names may contain `-`, as in `very-overdue`.
+- Variables, fields and paths inside expressions may not contain `-`. There it is subtraction and needs a space on both sides, as in `today - 1 month`, per Q19 and Q29.
+- Blank lines are ignored.
+- A line that is not a heading, a comment, a `- ` item, a fence or a control line is an error, per Q22.
+
+**Next:** [2. Declarations](#2-declarations)
 
 ## 2. Declarations
+
+Three declarations carry most programs: records hold data, rules ask yes/no questions about it and agents act on it.
 
 ### 2.1 Record
 
@@ -218,8 +233,11 @@ A record describes a data shape. Fields are list items with an optional type.
   - log: "{invoice.id} {invoice.total} {invoice.remark}"
 ```
 
-A field without a type gets one from the **last word** of its name. Words are separated by `_`, `-` or
-a change from lower to upper case (`dueDate`), and the whole word has to match (Q32):
+**Rules**
+- A field without a type gets one from the last word of its name.
+- Words are separated by `_`, `-` or a change from lower to upper case, as in `dueDate`.
+- The whole word has to match, per Q32.
+- Writing the type is always allowed and always clearer.
 
 | last word | type |
 |---|---|
@@ -228,9 +246,9 @@ a change from lower to upper case (`dueDate`), and the whole word has to match (
 | `count`, `qty`, `number` | `int` |
 | anything else | `text`, with warning W001 that prints the type it picked |
 
-In the example, `shipped_at` is a `date`, `items_count` an `int`, `total` is `money`, and `remark` falls
-back to `text` and produces the warning. `agentmark check` lists every guessed type (the warning itself goes to
-standard error, the list to standard output):
+In the example, `shipped_at` is a `date`, `items_count` is an `int` and `total` is `money`. `remark` falls back to `text` and produces the warning.
+
+`agentmark check` lists every guessed type. The warning itself goes to standard error and the list goes to standard output:
 
 ```console
 $ agentmark check invoice.agent.md
@@ -246,12 +264,9 @@ Field types guessed from names
 ok: 0 errors, 1 warning.
 ```
 
-Writing the type is always allowed and always clearer.
-
 ### 2.2 Rule
 
-A rule is a named, pure yes/no question about one record. A rule has no side effects, and anything
-effectful inside it is an error.
+A rule is a named, pure yes/no question about one record.
 
 ```agentmark
 # Record: Invoice
@@ -274,9 +289,12 @@ effectful inside it is an error.
   - log: "{id} is overdue"
 ```
 
-Inside `when:`, a bare field name (`due`) is a field of the record the rule is `for:`. A rule is used
-by a filtered loop (`for each overdue invoice in ...`, section 4.1) and by `count of overdue invoices in
-...` (section 5). `when:` must be a yes/no value.
+**Rules**
+- A rule has no side effects. Anything effectful inside it is an error.
+- Inside `when:`, a bare field name such as `due` is a field of the record the rule is `for:`.
+- `when:` must be a yes/no value.
+- A filtered loop uses a rule, as in `for each overdue invoice in ...`. See section [4.1](#41-control).
+- `count of overdue invoices in ...` uses a rule too. See section [5](#5-expressions).
 
 ### 2.3 Agent
 
@@ -295,19 +313,26 @@ An agent is the executable unit.
 - log: "sent"
 ```
 
+**Rules**
+- An agent may call only tools listed in its `tools` line. Calling another is an error: `The tool "email" is not listed in the tools of agent ...`.
+- The same list limits reading a tool's source, as in `for each ... in crm.invoices`.
+- Services, commands and functions have no `tools` line and may use every tool of the manifest.
+- A function's declared `effect` is what bounds it, per Q38.
+
+**Properties**
+
 | key | required | meaning |
 |---|---|---|
-| `model` | yes | the model driver string: `claude`, `claude:<model>`, `mock` (section 19) |
-| `tools` | no | comma-separated tool names the agent may use (default: none) |
+| `model` | yes | the model driver string: `claude`, `claude:<model>`, `mock` (section [19](#19-model-providers)) |
+| `tools` | no | comma-separated tool names the agent may use; default none |
 | `memory` | no | `none` (default) or `file`: keep state between runs |
 | `timeout` | no | a duration; default `5 minutes` per block execution |
 
-An agent may call only tools listed in `tools`; calling another is an error ("The tool "email" is not
-listed in the tools of agent ..."). The same list limits reading a tool's source, as in
-`for each ... in crm.invoices`. Services, commands and functions have no `tools` line and may use every
-tool of the manifest; a function's declared `effect` is what bounds it (Q38).
+**Next:** [Section 3](#3-blocks-triggers)
 
 ## 3. Blocks (triggers)
+
+A block is a `##` heading with statements under it. The heading says when the block runs.
 
 ```agentmark
 # Record: Ticket
@@ -338,33 +363,38 @@ tool of the manifest; a function's declared `effect` is what bounds it (Q38).
 - log: "ping"
 ```
 
+**Rules**
+- The heading is the block's **label**. The effect summary and the trace report it.
+- The formatter rewrites a loosely typed heading into the canonical one. `## every  MONDAY at 08:00` becomes `## Every Monday at 08:00`, per Q50.
+- Blocks of one agent run one after the other. Two triggers that fire together are queued, never run in parallel.
+- Schedules use naive local time without daylight-saving handling. `Every` fires one interval after the previous tick, per Q15.
+- Duration units are `second`, `minute`, `hour`, `day`, `week`, `month` and `year`, singular or plural.
+
+**Trigger headings**
+
 | heading | fires when |
 |---|---|
-| `## Every <duration>` | periodically, for example `Every 30 minutes`, `Every 1 hour` |
+| `## Every <duration>` | periodically, for example `Every 30 minutes` or `Every 1 hour` |
 | `## Every day at <HH:MM>` | daily at local time, 24-hour clock |
 | `## Every <weekday> at <HH:MM>` | weekly; `Monday` to `Sunday` |
 | `## When <tool> receives <event>` | an inbound event of a tool; the event word must be in the tool's `events` list |
 | `## On start` | once when the program starts |
 | `## Do <name>` | never by itself: a named action, called by `do <name>` |
 
-* Duration units: `second`, `minute`, `hour`, `day`, `week`, `month`, `year`, singular or plural.
-* Blocks of one agent run one after the other. Two triggers firing together are queued, never run in
-  parallel.
-* Schedules use naive local time without daylight-saving handling. `Every` fires an interval after
-  the previous tick (Q15).
-* The heading is the block's **label**. It is what the effect summary and the trace report, so the
-  formatter rewrites a loosely typed heading into the canonical one (`## every  MONDAY at 08:00`
-  becomes `## Every Monday at 08:00`, Q50).
-* `## When tool receives event` binds the event's record to a variable named after the event
-  (`ticket`). The record `Ticket` must be visible in the file (the event word, capitalised).
-* A `## Do` block has no parameter list. It works on the record "in front of" its caller: the
-  innermost `for each` record, or the event record. All callers must hand it the same record; the
-  first caller's variable name becomes the name inside the block (Q30). A `## Do` block that nobody
-  calls is a warning.
+**Event blocks**
+- `## When tool receives event` binds the event's record to a variable named after the event, such as `ticket`.
+- The record must be visible in the file. Its name is the event word, capitalised, so `Ticket`.
+
+**Do blocks**
+- A `## Do` block has no parameter list. It works on the record in front of its caller: the innermost `for each` record or the event record.
+- All callers must hand it the same record. The first caller's variable name becomes the name inside the block, per Q30.
+- A `## Do` block that nobody calls is a warning.
+
+**Next:** [4. Statements](#4-statements)
 
 ## 4. Statements
 
-Statements are list items (`- `). Control statements end in `:` and own the more-indented lines below.
+A statement is one list item. Control statements end in `:` and own the more-indented lines below them.
 
 ### 4.1 Control
 
@@ -398,7 +428,15 @@ Statements are list items (`- `). Control statements end in `:` and own the more
 - log: "Remind {id}"
 ```
 
-The control forms, each shown once in this section or as noted:
+**Rules**
+- `for each <var> in <source>:` runs the body once per item. The source is a tool source such as `crm.invoices`, a list variable or a list in `state`.
+- `for each <rule> <var> in <source>:` keeps only the items for which the rule is true. Its body sees the record's fields as bare names, like `id` above.
+- `if <condition>:` takes an optional `else:` directly after it at the same indentation. The condition must be yes/no.
+- `if <expr> is some <name>:` unwraps a `maybe`. See section [14](#14-errors).
+- `do <name>` calls a `## Do` block of the same agent. `do f(args) -> x` calls a function, as section [13.1](#131-function) shows.
+- `stop` ends the current block, not only the current loop iteration, per Q3.
+
+**The control forms**
 
 ```agentmark fragment
 - for each invoice in crm.invoices:
@@ -414,16 +452,9 @@ The control forms, each shown once in this section or as noted:
 - stop
 ```
 
-* `for each <var> in <source>:` runs the body once per item. The source is a tool source
-  (`crm.invoices`), a list variable, or a list in `state`.
-* `for each <rule> <var> in <source>:` keeps only the items for which the rule is true, and its body
-  sees the record's fields as bare names (`id` above).
-* `if <condition>:` with an optional `else:` directly after it, at the same indentation. The condition
-  must be yes/no. `if <expr> is some <name>:` is the `maybe` unwrap (section 14).
-* `do <name>` calls a `## Do` block of the same agent. `do f(args) -> x` calls a function
-  (section 13.1).
-* **`stop` ends the current block, not only the current loop iteration** (Q3). It is how an agent says
-  "enough for this run". This is deliberate, and the third example shows it:
+**Watch out:** `stop` ends the whole block, not one pass of the loop. This is deliberate, because it is how an agent says "enough for this run".
+
+The third example shows it:
 
 ```agentmark file=examples/03-support-triage/agents/support-triage.agent.md
 # Import: ../constants.agent.md
@@ -448,8 +479,7 @@ The control forms, each shown once in this section or as noted:
   - log: "Triaged {ticket.id} as {t.priority}/{t.category}"
 ```
 
-In this agent the first ticket that already has a priority ends the whole 15-minute run. That is the
-specified behaviour; use a negated `if` around the rest of the body when you want to skip one item only.
+In this agent the first ticket that already has a priority ends the whole 15-minute run. That is the specified behaviour. To skip one item only, wrap the rest of the body in a negated `if`.
 
 ### 4.2 Model
 
@@ -475,26 +505,24 @@ specified behaviour; use a negated `if` around the rest of the body when you wan
 - log: "{plain} / {description} / {q.score}: {q.reason}"
 ```
 
+**Rules**
+- `ask model` is effectful, with class `model`. The result is `text` unless `as <Record>` is given, and then it is a value of that record.
+- `with <var>` passes a value as context. The model receives the prompt text, a blank line, then the context as JSON. Without `with` it receives the prompt alone, per Q156.
+- A mock model matches on the prompt prefix, so `with` does not disturb fixtures.
+- A reply that is not valid JSON for the record is not a runtime error. Not JSON, a missing field and a field of the wrong type all make `q matches Qualification` false, so the guard fails and the block stops, per Q157.
+- So always write the `matches` guard after `as <Record>`.
+- The prompt may be a string with `{holes}` or the name of a constant of type text, as in `ask model with ticket: triage_prompt as Triage -> t`.
+- The agent's `model:` line selects the driver. See section [19](#19-model-providers).
+- `ask model` also works outside an agent: in a function declared `effect: model`, in a route or in a command. There is no `model:` line there to say which driver, and the IR records none for such a call, per Q92.
+
+**The four forms**
+
 ```agentmark fragment
 - ask model: "<prompt>" -> answer
 - ask model: "<prompt>" as Qualification -> verdict
 - ask model with lead: "<prompt>" -> answer
 - ask model with lead: "<prompt>" as Qualification -> verdict
 ```
-
-* `ask model` is effectful (class `model`). The result is `text` unless `as <Record>` is given; then it is
-  a value of that record.
-* `with <var>` passes a value as context. The request the model receives is the prompt text, then a
-  blank line, then the context as JSON; without `with` it is the prompt alone (Q156). A mock model matches
-  on the prompt prefix, so `with` does not disturb fixtures.
-* A reply that is not valid JSON for the record (not JSON, a field missing, a field of the wrong type)
-  is not a runtime error: `q matches Qualification` is then false, the guard fails, and the block stops
-  (Q157). So always write the `matches` guard after `as <Record>`.
-* The prompt may be a string with `{holes}` or the name of a constant of type text
-  (`ask model with ticket: triage_prompt as Triage -> t`).
-* The agent's `model:` line selects the driver (section 19). `ask model` also works outside an agent, in a function
-  declared `effect: model`, in a route or in a command; there is simply no `model:` line to say which driver, and the
-  IR records none for such a call (Q92).
 
 ### 4.3 Tool calls
 
@@ -519,29 +547,31 @@ specified behaviour; use a negated `if` around the rest of the body when you wan
   - log: "done {ticket.id}"
 ```
 
-The shape is `- <tool> <verb> [<target>]: <payload> [-> var]`.
+**Rules**
+- The shape is `- <tool> <verb> [<target>]: <payload> [-> var]`.
+- The tool and the verb both come from `tools.toml`. An unknown verb is an error with "Did you mean ...?".
+- A tool without verbs, like `log`, is written `- log: "..."`.
+- `-> name` keeps the result of `get`, `list` or `post`, typed by the manifest when it can.
+- Reading a tool's source, as in `for each ... in crm.invoices`, is an effect of that tool: `network(crm)`.
+
+**Pieces of a call**
 
 | piece | forms |
 |---|---|
-| tool and verb | both from `tools.toml`; an unknown verb is an error with "Did you mean ...?". A tool without verbs, like `log`, is written `- log: "..."` |
 | target | a word from the tool's `targets` (`email send customer`, `email send address "x@y.z"`), or the singular of one of its sources (`crm update invoice`), or a URL (`http get "https://..."`) |
 | payload, text | `"Your invoice {amount} is overdue."` |
 | payload, record | `{ id: invoice.id }` |
 | payload, assignments | `status = "reminded"`, `score = q.score, status = "scored"` |
 | payload, a value | `crm update invoice: inv` (a whole record) |
-| result | `-> name` keeps the result of `get`/`list`/`post`, typed by the manifest when it can |
 
-How target words are resolved (Q4, Q5):
+**How target words are resolved**
 
-* `email send customer` reads the field `customer_email` of the record in front of the block when it
-  exists, otherwise `customer`. The trace reports the word `customer` as the target and the address as `to`.
-* `crm update invoice` names the source `invoices` (the plural of the word) and takes the `id` of the
-  record in front of the block. When several variables of that record are in scope the call is an error
-  ("Which invoice?"); name the one you mean with a value after the word.
-* A tool's name alone is never a value, so a field called `email` is a field.
-* A target word may be a field path of a variable, `- statement bind draft.title -> next` (Q410).
-
-Reading a tool's source, `for each ... in crm.invoices`, is an effect of that tool (`network(crm)`).
+The rules are Q4 and Q5.
+- `email send customer` reads the field `customer_email` of the record in front of the block when it exists, otherwise `customer`. The trace reports the word `customer` as the target and the address as `to`.
+- `crm update invoice` names the source `invoices`, the plural of the word. It takes the `id` of the record in front of the block.
+- When several variables of that record are in scope, the call is an error: "Which invoice?". Name the one you mean with a value after the word.
+- A tool's name alone is never a value, so a field called `email` is a field.
+- A target word may be a field path of a variable, as in `- statement bind draft.title -> next`, per Q410.
 
 ### 4.4 Guards
 
@@ -569,13 +599,17 @@ Reading a tool's source, `for each ... in crm.invoices`, is an effect of that to
   - do remind
 ```
 
-A guard is a pure check. If it fails and no `else` is given, the current block stops and the failure is logged with the
-guard's source line. With `else <statement>`, that statement runs *instead of stopping*, and the block carries on
-afterwards unless the statement ends it: `else respond 404` in a route does (section 13.3), `else stop` does, and
-`else set reminder = "..."` as above does not, which makes it a way to fall back to a default when the check fails.
-The trace line says `fail` in both cases.
+**Rules**
+- A guard is a pure check. If it fails and no `else` is given, the current block stops and the failure is logged with the guard's source line.
+- With `else <statement>`, that statement runs instead of stopping. The block carries on afterwards unless the statement ends it.
+- `else respond 404` in a route ends the block, as in section [13.3](#133-service-and-command). `else stop` ends it too.
+- `else set reminder = "..."` does not end the block, so it is a way to fall back to a default when the check fails.
+- The trace line says `fail` in both cases.
+- Every guard writes one trace line with its source text and `pass` or `fail`. This holds in an agent, a service, a command and a function.
+- Guards may use constants, which are inlined into that text, per Q90.
+- The lint rule `unnamed-guard` asks for a `>` comment above a guard whose condition is longer than 60 characters.
 
-Built-in helpers:
+**Built-in helpers**
 
 | helper | true when |
 |---|---|
@@ -583,10 +617,6 @@ Built-in helpers:
 | `<var> is not empty` | the text, list or `maybe` value has something in it. After the guard, a `maybe` value counts as present |
 | `<var> matches <Record>` | the value has the shape of the record |
 | `<var> length < <int>` | the length of a text or list; any comparison works (`>`, `<=`, `=`, ...) |
-
-Every guard, in an agent, a service, a command or a function, writes one trace line with its source text
-and `pass` or `fail`. Guards may use constants, which are inlined into that text (Q90). The lint rule
-`unnamed-guard` asks for a `>` comment above a guard whose condition is longer than 60 characters.
 
 ### 4.5 Assignment
 
@@ -608,8 +638,11 @@ and `pass` or `fail`. Guards may use constants, which are inlined into that text
 - log: "Total {total}"
 ```
 
-`set <var> = <expression>` creates the variable or changes it. A `maybe T` variable may be given a plain `T`,
-never the other way round (Q40).
+**Rules**
+- `set <var> = <expression>` creates the variable or changes it.
+- A `maybe T` variable may be given a plain `T`, never the other way round, per Q40.
+
+**Next:** [5. Expressions](#5-expressions)
 
 ## 5. Expressions
 
