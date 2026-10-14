@@ -1713,7 +1713,22 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
                 let before = text[..ws].split_whitespace().last().unwrap_or("");
                 let word_like = |t: &str| t.chars().next().is_some_and(char::is_alphabetic) && t.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-');
                 let keywordish = |t: &str| matches!(t, "and" | "or" | "not" | "is" | "in" | "of" | "to" | "as" | "else");
+                // a real typo of and/or (one edit or the same letters) keeps "Did you mean"
+                let found = &text[ws..we];
+                let typo_of = |kw: &str| {
+                    strsim::osa_distance(found, kw) <= 1 || {
+                        let (mut a, mut b): (Vec<char>, Vec<char>) = (found.chars().collect(), kw.chars().collect());
+                        a.sort_unstable();
+                        b.sort_unstable();
+                        a == b
+                    }
+                };
+                // and a statement has more after the verb: `email send customer`
+                let after = text[we..].split_whitespace().next().unwrap_or("");
                 if matches!(near.as_deref(), Some("and" | "or"))
+                    && !typo_of("and")
+                    && !typo_of("or")
+                    && word_like(after)
                     && word_like(before)
                     && word_like(&text[ws..we])
                     && !keywordish(before)

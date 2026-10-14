@@ -273,3 +273,18 @@ fn a_tool_statement_inside_a_condition_is_not_a_typo_of_and() {
     assert!(!e.contains("Did you mean"), "{e}");
     assert!(!e.contains("Expected \"and\""), "{e}");
 }
+
+#[test]
+fn typos_of_and_or_still_get_did_you_mean() {
+    for (src, want) in [
+        ("- guard: ready adn done", "and"),
+        ("- guard: ready nad done", "and"),
+        ("- guard: ready an done", "and"),
+        ("- guard: a or b orr c", "or"),
+    ] {
+        let e = stmt(src);
+        assert!(e.contains(&format!("Did you mean \"{want}\"?")), "{src}:\n{e}");
+        assert!(!e.contains("looks like a statement"), "{src}:\n{e}");
+    }
+    assert!(stmt("- guard: status != \"paid\" and email send customer").contains("looks like a statement"));
+}
