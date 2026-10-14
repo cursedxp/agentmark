@@ -366,6 +366,10 @@ impl Checker<'_> {
             }
         }
 
+        let clean = self.diags.len() == before;
+        let (record, var, field) =
+            self.target_binding(cx, def, tool, verb, target, target_word, &target_record, clean);
+
         // payload
         match payload {
             Some(Payload::Value(e)) => {
@@ -425,9 +429,6 @@ impl Checker<'_> {
             };
             cx.define(&i.name, ty, i.span);
         }
-        let clean = self.diags.len() == before;
-        let (record, var, field) =
-            self.target_binding(cx, def, tool, verb, target, target_word, &target_record, clean);
         self.tool_calls.insert(
             sk,
             ToolResolution {
@@ -535,6 +536,25 @@ impl Checker<'_> {
                     cands.sort();
                     cands.dedup();
                     match cands.len() {
+                        0 if report && verb.as_ref().is_some_and(|v| v.name == "update") => {
+                            let plural = def
+                                .sources
+                                .iter()
+                                .find(|src| singular(src) == w.name)
+                                .cloned()
+                                .unwrap_or_else(|| format!("{}s", w.name));
+                            let d = Diagnostic::error(
+                                E_MANIFEST,
+                                self.path(cx.file),
+                                w.span,
+                                format!(
+                                    "\"{0}\" needs an {1} in scope (a loop over {2}, or a \"-> x\" result), or write its id: \"{3} update {0} x: ...\"",
+                                    w.name, r, plural, tool.name
+                                ),
+                            );
+                            self.diags.push(d);
+                            return (Some(r.clone()), None, None);
+                        }
                         0 => None,
                         1 => Some(cands.remove(0)),
                         _ => {
@@ -550,10 +570,11 @@ impl Checker<'_> {
                                 format!("Which {}? {shown} are both in scope.", w.name),
                             )
                             .with_help(format!(
-                                "Name the one you mean, for example \"{} {} {}: ...\".",
+                                "Name the one you mean, for example \"{} {} {} {}: ...\".",
                                 tool.name,
                                 verb.as_ref().map(|v| v.name.as_str()).unwrap_or(""),
-                                w.name
+                                w.name,
+                                cands[0]
                             ));
                             self.diags.push(d);
                             return (Some(r.clone()), None, None);

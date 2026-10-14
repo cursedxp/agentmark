@@ -65,7 +65,7 @@ fn misspelled_keys_get_a_suggestion() {
 #[test]
 fn partial_literals_are_rejected_in_payloads_and_arguments() {
     let src = format!("{INV}# Record: Lead\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n- crm update invoice: {{ id: \"x\" }}\n");
-    let e = first_error(&src);
+    let e = errors(&src);
     assert!(e.contains("The tool crm takes a Invoice here"), "{e}");
     assert!(e.contains("Missing: amount."), "{e}");
 }
@@ -278,10 +278,36 @@ fn a_crm_target_uses_the_one_matching_variable_or_the_one_in_front() {
 }
 
 #[test]
-fn no_matching_variable_leaves_the_var_empty() {
-    let c = ok(&agent("- crm update invoice: { id: \"x\", status: \"y\" }\n"));
+fn crm_update_without_a_record_in_scope_is_an_error() {
+    let e = first_error(&agent("- crm update invoice: amount = 1 EUR\n"));
+    assert!(
+        e.contains("\"invoice\" needs an Invoice in scope (a loop over invoices, or a \"-> x\" result), or write its id: \"crm update invoice x: ...\""),
+        "{e}"
+    );
+}
+
+#[test]
+fn crm_update_with_an_explicit_id_needs_no_variable() {
+    let c = ok(&agent("- crm update invoice \"x\": status = \"y\"\n"));
     let upd = c.tool_calls.values().next().unwrap();
     assert_eq!((upd.var.as_deref(), upd.field.as_deref()), (None, None));
+}
+
+#[test]
+fn the_ambiguity_help_shows_how_to_choose() {
+    let e = first_error(&agent(
+        "- crm get invoice \"x\" -> b\n- crm get invoice \"y\" -> a2\n- crm update invoice: status = \"z\"\n",
+    ));
+    assert!(e.contains("Name the one you mean, for example \"crm update invoice a2: ...\"."), "{e}");
+}
+
+#[test]
+fn a_payload_typo_does_not_hide_the_missing_record() {
+    let e = errors(&agent("- crm update invoice: statuss = \"1\"\n"));
+    assert!(e.contains("Unknown field \"statuss\" on Invoice"), "{e}");
+    assert!(e.contains("\"invoice\" needs an Invoice in scope"), "{e}");
+    let e = errors(&agent("- email send customer: 5\n"));
+    assert!(e.contains("\"customer\" needs a record in front of this block"), "{e}");
 }
 
 // ------------------------------------------------------------------ narrowing of bare fields
