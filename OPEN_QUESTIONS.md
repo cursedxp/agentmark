@@ -564,3 +564,35 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q291 — Templates carry no copy of the reference (step 18)
 **Choice:** `templates/CLAUDE.md` and `templates/.cursorrules` tell the assistant to read `docs/reference.md` and, for a project outside the checkout, to keep a copy of it (suggested name `docs/agentmark-reference.md`). The templates themselves do not embed the reference, so there is one file to keep current (SPEC 20.6).
 **Why:** a pasted copy in two templates would drift; the test-suite pins that both templates name `docs/reference.md` and only show commands `agentmark --help` lists.
+
+## Q400 — `text.pad`, `text.lines`, `file write` / `file append` (step 25)
+- Question: SPEC 22.3 names `pad(t, width)`, `lines(t)`, `file write`, `file append` without saying exactly what they do.
+- Choice used by examples 06, 09, 10: `pad` adds spaces on the right up to `width` and never cuts text that is longer; `lines` splits like Rust `str::lines` (no empty entry for a final newline, an empty line in the middle is kept); `file write path: content` writes exactly `content` (examples add `\n` themselves); `file append path: line` adds `line` plus a newline.
+- Why: the expected outputs in `fixtures/06`, `09`, `10` depend on it.
+
+## Q401 — Regex dialect inside text literals (step 25)
+- Question: SPEC 5 allows only the escapes `\"`, `\\`, `\n`, `\{`, `\}` in text, and a `{` starts an interpolation hole; regexes need `\d` and `{4}`.
+- Choice: the examples never use `\d`, `\w` or `{n}`. They write `[0-9]`, `[a-z]`, `[.]`, and `\\[` where a literal bracket is needed. `regex.captures` returns the capture groups only (not the whole match), as `maybe list of text`; `regex.replace(t, pattern, with)` uses `$1` for group 1 (Rust `regex` syntax); `regex.find` and `captures` take the first match.
+- Why: keeps the patterns readable and independent of an escape rule the SPEC does not state.
+
+## Q402 — `path.*` and `date.*` details (step 25)
+- Choice: `path.extension("a/b.jpg")` is `jpg` (no dot); `path.join("photos", "x.jpg")` is `photos/x.jpg`; `date.parse(t, pattern)` and `date.format(d, pattern)` use strftime patterns (chrono), so `%Y%m%d` parses `20261003` and `20261399` is an error.
+- Why: `fixtures/07` depends on it.
+
+## Q403 — Command flags and defaults (step 25)
+- Choice: `dry_run: bool = false` is passed as `--dry-run` with no value; `top: int = 3` as `--top 2`; positional arguments come first in declared order (SPEC 22.6).
+- Why: `fixtures/07/variants/dry-run/run.json` and `fixtures/10/run.json`.
+
+## Q404 — Fixture conventions for non-agent programs (step 25)
+- Choice: (a) a variant folder `variants/<case>/` holds its own `run.json`, `expected.stdout`, `expected/`; unless it has its own `input/`, it uses the parent's `input/`. (b) `requests.json` entries may carry `"expect_status"` (HTTP status) next to `expect_body`; v0.2 checked statuses through `expected.trace.jsonl`, but `fixtures/08` has no trace file because the trace lines of the sqlx calls are not known yet. (c) Programs that create files use paths relative to the fresh working directory (08 creates `notes.db` there).
+- Why: SPEC 22.7 lists the files but not these edges.
+
+## Q405 — Record construction and `try do` on library calls (step 25)
+- Choice: examples 06 and 10 write `RegionTotal { region: region, orders: 2, revenue: x }` (same shape as enum construction, 22.1) and `append ... to list`; examples 06 and 07 write `try do csv.parse(content) as list of Sale -> sales` / `try do date.parse(digits, "%Y%m%d") -> day` for built-ins that return `result of T` (the same shape as `try do f(x) -> h`, reference 14). Neither is defined in SPEC 22; see Gaps in `examples/V03-FEATURES.md`.
+
+## Q406 — 08 notes API: what the sqlx binding must provide (step 25)
+- Choice: see the table "Binder items 08 relies on" in `examples/V03-FEATURES.md`. Verbs follow the v0.2 naming rule (`SqlitePool::connect` becomes `sqlite_pool_connect`). Rows are never read through handles: the SQL builds JSON text (`json_object`, `json_group_array`) and the program parses it with `json.parse(...) as Note`.
+- Why: sqlx row access is generic (`row.get::<T, _>`); JSON text keeps the binding to a handful of monomorphic items.
+
+## Q407 — Example layout details (step 25)
+- Choice: the `# Enum: Block` of 09 lives in `records/` (types live with records; 18.3 allows several declarations there). The non-agent examples have no `tools.toml` (SPEC 22.5: not needed with only `file` and `# Tool`). Service 08 has no `state:` (optional).

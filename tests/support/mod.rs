@@ -171,7 +171,13 @@ pub fn fixture_dirs_of(example: &str) -> Vec<(String, PathBuf)> {
 pub fn fixture_examples() -> Vec<String> {
     let mut names: Vec<_> = std::fs::read_dir(format!("{ROOT}/fixtures")).unwrap().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
     names.sort();
-    names.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect()
+    // fixtures 06 to 10 follow the v0.3 contract (SPEC 22.7: run.json, input/, expected.stdout) and are
+    // authored ahead of the compiler (step 25); the runner that replays them comes with their wiring
+    names
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+        .filter(|n| n.as_str() < "06")
+        .collect()
 }
 
 /// Every fixture folder of every example, as `(example, dir)`.
