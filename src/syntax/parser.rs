@@ -1681,6 +1681,23 @@ fn rich_diag(file: &str, ctx: &LineCtx, e: &Rich<'_, char>) -> Diagnostic {
             if let Some((ws, we)) = found_word {
                 let q = quote(&text[ws..we]);
                 let near = did_you_mean(&text[ws..we], words.iter().map(String::as_str));
+                // Two names in a row inside an expression (`... and email send customer`): the
+                // second one is not a typo of a keyword, it is a statement where a value belongs.
+                let before = text[..ws].split_whitespace().last().unwrap_or("");
+                let word_like = |t: &str| t.chars().next().is_some_and(char::is_alphabetic) && t.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-');
+                let keywordish = |t: &str| matches!(t, "and" | "or" | "not" | "is" | "in" | "of" | "to" | "as" | "else");
+                if matches!(near.as_deref(), Some("and" | "or"))
+                    && word_like(before)
+                    && word_like(&text[ws..we])
+                    && !keywordish(before)
+                    && !keywordish(&text[ws..we])
+                {
+                    let m = format!(
+                        "I did not expect {q} here: \"{before} {}\" looks like a statement, but only values, comparisons and \"and\" / \"or\" / \"not\" can be written in a condition.",
+                        &text[ws..we]
+                    );
+                    return Diagnostic::error(E_SYNTAX, file, ctx.span(SimpleSpan::from(ws..we)), m);
+                }
                 if let Some(w) = near {
                     let m = format!("Expected {} here, but found {q}.", quote(&w));
                     let mut span = ctx.span(SimpleSpan::from(ws..we));

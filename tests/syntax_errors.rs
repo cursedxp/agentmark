@@ -263,3 +263,13 @@ fn diagnostics_are_sorted_by_position() {
     assert_eq!(pos, sorted);
     assert!(pos.len() >= 3);
 }
+
+#[test]
+fn a_tool_statement_inside_a_condition_is_not_a_typo_of_and() {
+    // `send` is within edit distance 2 of `and`, but suggesting the word that stands right before is
+    // nonsense: say what is wrong instead
+    let e = stmt("- guard: status != \"paid\" and email send customer");
+    assert!(e.contains("I did not expect \"send\" here: \"email send\" looks like a statement"), "{e}");
+    assert!(!e.contains("Did you mean"), "{e}");
+    assert!(!e.contains("Expected \"and\""), "{e}");
+}
