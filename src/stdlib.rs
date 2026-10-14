@@ -98,7 +98,7 @@ pub const FUNCS: &[Func] = &[
     f("money", "parse", &[("t", Text)], ResultMoney, false, "the amount written in t (like 12.50 EUR), or an error"),
     f("money", "format", &[("m", Money)], Text, false, "m written like a literal (12.50 EUR)"),
     f("date", "parse", &[("t", Text), ("pattern", Text)], ResultDate, false, "the date written in t as pattern, or an error"),
-    f("date", "format", &[("d", DateAny), ("pattern", Text)], Text, false, "d written as pattern"),
+    f("date", "format", &[("d", DateAny), ("pattern", Text)], Text, true, "d written as pattern"),
     f("date", "days_between", &[("a", Date), ("b", Date)], Int, false, "days from a to b (negative when b is earlier)"),
     f("path", "join", &[("a", Text), ("b", Text)], Text, false, "a/b"),
     f("path", "name", &[("p", Text)], Text, false, "the last part of p, with its extension"),

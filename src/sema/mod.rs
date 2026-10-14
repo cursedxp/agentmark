@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::diag::{Diagnostic, Severity, Span};
 use crate::manifest::Manifest;
 use crate::project::Project;
-use crate::syntax::ast::{Decl, Effect, Expr};
+use crate::syntax::ast::{Decl, Effect, Expr, HandleMode};
 
 mod body;
 mod decls;
@@ -24,6 +24,7 @@ mod types;
 mod unused;
 
 pub mod effects;
+mod handles;
 
 pub use effects::EffectSet;
 pub use scope::Kind;
@@ -98,6 +99,9 @@ pub enum ToolKind {
 pub struct ToolResolution {
     pub tool: String,
     pub kind: ToolKind,
+    /// `Some("sha2.Sha256")`: the statement is a method call on a handle variable (SPEC 22.4);
+    /// the variable is the statement's tool word.
+    pub on: Option<String>,
     pub verb: Option<String>,
     /// First target word (`customer`, `invoice`, `address`).
     pub target_word: Option<String>,
@@ -235,6 +239,18 @@ pub struct RustInfo {
 pub struct BindingItemInfo {
     pub name: String,
     pub sig: Sig,
+    /// How each parameter holds a handle (`Shared` for everything that is not one).
+    pub modes: Vec<HandleMode>,
+}
+
+impl BindingItemInfo {
+    /// The handle type this item is a method of (its first parameter is `self: … handle of T`).
+    pub fn receiver(&self) -> Option<&str> {
+        match self.sig.params.first() {
+            Some(ParamInfo { name, ty: Type::Handle(h), .. }) if name == "self" => Some(h),
+            _ => None,
+        }
+    }
 }
 
 /// A `# Binding` (SPEC 15.4).
@@ -248,6 +264,8 @@ pub struct BindingInfo {
     pub effect: Effect,
     pub proposed_effect: Option<Effect>,
     pub items: Vec<BindingItemInfo>,
+    /// Rust type of the handles whose type is not simply `<crate>::<Type>` (`## Handle:` blocks).
+    pub handles: BTreeMap<String, String>,
 }
 
 impl BindingInfo {
@@ -370,6 +388,9 @@ pub(crate) struct Checker<'a> {
     pub records: BTreeMap<String, RecordInfo>,
     pub sigs: HashMap<Key, Sig>,
     pub bindings: BTreeMap<String, BindingInfo>,
+    /// Every `handle of <crate>.<Type>` some binding mentions (SPEC 22.4), with the names of the
+    /// bindings that do.
+    pub handle_types: BTreeMap<String, Vec<String>>,
     pub rust_blocks: Vec<RustInfo>,
     /// Record each rule is `for`.
     pub rule_records: HashMap<String, String>,
@@ -404,6 +425,7 @@ impl<'a> Checker<'a> {
             records: BTreeMap::new(),
             sigs: HashMap::new(),
             bindings: BTreeMap::new(),
+            handle_types: Default::default(),
             rust_blocks: Vec::new(),
             rule_records: HashMap::new(),
             consts: HashMap::new(),
@@ -470,6 +492,7 @@ impl<'a> Checker<'a> {
         let (reg, scopes) = scope::build(self.p, &mut self.diags);
         self.reg = reg;
         self.scopes = scopes;
+        self.collect_handle_types();
         self.declare_records();
         self.declare_signatures();
         self.check_agent_headers();

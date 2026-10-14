@@ -82,16 +82,12 @@ impl DateLike for DateTime<Utc> {
     }
 }
 
-/// `date.format(d, pattern)`; a pattern that is not valid is returned as it is.
-pub fn format<D: DateLike>(d: &D, pattern: &str) -> String {
-    if check(pattern).is_err() {
-        return pattern.to_string();
-    }
+/// `date.format(d, pattern)`; a pattern that is not valid is an error.
+pub fn format<D: DateLike>(d: &D, pattern: &str) -> Result<String, RtError> {
+    check(pattern).map_err(RtError::Lib)?;
     let mut s = String::new();
-    match write!(s, "{}", d.naive().format(&to_strftime(pattern))) {
-        Ok(()) => s,
-        Err(_) => pattern.to_string(),
-    }
+    write!(s, "{}", d.naive().format(&to_strftime(pattern))).map_err(|_| RtError::Lib(format!("\"{pattern}\" is not a date pattern")))?;
+    Ok(s)
 }
 
 /// `date.parse(t, pattern)`: the date `t` is written as (any time of day in it is dropped).
@@ -129,13 +125,13 @@ mod tests {
     #[test]
     fn format_both_languages() {
         let x = d(2026, 10, 3);
-        assert_eq!(format(&x, "YYYY-MM-DD"), "2026-10-03");
-        assert_eq!(format(&x, "%Y-%m-%d"), "2026-10-03");
-        assert_eq!(format(&x, "DD.MM.YYYY HH:mm"), "03.10.2026 00:00");
-        assert_eq!(format(&x, "dddd MMMM DD"), "Saturday October 03");
+        assert_eq!(format(&x, "YYYY-MM-DD").unwrap(), "2026-10-03");
+        assert_eq!(format(&x, "%Y-%m-%d").unwrap(), "2026-10-03");
+        assert_eq!(format(&x, "DD.MM.YYYY HH:mm").unwrap(), "03.10.2026 00:00");
+        assert_eq!(format(&x, "dddd MMMM DD").unwrap(), "Saturday October 03");
         let dt = x.and_hms_opt(14, 5, 9).unwrap().and_utc();
-        assert_eq!(format(&dt, "HH:mm:ss"), "14:05:09");
-        assert_eq!(format(&x, "%Q"), "%Q");
+        assert_eq!(format(&dt, "HH:mm:ss").unwrap(), "14:05:09");
+        assert!(format(&x, "%Q").is_err());
     }
 
     #[test]

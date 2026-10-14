@@ -9,7 +9,7 @@ use serde::Serialize;
 
 pub use crate::manifest::ToolDef;
 pub use crate::sema::{EffectSet, Type};
-pub use crate::syntax::ast::{BinOp, DurationUnit, Effect, Weekday};
+pub use crate::syntax::ast::{BinOp, DurationUnit, Effect, HandleMode, Weekday};
 
 pub mod build;
 
@@ -39,6 +39,8 @@ pub struct Program {
     pub bindings: Vec<BindingFn>,
     /// `# Import: crate x`.
     pub crates: Vec<CrateImport>,
+    /// Rust type of a handle when it is not `<crate>::<Type>` (`## Handle:` blocks of bindings).
+    pub handle_rust: std::collections::BTreeMap<String, String>,
     /// The tool manifest (`tools.toml`), so codegen can write one trait per tool.
     pub tools: Vec<ToolDef>,
     /// Names listed under `# Run`, in order (agents, services, commands).
@@ -198,6 +200,14 @@ pub struct RustFn {
     pub source: SourceRef,
 }
 
+/// The key that tells two binding items apart: `item`, or `Type::item` for a method.
+pub fn binding_key(item: &str, on: Option<&str>) -> String {
+    match on {
+        Some(h) => format!("{h}::{item}"),
+        None => item.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BindingFn {
     /// Binding name (`sha2`).
@@ -205,6 +215,12 @@ pub struct BindingFn {
     pub crate_name: String,
     /// Item name (`sha256_digest`); a call `sha2 sha256_digest x` is [`EffectCall::Binding`].
     pub item: String,
+    /// `Some("sha2.Sha256")`: the item is a method of that handle type; its first parameter is
+    /// the handle (`self`). Methods of different handle types may share an `item` name.
+    pub on: Option<String>,
+    /// How each parameter holds a handle (`Shared` = borrowed, `Mut`, `Consume` = moved in);
+    /// `Shared` for every parameter that is not a handle.
+    pub modes: Vec<HandleMode>,
     pub doc: Option<String>,
     pub params: Vec<Param>,
     pub ret: Option<Type>,
@@ -279,6 +295,8 @@ pub enum EffectCall {
     Binding {
         binding: String,
         item: String,
+        /// The handle type when this is a method call; `args[0]` is then the handle variable.
+        on: Option<String>,
         args: Vec<Expr>,
     },
     /// A call of a `## Rust` block.

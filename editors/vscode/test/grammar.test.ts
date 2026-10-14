@@ -139,3 +139,16 @@ test("every example file tokenizes, and every heading gets a specific scope", as
     });
   }
 });
+
+test("handle types in a binding heading", async () => {
+  const g = await loadGrammar();
+  const t = tokens(g, "## update(self: mut handle of sha2.Sha256, data: bytes)\n## sha256_new() -> handle of sha2.Sha256");
+  assert.ok(has(t[0], "update", "entity.name.function"));
+  assert.ok(has(t[0], "self", "variable.parameter"));
+  assert.ok(has(t[0], "mut", "storage.modifier.handle-mode"));
+  assert.ok(has(t[0], "handle", "support.type"));
+  assert.ok(has(t[0], "sha2.Sha256", "support.type.handle"));
+  assert.ok(has(t[0], "data", "variable.parameter"));
+  assert.ok(has(t[0], "bytes", "support.type"));
+  assert.ok(has(t[1], "handle of sha2.Sha256", "support.type"));
+});

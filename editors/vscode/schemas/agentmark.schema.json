@@ -69,6 +69,37 @@
         }
       }
     },
+    "crates": {
+      "type": "object",
+      "description": "How a library is built, for the binder and the generated Cargo.toml: features and default-features. A binding header pins the exact version.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "A version requirement."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "default-features": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      }
+    },
     "lsp": {
       "type": "object",
       "additionalProperties": false,

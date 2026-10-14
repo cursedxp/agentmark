@@ -131,14 +131,15 @@ def main(src, dst, full_traits=()):
         elif k == "use":
             o["inner"]["use"] = {key: body.get(key) for key in ("source", "name", "id", "is_glob")}
         elif k in ("struct", "enum", "union"):
-            o["inner"][k] = {"impls": body["impls"]}
+            # generics: the binder needs to know a public type has no type parameters (a handle)
+            o["inner"][k] = {"impls": body["impls"], "generics": body.get("generics")}
         elif k == "impl":
             o["inner"]["impl"] = {key: body.get(key) for key in
                                   ("is_synthetic", "blanket_impl", "is_negative", "trait", "for", "items", "generics")}
         elif k == "function":
             o["inner"]["function"] = {key: body.get(key) for key in ("sig", "generics", "header")}
         elif k == "type_alias":
-            o["inner"]["type_alias"] = {"type": body["type"]}
+            o["inner"]["type_alias"] = {"type": body["type"], "generics": body.get("generics")}
         elif k == "trait" and o["name"] in full_traits:
             o["inner"]["trait"] = {"items": body["items"]}
         else:

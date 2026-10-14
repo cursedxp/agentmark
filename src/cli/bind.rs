@@ -50,8 +50,16 @@ pub(crate) fn system_today() -> NaiveDate {
     NaiveDate::from_num_days_from_ce_opt(days + 719_163).unwrap_or_default()
 }
 
+/// `[crates]` of the project's `agentmark.toml`: the features each library is bound with.
+pub(crate) fn apply_crate_config(opts: &mut BindOptions, project: &crate::project::Project) {
+    for c in &project.config.crates {
+        opts.crate_features.insert(c.name.clone(), (c.default_features, c.features.clone()));
+    }
+}
+
 pub(crate) fn run(name: Option<&str>, force: bool, all: bool, version: Option<String>, latest: bool, project: &str) -> u8 {
-    let (model, mock_today) = match model_for(provider_config(&crate::project::Project::load(project))) {
+    let loaded = crate::project::Project::load(project);
+    let (model, mock_today) = match model_for(provider_config(&loaded)) {
         Ok(m) => m,
         Err(e) => return fail(e),
     };
@@ -83,6 +91,7 @@ pub(crate) fn run(name: Option<&str>, force: bool, all: bool, version: Option<St
         opts.force = force;
         opts.version = version.clone();
         opts.latest = latest;
+        apply_crate_config(&mut opts, &loaded);
         opts.offline = matches!(std::env::var("AGENTMARK_OFFLINE").as_deref(), Ok("1") | Ok("true"));
         match bind(c, &opts) {
             Ok(out) => println!("{}", describe(c, &out)),

@@ -1,0 +1,8 @@
+Log report for app.log
+Lines read: 15
+Entries: 13
+Errors: 7  Warnings: 2  Info: 4
+First error at 2026-10-12 08:15:09
+Top 2 services by errors:
+  payments  4
+  mail      2

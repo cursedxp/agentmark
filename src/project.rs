@@ -45,6 +45,9 @@ pub struct Config {
     /// `[rust.dependencies]`: extra dependencies of the generated Cargo project, as
     /// `(crate name, TOML value)`, merged verbatim into its `[dependencies]` (Q222).
     pub rust_dependencies: Vec<(String, String)>,
+    /// `[crates] sqlx = { version = "0.8", features = ["sqlite"] }`: how a library is built, for the
+    /// binder and the generated `Cargo.toml` (SPEC 22.4, Q371).
+    pub crates: Vec<CrateConfig>,
     /// `[models]`: environment name -> driver string (`production = "claude"`), chosen by `AGENTMARK_ENV` (Q240).
     pub models: Vec<(String, String)>,
     /// `[models.local] base_url`: the OpenAI-compatible server behind `local:<model>`.
@@ -52,6 +55,17 @@ pub struct Config {
     /// `[lsp] model_actions = true`: the language server may offer model-backed code actions
     /// (Q250). Off by default.
     pub lsp_model_actions: bool,
+}
+
+/// One entry of `[crates]` in `agentmark.toml`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CrateConfig {
+    pub name: String,
+    /// The version requirement written there (informational: a binding header pins the exact one).
+    pub version: Option<String>,
+    pub features: Vec<String>,
+    /// `default-features = false` turns the crate's defaults off.
+    pub default_features: bool,
 }
 
 /// One import line, resolved.
@@ -394,7 +408,7 @@ struct Loader<'a> {
     failed: Vec<String>,
 }
 
-const CONFIG_KEYS: [&str; 7] = ["name", "version", "targets", "lint", "rust", "models", "lsp"];
+const CONFIG_KEYS: [&str; 8] = ["name", "version", "targets", "lint", "rust", "crates", "models", "lsp"];
 
 impl Loader<'_> {
     fn config(&mut self) -> Config {
@@ -510,6 +524,38 @@ impl Loader<'_> {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+                "crates" => {
+                    let bad = |line: u32, msg: &str| Diagnostic::error(E_CONFIG, &path, Span::new(line, 1, 1), msg.to_string());
+                    match value.as_table() {
+                        None => self.diags.push(bad(line, "\"crates\" in agentmark.toml must be a table, like [crates] sqlx = { version = \"0.8\", features = [\"sqlite\"] }.")),
+                        Some(t) => {
+                            for (name, spec) in t {
+                                let mut c = CrateConfig { name: name.clone(), default_features: true, ..Default::default() };
+                                if let Some(v) = spec.as_str() {
+                                    c.version = Some(v.to_string());
+                                } else if let Some(tab) = spec.as_table() {
+                                    for (k, v) in tab {
+                                        match (k.as_str(), v) {
+                                            ("version", toml::Value::String(x)) => c.version = Some(x.clone()),
+                                            ("features", toml::Value::Array(a)) if a.iter().all(|x| x.is_str()) => {
+                                                c.features = a.iter().filter_map(|x| x.as_str().map(String::from)).collect()
+                                            }
+                                            ("default-features" | "default_features", toml::Value::Boolean(b)) => c.default_features = *b,
+                                            _ => self.diags.push(
+                                                bad(line_of(name), &format!("Cannot read \"{k}\" of the crate \"{name}\" under [crates]: use version = \"…\", features = [\"…\"] and default-features = false."))
+                                                    .suggesting(k, ["version", "features", "default-features"]),
+                                            ),
+                                        }
+                                    }
+                                } else {
+                                    self.diags.push(bad(line_of(name), &format!("The crate \"{name}\" under [crates] must be a version text or a table, like sqlx = {{ version = \"0.8\", features = [\"sqlite\"] }}.")));
+                                    continue;
+                                }
+                                cfg.crates.push(c);
                             }
                         }
                     }

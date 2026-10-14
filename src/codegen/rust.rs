@@ -37,6 +37,8 @@ pub struct Options {
     pub models: Vec<(String, String)>,
     /// `[models.local] base_url` of `agentmark.toml`.
     pub local_base_url: Option<String>,
+    /// `[crates]` of `agentmark.toml`: crate -> (default features, features), written into its dependency line.
+    pub crate_features: BTreeMap<String, (bool, Vec<String>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -174,9 +176,19 @@ fn cargo_toml(p: &Program, o: &Options) -> String {
     }
     for cr in &p.crates {
         let ver = o.crate_versions.get(&cr.name).map(|v| format!("={v}")).unwrap_or_else(|| "*".into());
+        let mut extra = String::new();
+        if let Some((defaults, feats)) = o.crate_features.get(&cr.name) {
+            if !defaults {
+                extra.push_str(", default-features = false");
+            }
+            if !feats.is_empty() {
+                extra.push_str(&format!(", features = [{}]", feats.iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", ")));
+            }
+        }
         match &cr.alias {
-            Some(a) => s.push_str(&format!("{a} = {{ package = {:?}, version = {:?} }}\n", cr.name, ver)),
-            None => s.push_str(&format!("{} = {:?}\n", cr.name, ver)),
+            Some(a) => s.push_str(&format!("{a} = {{ package = {:?}, version = {:?}{extra} }}\n", cr.name, ver)),
+            None if extra.is_empty() => s.push_str(&format!("{} = {:?}\n", cr.name, ver)),
+            None => s.push_str(&format!("{} = {{ version = {:?}{extra} }}\n", cr.name, ver)),
         }
     }
     if !o.extra_dependencies.is_empty() {

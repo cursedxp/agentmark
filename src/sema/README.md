@@ -52,7 +52,7 @@ Helpers: `Checked::unit_effect(unit)`, `expr_type(file, span)`, `stmt_effect(fil
 
 ## Types (`sema::Type`)
 
-`Text Int Money Date DateTime Duration Bool Bytes List(T) Maybe(T) Result(T) Record(name) Object(fields)`
+`Text Int Money Date DateTime Duration Bool Bytes List(T) Maybe(T) Result(T) Record(name) Handle("crate.Type") Object(fields)`
 (the type of a record literal) and `Unknown` (only appears next to an already-reported error, so it never
 occurs in an `Ok` result except for tool results whose type the manifest cannot tell, e.g. `crm update … -> x`).
 Record names are unique in a project (OPEN_QUESTIONS Q31), so `Record(String)` identifies a record.
@@ -78,6 +78,23 @@ Reading `crm.invoices` is `network(crm)`.
 - Name order: variable, bare field, constant, tool source (needs the dot). `## Do` blocks nobody calls are checked leniently: a bare name passes if some record has such a field, otherwise it is reported (Q30).
 - Narrowing keys bare fields as `var.field` (`score` and `lead.score` are one fact); re-checking a present value is fine. `is not empty` / `is some` / `guard` unwrap `maybe` values in the rest of the block.
 - `result of T` (Q200): `return v` in such a function takes a `T`; `try do f(x) -> h` types `h` as `T`; calling it without `try`, or inside an expression, is an error. A crate import without binding is reported once on the import line (`E219` when a statement uses it, Q201), without `Unknown tool` or `Unused import` follow-ons.
+
+## Handles (`handles.rs`, SPEC 22.4, Q360 to Q369)
+
+`handle of <crate>.<Type>` (`Type::Handle("sha2.Sha256")`) is a library value AgentMark cannot look into. Where the bindings declare
+the types: `Checker.handle_types` (type -> bindings that mention it), filled before anything is typed; an unknown one is E360 with a
+did-you-mean. A binding item's `self` parameter (first, a handle) makes it a method (`BindingItemInfo::receiver()`), and each
+parameter carries a `HandleMode` (`modes`): `handle of` reads, `mut handle of` changes, `consume handle of` uses it up.
+
+- A statement whose first word is a variable of handle type is a method call: `binding_call(.., recv = Some(type))` looks the verb up
+  among the items with that receiver (`ToolResolution.on = Some(type)`, tool word = the variable). Constructors are ordinary items.
+- Ownership is `Cx.consumed` (variable -> the span that used it up): `consume` receivers and parameters, passing a handle to a function
+  (`move_out`), `set` and `return`-less moves use it up; reading it again is E361 naming that line. `if`/`else` join with "may have been"
+  (a branch that ends in `stop`/`return` contributes nothing), a handle from outside a loop cannot be used up inside it, `define` revives.
+- Default-deny reads: `path_expr` on a handle variable is E362 unless the caller set `Cx.handle_ok` (`set`, function and binding
+  arguments, `return`), so printing, interpolating, comparing, saving, sending and tracing are all refused at one place.
+- E363 (no handle in `list of`/`maybe`/a record field), E365 (`mut`/`consume` outside binding parameters, `self` misplaced, a handle
+  given twice to one call, a borrowed handle that is not a variable), E366 (`try … -> h otherwise:` whose `otherwise` does not leave).
 
 ## Layout
 

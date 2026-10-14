@@ -126,3 +126,6 @@
   (#set! priority 110))
 (binary_expression operator: ["and" "or"] @keyword.operator
   (#set! priority 110))
+
+; handle types (SPEC 22.4): `mut handle of sha2.Sha256`
+(handle_type) @type

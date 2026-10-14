@@ -34,6 +34,9 @@ pub struct Frame {
     pub bare: Option<Implicit>,
     /// Paths (`found`, `ticket.priority`) known not to be empty in this frame.
     pub narrowed: Vec<String>,
+    /// Handles this frame shadows (`-> h` inside a branch or loop, where codegen declares a new
+    /// `h`): what was known of the outer one, put back when the frame ends.
+    pub shadowed: Vec<(String, Option<crate::diag::Span>)>,
 }
 
 pub struct AgentCx {
@@ -71,6 +74,12 @@ pub struct Cx {
     pub in_try: bool,
     /// The built-in library call (by span) that may be a `result`: the one directly after `try`.
     pub std_ok: Option<crate::diag::Span>,
+    /// Handles (SPEC 22.4) that were used up (`self` methods, passing them on): variable ->
+    /// the span of the line that used it up.
+    pub consumed: HashMap<String, crate::diag::Span>,
+    /// The path read next may be a handle: the caller moves or borrows it (`set`, call
+    /// arguments, `return`). Anywhere else a handle read is an error (E362).
+    pub handle_ok: bool,
 }
 
 impl Cx {
@@ -88,6 +97,8 @@ impl Cx {
             unwrap_log: Vec::new(),
             in_try: false,
             std_ok: None,
+            consumed: HashMap::new(),
+            handle_ok: false,
         }
     }
 
@@ -102,7 +113,16 @@ impl Cx {
     }
 
     pub fn pop(&mut self) {
-        self.frames.pop();
+        if let Some(f) = self.frames.pop() {
+            for v in f.vars.keys() {
+                self.consumed.remove(v);
+            }
+            for (v, at) in f.shadowed {
+                if let Some(at) = at {
+                    self.consumed.insert(v, at);
+                }
+            }
+        }
     }
 
     pub fn top(&mut self) -> &mut Frame {
@@ -125,6 +145,16 @@ impl Cx {
 
     pub fn define(&mut self, name: &str, ty: Type, span: crate::diag::Span) {
         self.forget(name);
+        // a handle made again inside a branch or loop is a new variable of that block (the
+        // generated code declares a new one), so the outer one keeps its state
+        if ty.is_handle() && !self.top().vars.contains_key(name) && self.var(name).is_some() {
+            let saved = self.consumed.remove(name);
+            self.top().shadowed.push((name.to_string(), saved));
+            self.top().vars.insert(name.to_string(), ty);
+            self.top().defs.insert(name.to_string(), span);
+            return;
+        }
+        self.consumed.remove(name);
         for f in self.frames.iter_mut().rev() {
             if let Some(slot) = f.vars.get_mut(name) {
                 *slot = ty;

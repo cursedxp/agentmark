@@ -114,8 +114,18 @@ impl Checker<'_> {
     }
 
     pub fn expr(&mut self, cx: &mut Cx, e: &Expr) -> Type {
+        // a handle may be the value of this expression only where the caller says so (Q362); a
+        // bare variable is judged in `path_expr`, everything else (a call) by its type here
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
+        let is_path = matches!(e.kind, ExprKind::Path(_));
+        cx.handle_ok = handle_ok && is_path;
         let outer = std::mem::take(&mut cx.acc);
-        let ty = self.expr_inner(cx, e);
+        let mut ty = self.expr_inner(cx, e);
+        cx.handle_ok = false;
+        if ty.is_handle() && !handle_ok && !is_path {
+            self.handle_value_misuse(cx, e.span, &ty);
+            ty = Type::Unknown;
+        }
         let eff = std::mem::replace(&mut cx.acc, outer);
         cx.acc.merge(&eff);
         let key = NodeKey::new(cx.file, e.span);
@@ -380,6 +390,7 @@ impl Checker<'_> {
     pub(super) fn path_expr(&mut self, cx: &mut Cx, segs: &[Ident], key: NodeKey) -> Type {
         let first = &segs[0];
         // a variable (loop variable, `set`/`->` result, parameter, route parameter, `state`)
+        let handle_ok = std::mem::take(&mut cx.handle_ok);
         if let Some(t) = cx.var(&first.name).cloned() {
             self.resolutions.insert(
                 key,
@@ -388,6 +399,13 @@ impl Checker<'_> {
                     def: cx.def_of(&first.name),
                 },
             );
+            if t.is_handle() {
+                self.check_not_consumed(cx, first);
+                if segs.len() == 1 && !handle_ok {
+                    self.handle_misuse(cx, first, &t);
+                    return Type::Unknown;
+                }
+            }
             return self.chain(cx, t, segs, 1, first.name.clone());
         }
         // a bare field of the record in front of us
@@ -740,7 +758,14 @@ impl Checker<'_> {
             .map(|i| i.name.as_str())
             .collect::<Vec<_>>()
             .join(".");
-        let arg_types: Vec<Type> = args.iter().map(|a| self.expr(cx, a)).collect();
+        let arg_types: Vec<Type> = args
+            .iter()
+            .map(|a| {
+                let t = self.expr_handle_ok(cx, a);
+                self.move_out(cx, a);
+                t
+            })
+            .collect();
         let Some((kind, decl)) = self.lookup(cx.file, &name, &[Kind::Function, Kind::RustBlock])
         else {
             if func.len() == 2 && crate::stdlib::is_module(&func[0].name) {

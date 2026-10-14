@@ -49,6 +49,9 @@ pub fn list(ctx: &Ctx, path: &str) -> Result<Vec<String>, RtError> {
 /// `file rename old to new`.
 pub fn rename(ctx: &Ctx, old: &str, new: &str) -> Result<(), RtError> {
     ctx.trace_file("rename", old, Some(new))?;
+    if std::path::Path::new(new).exists() {
+        return Err(RtError::Lib(format!("cannot rename \"{old}\" to \"{new}\": \"{new}\" already exists")));
+    }
     std::fs::rename(old, new).map_err(|e| fail("rename", old, e))
 }
 
@@ -94,12 +97,16 @@ mod tests {
         assert_eq!(list(&ctx, &dir.path().to_string_lossy()).unwrap(), ["a.txt", "b.txt"]);
         rename(&ctx, &p("b.txt"), &p("c.txt")).unwrap();
         assert!(exists(&ctx, &p("c.txt")).unwrap() && !exists(&ctx, &p("b.txt")).unwrap());
+        write(&ctx, &p("d.txt"), "y").unwrap();
+        let e = rename(&ctx, &p("d.txt"), &p("a.txt")).unwrap_err().to_string();
+        assert!(e.ends_with("already exists"), "{e}");
+        std::fs::remove_file(p("d.txt")).unwrap();
         delete(&ctx, &p("c.txt")).unwrap();
         assert!(!exists(&ctx, &p("c.txt")).unwrap());
         append(&ctx, &p("new.log"), "first").unwrap();
         assert_eq!(read(&ctx, &p("new.log")).unwrap(), "first\n");
         let lines = trace.lines();
-        assert_eq!(lines.len(), 12);
+        assert_eq!(lines.len(), 14);
         assert!(lines[0].starts_with(r#"{"kind":"file","verb":"write","path":""#), "{}", lines[0]);
         assert!(lines[5].contains(r#""verb":"rename""#) && lines[5].contains(r#""to":""#), "{}", lines[5]);
         assert!(lines[1].contains(r#""verb":"append""#) && !lines[1].contains("\"to\""));

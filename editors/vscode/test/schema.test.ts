@@ -61,3 +61,13 @@ test("[models] matches the compiler: drivers, mock:<path>, local as string or ta
   bad(`[models.local]\nbase_url = "ftp://x"\n`);
   bad(`[models.local]\nbase_url = 5\n`);
 });
+
+test("[crates] takes a version string or a {version, features} table", () => {
+  ok(`[crates]\nuuid = "1"\nsqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }\nserde = { features = ["derive"] }\nrand = { version = "0.8" }\n`);
+  bad(`[crates]\nsqlx = 8\n`);
+  bad(`[crates]\nsqlx = { version = 8 }\n`);
+  bad(`[crates]\nsqlx = { features = "sqlite" }\n`);
+  bad(`[crates]\nsqlx = { features = [1] }\n`);
+  bad(`[crates]\nsqlx = { version = "0.8", path = "../x" }\n`);
+  bad(`crates = "sqlx"\n`);
+});

@@ -209,6 +209,31 @@ impl Checker<'_> {
                 self.diags.push(d);
             }
         }
+        if matches!(f.name, "encode") && matches!(f.module, "json" | "csv") {
+            let t = &types[0];
+            if mentions_handle(t) {
+                let d = Diagnostic::error(
+                    E_DECODE,
+                    self.path(cx.file),
+                    args[0].span,
+                    format!("\"{name}\" cannot write {t}: a handle cannot be turned into text."),
+                )
+                .with_help("Write the plain values you got from it.");
+                self.diags.push(d);
+            } else if f.module == "csv" {
+                if let Type::List(item) = t {
+                    if !matches!(**item, Type::Record(_) | Type::Object(_) | Type::Unknown) {
+                        let d = Diagnostic::error(
+                            E_DECODE,
+                            self.path(cx.file),
+                            args[0].span,
+                            format!("\"csv.encode\" writes a list of records (one per row), but this is {}.", t.with_article()),
+                        );
+                        self.diags.push(d);
+                    }
+                }
+            }
+        }
         // `number.min(3, 5 EUR)`: both sides must be the same kind
         if f.params.len() == 2 && f.params.iter().all(|p| p.1 == Ty::Num) {
             let (a, b) = (&types[0], &types[1]);
@@ -243,6 +268,17 @@ impl Checker<'_> {
     /// What `json.parse(t) as T` / `csv.parse(t) as list of T` gives.
     fn std_decode_type(&mut self, cx: &mut Cx, f: &Func, te: &TypeExpr, want: &Type) -> Type {
         if want.is_unknown() {
+            return Type::Unknown;
+        }
+        if mentions_handle(want) {
+            let d = Diagnostic::error(
+                E_DECODE,
+                self.path(cx.file),
+                te.span,
+                format!("\"{}.parse\" cannot read {want}: a handle comes from a library call, not from text.", f.module),
+            )
+            .with_help("Read a record or a plain type instead.");
+            self.diags.push(d);
             return Type::Unknown;
         }
         if f.module == "csv" {
@@ -377,5 +413,14 @@ impl Checker<'_> {
             .with_help("Write \"- try file read path -> content\", optionally with an \"otherwise:\" branch.");
             self.diags.push(d);
         }
+    }
+}
+
+/// Is a handle (SPEC 22.4) somewhere in the type?
+fn mentions_handle(t: &Type) -> bool {
+    match t {
+        Type::Handle(_) => true,
+        Type::List(i) | Type::Maybe(i) | Type::Result(i) => mentions_handle(i),
+        _ => false,
     }
 }
