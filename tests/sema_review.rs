@@ -383,8 +383,11 @@ fn a_result_function_must_be_called_with_try() {
     assert!(e.contains("can fail (it returns \"result of int\"), so it has to be called with \"try\""), "{e}");
     assert!(e.contains("try read_count"), "{e}");
     // and not inside an expression
-    let e = first_error(&format!("{FALLIBLE}- set n = read_count(path)\n- print: \"{{n}}\"\n"));
+    let e = first_error(&format!("{FALLIBLE}- print: \"{{read_count(path)}}\"\n"));
     assert!(e.contains("can fail") && e.contains("cannot be used inside an expression"), "{e}");
+    // stored by `set`, the result can only be matched (Q300)
+    let e = first_error(&format!("{FALLIBLE}- set n = read_count(path)\n- print: \"{{n}}\"\n"));
+    assert!(e.contains("\"n\" holds a result, which can only be matched."), "{e}");
 }
 
 #[test]
