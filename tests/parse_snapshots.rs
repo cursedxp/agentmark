@@ -36,7 +36,13 @@ fn every_example_is_a_project_folder_with_an_entry_point() {
             assert!(Path::new("examples").join(n).join(f).is_file(), "examples/{n}/{f} is missing");
         }
     }
-    assert!(example_files().len() >= 30);
+    // 30 files in the five projects, plus the legacy single files directly under examples/
+    // (02-05, removed once the code generator's tests stop using them).
+    let legacy = std::fs::read_dir("examples")
+        .unwrap()
+        .filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().ends_with(".agent.md"))
+        .count();
+    assert_eq!(example_files().len(), 30 + legacy);
 }
 
 #[test]

@@ -104,6 +104,16 @@ fn statement_spans_are_file_positions() {
 }
 
 #[test]
+fn a_bare_for_each_control_line_keeps_its_file_position() {
+    // the canonical form writes `- for each …:`, but the bare control line of SPEC 4.1 must still parse
+    let f = parse("# Agent: a\n- model: claude\n\n## On start\nfor each overdue invoice in crm.invoices:\n  - stop\n");
+    let a = agent(&f);
+    let s = &a.blocks[0].body[0];
+    assert!(matches!(s.kind, StmtKind::ForEach { .. }));
+    assert_eq!((s.span.line, s.span.col), (5, 1));
+}
+
+#[test]
 fn rule_and_constants() {
     let f = read("examples/01-invoice-chaser/rules/overdue.agent.md");
     let Decl::Rule(r) = &f.decls[0] else { panic!() };

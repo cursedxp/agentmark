@@ -1,4 +1,4 @@
-# Tool manifest shared by all examples. See SPEC.md section 7.
+# Tool manifest of this project (the same for every example project). See SPEC.md section 7.
 
 [email]
 verbs = ["send"]

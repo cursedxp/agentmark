@@ -1,7 +1,7 @@
 [
   {"method":"GET","path":"/invoices/INV-1"},
   {"method":"GET","path":"/invoices/INV-404"},
-  {"method":"GET","path":"/invoices/INV-1/net"},
+  {"method":"GET","path":"/invoices/INV-1/net","expect_body":{"id":"INV-1","net":"972.00 EUR","fingerprint":"fd8ffe6cba7f7fef9fd8eae9a4c87754b9cc91e6cb3543a95537b1eedfee2847"}},
   {"method":"POST","path":"/invoices","body":{"id":"INV-3","customer":"Weber KG","amount":"800.00 EUR","due":"2026-11-15","status":"open"}},
   {"method":"POST","path":"/invoices","body":{"id":"INV-4","customer":"Fischer OHG","amount":"0.00 EUR","due":"2026-11-20","status":"open"}}
 ]
