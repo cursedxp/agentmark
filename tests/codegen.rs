@@ -525,17 +525,27 @@ pub fn connect() -> Connected {
 "#;
 
 #[test]
-fn connect_rs_is_written_once_and_a_real_run_uses_it() {
-    let (_d, file) = single("connect", "seen-real.agent.md", SEEN);
+fn connect_rs_lives_in_the_project_and_build_and_run_use_it() {
+    let (d, file) = single("connect", "seen-real.agent.md", SEEN);
     let out = temp("connect-out");
     let build = || agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap();
-    assert!(build().status.success());
-    let stub = std::fs::read_to_string(out.join("src/connect.rs")).unwrap();
-    assert!(stub.contains("not connected yet: implement Crm::list in src/connect.rs"), "{stub}");
+    // first build: the stub is created in the PROJECT, copied into the output
+    let first = build();
+    assert!(first.status.success());
+    assert!(stderr(&first).contains("rust/connect.rs"), "{}", stderr(&first));
+    let stub = std::fs::read_to_string(d.join("rust/connect.rs")).unwrap();
+    assert!(stub.contains("not connected yet: implement Crm::list in rust/connect.rs"), "{stub}");
     assert!(stub.contains("never changes"), "the header says the file is the user's");
+    assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), stub);
 
-    // the user fills it in; building again leaves it alone
-    std::fs::write(out.join("src/connect.rs"), CONNECT).unwrap();
+    // the user fills in the project file; building again copies it and never rewrites it
+    std::fs::write(d.join("rust/connect.rs"), CONNECT).unwrap();
+    assert!(build().status.success());
+    assert_eq!(std::fs::read_to_string(d.join("rust/connect.rs")).unwrap(), CONNECT);
+    assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), CONNECT);
+
+    // deleting the output loses nothing: the next build brings the implementation back
+    std::fs::remove_dir_all(&*out).unwrap();
     assert!(build().status.success());
     assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), CONNECT);
 
@@ -553,15 +563,38 @@ fn connect_rs_is_written_once_and_a_real_run_uses_it() {
 }
 
 #[test]
+fn a_real_run_uses_the_projects_connect_rs() {
+    let (d, file) = single("connectrun", "seen-run.agent.md", SEEN);
+    write(&d, "rust/connect.rs", CONNECT);
+    let o = agentmark(&["run", s(&file)]).output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(e.contains("saw A-1") && e.contains("saw A-2"), "the in-memory CRM answered:\n{e}");
+    assert_eq!(std::fs::read_to_string(d.join("rust/connect.rs")).unwrap(), CONNECT, "run never rewrites it");
+    // trace uses it too
+    let t = agentmark(&["trace", s(&file)]).output().unwrap();
+    assert!(t.status.success(), "{}", stderr(&t));
+    assert_eq!(parse_lines(&stdout(&t)).iter().filter(|l| l["verb"] == "update").count(), 2);
+}
+
+#[test]
+fn a_mock_run_does_not_create_the_projects_connect_rs() {
+    let (d, file) = single("connectmock", "seen-mock.agent.md", SEEN);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    write(&fx, "crm.invoices.json", r#"[{"id":"A-1","customer":"Acme","status":"open"}]"#);
+    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!d.join("rust").exists(), "mock runs leave the project alone");
+}
+
+#[test]
 fn a_real_run_without_connecting_says_what_to_implement() {
-    let (_d, file) = single("unconnected", "seen-stub.agent.md", SEEN);
-    let out = temp("unconnected-out");
-    assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
-    let b = cargo_build_in(&out);
-    assert!(b.status.success(), "{}", stderr(&b));
-    let o = Command::new(gen_bin("seen-stub")).args(["--once"]).output().unwrap();
-    assert_eq!(o.status.code(), Some(1));
-    assert!(stderr(&o).contains("not connected yet: implement Crm::list in src/connect.rs"), "{}", stderr(&o));
+    let (d, file) = single("unconnected", "seen-stub.agent.md", SEEN);
+    let o = agentmark(&["run", s(&file)]).output().unwrap();
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    assert!(stderr(&o).contains("not connected yet: implement Crm::list in rust/connect.rs"), "{}", stderr(&o));
+    assert!(d.join("rust/connect.rs").is_file(), "the stub was created for the author to fill in");
 }
 
 #[test]

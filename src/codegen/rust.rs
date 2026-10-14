@@ -37,7 +37,8 @@ pub struct GeneratedFile {
     /// Relative to the project folder: `src/main.rs`.
     pub path: String,
     pub content: String,
-    /// Written once and never overwritten (`src/connect.rs`).
+    /// `src/connect.rs`: the author's. The CLI replaces `content` with the project's `rust/connect.rs`
+    /// (and clears this flag); a bare `generate` result keeps the stub, which is written once.
     pub user_owned: bool,
 }
 
@@ -98,7 +99,7 @@ pub fn notes(p: &Program, root: &str) -> Vec<String> {
         let mine: Vec<_> = p.entries.iter().filter(|e| &e.unit == unit).collect();
         if !mine.is_empty() && mine.iter().all(|e| matches!(e.trigger, Trigger::Event { .. })) {
             out.push(format!(
-                "note: agent {unit} has only event entries (`When <tool> receives <event>`): they run with --once (mock), but a normal run needs a real tool connection (src/connect.rs)."
+                "note: agent {unit} has only event entries (`When <tool> receives <event>`): they run with --once (mock), but a normal run needs a real tool connection (rust/connect.rs)."
             ));
         }
     }

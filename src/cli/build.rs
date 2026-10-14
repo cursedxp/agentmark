@@ -159,6 +159,36 @@ fn options(p: &Prepared, path: &str) -> cg::Options {
     }
 }
 
+/// The author's real tool implementations live in the PROJECT, at `rust/connect.rs` beside
+/// `agentmark.toml` (Q135, amended in step 10): a build folder can be deleted without losing them.
+/// Every build copies that file to `src/connect.rs` of the generated project. The first time it is
+/// missing it is created from the stub template (an older `src/connect.rs` of the output is kept as
+/// the start), and an existing file is never touched. A `--mock` run does not need the file, so it
+/// neither creates one nor fails for the lack of one.
+fn adopt_connect(prepared: &Prepared, dir: &Path, files: &mut [GeneratedFile], create: bool) -> Result<(), String> {
+    let Some(slot) = files.iter_mut().find(|f| f.path == USER_FILE) else { return Ok(()) };
+    let path = connect_path(&prepared.project.root);
+    if !path.exists() {
+        if !create {
+            return Ok(());
+        }
+        let seed = std::fs::read_to_string(dir.join(USER_FILE)).unwrap_or_else(|_| slot.content.clone());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        }
+        std::fs::write(&path, seed).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+        eprintln!("created {}: your real tool implementations go here (build copies it into the output)", path.display());
+    }
+    slot.content = std::fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    slot.user_owned = false;
+    Ok(())
+}
+
+/// `<project>/rust/connect.rs`.
+fn connect_path(root: &str) -> PathBuf {
+    Path::new(if root.is_empty() { "." } else { root }).join("rust/connect.rs")
+}
+
 /// Write the project, removing unit files of an earlier build that no longer exist.
 fn write_project(out: &Path, files: &[GeneratedFile]) -> Result<(), String> {
     let src = out.join("src");
@@ -190,8 +220,11 @@ pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool,
         Ok(p) => p,
         Err(c) => return c,
     };
-    let files = cg::generate(&prepared.program, &options(&prepared, path));
+    let mut files = cg::generate(&prepared.program, &options(&prepared, path));
     let dir = Path::new(out);
+    if let Err(e) = adopt_connect(&prepared, dir, &mut files, true) {
+        return fail(e);
+    }
     if let Err(e) = write_project(dir, &files) {
         return fail(e);
     }
@@ -374,7 +407,9 @@ fn report_failure(prepared: &Prepared, dir: &Path, files: &[GeneratedFile], run:
         Failure::User(errs) => {
             for e in &errs {
                 if e.file == USER_FILE {
-                    let path = dir.join(&e.file);
+                    // the project's copy when there is one: that is the file to fix
+                    let own = connect_path(&prepared.project.root);
+                    let path = if own.exists() { own } else { dir.join(&e.file) };
                     let text = std::fs::read_to_string(&path).ok().and_then(|t| t.lines().nth(e.line as usize - 1).map(String::from)).unwrap_or_default();
                     eprintln!("{}:{}\n  {}\n  This file is yours (agentmark never rewrites it) and it does not compile: {}\n", path.display(), e.line, text.trim_end(), e.message);
                     continue;
@@ -420,8 +455,11 @@ fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverifie
         Ok(p) => p,
         Err(c) => return c,
     };
-    let files = cg::generate(&prepared.program, &options(&prepared, path));
+    let mut files = cg::generate(&prepared.program, &options(&prepared, path));
     let dir = cache_dir(path);
+    if let Err(e) = adopt_connect(&prepared, &dir, &mut files, !mock) {
+        return fail(e);
+    }
     if let Err(e) = write_project(&dir, &files) {
         return fail(e);
     }
