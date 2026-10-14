@@ -394,7 +394,7 @@ pub fn main_rs(c: &Ctxt) -> String {
             for (i, cmd) in p.commands.iter().enumerate() {
             let variant = super::names::camel(&cmd.name);
             let names: Vec<String> = cmd.args.iter().map(|a| c.n.local(&a.name)).collect();
-            let pat = if names.is_empty() { " {}".to_string() } else { format!(" {{ {} }}", names.join(", ")) };
+            let pat = if names.is_empty() { " { .. }".to_string() } else { format!(" {{ {} }}", names.join(", ")) };
             let args = if names.is_empty() { String::new() } else { format!(", {}", names.join(", ")) };
             s.push_str(&format!(
                 "        Cmd::{variant}{pat} => {{\n            {}::run(ctx{args}{}).await.map_err(|e| command_failed(ctx, {}, e))?;\n        }}\n",
@@ -435,6 +435,26 @@ pub fn main_rs(c: &Ctxt) -> String {
         s.push_str("        other => return Err(format!(\"command.json names an unknown command: {other:?}\").into()),\n    }\n    Ok(0)\n}\n\n");
         s.push_str(COMMAND_ARG);
         s.push_str(COMMAND_FAILED);
+    }
+    // command arguments (and their defaults) may be money, dates or times
+    let word = |w: &str| {
+        s.match_indices(w).any(|(i, _)| {
+            let before = s[..i].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+            let after = s[i + w.len()..].chars().next().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+            before && after
+        })
+    };
+    let mut extra = String::new();
+    let rt_items: Vec<&str> = ["Currency", "Money"].into_iter().filter(|w| word(w)).collect();
+    if !rt_items.is_empty() {
+        extra.push_str(&format!("use agentmark_rt::{{{}}};\n", rt_items.join(", ")));
+    }
+    let chrono_items: Vec<&str> = ["DateTime", "NaiveDate", "Utc"].into_iter().filter(|w| word(w)).collect();
+    if !chrono_items.is_empty() {
+        extra.push_str(&format!("use chrono::{{{}}};\n", chrono_items.join(", ")));
+    }
+    if !extra.is_empty() {
+        s = s.replacen("use clap::Parser;\n", &format!("use clap::Parser;\n{extra}"), 1);
     }
     s.trim_end().to_string() + "\n"
 }

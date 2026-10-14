@@ -287,6 +287,13 @@ fn children(s: &Stmt) -> Vec<&[Stmt]> {
             v
         }
         StmtKind::Parallel(b) => vec![b],
+        StmtKind::Match { arms, otherwise, .. } => {
+            let mut v: Vec<&[Stmt]> = arms.iter().map(|a| a.body.as_slice()).collect();
+            if let Some(o) = otherwise {
+                v.push(&o.body);
+            }
+            v
+        }
         StmtKind::Guard { else_: Some(e), .. } => vec![std::slice::from_ref(&**e)],
         _ => vec![],
     }
@@ -300,6 +307,7 @@ fn is_compound(s: &Stmt) -> bool {
         | StmtKind::Coll(crate::syntax::collections::CollStmt::ForEachEntry { .. })
         | StmtKind::If { .. }
         | StmtKind::IfSome { .. }
+        | StmtKind::Match { .. }
         | StmtKind::Parallel(_) => true,
         StmtKind::Try { otherwise, .. } => otherwise.is_some(),
         _ => false,

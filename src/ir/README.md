@@ -18,9 +18,10 @@ entry (route: service name + `Route.label`; command: name + `"Run"`); every `Fn`
 context, so a former `## Do` block reports the *entry's* label. `Trace`/model/tool lines read it from `ctx`.
 
 ## Program
-- `Program` — everything: package, records, functions, entries, services, commands, rust_fns, bindings, crates, tools, run.
+- `Program` — everything: package, records, enums, functions, entries, services, commands, rust_fns, bindings, crates, tools, run.
 - `Package` — `agentmark.toml` name/version.
 - `Record` / `RecordField` — a record with resolved (inferred) field types.
+- `Enum` / `Variant` — an enum (SPEC 22.1) with its variants' fields. Aliases are gone: every `Type` in the IR is already resolved. The JSON form is `{"kind":"Circle","radius":3}` (Q301); codegen writes one struct per variant that has fields.
 - `Fn` — `name, display, doc, params, ret, effect, body, source`; former `# Rule` (`Fn(rec) -> bool`, pure) and `## Do` (`<agent>__<block>`, takes the caller's record) are plain Fns.
 - `Param` / `LocalVar` — parameter (with optional default) / variable a statement introduces.
 - `Entry` — `unit, label, trigger, param, timeout, memory_file, body, effect`; stop = return from the body.
@@ -35,6 +36,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 ## Statements (`StmtKind`)
 - `Let{name,ty,value}` declares; `Assign{name,ty,value}` changes an existing variable (`ty` = its declared type, wrap `T` into `maybe T` when `value.ty` differs).
 - `If{cond,then,else_}`, `IfSome{expr,bind,then,else_}` (bind has the inner `T`), `ForEach{var,source,body}`.
+- `Match{scrutinee, arms, otherwise}` — `match v:` over an enum, a `maybe` or a `result`. `MatchArm{pattern, bind, body}`: `pattern` is a `Pattern` (`Variant{enum_name, variant}`, `Some`, `None`, `Ok`, `Error`), `bind` the name the branch gives its value (`Type::Variant(enum, variant)` for a variant, the inner `T` for `some`/`ok`, `text` for `error`). Without `otherwise` the arms cover every case. A `result` scrutinee is the `Expr::Call` itself (codegen does not apply `?` to it, Q300).
 - `Return(e)`; `Stop` = leave the enclosing Fn/entry/route/command (SPEC 4.1).
 - `Effect{call, into}` — an effect; `into` declares a fresh variable (shadows) for its result.
 - `Coll(CollStmt)` (`ir/collections.rs`): `Put{value,key,map}`, `Remove{key,map}`, `ForEachIndex{var,index,source,body}` (index from 1), `ForEachEntry{key,value,source,body}` (key order).
@@ -60,6 +62,7 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `TextToBytes(inner)` — a `text` argument of a binding call whose parameter is `bytes` (Q151); codegen emits `inner.as_bytes().to_vec()`; `ty` is `bytes`.
 - `Unwrap{inner,what}` — `inner` is `maybe T` known present (narrowing from `Checked.unwraps`); codegen emits `inner.expect("<what> is not empty here")` (no bare `.unwrap()`); the node's `ty` is `T`.
 - `Interp(parts)`, `Binary{op,lhs,rhs}`, `Not`, `Record(fields)` (ty is `Object`).
+- `Variant{enum_name, variant, fields}` — an enum value (`Circle { radius: 3 }`, `Empty`); fields a `maybe` variant field leaves out are not listed. `ty` is `Type::Enum`.
 - `Std{module, name, args, decode}` — a call of the built-in library (SPEC 22.3; the one table is `crate::stdlib`). `ty` is the type of the whole call (`Result(T)` for `number.parse`, `money.parse`, `date.parse`, `json.parse`, `csv.parse`); `decode` is `T` of `json.parse(t) as T` / `list of T` of `csv.parse`. Pure; codegen writes `agentmark_rt::stdlib::<module>::<name>(…)`.
 - `Call{callee: Fn|Rust, name, args}`; `Source{tool,source,record}` (read `crm.invoices`, effect network).
 - `Coll(CollOp)` (`ir/collections.rs`): `List`, `Map`, `Where`, `CountWhere`, `MapTo`, `Sort`, `Group`, `Sum`, `Extreme`, `Edge`, `Slice`, `Unique`, `Join`, `At`, `MapPart`. The per-element operands are ordinary expressions over `Var("item")` (`collections::ELEM`); a record element's bare fields are already `Field{Var("item"), f}`. Codegen writes loops, never closures (the operands may `await`).

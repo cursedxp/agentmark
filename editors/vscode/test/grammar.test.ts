@@ -92,6 +92,55 @@ test("blocks, statements, guards and strings", async () => {
   assert.ok(has(t[6], "customer", "entity.name.tag.target"));
 });
 
+test("enums, type aliases and match branches", async () => {
+  const g = await loadGrammar();
+  const src = [
+    "# Enum: Shape",
+    "- Circle: radius: int",
+    "# Type: Totals",
+    "- is: list of int",
+    "- match shape:",
+    "  - Circle c:",
+    '    - print: "{c.radius}"',
+    "  - Shape.Empty:",
+    "    - stop",
+    "  - otherwise:",
+    "    - stop",
+    "- match found:",
+    "  - some row:",
+    "    - stop",
+    "  - none:",
+    "    - stop",
+    "- set s = Circle { radius: 3 }",
+    "- set e = Shape.Rect { width: 1, height: 2 }",
+    "- match parsed:",
+    "  - ok:",
+    "    - return some 3",
+    "  - error:",
+    "    - set d = none",
+  ].join("\n");
+  const t = tokens(g, src);
+  assert.ok(has(t[0], "Enum", "keyword.declaration"));
+  assert.ok(has(t[0], "Shape", "entity.name.type"));
+  assert.ok(has(t[2], "Type", "keyword.declaration"));
+  assert.ok(has(t[3], "is", "variable.other.property"));
+  assert.ok(has(t[4], "match", "keyword.control"));
+  assert.ok(has(t[5], "Circle", "entity.name.type.variant"));
+  assert.ok(has(t[5], "c", "variable.other"));
+  assert.ok(has(t[7], "Shape.Empty", "entity.name.type.variant"));
+  assert.ok(has(t[9], "otherwise", "keyword.control"), "otherwise is not a variant");
+  assert.ok(!t[9].some((x) => x.scopes.some((s) => s.includes("variant"))));
+  assert.ok(has(t[12], "some", "keyword.control.pattern"));
+  assert.ok(has(t[14], "none", "keyword.control.pattern"));
+  assert.ok(has(t[16], "Circle", "entity.name.type.variant"));
+  assert.ok(has(t[17], "Shape", "entity.name.type.variant"));
+  assert.ok(has(t[17], "Rect", "entity.name.type.variant"));
+  assert.ok(has(t[19], "ok", "keyword.control.pattern"), "a branch without a name");
+  assert.ok(has(t[20], "some", "keyword.control.pattern"));
+  assert.ok(has(t[21], "error", "keyword.control.pattern"));
+  assert.ok(has(t[22], "none", "constant.language"));
+});
+
 test("built-in library calls: module, function, and the file tool", async () => {
   const g = await loadGrammar();
   const t = tokens(g, [

@@ -87,6 +87,8 @@ const RESERVED: &[&str] = &[
     "today",
     "now",
     "otherwise",
+    "some",
+    "none",
 ];
 
 /// Record a mistake in what the parser just matched, and let parsing carry on.
@@ -491,6 +493,16 @@ fn number_lit<'a>() -> P<'a, ExprKind> {
 
 // ------------------------------------------------------------------ expressions
 
+/// `billing.Shape` for the leading segments of `billing.Shape.Circle`; `None` for a bare name.
+pub fn qualifier_of(segs: &[Ident]) -> Option<Ident> {
+    let first = segs.first()?;
+    let last = segs.last()?;
+    Some(Ident {
+        name: segs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join("."),
+        span: first.span.to(last.span),
+    })
+}
+
 fn mk<'a>(kind: ExprKind, e: &mut MapExtra<'a, '_, &'a str, Ex<'a>>) -> Expr {
     Expr { span: at(e), kind }
 }
@@ -592,16 +604,36 @@ pub fn expr<'a>() -> P<'a, Expr> {
                 .then_ignore(sp())
                 .then(expr.clone())
                 .map(|(name, value)| RecordField { name, value });
-            let record = rec_field
+            let braced_fields = rec_field
                 .padded_by(sp())
                 .separated_by(just(','))
                 .allow_trailing()
                 .collect::<Vec<_>>()
                 .padded_by(sp())
-                .delimited_by(just('{'), just('}'))
+                .delimited_by(just('{'), just('}'));
+            let record = braced_fields
+                .clone()
                 .map_with(|fields, e| mk(ExprKind::Record(fields), e))
                 .labelled("a record like { id: invoice.id }");
 
+            // ---- an enum variant with fields: `Circle { radius: 3 }`, `Shape.Circle { radius: 3 }`
+            let variant = path_idents
+                .clone()
+                .then_ignore(sp())
+                .then(braced_fields)
+                .map_with(|(mut p, fields), e| {
+                    let name = p.pop().expect("a path has a segment");
+                    let qualifier = qualifier_of(&p);
+                    mk(
+                        ExprKind::Variant {
+                            qualifier,
+                            name,
+                            fields,
+                        },
+                        e,
+                    )
+                })
+                .labelled("a variant like Circle { radius: 3 }");
             let paren = expr
                 .clone()
                 .padded_by(sp())
@@ -697,9 +729,29 @@ pub fn expr<'a>() -> P<'a, Expr> {
             let path_or_call =
                 super::collections::postfix(path_or_call.boxed(), expr.clone().boxed(), operand);
 
+            // `some x`: the value is one atom (a path, call, literal or parenthesised expression)
+            let some_inner = choice((
+                string.clone(),
+                variant.clone(),
+                paren.clone(),
+                date.clone(),
+                number.clone(),
+                path_or_call.clone(),
+            ))
+            .boxed();
+            let some_expr = kw("some")
+                .ignore_then(sp1())
+                .ignore_then(some_inner)
+                .map_with(|x, e| mk(ExprKind::Some(Box::new(x)), e))
+                .boxed();
+            let none_expr = kw("none").map_with(|_, e| mk(ExprKind::None, e));
+
             let atom = choice((
+                some_expr,
+                none_expr,
                 string,
                 record,
+                variant,
                 coll,
                 paren,
                 date,

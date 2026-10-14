@@ -14,6 +14,7 @@ use crate::syntax::ast::{Decl, Effect, Expr, HandleMode};
 mod body;
 mod collections;
 mod decls;
+mod enums;
 mod expr;
 mod limits;
 mod parallel;
@@ -78,6 +79,53 @@ pub enum Resolution {
     /// A call (`f(x)`, `do f`, `do remind`, a rule used as a filter). `decl` is the declared
     /// name, never the module-qualified spelling.
     Call { kind: CallKind, decl: String },
+    /// An enum variant: `Empty`, `Shape.Empty` (a path) or `Circle { radius: 3 }`. Both names
+    /// are the declared ones.
+    Variant { enum_name: String, variant: String },
+    /// A record built with `Sale { region: "EU", … }`.
+    Record { record: String },
+}
+
+/// What one branch of a `match` stands for (`Checked::patterns`, keyed by the branch line).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum Pattern {
+    /// A variant of the enum being matched.
+    Variant { enum_name: String, variant: String },
+    /// `some x:` of a `maybe`.
+    Some,
+    /// `none:` of a `maybe`.
+    None,
+    /// `ok x:` of a `result`.
+    Ok,
+    /// `error e:` of a `result` (`e` is the failure's message, text).
+    Error,
+}
+
+/// A variant of an enum with its fields' resolved types.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VariantInfo {
+    pub name: String,
+    pub span: Span,
+    pub fields: Vec<FieldInfo>,
+}
+
+/// An `# Enum` (SPEC 22.1).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EnumInfo {
+    pub name: String,
+    pub file: usize,
+    pub span: Span,
+    pub variants: Vec<VariantInfo>,
+}
+
+/// A `# Type` alias with the type it stands for (aliases are resolved wherever they are written,
+/// so later passes never see one).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AliasInfo {
+    pub name: String,
+    pub file: usize,
+    pub span: Span,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -298,6 +346,14 @@ pub struct Checked {
     pub warnings: Vec<Diagnostic>,
     /// Every record by name, fields in declaration order.
     pub records: BTreeMap<String, RecordInfo>,
+    /// Every enum by name, variants in declaration order.
+    pub enums: BTreeMap<String, EnumInfo>,
+    /// Every `# Type` alias by name.
+    pub aliases: BTreeMap<String, AliasInfo>,
+    /// The branches of every `match` (key = the branch line's span).
+    pub patterns: HashMap<NodeKey, Pattern>,
+    /// What every written type (key = the type expression's span) stands for, aliases resolved.
+    pub type_exprs: HashMap<NodeKey, Type>,
     /// Type of every expression (including those inside interpolated strings).
     pub expr_types: HashMap<NodeKey, Type>,
     /// Effect of every expression (sub-expressions included). Only effectful ones come from
@@ -392,6 +448,12 @@ pub(crate) struct Checker<'a> {
     /// `(file, import index)` of crate imports without a binding whose name the file used as a tool.
     pub unbound_used: HashSet<(usize, usize)>,
     pub records: BTreeMap<String, RecordInfo>,
+    pub enums: BTreeMap<String, EnumInfo>,
+    /// Aliases: `None` while one is being resolved (cycle guard).
+    pub alias_state: HashMap<String, Option<Type>>,
+    pub alias_infos: BTreeMap<String, AliasInfo>,
+    pub patterns: HashMap<NodeKey, Pattern>,
+    pub type_exprs: HashMap<NodeKey, Type>,
     pub sigs: HashMap<Key, Sig>,
     pub bindings: BTreeMap<String, BindingInfo>,
     /// Every `handle of <crate>.<Type>` some binding mentions (SPEC 22.4), with the names of the
@@ -431,6 +493,11 @@ impl<'a> Checker<'a> {
             used_imports: HashSet::new(),
             unbound_used: HashSet::new(),
             records: BTreeMap::new(),
+            enums: BTreeMap::new(),
+            alias_state: HashMap::new(),
+            alias_infos: BTreeMap::new(),
+            patterns: HashMap::new(),
+            type_exprs: HashMap::new(),
             sigs: HashMap::new(),
             bindings: BTreeMap::new(),
             handle_types: Default::default(),
@@ -501,8 +568,11 @@ impl<'a> Checker<'a> {
         let (reg, scopes) = scope::build(self.p, &mut self.diags);
         self.reg = reg;
         self.scopes = scopes;
+        self.declare_aliases();
         self.collect_handle_types();
         self.declare_records();
+        self.declare_enums();
+        self.check_recursive_types();
         self.declare_signatures();
         self.declare_tools();
         self.check_agent_headers();
@@ -545,6 +615,10 @@ impl<'a> Checker<'a> {
             files: self.p.files.iter().map(|f| f.path.clone()).collect(),
             warnings: self.diags,
             records: self.records,
+            enums: self.enums,
+            aliases: self.alias_infos,
+            patterns: self.patterns,
+            type_exprs: self.type_exprs,
             expr_types: self.expr_types,
             expr_effects: self.expr_effects,
             stmt_effects: self.stmt_effects,

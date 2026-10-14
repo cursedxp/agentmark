@@ -158,7 +158,7 @@ fn a_maybe_argument_must_be_checked_first() {
 
 #[test]
 fn a_result_without_try_says_how_to_write_it() {
-    let e = first_error(&run("- set n = number.parse(name)"));
+    let e = first_error(&run("- print: \"{number.parse(name)}\""));
     assert!(e.contains("\"number.parse\" can fail (it returns \"result of int\")") && e.contains("try number.parse"), "{e}");
     let e = first_error(&run("- file read name -> t"));
     assert!(e.contains("\"file read\" can fail"), "{e}");

@@ -182,3 +182,38 @@ fn a_default_command_without_required_arguments_recursion_and_aliased_tools_buil
     let calls: Vec<&Value> = trace.iter().filter(|l| l["kind"] == "tool" && l["tool"] == "maths").collect();
     assert_eq!(calls.iter().map(|l| l["args"]["n"].as_i64().unwrap()).collect::<Vec<_>>(), [3, 2, 1]);
 }
+
+#[test]
+fn arguments_named_a_and_rest_and_money_and_date_arguments_work() {
+    let src = temp("odd-src");
+    copy_dir(Path::new(&format!("{ROOT}/tests/user_tools/odd")), &src);
+    let out = temp("odd-out");
+    let o = agentmark(&["build", s(&src), "--target", "rust", "-o", s(&out)]).output_locked();
+    assert!(o.status.success(), "agentmark build failed:\n{}", stderr(&o));
+    let bin = build_bin(&out, "odd");
+    let work = temp("odd-work");
+    let say = |args: &[&str]| {
+        let o = run_in(&bin, &work, args);
+        assert!(o.status.success(), "{args:?}: {}", stderr(&o));
+        parse_lines(&stdout(&o))[0]["message"].as_str().unwrap().to_string()
+    };
+    assert_eq!(say(&["x", "y"]), "x y 1.50 EUR 2026-10-14");
+    assert_eq!(say(&["x", "y", "--price", "3.00 EUR", "--day", "2026-01-02"]), "x y 3.00 EUR 2026-01-02");
+    assert_eq!(say(&["--rest", "r", "--a", "q", "12.25 EUR"]), "q r 12.25 EUR 2026-10-14");
+    let o = run_in(&bin, &work, &["x", "y", "not money"]);
+    assert_eq!(o.status.code(), Some(2));
+
+    // the same types as arguments of a subcommand (several commands)
+    let src = temp("odd2-src");
+    write(&src, "agentmark.toml", "name = \"odd2\"\nversion = \"0.1.0\"\ntargets = [\"rust\"]\n");
+    write(&src, "main.agent.md", "# Import: ./one.agent.md\n# Import: ./two.agent.md\n\n# Run\n- one\n- two\n");
+    write(&src, "one.agent.md", "# Command: one\n- args: price: money, day: date\n\n## Run\n- print: \"{price} {day}\"\n");
+    write(&src, "two.agent.md", "# Command: two\n\n## Run\n- print: \"two\"\n");
+    let out = temp("odd2-out");
+    let o = agentmark(&["build", s(&src), "--target", "rust", "-o", s(&out)]).output_locked();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let bin = build_bin(&out, "odd2");
+    let o = run_in(&bin, &work, &["one", "2.00 EUR", "2026-02-03"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(parse_lines(&stdout(&o))[0]["message"], "2.00 EUR 2026-02-03");
+}

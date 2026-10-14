@@ -41,7 +41,7 @@ pub fn args_struct(c: &Ctxt, cmd: &Command) -> String {
     }
     let names: Vec<String> = cmd.args.iter().filter(|a| a.ty != Type::Bool).map(|a| a.name.to_uppercase()).collect();
     s.push_str(&format!(
-        "    /// {}\n    #[arg(value_name = \"VALUE\", allow_negative_numbers = true)]\n    rest: Vec<String>,\n}}\n\n",
+        "    /// {}\n    #[arg(value_name = \"VALUE\", allow_negative_numbers = true)]\n    __rest: Vec<String>,\n}}\n\n",
         if names.is_empty() { "No positional values".to_string() } else { format!("Values in the order {}, for the ones not given by name", names.join(" ")) }
     ));
     s
@@ -50,13 +50,13 @@ pub fn args_struct(c: &Ctxt, cmd: &Command) -> String {
 /// `run_default`: pick each argument (named, else the next positional value, else its default) and run the command.
 pub fn run_default(c: &Ctxt, cmd: &Command, state_init: &str) -> String {
     let p = c.p;
-    let mut s = String::from("/// Run the program's one command from the command line.\n#[allow(unused_variables)]\nasync fn run_default(ctx: &Ctx, a: CmdArgs) -> Result<usize, AgentError> {\n    let mut rest = a.rest.into_iter();\n");
+    let mut s = String::from("/// Run the program's one command from the command line.\n#[allow(unused_variables)]\nasync fn run_default(ctx: &Ctx, __args: CmdArgs) -> Result<usize, AgentError> {\n    let mut __rest = __args.__rest.into_iter();\n");
     let mut names: Vec<String> = Vec::new();
     for arg in &cmd.args {
         let id = c.n.local(&arg.name);
         let ty = rust_type(&arg.ty, c.n);
         if arg.ty == Type::Bool {
-            s.push_str(&format!("    let {id}: bool = a.{id};\n"));
+            s.push_str(&format!("    let {id}: bool = __args.{id};\n"));
         } else {
             let b = Body::new(p, c.n, &c.o.root, "main", Kind::Unit, None);
             let fallback = match &arg.default {
@@ -71,13 +71,13 @@ pub fn run_default(c: &Ctxt, cmd: &Command, state_init: &str) -> String {
                 _ => "serde_json::from_str(&t).ok()",
             };
             s.push_str(&format!(
-                "    let {id}: {ty} = match a.{id}.or_else(|| rest.next()) {{\n        Some(t) => ({conv}).unwrap_or_else(|| usage_error(&format!(\"{{t:?}} is not a valid value for <{}>\"))),\n        None => {fallback},\n    }};\n",
+                "    let {id}: {ty} = match __args.{id}.or_else(|| __rest.next()) {{\n        Some(t) => ({conv}).unwrap_or_else(|| usage_error(&format!(\"{{t:?}} is not a valid value for <{}>\"))),\n        None => {fallback},\n    }};\n",
                 arg.name.to_uppercase()
             ));
         }
         names.push(id);
     }
-    s.push_str("    if let Some(extra) = rest.next() {\n        usage_error(&format!(\"unexpected value {extra:?}: every argument is already given (an argument given by name does not take a positional value too)\"));\n    }\n");
+    s.push_str("    if let Some(extra) = __rest.next() {\n        usage_error(&format!(\"unexpected value {extra:?}: every argument is already given (an argument given by name does not take a positional value too)\"));\n    }\n");
     let args = if names.is_empty() { String::new() } else { format!(", {}", names.join(", ")) };
     s.push_str(&format!(
         "    {}::run(ctx{args}{state_init}).await.map_err(|e| command_failed(ctx, {}, e))?;\n    Ok(0)\n}}\n\n",

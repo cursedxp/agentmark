@@ -19,7 +19,7 @@
     "declaration": {
       "patterns": [
         {
-          "match": "^(#)\\s+(Agent|Record|Rule|Function|Service|Command|Constant|Binding|Tool)(:)\\s*([A-Za-z][\\w-]*)?",
+          "match": "^(#)\\s+(Agent|Record|Enum|Type|Rule|Function|Service|Command|Constant|Binding|Tool)(:)\\s*([A-Za-z][\\w-]*)?",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },
             "2": { "name": "keyword.declaration.agentmark" },
@@ -161,7 +161,7 @@
       ]
     },
     "property": {
-      "match": "^(\\s*)(-)\\s+(model|tools|memory|timeout|for|when|value|in|out|effect|listen|state|args|crate|doc)(:)",
+      "match": "^(\\s*)(-)\\s+(model|tools|memory|timeout|for|when|value|in|out|effect|listen|state|args|crate|doc|is)(:)",
       "captures": {
         "2": { "name": "punctuation.definition.list.agentmark" },
         "3": { "name": "variable.other.property.agentmark" },
@@ -170,6 +170,39 @@
     },
     "statement": {
       "patterns": [
+        {
+          "match": "^(\\s*)(-)\\s+(match)\\b",
+          "captures": {
+            "2": { "name": "punctuation.definition.list.agentmark" },
+            "3": { "name": "keyword.control.agentmark" }
+          }
+        },
+        {
+          "match": "^(\\s*)(-)\\s+(some|ok|error)(?:\\s+([A-Za-z_]\\w*))?\\s*(:)\\s*$",
+          "captures": {
+            "2": { "name": "punctuation.definition.list.agentmark" },
+            "3": { "name": "keyword.control.pattern.agentmark" },
+            "4": { "name": "variable.other.agentmark" },
+            "5": { "name": "punctuation.separator.agentmark" }
+          }
+        },
+        {
+          "match": "^(\\s*)(-)\\s+(none)\\s*(:)\\s*$",
+          "captures": {
+            "2": { "name": "punctuation.definition.list.agentmark" },
+            "3": { "name": "keyword.control.pattern.agentmark" },
+            "4": { "name": "punctuation.separator.agentmark" }
+          }
+        },
+        {
+          "match": "^(\\s*)(-)\\s+(?!(?:if|for|match|else|otherwise|parallel|try)\\b)([A-Za-z][\\w-]*(?:\\.[A-Za-z][\\w-]*)*)(?:\\s+([A-Za-z_]\\w*))?\\s*(:)\\s*$",
+          "captures": {
+            "2": { "name": "punctuation.definition.list.agentmark" },
+            "3": { "name": "entity.name.type.variant.agentmark" },
+            "4": { "name": "variable.other.agentmark" },
+            "5": { "name": "punctuation.separator.agentmark" }
+          }
+        },
         {
           "match": "^(\\s*)(-)\\s+(guard)(:)",
           "captures": {
@@ -204,7 +237,7 @@
     },
     "control": {
       "patterns": [
-        { "match": "\\b(for each|if|else|stop|do|set|return|respond|read|print|append|put|remove)\\b", "name": "keyword.control.agentmark" },
+        { "match": "\\b(for each|if|else|otherwise|stop|do|set|return|respond|read|print|match|append|put|remove)\\b", "name": "keyword.control.agentmark" },
         { "match": "\\b(in|as|with|from|and|or|not|is|matches|else|index)\\b", "name": "keyword.operator.word.agentmark" },
         { "match": "\\b(?:(?:list|map|keys|values|sum|min|max|first|last|count) of|empty (?:list|map) of|sort|group|take|skip|unique|join|where|by|descending|at|to)\\b", "name": "support.function.collection.agentmark" },
         { "match": "->", "name": "keyword.operator.arrow.agentmark" }
@@ -225,7 +258,16 @@
         { "match": "\\b\\d+(?:\\.\\d+)?\\s*(?:[A-Z]{3})\\b", "name": "constant.numeric.money.agentmark" },
         { "match": "\\b\\d+\\s*(?:second|minute|hour|day|week|month|year)s?\\b", "name": "constant.numeric.duration.agentmark" },
         { "match": "\\b\\d+(?:\\.\\d+)?\\b", "name": "constant.numeric.agentmark" },
-        { "match": "\\b(true|false|today|now)\\b", "name": "constant.language.agentmark" },
+        { "match": "\\b(true|false|today|now|none|count of)\\b", "name": "constant.language.agentmark" },
+        { "match": "\\bsome\\b", "name": "keyword.control.pattern.agentmark" },
+        {
+          "match": "\\b([A-Z][\\w-]*)(?:(\\.)([A-Z][\\w-]*))?(?=\\s*\\{)",
+          "captures": {
+            "1": { "name": "entity.name.type.variant.agentmark" },
+            "2": { "name": "punctuation.accessor.agentmark" },
+            "3": { "name": "entity.name.type.variant.agentmark" }
+          }
+        },
         { "match": "<=|>=|!=|=|<|>|\\+|-|\\*|/", "name": "keyword.operator.agentmark" }
       ]
     },

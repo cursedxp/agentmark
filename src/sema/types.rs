@@ -23,6 +23,11 @@ pub enum Type {
     Result(Box<Type>),
     /// A declared record, by its (project-unique) name.
     Record(String),
+    /// A declared `# Enum`, by its (project-unique) name (SPEC 22.1).
+    Enum(String),
+    /// What a `match` branch on an enum binds: the fields of one variant, as `(enum, variant)`.
+    /// Only its fields can be read (`c.radius`); it is not a value of the enum.
+    Variant(String, String),
     /// A record literal `{ id: x }`: field names and types, in written order.
     Object(Vec<(String, Type)>),
     /// `handle of <crate>.<Type>` (SPEC 22.4): a library value AgentMark cannot look into, by its
@@ -111,7 +116,8 @@ impl fmt::Display for Type {
             Type::Map(k, v) => write!(f, "map of {k} to {v}"),
             Type::Maybe(t) => write!(f, "maybe {t}"),
             Type::Result(t) => write!(f, "result of {t}"),
-            Type::Record(n) => f.write_str(n),
+            Type::Record(n) | Type::Enum(n) => f.write_str(n),
+            Type::Variant(e, v) => write!(f, "{e}.{v}"),
             Type::Handle(n) => write!(f, "handle of {n}"),
             Type::Object(fields) => {
                 let inner: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();

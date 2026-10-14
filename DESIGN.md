@@ -204,6 +204,8 @@ generated file path — never as a user error.
 | `tool` crm | `tool`, `verb`, `source`, `id`, and for `update`: `set` (object of assigned fields, or the whole record) |
 | `tool` http | `tool`, `verb`, `url`, `body` (if any) |
 | `tool` log | `tool`, `message` |
+| `tool` (user `# Tool`, SPEC 22.5) | `tool`, `verb`, `args` (object of parameter values; handle parameters omitted) |
+| `file` (built-in, SPEC 22.3) | `verb`, `path`, and `to` for `rename` |
 | `http` | `method`, `path`, `status` (one line per request served by a `# Service`) |
 | `print` | `message` |
 | `error` | `agent`, `block`, `message` (a `try` without `otherwise` that failed) |

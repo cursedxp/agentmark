@@ -12,6 +12,8 @@ use crate::syntax::ast::*;
 pub enum DeclKind {
     Agent,
     Record,
+    Enum,
+    TypeAlias,
     Rule,
     Function,
     Service,
@@ -26,6 +28,8 @@ impl DeclKind {
         match self {
             DeclKind::Agent => "Agent",
             DeclKind::Record => "Record",
+            DeclKind::Enum => "Enum",
+            DeclKind::TypeAlias => "Type",
             DeclKind::Rule => "Rule",
             DeclKind::Function => "Function",
             DeclKind::Service => "Service",
@@ -39,8 +43,8 @@ impl DeclKind {
 
 /// Every word that may follow `# `.
 pub const HEADING_WORDS: &[&str] = &[
-    "Agent", "Record", "Rule", "Function", "Service", "Command", "Binding", "Tool", "Constant", "Run",
-    "Import",
+    "Agent", "Record", "Enum", "Type", "Rule", "Function", "Service", "Command", "Binding", "Tool",
+    "Constant", "Run", "Import",
 ];
 
 /// The first word of a level-1 heading (checked first so an unknown word gets "did you mean").
@@ -118,6 +122,8 @@ pub fn h1<'a>() -> P<'a, H1> {
     choice((
         decl("agent", DeclKind::Agent),
         decl("record", DeclKind::Record),
+        decl("enum", DeclKind::Enum),
+        decl("type", DeclKind::TypeAlias),
         decl("rule", DeclKind::Rule),
         decl("function", DeclKind::Function),
         decl("service", DeclKind::Service),
@@ -330,6 +336,28 @@ pub fn field<'a>() -> P<'a, (Ident, Option<TypeExpr>)> {
         )
         .then_ignore(sp())
         .map(|(n, t)| (n, t.flatten()))
+        .boxed()
+}
+
+/// A variant of an enum: `Empty`, `Circle: radius: int`, `Rect: width: int, height: int`.
+pub fn variant<'a>() -> P<'a, (Ident, Vec<(Ident, TypeExpr)>)> {
+    let fld = ident()
+        .then_ignore(sp())
+        .then_ignore(just(':').labelled("\":\""))
+        .then_ignore(sp())
+        .then(type_expr());
+    let fields = sp()
+        .ignore_then(just(':'))
+        .ignore_then(sp())
+        .ignore_then(
+            fld.separated_by(sp().then(just(',')).then(sp()))
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        );
+    name()
+        .then(fields.or_not())
+        .then_ignore(sp())
+        .map(|(n, f)| (n, f.unwrap_or_default()))
         .boxed()
 }
 

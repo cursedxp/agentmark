@@ -227,10 +227,12 @@ fn expr_children(e: &Expr) -> Vec<&Expr> {
         | ExprKind::IsNotEmpty(x)
         | ExprKind::Length(x)
         | ExprKind::NoAmountsChanged(x) => vec![x],
-        ExprKind::Matches { expr, .. } => vec![expr],
+        ExprKind::Matches { expr, .. } | ExprKind::Some(expr) => vec![expr],
         ExprKind::Call { args, .. } => args.iter().collect(),
         ExprKind::Decode { call, .. } => vec![call],
-        ExprKind::Record(fields) => fields.iter().map(|f| &f.value).collect(),
+        ExprKind::Record(fields) | ExprKind::Variant { fields, .. } => {
+            fields.iter().map(|f| &f.value).collect()
+        }
         ExprKind::CountOf { source, .. } => vec![source],
         ExprKind::FirstIn { source, cond, .. } => vec![source, cond],
         ExprKind::Coll(c) => c.parts().into_iter().map(|(e, _)| e).collect(),
@@ -252,6 +254,7 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         StmtKind::ForEach { source, .. } => vec![source],
         StmtKind::If { cond, .. } | StmtKind::Guard { cond, .. } => vec![cond],
         StmtKind::IfSome { expr, .. } | StmtKind::Set { expr, .. } => vec![expr],
+        StmtKind::Match { scrutinee, .. } => vec![scrutinee],
         StmtKind::Do { args, .. } => args.iter().collect(),
         StmtKind::AskModel { with, prompt, .. } => with.iter().chain([prompt]).collect(),
         StmtKind::ToolCall {
@@ -303,6 +306,15 @@ fn stmt_children(s: &Stmt) -> Vec<&[Stmt]> {
             vec![then, else_]
         }
         StmtKind::Parallel(body) => vec![body],
+        StmtKind::Match {
+            arms, otherwise, ..
+        } => {
+            let mut v: Vec<&[Stmt]> = arms.iter().map(|a| a.body.as_slice()).collect();
+            if let Some(o) = otherwise {
+                v.push(&o.body);
+            }
+            v
+        }
         StmtKind::Try { stmt, otherwise } => {
             let mut v = vec![std::slice::from_ref(&**stmt)];
             if let Some(o) = otherwise {
@@ -369,6 +381,11 @@ fn body_lines(file: &File) -> u32 {
                 see(r.span.line);
                 r.fields.iter().for_each(|f| see(f.span.line));
             }
+            Decl::Enum(e) => {
+                see(e.span.line);
+                e.variants.iter().for_each(|v| see(v.span.line));
+            }
+            Decl::TypeAlias(t) => see(t.target.span.line.max(t.span.line)),
             Decl::Entry(e) => see(e.span.line),
             Decl::Rule(r) => see(r.when.span.line.max(r.span.line)),
             Decl::Constant(c) => see(c.value.span.line.max(c.span.line)),
@@ -678,6 +695,16 @@ fn vague_name(ctx: &mut Ctx, file: &File) {
                     add(&mut names, &f.name);
                 }
             }
+            Decl::Enum(e) => {
+                add(&mut names, &e.name);
+                for v in &e.variants {
+                    add(&mut names, &v.name);
+                    for f in &v.fields {
+                        add(&mut names, &f.name);
+                    }
+                }
+            }
+            Decl::TypeAlias(t) => add(&mut names, &t.name),
             Decl::Rule(r) => add(&mut names, &r.name),
             Decl::Agent(a) => add(&mut names, &a.name),
             Decl::Function(f) => add(&mut names, &f.name),
@@ -721,6 +748,13 @@ fn vague_name(ctx: &mut Ctx, file: &File) {
                 match &s.kind {
                     StmtKind::Set { var, .. } | StmtKind::ForEach { var, .. } => add(&mut names, var),
                     StmtKind::IfSome { bind, .. } => add(&mut names, bind),
+                    StmtKind::Match { arms, .. } => {
+                        for a in arms {
+                            if let Some(b) = &a.bind {
+                                add(&mut names, b);
+                            }
+                        }
+                    }
                     StmtKind::Coll(CollStmt::ForEachIndex { var, index, .. }) => {
                         add(&mut names, var);
                         add(&mut names, index);

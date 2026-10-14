@@ -21,7 +21,8 @@ fn tool(cmd: &str, scratch: &Path) -> Command {
     // ~/.cache/tree-sitter, which a parallel checkout with another grammar would overwrite
     c.env("TMPDIR", scratch)
         .env("NODE_COMPILE_CACHE", scratch.join("node-compile-cache"))
-        .env("TREE_SITTER_LIBDIR", scratch.join("ts-lib"));
+        .env("TREE_SITTER_LIBDIR", scratch.join("ts-lib"))
+        .env("XDG_CACHE_HOME", scratch.join("xdg-cache"));
     c
 }
 

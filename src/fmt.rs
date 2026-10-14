@@ -180,6 +180,8 @@ impl Printer {
     fn decl(&mut self, d: &Decl) {
         match d {
             Decl::Record(r) => self.record(r),
+            Decl::Enum(e) => self.enum_decl(e),
+            Decl::TypeAlias(t) => self.type_alias(t),
             Decl::Rule(r) => self.rule(r),
             Decl::Agent(a) => self.agent(a),
             Decl::Function(f) => self.function(f),
@@ -246,6 +248,33 @@ impl Printer {
             self.push(f.span.line, 0, text);
             self.attached.insert(f.span.line);
         }
+    }
+
+    fn enum_decl(&mut self, e: &Enum) {
+        self.heading(&e.doc, e.span.line, format!("# Enum: {}", e.name.name));
+        for v in &e.variants {
+            self.comments(0, &v.comments);
+            let text = if v.fields.is_empty() {
+                format!("- {}", v.name.name)
+            } else {
+                let fields: Vec<String> = v
+                    .fields
+                    .iter()
+                    .map(|f| match &f.ty {
+                        Some(t) => format!("{}: {}", f.name.name, type_text(t)),
+                        None => f.name.name.clone(),
+                    })
+                    .collect();
+                format!("- {}: {}", v.name.name, fields.join(", "))
+            };
+            self.push(v.span.line, 0, text);
+            self.attached.insert(v.span.line);
+        }
+    }
+
+    fn type_alias(&mut self, t: &TypeAlias) {
+        self.heading(&t.doc, t.span.line, format!("# Type: {}", t.name.name));
+        self.prop(&t.prop_comments, "is", &type_text(&t.target), t.target.span.line);
     }
 
     fn rule(&mut self, r: &Rule) {
@@ -500,6 +529,35 @@ impl Printer {
             StmtKind::Parallel(body) => {
                 self.push(line, indent, "- parallel:");
                 self.stmts(body, indent + 1);
+            }
+            StmtKind::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => {
+                self.push(line, indent, format!("- match {}:", expr_text(scrutinee)));
+                for a in arms {
+                    self.comments(indent + 1, &a.comments);
+                    let mut head = String::new();
+                    if let Some(q) = &a.qualifier {
+                        head.push_str(&q.name);
+                        head.push('.');
+                    }
+                    head.push_str(&a.pattern.name);
+                    if let Some(b) = &a.bind {
+                        head.push(' ');
+                        head.push_str(&b.name);
+                    }
+                    self.push(a.span.line, indent + 1, format!("- {head}:"));
+                    self.attached.insert(a.span.line);
+                    self.stmts(&a.body, indent + 2);
+                }
+                if let Some(o) = otherwise {
+                    self.comments(indent + 1, &o.comments);
+                    self.push(o.span.line, indent + 1, "- otherwise:");
+                    self.attached.insert(o.span.line);
+                    self.stmts(&o.body, indent + 2);
+                }
             }
             StmtKind::Try { stmt, otherwise } => {
                 self.push(line, indent, format!("- try {}", simple_text(stmt)));
@@ -803,8 +861,8 @@ fn params_text(ps: &[Param]) -> String {
 fn simple_text(s: &Stmt) -> String {
     match &s.kind {
         StmtKind::Stop => "stop".to_string(),
-        StmtKind::Do { name, args, into } => {
-            let mut t = format!("do {}", name.name);
+        StmtKind::Do { name, args, into, bare } => {
+            let mut t = if *bare { name.name.clone() } else { format!("do {}", name.name) };
             if !args.is_empty() {
                 t.push('(');
                 t.push_str(&exprs_text(args));
@@ -926,6 +984,7 @@ fn simple_text(s: &Stmt) -> String {
         | StmtKind::IfSome { .. }
         | StmtKind::Try { .. }
         | StmtKind::Parallel(_)
+        | StmtKind::Match { .. }
         => "stop".to_string(),
         StmtKind::ModelCall { .. } | StmtKind::Trace(_) => unreachable!("L2-only node in fmt"),
     }
@@ -1039,6 +1098,27 @@ fn raw_expr(e: &Expr) -> String {
                     .map(|f| format!("{}: {}", f.name.name, at_least(&f.value, 1)))
                     .collect();
                 format!("{{ {} }}", f.join(", "))
+            }
+        }
+        ExprKind::Some(x) => format!("some {}", at_least(x, 9)),
+        ExprKind::None => "none".to_string(),
+        ExprKind::Variant {
+            qualifier,
+            name,
+            fields,
+        } => {
+            let head = match qualifier {
+                Some(q) => format!("{}.{}", q.name, name.name),
+                None => name.name.clone(),
+            };
+            if fields.is_empty() {
+                format!("{head} {{}}")
+            } else {
+                let f: Vec<String> = fields
+                    .iter()
+                    .map(|f| format!("{}: {}", f.name.name, expr_text(&f.value)))
+                    .collect();
+                format!("{head} {{ {} }}", f.join(", "))
             }
         }
         ExprKind::CountOf { rule, noun, source } => match (rule, noun) {

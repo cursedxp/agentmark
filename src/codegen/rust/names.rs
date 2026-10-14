@@ -122,6 +122,20 @@ impl Namespace {
     }
 }
 
+impl Namespace {
+    /// Like [`Namespace::take`] for a type name: a clash adds a digit (`Box2`), which keeps the
+    /// name CamelCase.
+    pub fn take_type(&mut self, base: &str) -> String {
+        let mut cand = base.to_string();
+        let mut n = 2;
+        while !self.used.insert(cand.clone()) {
+            cand = format!("{base}{n}");
+            n += 1;
+        }
+        cand
+    }
+}
+
 /// Where a function lives and what it is called there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnName {
@@ -134,6 +148,13 @@ pub struct FnName {
 pub struct Names {
     /// Record name -> struct name.
     pub records: HashMap<String, String>,
+    /// Enum name -> Rust enum name (same namespace as the records).
+    pub enums: HashMap<String, String>,
+    /// (enum, variant) -> name of the struct that holds the variant's fields (only variants
+    /// with fields have one).
+    pub variant_structs: HashMap<(String, String), String>,
+    /// (enum, variant) -> the variant's identifier inside the Rust enum.
+    pub variant_idents: HashMap<(String, String), String>,
     /// Declared function name -> home.
     pub fns: HashMap<String, FnName>,
     /// Per `Program::entries` index.
@@ -217,7 +238,19 @@ impl Names {
 
         let mut types = Namespace::with(RESERVED_TYPES);
         for r in &p.records {
-            n.records.insert(r.name.clone(), types.take(&camel(&r.name)));
+            n.records.insert(r.name.clone(), types.take_type(&camel(&r.name)));
+        }
+        for e in &p.enums {
+            let en = types.take_type(&camel(&e.name));
+            let mut idents = Namespace::default();
+            for v in &e.variants {
+                n.variant_idents.insert((e.name.clone(), v.name.clone()), idents.take(&camel(&v.name)));
+                if !v.fields.is_empty() {
+                    let st = types.take_type(&format!("{en}{}", camel(&v.name)));
+                    n.variant_structs.insert((e.name.clone(), v.name.clone()), st);
+                }
+            }
+            n.enums.insert(e.name.clone(), en);
         }
 
         // module names
@@ -324,6 +357,33 @@ impl Names {
         } else {
             id
         }
+    }
+
+    pub fn enum_name(&self, name: &str) -> String {
+        self.enums.get(name).cloned().unwrap_or_else(|| camel(name))
+    }
+
+    pub fn variant_struct(&self, e: &str, v: &str) -> String {
+        self.variant_structs
+            .get(&(e.to_string(), v.to_string()))
+            .cloned()
+            .unwrap_or_else(|| format!("{}{}", camel(e), camel(v)))
+    }
+
+    pub fn variant_ident(&self, e: &str, v: &str) -> String {
+        self.variant_idents
+            .get(&(e.to_string(), v.to_string()))
+            .cloned()
+            .unwrap_or_else(|| camel(v))
+    }
+
+    /// Every Rust type declared in `records.rs`: records, enums and the structs of variants.
+    pub fn record_file_types(&self) -> impl Iterator<Item = &str> {
+        self.records
+            .values()
+            .chain(self.enums.values())
+            .chain(self.variant_structs.values())
+            .map(String::as_str)
     }
 
     pub fn record(&self, name: &str) -> String {

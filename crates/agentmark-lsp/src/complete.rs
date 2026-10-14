@@ -35,6 +35,8 @@ fn item(label: impl Into<String>, kind: CompletionItemKind, detail: impl Into<Op
 fn kind_of(k: Kind) -> CompletionItemKind {
     match k {
         Kind::Record => CompletionItemKind::STRUCT,
+        Kind::Enum => CompletionItemKind::ENUM,
+        Kind::TypeAlias => CompletionItemKind::TYPE_PARAMETER,
         Kind::Rule | Kind::Function | Kind::RustBlock => CompletionItemKind::FUNCTION,
         Kind::Constant => CompletionItemKind::CONSTANT,
         Kind::Binding | Kind::Tool => CompletionItemKind::MODULE,
@@ -184,8 +186,15 @@ fn type_items(a: &Analysis, path: &str, before: &str) -> Vec<CompletionItem> {
     let last = before.rsplit(|c: char| c.is_whitespace()).next().unwrap_or("");
     let mut out: Vec<CompletionItem> = visible(a, path)
         .iter()
-        .filter(|v| v.kind == Kind::Record)
-        .map(|v| item(v.name.clone(), CompletionItemKind::STRUCT, Some("record".to_string()), v.doc.as_ref()))
+        .filter(|v| matches!(v.kind, Kind::Record | Kind::Enum | Kind::TypeAlias))
+        .map(|v| {
+            let kind = match v.kind {
+                Kind::Enum => CompletionItemKind::ENUM,
+                Kind::TypeAlias => CompletionItemKind::TYPE_PARAMETER,
+                _ => CompletionItemKind::STRUCT,
+            };
+            item(v.name.clone(), kind, Some(v.kind.noun().to_string()), v.doc.as_ref())
+        })
         .collect();
     if !matches!(last, "as" | "matches" | "for:") {
         for t in BUILTIN_TYPES {
@@ -344,7 +353,7 @@ fn expr_context(before: &str, depth: Option<usize>) -> bool {
         }
     }
     let last = before.rsplit(|c: char| c.is_whitespace()).next().unwrap_or("");
-    matches!(last, "and" | "or" | "not" | "if" | "in" | "where" | "-")
+    matches!(last, "and" | "or" | "not" | "if" | "in" | "where" | "-" | "=" | "return" | "some" | "match")
 }
 
 fn expression_items(a: &Analysis, path: &str, line: usize) -> Vec<CompletionItem> {
@@ -367,11 +376,29 @@ fn expression_items(a: &Analysis, path: &str, line: usize) -> Vec<CompletionItem
             out.push(item(var, CompletionItemKind::VARIABLE, Some(rec), None));
         }
     }
-    for w in ["today", "now"] {
+    for w in ["today", "now", "none"] {
         out.push(item(w, CompletionItemKind::KEYWORD, None, None));
     }
     for m in agentmark::stdlib::MODULES {
         out.push(item(*m, CompletionItemKind::MODULE, Some("built-in library".to_string()), None));
+    }
+    out.extend(variant_items(a, path));
+    out
+}
+
+/// The variants of the enums the file can see: values (`Circle { radius: 3 }`) and `match` branches.
+/// They come from the last good check, so they are there while the line being typed does not parse.
+fn variant_items(a: &Analysis, path: &str) -> Vec<CompletionItem> {
+    let mut out = Vec::new();
+    let Some(ck) = a.any_facts() else { return out };
+    for v in visible(a, path).iter().filter(|v| v.kind == Kind::Enum) {
+        let base = v.name.rsplit('.').next().unwrap_or(&v.name);
+        let Some(e) = ck.enums.get(base) else { continue };
+        for var in &e.variants {
+            let fields: Vec<&str> = var.fields.iter().map(|x| x.name.as_str()).collect();
+            let detail = if fields.is_empty() { v.name.clone() } else { format!("{} ({})", v.name, fields.join(", ")) };
+            out.push(item(var.name.clone(), CompletionItemKind::ENUM_MEMBER, Some(detail), None));
+        }
     }
     out
 }

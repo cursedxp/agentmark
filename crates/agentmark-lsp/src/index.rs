@@ -19,6 +19,8 @@ pub struct Visible {
 pub fn decl_name(d: &Decl) -> Option<(Kind, &Ident, Option<&String>)> {
     Some(match d {
         Decl::Record(r) => (Kind::Record, &r.name, r.doc.as_ref()),
+        Decl::Enum(r) => (Kind::Enum, &r.name, r.doc.as_ref()),
+        Decl::TypeAlias(r) => (Kind::TypeAlias, &r.name, r.doc.as_ref()),
         Decl::Rule(r) => (Kind::Rule, &r.name, r.doc.as_ref()),
         Decl::Agent(r) => (Kind::Agent, &r.name, r.doc.as_ref()),
         Decl::Function(r) => (Kind::Function, &r.name, r.doc.as_ref()),

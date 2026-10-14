@@ -423,6 +423,15 @@ fn a_verb_may_take_a_handle_it_uses_up_and_the_trace_leaves_it_out() {
         }
         other => panic!("{other:?}"),
     }
+    // a pure verb used as an expression takes the handle the same way
+    let expr = cmd("- sha2 sha256_new -> h\n- set d = hashing.drain(h, w)\n- print: \"done\"\n");
+    let p = load(&expr);
+    let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
+    let _ = agentmark::ir::lower(&p, &c);
+    let again = cmd("- sha2 sha256_new -> h\n- set d = hashing.drain(h, w)\n- set e = hashing.drain(h, w)\n");
+    let p = load(&again);
+    let text = p.render(&sema::check(&p).unwrap_err());
+    assert!(text.contains("\"h\" was used up on line"), "{text}");
     // passing the handle to the verb used it up
     let bad = cmd("- sha2 sha256_new -> h\n- hashing drain h w -> d\n- hashing drain h w -> e\n");
     let p = load(&bad);
