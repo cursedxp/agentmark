@@ -19,11 +19,20 @@ pub fn gen_bin(name: &str) -> PathBuf {
     PathBuf::from(gen_target()).join("debug").join(name)
 }
 
+/// A scratch folder for what the compiler itself caches in `$TMPDIR` (build cache, rustdoc scratch):
+/// kept under `target/`, so a test run leaves nothing behind in the system temp folder.
+pub fn compiler_tmp() -> PathBuf {
+    let d = PathBuf::from(format!("{ROOT}/target/test-tmp"));
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
 /// `agentmark <args>` run from the repository root, offline, without any model or rustdoc override.
 pub fn agentmark(args: &[&str]) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_agentmark"));
     c.args(args).current_dir(ROOT);
     c.env("CARGO_TARGET_DIR", gen_target())
+        .env("TMPDIR", compiler_tmp())
         .env("AGENTMARK_OFFLINE", "1")
         .env_remove("AGENTMARK_MODEL")
         .env_remove("AGENTMARK_RUSTDOC_JSON")
@@ -45,6 +54,12 @@ pub struct Tmp(tempfile::TempDir);
 impl std::ops::Deref for Tmp {
     type Target = Path;
     fn deref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl AsRef<Path> for Tmp {
+    fn as_ref(&self) -> &Path {
         self.0.path()
     }
 }
@@ -96,6 +111,21 @@ pub fn cargo_build_in(out: &Path) -> Output {
         .unwrap()
 }
 
+static BUILD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Builds the generated project in `out` and copies its binary to `out/<name>.bin`, so the test
+/// runs a private copy that no later build in the shared target folder can relink under it.
+/// Asserts the build succeeds without warnings.
+pub fn build_bin(out: &Path, name: &str) -> PathBuf {
+    let _g = BUILD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let b = cargo_build_in(out);
+    assert!(b.status.success(), "{name}: cargo build failed:\n{}", stderr(&b));
+    assert!(!stderr(&b).contains("warning"), "{name}: generated code must be warning free:\n{}", stderr(&b));
+    let copy = out.join(format!("{name}.bin"));
+    std::fs::copy(gen_bin(name), &copy).unwrap();
+    copy
+}
+
 /// Every fixture folder of `fixtures/<example>/` (the folder itself and each `variants/<case>/`)
 /// that has an `expected.trace.jsonl`, as `(label, dir)`; the plain fixture comes first.
 pub fn fixture_dirs_of(example: &str) -> Vec<(String, PathBuf)> {
@@ -104,9 +134,10 @@ pub fn fixture_dirs_of(example: &str) -> Vec<(String, PathBuf)> {
     if dir.join("expected.trace.jsonl").is_file() {
         out.push((example.to_string(), dir.clone()));
     }
-    let mut vs: Vec<_> = std::fs::read_dir(dir.join("variants")).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    let mut vs: Vec<_> = std::fs::read_dir(dir.join("variants")).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
     vs.sort();
-    for v in vs.into_iter().filter(|v| v.join("expected.trace.jsonl").is_file()) {
+    for v in vs {
+        assert!(v.join("expected.trace.jsonl").is_file(), "{} has no expected.trace.jsonl", v.display());
         out.push((format!("{example}/variants/{}", v.file_name().unwrap().to_string_lossy()), v));
     }
     out

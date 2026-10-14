@@ -2,7 +2,7 @@
 //! crates), cycle detection.
 //!
 //! Two shapes are supported (DESIGN 3, SPEC 18.1):
-//! - a **single file** (`examples/02-lead-qualifier.agent.md`): the root is the file's directory,
+//! - a **single file** (`tests/errors/unit-mismatch.agent.md`): the root is the file's directory,
 //!   `tools.toml` sits next to the file, and the project is the file plus whatever it imports;
 //! - a **project folder** (`examples/01-invoice-chaser/`): every `*.agent.md` below the folder is
 //!   part of the project.

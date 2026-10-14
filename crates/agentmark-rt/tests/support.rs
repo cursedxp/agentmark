@@ -34,7 +34,7 @@ struct Row {
 #[test]
 fn reads_csv_with_quotes_and_typed_cells() {
     let dir = tempdir();
-    let p = dir.join("rows.csv");
+    let p = dir.path().join("rows.csv");
     std::fs::write(&p, "id,amount,qty,paid\r\n\"A,1\",12.50 EUR,3,true\n\nB2,\"1200.00 EUR\",4,false\n").unwrap();
     let rows: Vec<Row> = read_data(p.to_str().unwrap()).unwrap();
     assert_eq!(rows.len(), 2);
@@ -51,7 +51,7 @@ fn csv_cells_stay_text_when_the_type_wants_text() {
         id: String,
     }
     let dir = tempdir();
-    let p = dir.join("t.csv");
+    let p = dir.path().join("t.csv");
     std::fs::write(&p, "id\n007\n").unwrap();
     let rows: Vec<T> = read_data(p.to_str().unwrap()).unwrap();
     assert_eq!(rows[0].id, "007");
@@ -60,25 +60,22 @@ fn csv_cells_stay_text_when_the_type_wants_text() {
 #[test]
 fn reads_json_and_reports_bad_files() {
     let dir = tempdir();
-    let p = dir.join("r.json");
+    let p = dir.path().join("r.json");
     std::fs::write(&p, r#"[{"score":1,"reason":"x"}]"#).unwrap();
     let rows: Vec<Q> = read_data(p.to_str().unwrap()).unwrap();
     assert_eq!(rows[0].score, 1);
     assert!(read_data::<Vec<Q>>("/no/such/file.json").is_err());
 }
 
-fn tempdir() -> std::path::PathBuf {
-    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let d = std::env::temp_dir().join(format!("agentmark-rt-support-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
-    std::fs::create_dir_all(&d).unwrap();
-    d
+fn tempdir() -> tempfile::TempDir {
+    tempfile::Builder::new().prefix("agentmark-rt-support-").tempdir().unwrap()
 }
 
 #[tokio::test]
 async fn ask_model_about_adds_context_and_traces_id() {
     let dir = tempdir();
     std::fs::write(
-        dir.join("model.json"),
+        dir.path().join("model.json"),
         r#"{"today":"2026-10-13","responses":[{"prompt_prefix":"Write","response":"hi"}]}"#,
     )
     .unwrap();
@@ -104,7 +101,7 @@ async fn ask_model_about_adds_context_and_traces_id() {
 async fn a_mock_response_with_a_model_only_answers_that_model() {
     let dir = tempdir();
     std::fs::write(
-        dir.join("model.json"),
+        dir.path().join("model.json"),
         r#"{"today":"2026-10-13","responses":[{"prompt_prefix":"Q","response":"small","model":"m-small"},{"prompt_prefix":"Q","response":"any"}]}"#,
     )
     .unwrap();

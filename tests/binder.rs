@@ -1,6 +1,8 @@
 //! Binder tests (PROMPT step 8): sha2, chrono and reqwest rustdoc fixtures, a canned
 //! `MockModel`, a fake type checker for most tests and the real `cargo check` for a few.
 
+mod support;
+
 use agentmark::binder::core::{
     freshness, run_tiers, BoundCrate, CheckRequest, Freshness, Tier, TypeChecker,
 };
@@ -38,11 +40,8 @@ impl TypeChecker for FakeChecker {
     }
 }
 
-fn scratch(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentmark-binder-test-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+fn scratch(tag: &str) -> support::Tmp {
+    support::temp(&format!("binder-test-{tag}"))
 }
 
 fn opts(dir: &Path, c: &str, reject: Vec<&'static str>) -> BindOptions {
@@ -359,7 +358,10 @@ fn fetch_builds_rustdoc_json_when_nightly_is_installed() {
     let mut spec = FetchSpec::new("sha2", Some("0.10.9"));
     spec.offline = true;
     let p = agentmark::binder::rust::fetch_rustdoc_json_with(&spec).unwrap();
-    let ci = read_crate(&std::fs::read_to_string(p).unwrap()).unwrap();
+    let json = std::fs::read_to_string(&p).unwrap();
+    // the JSON lives in the binder's scratch crate (<scratch>/target/doc/sha2.json): remove it
+    std::fs::remove_dir_all(p.ancestors().nth(3).unwrap()).unwrap();
+    let ci = read_crate(&json).unwrap();
     assert_eq!((ci.name.as_str(), ci.version.as_str()), ("sha2", "0.10.9"));
 }
 
@@ -572,7 +574,7 @@ fn a_one_to_one_foreign_trait_method_is_assisted_never_direct() {
     assert!(matches!(&it.shape, Shape::Assisted { why, .. } if why.contains("another crate")), "{:?}", it.shape);
 }
 
-fn demo_opts(tag: &str) -> (PathBuf, BindOptions) {
+fn demo_opts(tag: &str) -> (support::Tmp, BindOptions) {
     let (demo, _) = demo_and_ext();
     let dir = scratch(tag);
     let json = dir.join("demo-in.json");

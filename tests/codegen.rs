@@ -130,15 +130,7 @@ fn built_05() -> (Tmp, PathBuf) {
     for f in ["src/service_api.rs", "src/command_import_csv.rs"] {
         assert!(d.join("out").join(f).is_file(), "{f}");
     }
-    let b = Command::new("cargo")
-        .args(["build", "--offline", "--manifest-path"])
-        .arg(d.join("out/Cargo.toml"))
-        .env("CARGO_TARGET_DIR", gen_target())
-        .output()
-        .unwrap();
-    assert!(b.status.success(), "{}", stderr(&b));
-    assert!(!stderr(&b).contains("warning"), "{}", stderr(&b));
-    let bin = gen_bin("invoice-service");
+    let bin = build_bin(&d.join("out"), "invoice-service");
     (d, bin)
 }
 
@@ -320,18 +312,6 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
 // ---------------------------------------------------------------------------------- review fixes
 
 
-#[test]
-fn every_example_compiles_without_a_single_warning() {
-    for name in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
-        let out = temp("nowarn");
-        let o = agentmark(&["build", &format!("{ROOT}/examples/{name}"), "-o", s(&out), "--no-check"]).output().unwrap();
-        assert!(o.status.success(), "{name}: {}", stderr(&o));
-        let b = cargo_build_in(&out);
-        assert!(b.status.success(), "{name}: {}", stderr(&b));
-        assert!(!stderr(&b).contains("warning"), "{name} must compile warning free:\n{}", stderr(&b));
-    }
-}
-
 const BROKEN_SEMICOLON: &str = "# Record: Invoice\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: invoice: Invoice\n- effect: pure\n  ```rust\n  let loud = invoice.id.to_uppercase();\n  loud;\n  ```\n\n## On start\n- set loud = shout({ id: \"a\" })\n- log: \"hi {loud}\"\n";
 
 #[test]
@@ -439,11 +419,9 @@ fn connect_rs_is_written_once_and_a_real_run_uses_it() {
     assert!(build().status.success());
     assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), CONNECT);
 
-    let b = cargo_build_in(&out);
-    assert!(b.status.success(), "{}", stderr(&b));
-    assert!(!stderr(&b).contains("warning"), "{}", stderr(&b));
+    let bin = build_bin(&out, "seen-real");
     let trace = out.join("trace.jsonl");
-    let o = Command::new(gen_bin("seen-real")).args(["--once", "--trace", s(&trace)]).output().unwrap();
+    let o = Command::new(bin).args(["--once", "--trace", s(&trace)]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     let t = parse_lines(&std::fs::read_to_string(trace).unwrap());
     let updates: Vec<&Value> = t.iter().filter(|l| l["verb"] == "update").collect();
@@ -457,9 +435,8 @@ fn a_real_run_without_connecting_says_what_to_implement() {
     let (_d, file) = single("unconnected", "seen-stub.agent.md", SEEN);
     let out = temp("unconnected-out");
     assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
-    let b = cargo_build_in(&out);
-    assert!(b.status.success(), "{}", stderr(&b));
-    let o = Command::new(gen_bin("seen-stub")).args(["--once"]).output().unwrap();
+    let bin = build_bin(&out, "seen-stub");
+    let o = Command::new(bin).args(["--once"]).output().unwrap();
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).contains("not connected yet: implement Crm::list in src/connect.rs"), "{}", stderr(&o));
 }

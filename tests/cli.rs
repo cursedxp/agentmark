@@ -1,9 +1,12 @@
 //! Process-level tests of the `agentmark` binary (PROMPT step 7 part 2, step 8 wiring).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
+mod support;
+
 use serde_json::Value;
+use support::{copy_dir, Tmp};
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -11,7 +14,7 @@ fn agentmark(args: &[&str]) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_agentmark"));
     c.args(args).current_dir(ROOT);
     // tests never talk to a real model or to the network
-    c.env_remove("AGENTMARK_MODEL")
+    c.env("TMPDIR", support::compiler_tmp()).env_remove("AGENTMARK_MODEL")
         .env_remove("AGENTMARK_RUSTDOC_JSON")
         .env_remove("AGENTMARK_RUSTDOC_JSON_DIR")
         .env_remove("ANTHROPIC_API_KEY");
@@ -34,26 +37,12 @@ fn code(o: &Output) -> i32 {
     o.status.code().unwrap()
 }
 
-fn temp(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("agentmark-cli-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).unwrap();
-    for e in std::fs::read_dir(from).unwrap().flatten() {
-        if e.path().is_dir() {
-            copy_dir(&e.path(), &to.join(e.file_name()));
-        } else {
-            std::fs::copy(e.path(), to.join(e.file_name())).unwrap();
-        }
-    }
+fn temp(tag: &str) -> Tmp {
+    support::temp(&format!("cli-{tag}"))
 }
 
 /// Example 05 without its approved sha2 binding (the crate is then unbound: a warning).
-fn unbound_05(tag: &str) -> PathBuf {
+fn unbound_05(tag: &str) -> Tmp {
     let d = temp(tag);
     copy_dir(Path::new("examples/05-invoice-service"), &d);
     std::fs::remove_file(d.join("bindings/sha2.agent.md")).unwrap();
@@ -116,7 +105,6 @@ fn check_lists_rust_blocks_and_prints_warnings_in_the_spec_10_format() {
     assert!(se.contains(&format!("{f}:2\n  # Import: crate sha2\n")), "{se}");
     assert!(se.contains("The crate \"sha2\" has no binding yet."), "{se}");
     assert!(!se.to_lowercase().contains("rustc"));
-    std::fs::remove_dir_all(d).unwrap();
 }
 
 #[test]
@@ -219,7 +207,6 @@ fn check_json_reports_rust_blocks_and_diagnostics() {
     assert!(v["diagnostics"].as_array().unwrap().is_empty());
     let d = unbound_05("json05");
     let o = run(&["check", s(&d), "--json"]);
-    std::fs::remove_dir_all(&d).unwrap();
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
     let d = &v["diagnostics"][0];
     assert_eq!(d["severity"], "warning");
@@ -284,7 +271,7 @@ fn fmt_of_a_missing_path_is_a_usage_error() {
 
 const UNDOCUMENTED: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n";
 
-fn lint_project(tag: &str, toml: &str) -> PathBuf {
+fn lint_project(tag: &str, toml: &str) -> Tmp {
     let d = temp(tag);
     write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
     write(&d, "agentmark.toml", toml);
@@ -373,7 +360,7 @@ fn bind(project: &Path, extra: &[&str]) -> Output {
 
 const USES_SHA2: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha256_digest payload -> digest\n- print: \"done\"\n";
 
-fn sha2_project(tag: &str) -> PathBuf {
+fn sha2_project(tag: &str) -> Tmp {
     let d = temp(tag);
     write(&d, "agentmark.toml", "name = \"p\"\n");
     write(&d, "main.agent.md", "# Import: ./fingerprint.agent.md\n\n# Run\n- fingerprint\n");

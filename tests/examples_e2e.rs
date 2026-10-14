@@ -44,10 +44,8 @@ fn build_example(name: &str, project: &str) -> (Tmp, PathBuf) {
     let out = temp(&format!("e2e-{name}"));
     let o = agentmark(&["build", &format!("{ROOT}/examples/{name}"), "--target", "rust", "-o", s(&out)]).output().unwrap();
     assert!(o.status.success(), "{name}: agentmark build failed:\n{}", stderr(&o));
-    let b = cargo_build_in(&out);
-    assert!(b.status.success(), "{name}: cargo build failed:\n{}", stderr(&b));
-    assert!(!stderr(&b).contains("warning"), "{name}: generated code must be warning free:\n{}", stderr(&b));
-    (out, gen_bin(project))
+    let bin = build_bin(&out, project);
+    (out, bin)
 }
 
 /// Runs the program from `dir` (the fixture folder is the working directory, Q153) and returns the

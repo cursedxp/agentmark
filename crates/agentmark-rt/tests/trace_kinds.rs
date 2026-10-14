@@ -64,16 +64,13 @@ fn http_print_error_lines() {
 
 #[test]
 fn file_sink_appends_lines() {
-    let dir = std::env::temp_dir().join(format!("agentmark-rt-trace-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("t.jsonl");
-    let _ = std::fs::remove_file(&path);
+    let tmp = tempfile::Builder::new().prefix("agentmark-rt-trace-").tempdir().unwrap();
+    let path = tmp.path().join("t.jsonl");
     let t = Trace::to_file(&path).unwrap();
     t.print("a").unwrap();
     t.print("b").unwrap();
     drop(t);
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"kind\":\"print\",\"message\":\"a\"}\n{\"kind\":\"print\",\"message\":\"b\"}\n");
-    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]

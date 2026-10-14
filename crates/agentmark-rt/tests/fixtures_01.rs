@@ -84,12 +84,11 @@ async fn reproduces_expected_trace() {
 
 #[test]
 fn mock_ctx_requires_today() {
-    let dir = std::env::temp_dir().join(format!("agentmark-rt-notoday-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let tmp = tempfile::Builder::new().prefix("agentmark-rt-notoday-").tempdir().unwrap();
+    let dir = tmp.path().to_path_buf();
     std::fs::write(dir.join("model.json"), r#"{"responses":[]}"#).unwrap();
     let e = Ctx::mock(&dir, Trace::memory()).err().expect("must fail without today");
     assert!(e.to_string().contains("today"), "{e}");
     std::fs::remove_file(dir.join("model.json")).unwrap();
     assert!(Ctx::mock(&dir, Trace::memory()).is_err()); // no model.json at all
-    std::fs::remove_dir_all(&dir).unwrap();
 }
