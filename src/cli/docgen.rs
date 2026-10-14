@@ -1,0 +1,157 @@
+//! `agentmark doc` (SPEC 18.7): the `>` documentation comments of a project as one readable
+//! Markdown page, each unit with its effect summary; or the cheat sheet of a bound library.
+
+use std::fmt::Write as _;
+use std::path::Path;
+
+use super::files::in_bindings;
+use super::{exists, fail};
+use crate::binder::doc_cheatsheet;
+use crate::project::Project;
+use crate::sema::{self, Checked};
+use crate::syntax::ast::Decl;
+
+pub(crate) fn run(target: Option<&str>, project_dir: &str) -> u8 {
+    match target {
+        Some(t) if !exists(t) => crate_sheet(t, project_dir),
+        t => project_page(t.unwrap_or(".")),
+    }
+}
+
+/// `agentmark doc <crate>`: the binder's cheat sheet for `bindings/<crate>.agent.md`.
+fn crate_sheet(name: &str, project_dir: &str) -> u8 {
+    for dir in ["bindings", ".agentmark/bindings"] {
+        let p = Path::new(project_dir).join(dir).join(format!("{name}.agent.md"));
+        if p.is_file() {
+            return match doc_cheatsheet(&p) {
+                Ok(s) => {
+                    print!("{s}");
+                    0
+                }
+                Err(e) => fail(e),
+            };
+        }
+    }
+    fail(format!(
+        "\"{name}\" is neither a file or folder nor a library with a binding in \"{project_dir}/bindings\". \
+         Run \"agentmark bind {name}\" first."
+    ))
+}
+
+fn doc_block(out: &mut String, doc: &Option<String>) {
+    if let Some(d) = doc {
+        let _ = writeln!(out, "{}\n", d.trim());
+    }
+}
+
+fn project_page(path: &str) -> u8 {
+    let project = Project::load(path);
+    let checked = match sema::check(&project) {
+        Ok(c) => c,
+        Err(d) => {
+            eprintln!("{}\n", project.render(&d));
+            eprintln!("The project has errors, so its documentation cannot be written yet.");
+            return 1;
+        }
+    };
+    print!("{}", page(&project, &checked));
+    0
+}
+
+fn page(project: &Project, c: &Checked) -> String {
+    let mut out = String::new();
+    let title = project.config.name.clone().unwrap_or_else(|| project.root.clone());
+    let _ = writeln!(out, "# {title}\n");
+    let files: Vec<_> = project.files.iter().filter(|f| !in_bindings(&f.path)).collect();
+    for f in &files {
+        if let Some(d) = &f.ast.doc {
+            let _ = writeln!(out, "{}\n", d.trim());
+        }
+    }
+    section(&mut out, "Agents", &files, |out, d| {
+        let Decl::Agent(a) = d else { return false };
+        let _ = writeln!(out, "### {}\n", a.name.name);
+        doc_block(out, &a.doc);
+        let tools: Vec<_> = a.tools.iter().map(|t| t.name.as_str()).collect();
+        let _ = writeln!(out, "- model: {}\n- tools: {}\n- can touch: {}\n", a.model.value, tools.join(", "), c.unit_effect(&a.name.name));
+        for b in &a.blocks {
+            let eff = block_effect(c, &a.name.name, &b.label);
+            let _ = writeln!(out, "**{}** (can touch: {eff})\n", b.label);
+            doc_block(out, &b.doc);
+        }
+        true
+    });
+    section(&mut out, "Services", &files, |out, d| {
+        let Decl::Service(s) = d else { return false };
+        let _ = writeln!(out, "### {}\n", s.name.name);
+        doc_block(out, &s.doc);
+        let _ = writeln!(out, "- can touch: {}\n", c.unit_effect(&s.name.name));
+        for r in &s.routes {
+            let label = format!("{} {}", r.method, r.path);
+            let eff = block_effect(c, &s.name.name, &label);
+            let _ = writeln!(out, "**{label}** (can touch: {eff})\n");
+            doc_block(out, &r.doc);
+        }
+        true
+    });
+    section(&mut out, "Commands", &files, |out, d| {
+        let Decl::Command(x) = d else { return false };
+        let _ = writeln!(out, "### {}\n", x.name.name);
+        doc_block(out, &x.doc);
+        let _ = writeln!(out, "- can touch: {}\n", c.unit_effect(&x.name.name));
+        true
+    });
+    section(&mut out, "Records", &files, |out, d| {
+        let Decl::Record(r) = d else { return false };
+        let _ = writeln!(out, "### {}\n", r.name.name);
+        doc_block(out, &r.doc);
+        if let Some(info) = c.records.get(&r.name.name) {
+            for f in &info.fields {
+                let _ = writeln!(out, "- {}: {}", f.name, f.ty);
+            }
+            out.push('\n');
+        }
+        true
+    });
+    section(&mut out, "Rules", &files, |out, d| {
+        let Decl::Rule(r) = d else { return false };
+        let _ = writeln!(out, "### {}\n\nApplies to {}. Always pure.\n", r.name.name, r.for_record.name);
+        doc_block(out, &r.doc);
+        true
+    });
+    section(&mut out, "Functions", &files, |out, d| {
+        let Decl::Function(f) = d else { return false };
+        let _ = writeln!(out, "### {}\n", f.name.name);
+        doc_block(out, &f.doc);
+        let eff = c.unit_effect(&f.name.name);
+        let _ = writeln!(out, "- can touch: {eff}\n");
+        true
+    });
+    out
+}
+
+fn block_effect(c: &Checked, unit: &str, label: &str) -> String {
+    c.blocks
+        .iter()
+        .find(|b| b.unit == unit && b.label == label)
+        .map(|b| b.effect.to_string())
+        .unwrap_or_else(|| "pure".into())
+}
+
+/// Print `## title` once if at least one declaration of that kind exists.
+fn section(
+    out: &mut String,
+    title: &str,
+    files: &[&crate::project::SourceFile],
+    mut each: impl FnMut(&mut String, &Decl) -> bool,
+) {
+    let mut body = String::new();
+    for f in files {
+        for d in &f.ast.decls {
+            each(&mut body, d);
+        }
+    }
+    if !body.is_empty() {
+        let _ = writeln!(out, "## {title}\n\n{body}");
+    }
+}
