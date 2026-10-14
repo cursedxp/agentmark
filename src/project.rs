@@ -94,6 +94,9 @@ pub struct Project {
     pub sources: BTreeMap<String, String>,
     /// Problems found while loading. Non-empty means `check` stops here.
     pub load_diagnostics: Vec<Diagnostic>,
+    /// `--allow-unverified` (Q203): an unverified binding counts as its `- proposed-effect:` when
+    /// effects are checked. Set by the CLI after loading; never on in a release build.
+    pub assume_proposed: bool,
 }
 
 // ---------------------------------------------------------------------------------- file system
@@ -345,6 +348,7 @@ impl Project {
             entry_files,
             sources: b.sources,
             load_diagnostics: b.diags,
+            assume_proposed: false,
         }
     }
 

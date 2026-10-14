@@ -103,7 +103,7 @@ fn check_lists_rust_blocks_and_prints_warnings_in_the_spec_10_format() {
     let se = err(&o);
     let f = format!("{}/functions/invoice-fingerprint.agent.md", s(&d));
     assert!(se.contains(&format!("{f}:2\n  # Import: crate sha2\n")), "{se}");
-    assert!(se.contains("The crate \"sha2\" has no binding yet."), "{se}");
+    assert!(se.contains("The crate \"sha2\" has no binding yet"), "{se}");
     assert!(!se.to_lowercase().contains("rustc"));
 }
 
@@ -197,20 +197,55 @@ fn check_json_has_the_documented_keys() {
     assert!(units.iter().any(|u| u["name"] == "overdue" && u["kind"] == "rule"));
 }
 
+/// A project that has every kind of nested entry docs/check-json.md describes: a warning (an unused
+/// import), an inferred field, a Rust block. Self-contained, so it does not depend on `examples/`.
+const JSON_DOC_PROJECT: &str = "# Import: ./spare.agent.md\n\n# Record: Order\n- amount\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: order: Order\n- effect: pure\n  ```rust\n  order.id.to_uppercase()\n  ```\n\n## On start\n- set loud = shout({ id: \"a\", amount: 5 EUR })\n- log: \"hi {loud}\"\n";
+
 #[test]
-fn check_json_reports_rust_blocks_and_diagnostics() {
-    let o = run(&["check", "examples/05-invoice-service", "--json"]);
-    let v: Value = serde_json::from_str(&out(&o)).unwrap();
-    let rb = &v["rust_blocks"][0];
-    assert_eq!((rb["name"].as_str(), rb["effect"].as_str()), (Some("fingerprint"), Some("pure")));
-    assert_eq!(keys(rb), ["effect", "file", "line", "name", "parent"]);
-    assert!(v["diagnostics"].as_array().unwrap().is_empty());
-    let d = unbound_05("json05");
+fn check_json_nested_entries_have_the_documented_keys() {
+    let d = temp("jsondoc");
+    write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
+    write(&d, "a.agent.md", JSON_DOC_PROJECT);
+    write(&d, "spare.agent.md", "# Record: Spare\n- id: text\n");
     let o = run(&["check", s(&d), "--json"]);
-    let v: Value = serde_json::from_str(&out(&o)).unwrap();
-    let d = &v["diagnostics"][0];
-    assert_eq!(d["severity"], "warning");
+    let v: Value = serde_json::from_str(&out(&o)).unwrap_or_else(|e| panic!("{e}: {}{}", out(&o), err(&o)));
+    assert_eq!(v["ok"], true, "{v}");
+    let rb = &v["rust_blocks"][0];
+    assert_eq!((rb["name"].as_str(), rb["effect"].as_str()), (Some("shout"), Some("pure")));
+    assert_eq!(keys(rb), ["effect", "file", "line", "name", "parent"]);
+    let d = v["diagnostics"].as_array().unwrap().iter().find(|d| d["severity"] == "warning").expect("the unused import is a warning");
     assert_eq!(keys(d), ["code", "column", "did_you_mean", "file", "help", "length", "line", "message", "severity"]);
+    assert!(d["message"].as_str().unwrap().starts_with("Unused"), "{d}");
+    let f = &v["inferred_fields"][0];
+    assert_eq!(keys(f), ["fallback", "field", "file", "line", "record", "type"]);
+    assert_eq!((f["record"].as_str(), f["field"].as_str(), f["type"].as_str()), (Some("Order"), Some("amount"), Some("money")));
+    let unit = &v["units"][0];
+    assert_eq!(keys(unit), ["blocks", "effects", "file", "kind", "name"]);
+    assert_eq!(keys(&unit["effects"]), ["class", "summary", "tools"]);
+    assert_eq!(keys(&unit["effects"]["tools"]), ["local", "model", "network", "unverified"]);
+}
+
+#[test]
+fn check_json_of_example_05_has_no_diagnostics() {
+    let o = run(&["check", "examples/05-invoice-service", "--json"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["diagnostics"], serde_json::json!([]));
+}
+
+#[test]
+fn committed_example_connect_stubs_equal_a_freshly_generated_stub() {
+    for name in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
+        let d = temp(&format!("stub-{name}"));
+        copy_dir(&Path::new("examples").join(name), &d);
+        let committed = std::fs::read_to_string(d.join("rust/connect.rs")).unwrap_or_else(|_| panic!("{name} has no rust/connect.rs"));
+        std::fs::remove_dir_all(d.join("rust")).unwrap();
+        let out_dir = temp(&format!("stub-out-{name}"));
+        let o = run(&["build", s(&d), "-o", s(&out_dir), "--no-check"]);
+        assert_eq!(code(&o), 0, "{}", err(&o));
+        let fresh = std::fs::read_to_string(d.join("rust/connect.rs")).unwrap();
+        assert_eq!(committed, fresh, "{name}: regenerate with a build after deleting examples/{name}/rust");
+    }
 }
 
 #[test]
@@ -238,6 +273,7 @@ fn fmt_check_fails_on_a_messy_file_and_passes_after_fmt() {
     assert_eq!(code(&o), 1);
     assert!(out(&o).contains("not canonical:"), "{}", out(&o));
     assert!(out(&o).contains("messy.agent.md"));
+    assert!(out(&o).contains("1 of 1 file is not canonical; run \"agentmark fmt\" to fix it."), "grammar: {}", out(&o));
     assert_eq!(std::fs::read_to_string(d.join("messy.agent.md")).unwrap(), before, "--check changes nothing");
 
     let o = run(&["fmt", s(&d)]);
@@ -388,6 +424,26 @@ fn bind_generates_then_serves_from_cache() {
 
     let forced = bind(&d, &["--force"]);
     assert!(out(&forced).contains("generated") && out(&forced).contains("(forced)"), "{}", out(&forced));
+}
+
+#[test]
+fn bind_keeps_the_header_version_until_asked_to_move() {
+    let d = sha2_project("bindpin");
+    assert_eq!(code(&bind(&d, &[])), 0);
+    let file = d.join("bindings/sha2.agent.md");
+    let text = std::fs::read_to_string(&file).unwrap().replace("sha2 0.10.9", "sha2 0.10.8");
+    std::fs::write(&file, &text).unwrap();
+    // plain bind and --force stay on 0.10.8 (--force regenerates that version when the docs for it exist)
+    let o = bind(&d, &[]);
+    assert!(out(&o).contains("sha2 0.10.8: cached"), "{}", out(&o));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+    // moving is explicit
+    let o = bind(&d, &["--latest"]);
+    assert!(out(&o).contains("sha2 0.10.9: generated"), "{}{}", out(&o), err(&o));
+    let o = bind(&d, &["--version", "0.10.9", "--latest"]);
+    assert_eq!(code(&o), 2, "--version and --latest exclude each other");
+    let o = run(&["bind", "--all", "--version", "0.10.9", "--project", s(&d)]);
+    assert_eq!(code(&o), 2);
 }
 
 #[test]
@@ -573,6 +629,100 @@ fn unverified_library_is_reported_once_in_text_and_kept_in_json_diagnostics() {
     assert!(out(&o).contains("Libraries nobody approved yet"));
     let v: Value = serde_json::from_str(&out(&run(&["check", s(&d), "--json"]))).unwrap();
     assert!(v["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "W005"));
+}
+
+const PURE_FN_SHA2: &str = "# Import: crate sha2\n\n> Hashes text.\n# Function: fingerprint\n- in: s: text\n- out: bytes\n- effect: pure\n  - sha2 sha256_digest s -> d\n  - return d\n";
+
+#[test]
+fn allow_unverified_checks_effects_with_the_proposed_effect_and_warns_once() {
+    let d = temp("assume");
+    write(&d, "agentmark.toml", "name = \"p\"\n");
+    write(&d, "main.agent.md", PURE_FN_SHA2);
+    assert_eq!(code(&bind(&d, &[])), 0);
+    // refused as before, and the advice is not the illegal "- effect: unverified"
+    let o = run(&["check", s(&d)]);
+    assert_eq!(code(&o), 1, "{}{}", out(&o), err(&o));
+    let e = err(&o);
+    assert!(e.contains("Approve the binding's \"- effect:\" line"), "{e}");
+    assert!(!e.contains("Change the function to \"- effect: unverified\""), "{e}");
+    // with the flag the proposal (pure) stands in, with one warning that says so
+    let o = run(&["check", s(&d), "--allow-unverified"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    let e = err(&o);
+    assert_eq!(e.matches("its effect is assumed to be \"pure\" from the proposal").count(), 1, "{e}");
+    assert!(e.contains("Approve it before a release build"), "{e}");
+    // the JSON agrees: W008 instead of W005 for the same binding
+    let v: Value = serde_json::from_str(&out(&run(&["check", s(&d), "--json", "--allow-unverified"]))).unwrap();
+    let codes: Vec<&str> = v["diagnostics"].as_array().unwrap().iter().filter_map(|x| x["code"].as_str()).collect();
+    assert!(codes.contains(&"W008") && !codes.contains(&"W005"), "{codes:?}");
+    // build without the flag still refuses
+    let o = run(&["build", s(&d), "-o", s(&d.join("out")), "--no-check"]);
+    assert_eq!(code(&o), 1, "{}{}", out(&o), err(&o));
+}
+
+#[test]
+fn check_binds_a_missing_crate_like_build_does() {
+    // `# Import: crate sha2` -> `check` -> approve: check runs the binder first
+    let d = sha2_project("checkbinds");
+    let o = agentmark(&["check", s(&d)])
+        .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+        .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))
+        .env("AGENTMARK_RUSTDOC_JSON_DIR", format!("{ROOT}/tests/binder"))
+        .env("AGENTMARK_OFFLINE", "1")
+        .output()
+        .unwrap();
+    assert!(err(&o).contains("binding sha2: generated"), "{}", err(&o));
+    assert!(d.join("bindings/sha2.agent.md").is_file());
+    let t = out(&o);
+    assert!(t.contains("Libraries nobody approved yet") && t.contains("change \"- effect: unverified\" to \"- effect: pure\""), "{t}");
+    assert!(!err(&o).contains("Unknown tool") && !err(&o).contains("Unused import"), "{}", err(&o));
+}
+
+#[test]
+fn binding_without_supplied_rustdoc_leaves_no_scratch_crates_behind() {
+    let d = sha2_project("noscratch");
+    let tmp = temp("noscratch-tmp");
+    // no AGENTMARK_RUSTDOC_JSON: the binder resolves the version (and tries a rustdoc build) in
+    // scratch crates under $TMPDIR; whatever the outcome, nothing may stay
+    for args in [vec!["check", s(&d)], vec!["bind", "sha2", "--project", s(&d)]] {
+        let _ = agentmark(&args)
+            .env("TMPDIR", s(&tmp))
+            .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+            .env("AGENTMARK_OFFLINE", "1")
+            .output()
+            .unwrap();
+        let left: Vec<_> = std::fs::read_dir(&tmp).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert!(left.is_empty(), "{args:?} left {left:?}");
+    }
+}
+
+#[test]
+fn check_that_cannot_bind_says_how_and_reports_one_error_on_the_import_line() {
+    let d = sha2_project("checknobind");
+    let o = agentmark(&["check", s(&d)]).env("AGENTMARK_OFFLINE", "1").output().unwrap();
+    assert_eq!(code(&o), 1);
+    let e = err(&o);
+    assert!(e.contains("cannot bind \"sha2\""), "{e}");
+    assert!(e.contains("# Import: crate sha2") && e.contains("has no binding yet, but this file uses it"), "{e}");
+    assert!(e.contains("agentmark bind sha2"), "{e}");
+    // the follow-ons of the missing binding are gone
+    assert!(!e.contains("Unknown tool \"sha2\""), "{e}");
+    assert!(!e.contains("Unused import"), "{e}");
+    assert!(out(&o).contains("1 error, 0 warnings: not ok."), "{}", out(&o));
+}
+
+#[test]
+fn fmt_check_counts_agree_with_the_verb() {
+    let d = temp("fmtplural");
+    let messy = std::fs::read_to_string(Path::new(ROOT).join("tests/fmt/messy.agent.md")).unwrap();
+    write(&d, "a.agent.md", &messy);
+    write(&d, "b.agent.md", &messy);
+    write(&d, "c.agent.md", "# Record: C\n- id: text\n");
+    let o = run(&["fmt", "--check", s(&d)]);
+    assert!(out(&o).contains("2 of 3 files are not canonical; run \"agentmark fmt\" to fix them."), "{}", out(&o));
+    std::fs::remove_file(d.join("b.agent.md")).unwrap();
+    let o = run(&["fmt", "--check", s(&d)]);
+    assert!(out(&o).contains("1 of 2 files is not canonical; run \"agentmark fmt\" to fix it."), "{}", out(&o));
 }
 
 // ---------------------------------------------------------------------------------- misc

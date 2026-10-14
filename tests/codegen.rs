@@ -223,6 +223,55 @@ fn service_serves_a_real_get() {
     assert_eq!(t.last().unwrap(), &json!({"kind":"http","method":"GET","path":"/invoices/INV-1/net","status":200}));
 }
 
+fn http_post(addr: &str, path: &str, body: &str) -> String {
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    s.write_all(format!("POST {path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    out
+}
+
+const PAY: &str = "# Record: Payment\n- id: text\n- amount: money\n\n# Service: pay\n- listen: 0.0.0.0:8080\n\n## POST /total\n- read body as Payment -> p\n- set total = p.amount + 5 USD\n- respond 200 { id: p.id, total: total }\n\n## GET /ping\n- respond 200 { ok: true }\n";
+
+#[test]
+fn a_route_that_fails_answers_500_and_traces_the_error_before_the_http_line() {
+    let (d, file) = single("pay500", "pay.agent.md", PAY);
+    let out = d.join("out");
+    assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
+    // build_bin asserts: builds, and without a warning (a route without effects leaves no unused ctx)
+    let bin = build_bin(&out, "pay");
+    let port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let addr = format!("127.0.0.1:{port}");
+    let trace = d.join("trace.jsonl");
+    let mut child = Command::new(bin).args(["--serve", &addr, "--trace", s(&trace)]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+    let (mut bad, mut good) = (String::new(), String::new());
+    for _ in 0..50 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            // EUR + USD: the currencies do not match, so the route fails
+            bad = http_post(&addr, "/total", r#"{"id":"P-1","amount":"10.00 EUR"}"#);
+            good = http_post(&addr, "/total", r#"{"id":"P-2","amount":"10.00 USD"}"#);
+            break;
+        }
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(bad.starts_with("HTTP/1.1 500"), "{bad}");
+    let body: Value = serde_json::from_str(bad.split("\r\n\r\n").nth(1).unwrap().trim()).unwrap();
+    assert_eq!(body, json!({"error": "internal error"}), "the cause stays in the trace, not in the answer");
+    assert!(good.starts_with("HTTP/1.1 200"), "a good request after a bad one still works: {good}");
+    let t = parse_lines(&std::fs::read_to_string(trace).unwrap());
+    assert_eq!(t.len(), 3, "{t:#?}");
+    assert_eq!(t[0]["kind"], "error", "{t:#?}");
+    assert_eq!(t[0]["block"], "POST /total");
+    assert!(t[0]["message"].as_str().unwrap().to_lowercase().contains("currenc"), "{t:#?}");
+    assert_eq!(t[1], json!({"kind":"http","method":"POST","path":"/total","status":500}));
+    assert_eq!(t[2], json!({"kind":"http","method":"POST","path":"/total","status":200}));
+}
+
 #[test]
 fn command_line_runs_the_command_with_its_arguments() {
     let (d, bin) = built_05();
@@ -306,6 +355,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     assert!(e.contains("shout.agent.md:13"), "points at the line of the mistake:\n{e}");
     assert!(e.contains("loud.len_of_it()"), "shows the source line:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
+    assert!(e.contains("method not found in `std::string::String`"), "rustc's primary label is appended:\n{e}");
     assert!(!e.contains("internal compiler error"), "{e}");
 }
 
@@ -324,6 +374,7 @@ fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("semi.agent.md:8"), "points at the block heading:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
+    assert!(e.contains("mismatched types: expected `String`, found `()`"), "rustc's primary label is appended:\n{e}");
     assert!(!e.contains("internal compiler error"), "{e}");
 }
 
@@ -405,17 +456,27 @@ pub fn connect() -> Connected {
 "#;
 
 #[test]
-fn connect_rs_is_written_once_and_a_real_run_uses_it() {
-    let (_d, file) = single("connect", "seen-real.agent.md", SEEN);
+fn connect_rs_lives_in_the_project_and_build_and_run_use_it() {
+    let (d, file) = single("connect", "seen-real.agent.md", SEEN);
     let out = temp("connect-out");
     let build = || agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap();
-    assert!(build().status.success());
-    let stub = std::fs::read_to_string(out.join("src/connect.rs")).unwrap();
-    assert!(stub.contains("not connected yet: implement Crm::list in src/connect.rs"), "{stub}");
+    // first build: the stub is created in the PROJECT, copied into the output
+    let first = build();
+    assert!(first.status.success());
+    assert!(stderr(&first).contains("rust/connect.rs"), "{}", stderr(&first));
+    let stub = std::fs::read_to_string(d.join("rust/connect.rs")).unwrap();
+    assert!(stub.contains("not connected yet: implement Crm::list in rust/connect.rs"), "{stub}");
     assert!(stub.contains("never changes"), "the header says the file is the user's");
+    assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), stub);
 
-    // the user fills it in; building again leaves it alone
-    std::fs::write(out.join("src/connect.rs"), CONNECT).unwrap();
+    // the user fills in the project file; building again copies it and never rewrites it
+    std::fs::write(d.join("rust/connect.rs"), CONNECT).unwrap();
+    assert!(build().status.success());
+    assert_eq!(std::fs::read_to_string(d.join("rust/connect.rs")).unwrap(), CONNECT);
+    assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), CONNECT);
+
+    // deleting the output loses nothing: the next build brings the implementation back
+    std::fs::remove_dir_all(&*out).unwrap();
     assert!(build().status.success());
     assert_eq!(std::fs::read_to_string(out.join("src/connect.rs")).unwrap(), CONNECT);
 
@@ -431,14 +492,38 @@ fn connect_rs_is_written_once_and_a_real_run_uses_it() {
 }
 
 #[test]
+fn a_real_run_uses_the_projects_connect_rs() {
+    let (d, file) = single("connectrun", "seen-run.agent.md", SEEN);
+    write(&d, "rust/connect.rs", CONNECT);
+    let o = agentmark(&["run", s(&file)]).output_locked();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(e.contains("saw A-1") && e.contains("saw A-2"), "the in-memory CRM answered:\n{e}");
+    assert_eq!(std::fs::read_to_string(d.join("rust/connect.rs")).unwrap(), CONNECT, "run never rewrites it");
+    // trace uses it too
+    let t = agentmark(&["trace", s(&file)]).output_locked();
+    assert!(t.status.success(), "{}", stderr(&t));
+    assert_eq!(parse_lines(&stdout(&t)).iter().filter(|l| l["verb"] == "update").count(), 2);
+}
+
+#[test]
+fn a_mock_run_does_not_create_the_projects_connect_rs() {
+    let (d, file) = single("connectmock", "seen-mock.agent.md", SEEN);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    write(&fx, "crm.invoices.json", r#"[{"id":"A-1","customer":"Acme","status":"open"}]"#);
+    let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!d.join("rust").exists(), "mock runs leave the project alone");
+}
+
+#[test]
 fn a_real_run_without_connecting_says_what_to_implement() {
-    let (_d, file) = single("unconnected", "seen-stub.agent.md", SEEN);
-    let out = temp("unconnected-out");
-    assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
-    let bin = build_bin(&out, "seen-stub");
-    let o = Command::new(bin).args(["--once"]).output().unwrap();
-    assert_eq!(o.status.code(), Some(1));
-    assert!(stderr(&o).contains("not connected yet: implement Crm::list in src/connect.rs"), "{}", stderr(&o));
+    let (d, file) = single("unconnected", "seen-stub.agent.md", SEEN);
+    let o = agentmark(&["run", s(&file)]).output_locked();
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    assert!(stderr(&o).contains("not connected yet: implement Crm::list in rust/connect.rs"), "{}", stderr(&o));
+    assert!(d.join("rust/connect.rs").is_file(), "the stub was created for the author to fill in");
 }
 
 #[test]
@@ -471,6 +556,22 @@ fn build_warns_about_memory_file_and_serialized_parallel_blocks() {
 }
 
 #[test]
+fn build_notes_are_printed_by_build_only_not_by_run_or_trace() {
+    let src = "# Agent: a\n- model: claude\n- tools: log\n- memory: file\n\n## On start\n- parallel:\n  - log: \"x\"\n";
+    let (d, file) = single("notesrun", "a.agent.md", src);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    for sub in ["run", "trace"] {
+        let o = agentmark(&[sub, s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
+        let e = stderr(&o);
+        assert!(o.status.success(), "{e}");
+        assert!(!e.contains("memory: file") && !e.contains("this `parallel:` runs in order"), "{sub} must not repeat build notes: {e}");
+    }
+    let o = agentmark(&["build", s(&file), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
+    assert!(stderr(&o).contains("`memory: file` is not supported"), "{}", stderr(&o));
+}
+
+#[test]
 fn a_failing_command_leaves_an_error_line_in_the_trace() {
     let src = "# Command: slurp\n- args: path: text\n\n## Run\n- read file path as text -> t\n- print: \"got {t}\"\n";
     let (d, file) = single("cmderr", "slurp.agent.md", src);
@@ -484,4 +585,41 @@ fn a_failing_command_leaves_an_error_line_in_the_trace() {
     assert_eq!(t[0]["kind"], "error");
     assert_eq!(t[0]["agent"], "slurp");
     assert_eq!(t[0]["block"], "Run");
+}
+
+// ---------------------------------------------------------------------------------- result of T
+
+const RESULT_FN: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n# Command: check\n- args: path: text\n\n## Run\n- try do read_count(path) -> n\n  otherwise:\n    - print: \"unreadable\"\n    - stop\n- print: \"count {n}\"\n";
+
+#[test]
+fn a_result_function_returns_ok_and_its_failure_reaches_the_caller() {
+    let (d, file) = single("resultfn", "count.agent.md", RESULT_FN);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    write(&d, "n.json", "41");
+    let run = |path: &str| {
+        write(&fx, "command.json", &json!({"command": "check", "args": {"path": path}}).to_string());
+        let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
+        assert!(o.status.success(), "{}", stderr(&o));
+        format!("{}{}", stdout(&o), stderr(&o))
+    };
+    // success: the caller sees a plain int
+    assert!(run(s(&d.join("n.json"))).contains("count 41"));
+    // the `try` inside the function has no otherwise: the error leaves the function, the caller's
+    // otherwise branch takes it
+    let e = run(s(&d.join("missing.json")));
+    assert!(e.contains("unreadable") && !e.contains("count"), "{e}");
+}
+
+#[test]
+fn a_result_functions_failure_without_otherwise_is_traced_once_by_the_caller() {
+    let src = RESULT_FN.replace("  otherwise:\n    - print: \"unreadable\"\n    - stop\n", "");
+    let (d, file) = single("resultfn2", "count2.agent.md", &src);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    write(&fx, "command.json", &json!({"command": "check", "args": {"path": s(&d.join("missing.json"))}}).to_string());
+    let o = agentmark(&["trace", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
+    let t = parse_lines(&stdout(&o));
+    assert_eq!(t.len(), 1, "{t:#?}");
+    assert_eq!(t[0]["kind"], "error");
 }

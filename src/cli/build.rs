@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
-use super::{bind, check, fail, require_source};
+use super::{bind, check, fail, plural, require_source};
 use crate::binder::core::parse_header;
 use crate::binder::{bind as run_binder, BindOptions};
 use crate::codegen::rust::{self as cg, GeneratedFile};
@@ -32,43 +32,20 @@ fn is_offline() -> bool {
 }
 
 /// Check, auto-bind imported crates, refuse unapproved bindings, lower to IR.
-fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
+fn prepare(path: &str, allow_unverified: bool, show_notes: bool) -> Result<Prepared, u8> {
     require_source(path)?;
     let mut announced: Vec<String> = Vec::new();
     for _round in 0..2 {
-        let project = Project::load(path);
+        let mut project = Project::load(path);
+        project.assume_proposed = allow_unverified;
         // SPEC 15.1: every imported crate has a binding before the project is checked
-        let mut generated_any = false;
-        let mut crates: Vec<(String, Option<usize>)> = Vec::new();
-        for f in &project.files {
-            for imp in &f.imports {
-                if let ResolvedImport::Crate { name, binding } = imp {
-                    if !crates.iter().any(|(n, _)| n == name) {
-                        crates.push((name.clone(), *binding));
-                    }
-                }
+        let generated_any = match bind_missing(&project, &mut announced, true) {
+            Ok(g) => g,
+            Err((name, e)) => {
+                eprintln!("agentmark: cannot bind \"{name}\": {e}");
+                return Err(1);
             }
-        }
-        for (name, binding) in &crates {
-            if announced.contains(name) {
-                continue;
-            }
-            announced.push(name.clone());
-            if binding.is_some() {
-                eprintln!("binding {name}: cached");
-                continue;
-            }
-            match auto_bind(name, &project) {
-                Ok(()) => {
-                    eprintln!("binding {name}: generated");
-                    generated_any = true;
-                }
-                Err(e) => {
-                    eprintln!("agentmark: cannot bind \"{name}\": {e}");
-                    return Err(1);
-                }
-            }
-        }
+        };
         if generated_any {
             continue;
         }
@@ -100,14 +77,54 @@ fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
             return Err(1);
         }
         let program = ir::lower(&project, &checked);
-        for n in cg::notes(&program, &project.root) {
-            eprintln!("{n}");
+        // build notes belong to `build`; `run` and `trace` stay quiet about them
+        if show_notes {
+            for n in cg::notes(&program, &project.root) {
+                eprintln!("{n}");
+            }
         }
         let versions = crate_versions(&project);
         return Ok(Prepared { project, program, versions });
     }
     eprintln!("agentmark: the binding was written but the project still cannot find it");
     Err(1)
+}
+
+/// Bind every imported crate that has no binding yet (SPEC 15.1); shared by `build` and `check`.
+/// `Ok(true)` when something was generated (the project has to be loaded again), `Err` carries
+/// the crate and why it could not be bound. `announced` keeps each crate to one status line.
+pub(crate) fn bind_missing(
+    project: &Project,
+    announced: &mut Vec<String>,
+    say_cached: bool,
+) -> Result<bool, (String, String)> {
+    let mut generated_any = false;
+    let mut crates: Vec<(String, Option<usize>)> = Vec::new();
+    for f in &project.files {
+        for imp in &f.imports {
+            if let ResolvedImport::Crate { name, binding } = imp {
+                if !crates.iter().any(|(n, _)| n == name) {
+                    crates.push((name.clone(), *binding));
+                }
+            }
+        }
+    }
+    for (name, binding) in &crates {
+        if announced.contains(name) {
+            continue;
+        }
+        announced.push(name.clone());
+        if binding.is_some() {
+            if say_cached {
+                eprintln!("binding {name}: cached");
+            }
+            continue;
+        }
+        auto_bind(name, project).map_err(|e| (name.clone(), e))?;
+        eprintln!("binding {name}: generated");
+        generated_any = true;
+    }
+    Ok(generated_any)
 }
 
 fn auto_bind(name: &str, project: &Project) -> Result<(), String> {
@@ -146,6 +163,37 @@ fn options(p: &Prepared, path: &str) -> cg::Options {
     }
 }
 
+/// The author's real tool implementations live in the PROJECT, at `rust/connect.rs` beside
+/// `agentmark.toml` (Q135, amended in step 10): a build folder can be deleted without losing them.
+/// Every build copies that file to `src/connect.rs` of the generated project. The first time it is
+/// missing it is created from the stub template (an older `src/connect.rs` of the output is kept as
+/// the start), and an existing file is never touched. A `--mock` run does not need the file, so it
+/// neither creates one nor fails for the lack of one.
+fn adopt_connect(prepared: &Prepared, dir: &Path, files: &mut [GeneratedFile], create: bool) -> Result<(), String> {
+    let Some(slot) = files.iter_mut().find(|f| f.path == USER_FILE) else { return Ok(()) };
+    let path = connect_path(&prepared.project.root);
+    if !path.exists() {
+        // nothing to connect (no tool with verbs): no file to ask the author for
+        if !create || !slot.content.contains("struct NotConnected") {
+            return Ok(());
+        }
+        let seed = std::fs::read_to_string(dir.join(USER_FILE)).unwrap_or_else(|_| slot.content.clone());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        }
+        std::fs::write(&path, seed).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+        eprintln!("created {}: your real tool implementations go here (build copies it into the output)", path.display());
+    }
+    slot.content = std::fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    slot.user_owned = false;
+    Ok(())
+}
+
+/// `<project>/rust/connect.rs`.
+fn connect_path(root: &str) -> PathBuf {
+    Path::new(if root.is_empty() { "." } else { root }).join("rust/connect.rs")
+}
+
 /// Write the project, removing unit files of an earlier build that no longer exist.
 fn write_project(out: &Path, files: &[GeneratedFile]) -> Result<(), String> {
     let src = out.join("src");
@@ -173,12 +221,15 @@ pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool,
     if target != "rust" {
         return fail(format!("unknown target \"{target}\": only \"rust\" is implemented"));
     }
-    let prepared = match prepare(path, allow_unverified) {
+    let prepared = match prepare(path, allow_unverified, true) {
         Ok(p) => p,
         Err(c) => return c,
     };
-    let files = cg::generate(&prepared.program, &options(&prepared, path));
+    let mut files = cg::generate(&prepared.program, &options(&prepared, path));
     let dir = Path::new(out);
+    if let Err(e) = adopt_connect(&prepared, dir, &mut files, true) {
+        return fail(e);
+    }
     if let Err(e) = write_project(dir, &files) {
         return fail(e);
     }
@@ -191,7 +242,7 @@ pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool,
             Err(e) => return fail(e),
         }
     }
-    println!("built {} ({} files). Compile it with: cargo build --release --manifest-path {}/Cargo.toml", out, files.len(), out.trim_end_matches('/'));
+    println!("built {} ({}). Compile it with: cargo build --release --manifest-path {}/Cargo.toml", out, plural(files.len(), "file"), out.trim_end_matches('/'));
     0
 }
 
@@ -318,9 +369,21 @@ fn cargo_build(dir: &Path, sub: &str) -> Result<CargoRun, String> {
                 if m["level"].as_str() != Some("error") {
                     continue;
                 }
-                let msg = m["message"].as_str().unwrap_or_default().to_string();
+                let mut msg = m["message"].as_str().unwrap_or_default().to_string();
                 if msg.starts_with("aborting due to") {
                     continue;
+                }
+                // rustc's primary label says what is wrong ("expected `String`, found `()`");
+                // the headline alone ("mismatched types") does not
+                let label = m["spans"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|sp| sp["is_primary"].as_bool() == Some(true))
+                    .and_then(|sp| sp["label"].as_str())
+                    .filter(|l| !l.is_empty() && !msg.contains(*l));
+                if let Some(l) = label {
+                    msg = format!("{msg}: {l}");
                 }
                 let mut spans: Vec<(String, u32, bool)> = Vec::new();
                 fn collect(m: &Value, spans: &mut Vec<(String, u32, bool)>) {
@@ -361,7 +424,9 @@ fn report_failure(prepared: &Prepared, dir: &Path, files: &[GeneratedFile], run:
         Failure::User(errs) => {
             for e in &errs {
                 if e.file == USER_FILE {
-                    let path = dir.join(&e.file);
+                    // the project's copy when there is one: that is the file to fix
+                    let own = connect_path(&prepared.project.root);
+                    let path = if own.exists() { own } else { dir.join(&e.file) };
                     let text = std::fs::read_to_string(&path).ok().and_then(|t| t.lines().nth(e.line as usize - 1).map(String::from)).unwrap_or_default();
                     eprintln!("{}:{}\n  {}\n  This file is yours (agentmark never rewrites it) and it does not compile: {}\n", path.display(), e.line, text.trim_end(), e.message);
                     continue;
@@ -403,12 +468,15 @@ fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverifie
             return fail(format!("cannot find the fixtures folder \"{f}\""));
         }
     }
-    let prepared = match prepare(path, allow_unverified) {
+    let prepared = match prepare(path, allow_unverified, false) {
         Ok(p) => p,
         Err(c) => return c,
     };
-    let files = cg::generate(&prepared.program, &options(&prepared, path));
+    let mut files = cg::generate(&prepared.program, &options(&prepared, path));
     let dir = cache_dir(path);
+    if let Err(e) = adopt_connect(&prepared, &dir, &mut files, !mock) {
+        return fail(e);
+    }
     if let Err(e) = write_project(&dir, &files) {
         return fail(e);
     }

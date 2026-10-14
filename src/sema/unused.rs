@@ -9,6 +9,7 @@ use super::Checker;
 pub const W_UNUSED_IMPORT: &str = "W002";
 pub const W_UNUSED_DECL: &str = "W003";
 pub const W_UNBOUND: &str = "W004";
+pub const E_UNBOUND_USED: &str = "E219";
 
 /// Does any Rust code in this file mention the crate (`sha2::…`)?
 fn crate_used_in_code(file: &crate::project::SourceFile, name: &str) -> bool {
@@ -48,23 +49,39 @@ pub fn check(ck: &mut Checker<'_>) {
                     let used_code = crate_used_in_code(f, name);
                     match binding {
                         None => {
-                            // OPEN_QUESTIONS Q36: known, but nothing binds it yet
-                            ck.warn(
-                                W_UNBOUND,
-                                fi,
-                                imp.span,
-                                format!("The crate \"{name}\" has no binding yet."),
+                            // OPEN_QUESTIONS Q36, Q201: nothing binds it yet. Used as a tool, that
+                            // is an error on this line (and the only one); otherwise Rust code
+                            // decides whether the import is unused.
+                            let help = format!(
+                                "Run \"agentmark bind {name}\" to create bindings/{name}.agent.md (\"agentmark build\" and \"agentmark check\" do it for you when a model is reachable)."
                             );
-                            ck.diags.last_mut().unwrap().help = Some(format!(
-                                "Run \"agentmark bind {name}\" to create bindings/{name}.agent.md; \"## Rust\" blocks can already use it."
-                            ));
-                            if !used_code {
+                            if ck.unbound_used.contains(&(fi, ii)) {
+                                let d = crate::diag::Diagnostic::error(
+                                    E_UNBOUND_USED,
+                                    ck.path(fi),
+                                    imp.span,
+                                    format!("The crate \"{name}\" has no binding yet, but this file uses it."),
+                                )
+                                .with_help(help);
+                                ck.diags.push(d);
+                            } else {
                                 ck.warn(
-                                    W_UNUSED_IMPORT,
+                                    W_UNBOUND,
                                     fi,
                                     imp.span,
-                                    format!("Unused import: the crate \"{name}\" is not used in this file."),
+                                    format!("The crate \"{name}\" has no binding yet."),
                                 );
+                                ck.diags.last_mut().unwrap().help = Some(format!(
+                                    "Run \"agentmark bind {name}\" to create bindings/{name}.agent.md; \"## Rust\" blocks can already use it."
+                                ));
+                                if !used_code {
+                                    ck.warn(
+                                        W_UNUSED_IMPORT,
+                                        fi,
+                                        imp.span,
+                                        format!("Unused import: the crate \"{name}\" is not used in this file."),
+                                    );
+                                }
                             }
                         }
                         Some(_) => {

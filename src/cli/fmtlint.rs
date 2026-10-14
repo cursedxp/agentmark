@@ -41,8 +41,9 @@ pub(crate) fn fmt(path: &str, check: bool) -> u8 {
     if check {
         if changed > 0 {
             println!(
-                "{changed} of {} are not canonical; run \"agentmark fmt\" to fix {}.",
+                "{changed} of {} {} not canonical; run \"agentmark fmt\" to fix {}.",
                 plural(files.len(), "file"),
+                if changed == 1 { "is" } else { "are" },
                 if changed == 1 { "it" } else { "them" }
             );
         } else if !broken {

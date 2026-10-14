@@ -435,18 +435,14 @@ impl<'a> Body<'a> {
                 self.line(&format!("let {name} = match {f} {{"));
                 self.line("    Ok(answer) => answer,");
                 self.line("    Err(err) => {");
-                self.line("        ctx.trace_error(&err.to_string())?;");
-                let sv = self.stop_value();
-                self.line(&format!("        return Ok({sv});"));
+                self.failure_exit("        ");
                 self.line("    }");
                 self.line("};");
             }
             (None, None) => {
                 let f = fut(self, ind);
                 self.line(&format!("if let Err(err) = {f} {{"));
-                self.line("    ctx.trace_error(&err.to_string())?;");
-                let sv = self.stop_value();
-                self.line(&format!("    return Ok({sv});"));
+                self.failure_exit("    ");
                 self.line("}");
             }
             (Some(d), Some(other)) => {
@@ -473,6 +469,18 @@ impl<'a> Body<'a> {
                 self.nested(other);
                 self.line("}");
             }
+        }
+    }
+
+    /// A `try` without `otherwise` failed (the error is in `err`). In a `result of T` function the
+    /// error goes to the caller (Q200); anywhere else it is traced and the block stops.
+    fn failure_exit(&mut self, pad: &str) {
+        if self.kind == Kind::Value && matches!(self.ret, Some(Type::Result(_))) {
+            self.line(&format!("{pad}return Err(err);"));
+        } else {
+            self.line(&format!("{pad}ctx.trace_error(&err.to_string())?;"));
+            let sv = self.stop_value();
+            self.line(&format!("{pad}return Ok({sv});"));
         }
     }
 

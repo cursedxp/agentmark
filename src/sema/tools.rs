@@ -51,6 +51,9 @@ impl Checker<'_> {
     }
 
     fn unknown_tool(&mut self, cx: &Cx, tool: &Ident) {
+        if self.unbound_crate_tool(cx.file, &tool.name) {
+            return;
+        }
         let mut cands: Vec<String> = self.p.manifest.tool_names().map(str::to_string).collect();
         cands.extend(self.scopes[cx.file].names_of(&[Kind::Binding]));
         let d = Diagnostic::error(
@@ -783,7 +786,7 @@ impl Checker<'_> {
             cx.define(&i.name, out, i.span);
         }
         if let Some(info) = &info {
-            cx.acc.add(info.effect, bname);
+            cx.acc.add(info.effective(self.p.assume_proposed), bname);
         }
     }
 }

@@ -54,6 +54,34 @@ fn scratch(tag: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Removes a scratch crate when dropped (about 8 MB of build output each).
+pub struct ScratchGuard(Option<PathBuf>);
+
+impl ScratchGuard {
+    pub fn new(dir: PathBuf) -> ScratchGuard {
+        ScratchGuard(Some(dir))
+    }
+    /// The scratch crate a rustdoc JSON file built by [`fetch_rustdoc_json_with`] lives in.
+    pub fn of_json(json: &Path) -> ScratchGuard {
+        ScratchGuard(json.ancestors().nth(3).filter(|d| d.join("Cargo.toml").exists()).map(Path::to_path_buf))
+    }
+    pub fn new_none() -> ScratchGuard {
+        ScratchGuard(None)
+    }
+    /// Keep the folder (the caller hands it on).
+    pub fn disarm(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for ScratchGuard {
+    fn drop(&mut self) {
+        if let Some(d) = &self.0 {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
+}
+
 fn write_manifest(dir: &Path, spec: &FetchSpec) -> Result<(), String> {
     let req = spec.version.as_deref().map(|v| format!("={v}")).unwrap_or_else(|| "*".into());
     let feats = spec.features.iter().map(|f| format!("\"{f}\"")).collect::<Vec<_>>().join(", ");
@@ -90,6 +118,7 @@ pub fn resolve_version(spec: &FetchSpec) -> Result<String, String> {
         return Ok(v.clone());
     }
     let dir = scratch("resolve")?;
+    let _guard = ScratchGuard::new(dir.clone());
     let r = (|| {
         write_manifest(&dir, spec)?;
         let out = cargo(&dir, &["metadata", "--format-version", "1"], spec.offline)?;
@@ -102,12 +131,12 @@ pub fn resolve_version(spec: &FetchSpec) -> Result<String, String> {
             .and_then(|p| p["version"].as_str().map(String::from))
             .ok_or_else(|| format!("cargo did not resolve a crate named `{}`", spec.crate_name))
     })();
-    let _ = std::fs::remove_dir_all(&dir);
     r
 }
 
-/// Build rustdoc JSON for the crate and return the path of the file. The scratch directory is
-/// left in place (the file lives in it); the OS temp cleaner removes it.
+/// Build rustdoc JSON for the crate and return the path of the file. The scratch directory stays
+/// (the file lives in it); the caller removes it with [`ScratchGuard::of_json`] when done. A failed
+/// build removes it itself.
 pub fn fetch_rustdoc_json_with(spec: &FetchSpec) -> Result<PathBuf, String> {
     if !nightly_available() {
         return match env_nonempty(ENV_JSON) {
@@ -119,6 +148,7 @@ pub fn fetch_rustdoc_json_with(spec: &FetchSpec) -> Result<PathBuf, String> {
         };
     }
     let dir = scratch("rustdoc")?;
+    let guard = ScratchGuard::new(dir.clone());
     write_manifest(&dir, spec)?;
     cargo(
         &dir,
@@ -131,6 +161,7 @@ pub fn fetch_rustdoc_json_with(spec: &FetchSpec) -> Result<PathBuf, String> {
     .map_err(|e| format!("rustdoc for `{}` failed: {e}", spec.crate_name))?;
     let file = dir.join("target/doc").join(format!("{}.json", spec.crate_name.replace('-', "_")));
     if file.exists() {
+        guard.disarm();
         Ok(file)
     } else {
         Err(format!("rustdoc produced no JSON at {}", file.display()))

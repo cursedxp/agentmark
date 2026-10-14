@@ -227,7 +227,7 @@ fn entry_fn(c: &Ctxt, module: &str, idx: usize, e: &Entry) -> String {
         Some(d) => format!(".with_model({})", lit(&super::model_id(&d))),
         None => String::new(),
     };
-    b.raw_line(&format!("let ctx = &ctx.enter({}, {}){with_model};", lit(&e.unit), lit(&e.label)));
+    b.raw_line(&format!("#[allow(unused_variables)] let ctx = &ctx.enter({}, {}){with_model};", lit(&e.unit), lit(&e.label)));
     b.function_body(&e.body);
     let src = b.src_comment(&e.source);
     let text = b.finish();
@@ -278,7 +278,7 @@ pub fn service_rs(c: &Ctxt, idx: usize, s: &Service) -> String {
         let ident = ns.take(&slug(&r.label));
         rows.push((r.label.clone(), r.effect.clone()));
         let mut b = Body::new(c.p, c.n, &c.o.root, module, Kind::Route, None);
-        b.raw_line(&format!("let ctx = &ctx.enter({}, {});", lit(&s.name), lit(&r.label)));
+        b.raw_line(&format!("#[allow(unused_variables)] let ctx = &ctx.enter({}, {});", lit(&s.name), lit(&r.label)));
         let text_probe = {
             let mut p = Body::new(c.p, c.n, &c.o.root, module, Kind::Route, None);
             p.function_body(&r.body);
@@ -438,6 +438,7 @@ struct Reply {
 }
 
 impl Reply {
+    #[allow(dead_code)]
     fn status(status: u16) -> Reply {
         Reply { status, body: None }
     }
@@ -477,7 +478,7 @@ fn reply(ctx: &Ctx, unit: &str, label: &str, method: &str, uri: &Uri, result: Re
 pub fn command_rs(c: &Ctxt, idx: usize, cmd: &Command) -> String {
     let module = &c.n.commands[idx];
     let mut b = Body::new(c.p, c.n, &c.o.root, module, Kind::Unit, None);
-    b.raw_line(&format!("let ctx = &ctx.enter({}, \"Run\");", lit(&cmd.name)));
+    b.raw_line(&format!("#[allow(unused_variables)] let ctx = &ctx.enter({}, \"Run\");", lit(&cmd.name)));
     b.function_body(&cmd.body);
     let src = b.src_comment(&cmd.run);
     let text = b.finish();
@@ -555,7 +556,7 @@ pub fn tools_rs(c: &Ctxt) -> String {
     for t in &with_verbs {
         let tr = &c.n.tools[&t.name];
         let verbs: Vec<String> = t.verbs.iter().map(|v| value_ident(v)).collect();
-        body.push_str(&format!("/// The `{}` tool ({:?}): implement it in `src/connect.rs`.\n", t.name, t.effect));
+        body.push_str(&format!("/// The `{}` tool ({:?}): implement it in `rust/connect.rs`.\n", t.name, t.effect));
         body.push_str(&format!("#[async_trait]\npub trait {tr}: Send + Sync {{\n"));
         for v in &verbs {
             body.push_str(&format!("    async fn {v}(&self, args: Value) -> Result<Value, RtError>;\n"));
@@ -572,7 +573,7 @@ pub fn tools_rs(c: &Ctxt) -> String {
         body.push_str("}\n\n");
     }
     // the adapter real runs use
-    body.push_str("/// The tools of a real run: one implementation per tool, chosen in `src/connect.rs`.\npub struct Connected {\n");
+    body.push_str("/// The tools of a real run: one implementation per tool, chosen in `rust/connect.rs`.\npub struct Connected {\n");
     for t in &with_verbs {
         body.push_str(&format!("    pub {}: Box<dyn {}>,\n", value_ident(&t.name), c.n.tools[&t.name]));
     }
@@ -598,7 +599,7 @@ pub fn tools_rs(c: &Ctxt) -> String {
     );
     let mock = if with_verbs.is_empty() { "" } else { "MockTools, " };
     format!(
-        "//! One trait per tool of tools.toml. Mock runs answer from fixtures; a real run uses the\n//! implementations `src/connect.rs` returns, wrapped in `Connected`.\n#![allow(dead_code)]\n\nuse agentmark_rt::{{Ctx, {mock}RtError, Tools}};\nuse async_trait::async_trait;\nuse serde::de::DeserializeOwned;\nuse serde_json::{{json, Value}};\n\nuse crate::AgentError;\n\n{body}"
+        "//! One trait per tool of tools.toml. Mock runs answer from fixtures; a real run uses the\n//! implementations `rust/connect.rs` (your project's file) returns, wrapped in `Connected`.\n#![allow(dead_code)]\n\nuse agentmark_rt::{{Ctx, {mock}RtError, Tools}};\nuse async_trait::async_trait;\nuse serde::de::DeserializeOwned;\nuse serde_json::{{json, Value}};\n\nuse crate::AgentError;\n\n{body}"
     )
 }
 
@@ -606,7 +607,7 @@ pub fn tools_rs(c: &Ctxt) -> String {
 pub fn connect_rs(c: &Ctxt) -> String {
     let with_verbs = tools_with_verbs(c);
     let mut s = String::from(
-        "//! Connect the tools to the real world.\n//!\n//! This file is yours: `agentmark build` writes it once, when it is missing, and never changes\n//! it again. Implement the traits of `tools.rs` for your systems and return them from `connect()`.\n//! A real run (without --mock) uses what `connect()` returns. If tools.toml gains a tool, add it here.\n\n",
+        "//! Connect the tools to the real world.\n//!\n//! This file is yours: it lives in your project as `rust/connect.rs` (beside agentmark.toml);\n//! `agentmark build` creates it once, when it is missing, and never changes it again. Every\n//! build copies it to `src/connect.rs` of the generated project, so edit THIS one. Implement the traits of `tools.rs` for your systems and return them from `connect()`.\n//! A real run (without --mock) uses what `connect()` returns. If tools.toml gains a tool, add it here.\n\n",
     );
     if with_verbs.is_empty() {
         s.push_str("use crate::tools::Connected;\n\n/// The tools of a real run (this program has none that need connecting).\npub fn connect() -> Connected {\n    Connected {}\n}\n");
@@ -623,7 +624,7 @@ pub fn connect_rs(c: &Ctxt) -> String {
             s.push_str(&format!(
                 "    async fn {}(&self, _args: Value) -> Result<Value, RtError> {{\n        Err(RtError::Tool({}.into()))\n    }}\n",
                 value_ident(v),
-                lit(&format!("not connected yet: implement {tr}::{} in src/connect.rs", value_ident(v)))
+                lit(&format!("not connected yet: implement {tr}::{} in rust/connect.rs", value_ident(v)))
             ));
         }
         s.push_str("}\n\n");

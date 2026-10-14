@@ -67,7 +67,8 @@ The body is the body of `pub async fn name(..) -> Result<T, Box<dyn Error + Send
 - header version = wanted version: cache hit, file untouched (also for approved `- effect: pure`).
 - header version differs: regenerated as `unverified` (the old file is kept as `<crate>.agent.md.prev`).
 - no header (hand-written): left alone.
-- `force`: regenerate regardless, even an approved binding (old file kept as `.prev`).
+- `force`: regenerate regardless, even an approved binding (old file kept as `.prev`); the version stays the header's.
+- `version` / `latest`: move an existing binding (`agentmark bind <crate> --version <v>` / `--latest`); without them an existing binding keeps its header version (Q155).
 
 ## Fixtures and tests
 
