@@ -4,3 +4,6 @@ targets = ["rust"]
 
 [lint]
 deny = ["prompt-in-loop", "missing-doc"]
+
+[crates]
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }

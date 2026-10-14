@@ -12,7 +12,7 @@
   otherwise:
     - print: "Could not read {path}"
     - stop
-- try do csv.parse(content) as list of Sale -> sales
+- try csv.parse(content) as list of Sale -> sales
   otherwise:
     - print: "{path} is not a valid sales file"
     - stop

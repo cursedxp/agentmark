@@ -2,5 +2,9 @@
 # Constant: camera_pattern
 - value: "^IMG_([0-9]+)_[0-9]+[.][a-z]+$"
 
+> The digits of a camera date, year first: 20261003.
+# Constant: digit_date_format
+- value: "%Y%m%d"
+
 # Constant: stamp_format
 - value: "%Y-%m-%d"

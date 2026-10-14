@@ -1,20 +1,22 @@
 //! Formatter tests (SPEC 18.6): idempotence, AST equivalence, comment preservation, a stored
 //! snapshot of a deliberately messy file, and `fmt --check` semantics.
 
+mod support;
+
 use std::path::{Path, PathBuf};
+
+use support::V03_PENDING;
 
 use agentmark::diag::render_all;
 use agentmark::fmt::{format_source, is_canonical};
 use agentmark::syntax::lexer::{lex, LineKind};
 use agentmark::syntax::parser::parse_file;
 
-/// v0.3 examples (06 to 10) are authored ahead of the compiler (step 25); until their steps land they are
-/// not parsed, formatted or run by the tests that pin 01 to 05.
+/// v0.3 examples are authored ahead of the compiler (step 25); until they parse they are skipped here.
+// TODO(steps 20-24): remove when enums/match (20), collection words (21), the built-in library (22),
+// handles (23) and user tools (24) have landed
 fn v03_pending(p: &Path) -> bool {
-    p.components().any(|c| {
-        let c = c.as_os_str().to_string_lossy();
-        ["06-", "07-", "08-", "09-", "10-"].iter().any(|n| c.starts_with(n))
-    })
+    p.file_name().map(|n| V03_PENDING.contains(&n.to_string_lossy().as_ref())).unwrap_or(false)
 }
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {

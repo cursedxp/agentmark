@@ -9,8 +9,7 @@
 - file list folder -> names
 - set renamed = 0
 - for each name in names:
-  - set stamp = photo_stamp(name)
-  - if stamp is not empty:
+  - if photo_stamp(name) is some stamp:
     - set renamed = renamed + 1
     - set target = "{stamp}_photo-{renamed}.{path.extension(name)}"
     - print: "{name} -> {target}"

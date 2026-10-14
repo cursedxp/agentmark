@@ -14,7 +14,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 # 1. Collect inputs: every example file plus every agentmark code block in docs.
-# examples 06-10 are v0.3 programs written ahead of the grammar (step 25); step 20-24 teach it, then they join
+# examples 06-10 are v0.3 programs written ahead of the grammar (step 25)
+# TODO(steps 20-24): remove this exclusion when the grammar knows the v0.3 syntax
 find "$REPO_ROOT/examples" -name '*.agent.md' | grep -Ev '/examples/(06|07|08|09|10)-' | sort > "$WORK/files.txt"
 
 mkdir -p "$WORK/blocks"
