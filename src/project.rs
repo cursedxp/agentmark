@@ -42,6 +42,9 @@ pub struct Config {
     pub targets: Vec<String>,
     /// `[lint] deny = [...]`: lint rules promoted to errors (read by `lint`).
     pub lint_deny: Vec<String>,
+    /// `[rust.dependencies]`: extra dependencies of the generated Cargo project, as
+    /// `(crate name, TOML value)`, merged verbatim into its `[dependencies]` (Q222).
+    pub rust_dependencies: Vec<(String, String)>,
 }
 
 /// One import line, resolved.
@@ -384,7 +387,7 @@ struct Loader<'a> {
     failed: Vec<String>,
 }
 
-const CONFIG_KEYS: [&str; 4] = ["name", "version", "targets", "lint"];
+const CONFIG_KEYS: [&str; 5] = ["name", "version", "targets", "lint", "rust"];
 
 impl Loader<'_> {
     fn config(&mut self) -> Config {
@@ -450,6 +453,37 @@ impl Loader<'_> {
                             Span::new(line_of("deny"), 1, 4),
                             "\"deny\" under [lint] must be a list of rule names.",
                         )),
+                    }
+                }
+                "rust" => {
+                    let bad = |line: u32, msg: &str| {
+                        Diagnostic::error(E_CONFIG, &path, Span::new(line, 1, 1), msg.to_string())
+                    };
+                    match value.as_table() {
+                        None => self.diags.push(bad(line, "\"rust\" in agentmark.toml must be a table with [rust.dependencies].")),
+                        Some(t) => {
+                            for (k, v) in t {
+                                if k != "dependencies" {
+                                    self.diags.push(
+                                        bad(line_of(k), &format!("Unknown key \"{k}\" under [rust] in agentmark.toml."))
+                                            .with_help("[rust] accepts: dependencies."),
+                                    );
+                                    continue;
+                                }
+                                match v.as_table() {
+                                    None => self.diags.push(bad(line_of(k), "\"dependencies\" under [rust] must be a table, like serde_json = \"1\".")),
+                                    Some(deps) => {
+                                        for (name, spec) in deps {
+                                            if spec.is_str() || spec.is_table() {
+                                                cfg.rust_dependencies.push((name.clone(), spec.to_string()));
+                                            } else {
+                                                self.diags.push(bad(line_of(name), &format!("The dependency \"{name}\" must be a version text or a table, like reqwest = {{ version = \"0.12\" }}.")));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 other => self.diags.push(

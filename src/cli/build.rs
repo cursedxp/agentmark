@@ -150,17 +150,24 @@ fn crate_versions(project: &Project) -> BTreeMap<String, String> {
     out
 }
 
-fn options(p: &Prepared, path: &str) -> cg::Options {
+fn options(p: &Prepared, path: &str) -> Result<cg::Options, String> {
     let stem = Path::new(path.trim_end_matches('/'))
         .file_name()
         .map(|s| s.to_string_lossy().trim_end_matches(".agent.md").to_string())
         .unwrap_or_else(|| "agentmark-app".into());
-    cg::Options {
+    let o = cg::Options {
         root: p.project.root.clone(),
         rt_path: cg::default_rt_path(),
         crate_versions: p.versions.clone(),
         fallback_name: stem,
+        extra_dependencies: p.project.config.rust_dependencies.clone(),
+    };
+    if let Some(name) = cg::dependency_clash(&p.program, &o) {
+        return Err(format!(
+            "agentmark.toml: [rust.dependencies] lists \"{name}\", but the generated project already depends on it. Remove that line (the generated dependency is used)."
+        ));
     }
+    Ok(o)
 }
 
 /// The author's real tool implementations live in the PROJECT, at `rust/connect.rs` beside
@@ -225,7 +232,11 @@ pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool,
         Ok(p) => p,
         Err(c) => return c,
     };
-    let mut files = cg::generate(&prepared.program, &options(&prepared, path));
+    let opts = match options(&prepared, path) {
+        Ok(o) => o,
+        Err(e) => return fail(e),
+    };
+    let mut files = cg::generate(&prepared.program, &opts);
     let dir = Path::new(out);
     if let Err(e) = adopt_connect(&prepared, dir, &mut files, true) {
         return fail(e);
@@ -472,7 +483,11 @@ fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverifie
         Ok(p) => p,
         Err(c) => return c,
     };
-    let mut files = cg::generate(&prepared.program, &options(&prepared, path));
+    let opts = match options(&prepared, path) {
+        Ok(o) => o,
+        Err(e) => return fail(e),
+    };
+    let mut files = cg::generate(&prepared.program, &opts);
     let dir = cache_dir(path);
     if let Err(e) = adopt_connect(&prepared, &dir, &mut files, !mock) {
         return fail(e);

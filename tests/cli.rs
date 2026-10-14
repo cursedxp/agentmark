@@ -772,3 +772,39 @@ fn dot_is_a_project_folder_for_check_and_lint() {
         assert!(!err(&o).contains("Cannot find"), "{cmd} .: {}", err(&o));
     }
 }
+
+// ---- [rust.dependencies] (Q222) -----------------------------------------------------------
+
+#[test]
+fn rust_dependencies_that_clash_with_a_generated_one_are_a_plain_error() {
+    let d = temp("deps-clash");
+    copy_dir(Path::new("examples/01-invoice-chaser"), &d);
+    let toml = std::fs::read_to_string(d.join("agentmark.toml")).unwrap();
+    write(&d, "agentmark.toml", &format!("{toml}\n[rust.dependencies]\nserde_json = \"1\"\n"));
+    let o = run(&["build", s(&d), "-o", s(&d.join("out")), "--no-check"]);
+    assert_eq!(code(&o), 2, "{}", err(&o));
+    assert!(err(&o).contains("[rust.dependencies] lists \"serde_json\", but the generated project already depends on it"), "{}", err(&o));
+    assert!(!d.join("out").exists());
+}
+
+#[test]
+fn rust_dependencies_are_merged_into_cargo_toml() {
+    let d = temp("deps-merge");
+    copy_dir(Path::new("examples/01-invoice-chaser"), &d);
+    let toml = std::fs::read_to_string(d.join("agentmark.toml")).unwrap();
+    write(&d, "agentmark.toml", &format!("{toml}\n[rust.dependencies]\nreqwest = {{ version = \"0.12\", default-features = false }}\nfastrand = \"2\"\n"));
+    let o = run(&["build", s(&d), "-o", s(&d.join("out")), "--no-check"]);
+    assert_eq!(code(&o), 0, "{}", err(&o));
+    let cargo = std::fs::read_to_string(d.join("out/Cargo.toml")).unwrap();
+    assert!(cargo.contains("fastrand = \"2\"\n") && cargo.contains("reqwest = { default-features = false, version = \"0.12\" }"), "{cargo}");
+}
+
+#[test]
+fn a_malformed_rust_table_is_reported_as_an_agentmark_toml_error() {
+    let d = temp("deps-bad");
+    copy_dir(Path::new("examples/01-invoice-chaser"), &d);
+    write(&d, "agentmark.toml", "name = \"x\"\n[rust]\ndependenceis = {}\n");
+    let o = run(&["check", s(&d)]);
+    assert_eq!(code(&o), 1);
+    assert!(err(&o).contains("Unknown key \"dependenceis\" under [rust] in agentmark.toml."), "{}", err(&o));
+}

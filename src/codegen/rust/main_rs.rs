@@ -119,6 +119,7 @@ pub fn main_rs(c: &Ctxt) -> String {
     let mut rt = vec!["Clock", "Ctx", "ModelClient", "ModelRequest", "ModelResponse", "RtError", "Trace"];
     if driver.is_some() {
         rt.push("AnthropicModel");
+        rt.push("MockModel");
     }
     let has_tasks = p.entries.iter().any(|e| !matches!(e.trigger, Trigger::Event { .. } | Trigger::Start));
     let has_start = p.entries.iter().any(|e| matches!(e.trigger, Trigger::Start));
@@ -181,7 +182,7 @@ pub fn main_rs(c: &Ctxt) -> String {
     // main
     s.push_str(MAIN);
     match &driver {
-        Some(_) => s.push_str("/// The model of a real run.\nfn real_model() -> Arc<dyn ModelClient> {\n    match AnthropicModel::from_env(MODEL) {\n        Ok(m) => Arc::new(m),\n        Err(e) => Arc::new(NoModel(e.to_string())),\n    }\n}\n\n"),
+        Some(_) => s.push_str("/// The model of a real run.\nfn real_model() -> Arc<dyn ModelClient> {\n    // AGENTMARK_MODEL=mock:<model.json> answers from a file, like the binder (no network, no key)\n    if let Some(path) = std::env::var(\"AGENTMARK_MODEL\").ok().and_then(|v| v.strip_prefix(\"mock:\").map(String::from)) {\n        return match MockModel::from_file(&path) {\n            Ok(m) => Arc::new(m),\n            Err(e) => Arc::new(NoModel(e.to_string())),\n        };\n    }\n    match AnthropicModel::from_env(MODEL) {\n        Ok(m) => Arc::new(m),\n        Err(e) => Arc::new(NoModel(e.to_string())),\n    }\n}\n\n"),
         None => s.push_str("/// The model of a real run: this program never asks one.\nfn real_model() -> Arc<dyn ModelClient> {\n    Arc::new(NoModel(\"this program does not use a model\".into()))\n}\n\n"),
     }
 
