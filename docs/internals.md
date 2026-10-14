@@ -203,8 +203,7 @@ tiers, change the classification in `src/binder/rust/rustdoc.rs` and record the 
 
 **The on-demand tier** is the fourth step and lives next to the others: `src/binder/core/ondemand.rs` (prompt, two attempts, the
 signature the model proposes when the item has none, the type check), `add_on_demand` in `src/binder/core/writer.rs` (moves the items
-out of `## Not bound`, resets `- effect:` to `unverified`), `bind_on_demand` in `src/binder/mod.rs` (reads the binding and the rustdoc, writes
-once or not at all) and `src/cli/ondemand.rs` (finds the statements, prints the E220 error). `check` and `build` call it after
+out of `## Not bound`, resets `- effect:` to `unverified`), `produce_on_demand` and `commit_on_demand` in `src/binder/mod.rs` (produce reads the binding and the rustdoc, computes the new text; commit replaces the files, and the CLI commits only when every crate succeeded) and `src/cli/ondemand.rs` (finds the statements, prints the E220 error and writes the compiler text to `target/agentmark/ondemand-<crate>-<item>.log`). `check` and `build` call it after
 the automatic first binding and before the semantic check. Keep the invariant that code a model wrote is type-checked before it
 is accepted and is never silently wrong; a new tier adds a step in the same shape.
 

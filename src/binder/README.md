@@ -61,7 +61,7 @@ A plain statement against a `## Not bound` item makes `check`/`build` call `bind
 the model writes the body (and, for a skipped item with no AgentMark signature, the signature) from the statement and the rustdoc,
 the same `TypeChecker` accepts it, two attempts. All items are saved together by `core::add_on_demand` (items leave `## Not bound`,
 `- effect: unverified`, `.prev` kept) or the file is left alone (`OnDemandError::Failed`). The CLI side, `src/cli/ondemand.rs`, finds the
-statements and prints error E220. Decisions: OPEN_QUESTIONS Q230-Q235; tests: `tests/ondemand.rs`.
+statements and prints error E220. `bind_on_demand` is `produce_on_demand` (model + type check, computes the new text, writes nothing) followed by `commit_on_demand` (atomic replace, `.prev` after all succeeded); the CLI produces every crate first and commits only if all succeeded. A failure's details (compiler text) go to `<project>/target/agentmark/ondemand-<crate>-<item>.log`. Decisions: OPEN_QUESTIONS Q230-Q235; tests: `tests/ondemand.rs`.
 
 ## Output
 
