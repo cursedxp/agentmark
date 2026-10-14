@@ -80,6 +80,74 @@ pub struct Good {
     pub texts: BTreeMap<String, String>,
 }
 
+/// Which line of an older text is which line of a newer one (all 0-based): a line diff, so lines
+/// that were not touched map one to one even with several edits in between (Q252).
+#[derive(Debug, Clone)]
+pub struct LineMap {
+    to_old: Vec<Option<usize>>,
+    to_new: Vec<Option<usize>>,
+}
+
+impl LineMap {
+    pub fn between(old: &str, new: &str) -> LineMap {
+        let o: Vec<&str> = old.split('\n').collect();
+        let n: Vec<&str> = new.split('\n').collect();
+        let mut to_old = vec![None; n.len()];
+        let mut to_new = vec![None; o.len()];
+        let mut link = |i: usize, j: usize| {
+            to_old[j] = Some(i);
+            to_new[i] = Some(j);
+        };
+        let prefix = o.iter().zip(&n).take_while(|(a, b)| a == b).count();
+        let room = o.len().min(n.len()) - prefix;
+        let suffix = o.iter().rev().zip(n.iter().rev()).take(room).take_while(|(a, b)| a == b).count();
+        for k in 0..prefix {
+            link(k, k);
+        }
+        for k in 0..suffix {
+            link(o.len() - suffix + k, n.len() - suffix + k);
+        }
+        // longest common subsequence of what is left in the middle (files are small; a huge
+        // middle keeps only prefix and suffix)
+        let (om, nm) = (&o[prefix..o.len() - suffix], &n[prefix..n.len() - suffix]);
+        if om.len().saturating_mul(nm.len()) <= 4_000_000 {
+            let w = nm.len() + 1;
+            let mut dp = vec![0u32; (om.len() + 1) * w];
+            for i in (0..om.len()).rev() {
+                for j in (0..nm.len()).rev() {
+                    dp[i * w + j] = if om[i] == nm[j] { dp[(i + 1) * w + j + 1] + 1 } else { dp[(i + 1) * w + j].max(dp[i * w + j + 1]) };
+                }
+            }
+            let (mut i, mut j) = (0, 0);
+            while i < om.len() && j < nm.len() {
+                if om[i] == nm[j] {
+                    link(prefix + i, prefix + j);
+                    i += 1;
+                    j += 1;
+                } else if dp[(i + 1) * w + j] >= dp[i * w + j + 1] {
+                    i += 1;
+                } else {
+                    j += 1;
+                }
+            }
+        }
+        LineMap { to_old, to_new }
+    }
+
+    pub fn new_to_old(&self, line: usize) -> Option<usize> {
+        self.to_old.get(line).copied().flatten()
+    }
+
+    pub fn old_to_new(&self, line: usize) -> Option<usize> {
+        self.to_new.get(line).copied().flatten()
+    }
+
+    /// The old line for a new one, or the nearest mapped line above it (for "which block am I in").
+    pub fn new_to_old_near(&self, line: usize) -> usize {
+        (0..=line).rev().find_map(|l| self.new_to_old(l)).unwrap_or(0)
+    }
+}
+
 /// Everything the features need about one project at one moment.
 pub struct Analysis {
     /// The key of the project (its folder, or the document for a single-file project).
@@ -110,6 +178,13 @@ impl Analysis {
             project = Project::load_with(&fs, doc_path);
             root = doc_path.to_string();
         }
+        // a file a diagnostic points at but the loader did not read (config in an overlay, ...)
+        let missing: Vec<String> = project.load_diagnostics.iter().map(|d| d.file.clone()).filter(|f| !project.sources.contains_key(f)).collect();
+        for f in missing {
+            if let Some(t) = fs.read(&f) {
+                project.sources.insert(f, t);
+            }
+        }
         let checked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| sema::check(&project)));
         let (compiler, good, fresh) = match checked {
             Ok(Ok(c)) => {
@@ -134,15 +209,30 @@ impl Analysis {
         Analysis { root, project, compiler, lint, good, fresh }
     }
 
-    /// The facts of the last good check, usable for `path` only when its text is the text they
-    /// were computed from.
-    pub fn facts(&self, path: &str) -> Option<&Checked> {
+    /// The facts of the last good check for `path`, with the map from the current lines of that
+    /// file to the lines the facts talk about. The file may have changed since: lines that did not
+    /// are mapped, the others are not (Q252).
+    pub fn facts(&self, path: &str) -> Option<(&Checked, LineMap)> {
         let good = self.good.as_ref()?;
-        if self.fresh {
-            return Some(&good.checked);
-        }
         let now = self.project.sources.get(path)?;
-        (good.texts.get(path) == Some(now)).then_some(&good.checked)
+        let old = if self.fresh { now } else { good.texts.get(path)? };
+        Some((&good.checked, LineMap::between(old, now)))
+    }
+
+    /// A span of the facts, in the lines of the current text of `path`; `None` when that line was
+    /// changed.
+    pub fn current_span(&self, path: &str, span: agentmark::diag::Span) -> Option<agentmark::diag::Span> {
+        let (_, map) = self.facts(path)?;
+        let line = map.old_to_new((span.line as usize).checked_sub(1)?)?;
+        Some(agentmark::diag::Span { line: line as u32 + 1, ..span })
+    }
+
+    /// 1-based line of the facts that is nearest to the 0-based `line` of the current text.
+    pub fn facts_line(&self, path: &str, line: usize) -> u32 {
+        match self.facts(path) {
+            Some((_, map)) => map.new_to_old_near(line) as u32 + 1,
+            None => line as u32 + 1,
+        }
     }
 
     /// Like [`Analysis::facts`], but any file will do (completion lists, where an older answer is

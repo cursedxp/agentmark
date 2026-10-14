@@ -39,6 +39,11 @@ pub fn uri(path: &Path) -> Uri {
 
 impl Client {
     pub fn start(model: Option<Arc<dyn ModelClient>>) -> Client {
+        Client::start_with(model, false)
+    }
+
+    /// `snippets`: the client announces `experimental.snippetTextEdit`.
+    pub fn start_with(model: Option<Arc<dyn ModelClient>>, snippets: bool) -> Client {
         let (server, conn) = Connection::memory();
         let thread = std::thread::spawn(move || {
             agentmark_lsp::serve(server, model).expect("server ends cleanly");
@@ -46,6 +51,7 @@ impl Client {
         let mut c = Client { conn, next: 1, thread: Some(thread), queue: Vec::new(), registrations: 0 };
         let params = InitializeParams {
             capabilities: ClientCapabilities {
+                experimental: snippets.then(|| serde_json::json!({ "snippetTextEdit": true })),
                 workspace: Some(WorkspaceClientCapabilities {
                     did_change_watched_files: Some(DidChangeWatchedFilesClientCapabilities {
                         dynamic_registration: Some(true),
@@ -64,6 +70,10 @@ impl Client {
 
     fn notify_raw(&mut self, method: &str, params: impl Serialize) {
         self.conn.sender.send(Message::Notification(Notification::new(method.to_string(), params))).unwrap();
+    }
+
+    pub fn notify_value(&mut self, method: &str, params: serde_json::Value) {
+        self.notify_raw(method, params);
     }
 
     pub fn notify<N: lsp_types::notification::Notification>(&mut self, params: N::Params) {

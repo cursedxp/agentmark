@@ -139,3 +139,81 @@ fn a_broken_agentmark_toml_is_reported_on_that_file() {
     assert_eq!(d[0].range.start.line, 2);
     c.shutdown();
 }
+
+#[test]
+fn hover_and_definition_survive_an_error_in_the_file_being_edited() {
+    use lsp_types::request::GotoDefinition;
+    use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, PartialResultParams};
+    let (_dir, root) = example("01-invoice-chaser");
+    let agent = root.join("agents/invoice-chaser.agent.md");
+    let good = read(&agent);
+    let mut c = Client::start(None);
+    c.open(&agent, &good, 1);
+    assert!(c.diagnostics(&agent, Some(1)).is_empty());
+
+    for (version, broken) in [
+        // line N broken in place (a syntax error), later lines keep their numbers
+        (2, good.replace("- guard: reminder length < max_reminder_length", "- guard: reminder length <")),
+        // a line inserted at the top, and a semantic error further down: every line moves by one
+        (3, format!("> a new first line\n{}", good.replace("- email send customer:", "- email send custmer:"))),
+    ] {
+        c.change(&agent, &broken, version);
+        assert!(!c.diagnostics(&agent, Some(version)).is_empty());
+        eprintln!("VERSION {version}");
+        let heading = at(&broken, "## Do remind", 0, 4);
+        let h = c
+            .request::<HoverRequest>(HoverParams {
+                text_document_position_params: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier { uri: uri(&agent) },
+                    position: heading,
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .expect("hover on a heading while the file has an error");
+        assert!(format!("{h:?}").contains("model, network(email, crm), local(log)"), "{h:?}");
+
+        // a rule of another file, used in this one
+        let def = |c: &mut Client, pos| {
+            c.request::<GotoDefinition>(GotoDefinitionParams {
+                text_document_position_params: TextDocumentPositionParams { text_document: TextDocumentIdentifier { uri: uri(&agent) }, position: pos },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            })
+        };
+        let Some(GotoDefinitionResponse::Array(l)) = def(&mut c, at(&broken, "overdue invoice", 0, 2)) else { panic!("no definition") };
+        assert_eq!(l[0].uri, uri(&root.join("rules/overdue.agent.md")));
+        // a `## Do` block in this very file, at its new line
+        let Some(GotoDefinitionResponse::Array(l)) = def(&mut c, at(&broken, "do remind", 0, 4)) else { panic!("no definition") };
+        assert_eq!((l[0].uri.clone(), l[0].range.start.line), (uri(&agent), heading.line));
+    }
+    c.shutdown();
+}
+
+#[test]
+fn requests_for_other_uri_schemes_are_answered_with_null() {
+    let mut c = Client::start(None);
+    let v = c.request_value(
+        "textDocument/hover",
+        serde_json::json!({"textDocument": {"uri": "untitled:Untitled-1"}, "position": {"line": 0, "character": 0}}),
+    );
+    assert!(v.is_null());
+    let v = c.request_value(
+        "textDocument/completion",
+        serde_json::json!({"textDocument": {"uri": "untitled:Untitled-1"}, "position": {"line": 0, "character": 0}}),
+    );
+    assert!(v.is_null());
+    c.notify_value("textDocument/didOpen", serde_json::json!({"textDocument": {"uri": "untitled:Untitled-1", "languageId": "agentmark", "version": 1, "text": "x"}}));
+    c.shutdown();
+}
+
+#[test]
+fn config_errors_underline_the_line_not_one_character() {
+    let (_dir, root) = example("01-invoice-chaser");
+    let toml = root.join("agentmark.toml");
+    let mut c = Client::start(None);
+    c.open(&toml, "name = \"x\"\n[lsp]\nmodel_actions = \"yes\"\n", 1);
+    let d = c.diagnostics(&toml, Some(1));
+    let hit = d.iter().find(|d| d.message.contains("true or false")).unwrap_or_else(|| panic!("{d:?}"));
+    assert_eq!(hit.range, range_of("name = \"x\"\n[lsp]\nmodel_actions = \"yes\"\n", "model_actions = \"yes\""));
+    c.shutdown();
+}

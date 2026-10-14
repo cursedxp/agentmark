@@ -67,25 +67,44 @@ fn insert_after(text: &str, line0: usize, content: &str) -> TextEdit {
     }
 }
 
-fn quoted(message: &str) -> Vec<&str> {
-    message.split('"').skip(1).step_by(2).collect()
+/// A fix: title, the plain edits, and (for fixes that leave a blank to fill in) the same edits with
+/// a snippet placeholder, used when the client supports snippet text edits.
+struct Fix {
+    title: String,
+    edits: Vec<TextEdit>,
+    snippet: Option<Vec<TextEdit>>,
 }
 
-/// The mechanical fix of a lint finding: title and edits.
-fn lint_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<(String, Vec<TextEdit>)> {
+fn plain(title: String, edits: Vec<TextEdit>) -> Option<Fix> {
+    Some(Fix { title, edits, snippet: None })
+}
+
+/// The mechanical fix of a lint finding. The facts come from `Diagnostic.data` (set by `lint`),
+/// never from the wording of the message.
+fn lint_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<Fix> {
+    let none = Value::Null;
+    let data = d.data.as_ref().unwrap_or(&none);
     let line0 = d.span.line.saturating_sub(1) as usize;
     let line = line_text(text, line0);
     match d.code {
-        "unnamed-guard" => Some((
-            "Add a comment above this guard".to_string(),
-            vec![insert_before(line0, &format!("{}> TODO: say what this guard protects against.", indent_of(line)))],
-        )),
+        "unnamed-guard" => {
+            let ind = indent_of(line);
+            Some(Fix {
+                title: "Add a comment above this guard".to_string(),
+                edits: vec![insert_before(line0, &format!("{ind}> TODO: say what this guard protects against."))],
+                snippet: Some(vec![insert_before(line0, &format!("{ind}> ${{1:say what this guard protects against}}"))]),
+            })
+        }
         "missing-doc" => {
-            let kind = d.message.strip_prefix("The ")?.split(' ').next()?;
-            Some((format!("Add a description above this {kind}"), vec![insert_before(line0, &format!("> TODO: describe what this {kind} does."))]))
+            let kind = data.get("kind")?.as_str()?;
+            Some(Fix {
+                title: format!("Add a description above this {kind}"),
+                edits: vec![insert_before(line0, &format!("> TODO: describe what this {kind} does."))],
+                snippet: Some(vec![insert_before(line0, &format!("> ${{1:describe what this {kind} does}}"))]),
+            })
         }
         "prompt-in-loop" => {
-            let var = *quoted(&d.message).last()?;
+            let var = data.get("var")?.as_str()?;
             let record = line.rfind('"').and_then(|i| {
                 let rest = line[i + 1..].trim_start();
                 let rest = rest.strip_prefix("as ")?;
@@ -96,10 +115,7 @@ fn lint_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<(String, Vec<Tex
                 Some(r) => format!("{var} matches {r}"),
                 None => format!("{var} is not empty"),
             };
-            Some((
-                format!("Add a guard on \"{var}\""),
-                vec![insert_after(text, line0, &format!("{}- guard: {guard}", indent_of(line)))],
-            ))
+            plain(format!("Add a guard on \"{var}\""), vec![insert_after(text, line0, &format!("{}- guard: {guard}", indent_of(line)))])
         }
         "magic-value" => magic_value_fix(a, text, d),
         _ => None,
@@ -143,19 +159,16 @@ fn replace_literal(line: &str, lit: &str, with: &str, inside: bool) -> Option<St
     changed.then_some(out)
 }
 
-fn magic_value_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<(String, Vec<TextEdit>)> {
-    let rest = d.message.strip_prefix("The ")?;
-    let (kind, rest) = rest.split_once(' ')?;
-    let key = rest.split(" is written ").next()?.to_string();
-    let mut lines: Vec<usize> = d
-        .message
-        .split("(lines ")
-        .nth(1)?
-        .split(')')
-        .next()?
-        .split(", ")
-        .filter_map(|n| n.trim().parse::<usize>().ok())
-        .map(|n| n - 1)
+fn magic_value_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<Fix> {
+    let data = d.data.as_ref()?;
+    let kind = data.get("kind")?.as_str()?;
+    let key = data.get("key")?.as_str()?.to_string();
+    let mut lines: Vec<usize> = data
+        .get("lines")?
+        .as_array()?
+        .iter()
+        .filter_map(|n| n.as_u64())
+        .map(|n| n as usize - 1)
         .collect();
     lines.sort_unstable();
     lines.dedup();
@@ -187,11 +200,46 @@ fn magic_value_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<(String, 
     let sep = if text.ends_with('\n') { "\n" } else { "\n\n" };
     let end = end_position(text);
     edits.push(TextEdit::new(Range::new(end, end), format!("{sep}# Constant: {name}\n- value: {value}\n")));
-    Some((format!("Extract the {kind} into the constant \"{name}\""), edits))
+    plain(format!("Extract the {kind} into the constant \"{name}\""), edits)
+}
+
+/// Marks (in `CodeAction.data`, only until the server serializes it) an action whose edit has
+/// snippet placeholders.
+pub const SNIPPET_MARK: &str = "agentmarkSnippet";
+
+/// The edit as `documentChanges`; [`mark_snippets`] tags its edits as snippets on the way out.
+fn snippet_edit(uri: &Uri, edits: Vec<TextEdit>) -> WorkspaceEdit {
+    use lsp_types::{DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit};
+    WorkspaceEdit {
+        document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit {
+            text_document: OptionalVersionedTextDocumentIdentifier { uri: uri.clone(), version: None },
+            edits: edits.into_iter().map(OneOf::Left).collect(),
+        }])),
+        ..Default::default()
+    }
+}
+
+/// The snippet text-edit extension (`insertTextFormat: 2` on an edit, as rust-analyzer does it):
+/// tag the edits of the actions marked with [`SNIPPET_MARK`] and drop the mark.
+pub fn mark_snippets(action: &mut Value) {
+    let marked = action.get("data").and_then(|d| d.get(SNIPPET_MARK)).is_some();
+    if !marked {
+        return;
+    }
+    action.as_object_mut().map(|o| o.remove("data"));
+    if let Some(changes) = action.pointer_mut("/edit/documentChanges").and_then(Value::as_array_mut) {
+        for c in changes {
+            if let Some(edits) = c.get_mut("edits").and_then(Value::as_array_mut) {
+                for e in edits {
+                    e["insertTextFormat"] = json!(2);
+                }
+            }
+        }
+    }
 }
 
 /// Quick fixes for the findings that touch `range` of the document `path`.
-pub fn quick_fixes(a: &Analysis, path: &str, text: &str, range: Range) -> Vec<CodeAction> {
+pub fn quick_fixes(a: &Analysis, path: &str, text: &str, range: Range, snippets: bool) -> Vec<CodeAction> {
     let uri = uri_from_path(path);
     let mut out = Vec::new();
     for d in a.lint.iter().filter(|d| d.file == path) {
@@ -199,12 +247,17 @@ pub fn quick_fixes(a: &Analysis, path: &str, text: &str, range: Range) -> Vec<Co
         if !intersects(r, range) {
             continue;
         }
-        if let Some((title, edits)) = lint_fix(a, text, d) {
+        if let Some(fix) = lint_fix(a, text, d) {
+            let (edit, data) = match (&fix.snippet, snippets) {
+                (Some(sn), true) => (snippet_edit(&uri, sn.clone()), Some(json!({ SNIPPET_MARK: true }))),
+                _ => (edit(&uri, fix.edits), None),
+            };
             out.push(CodeAction {
-                title,
+                title: fix.title,
                 kind: Some(CodeActionKind::QUICKFIX),
                 diagnostics: Some(vec![diagnostics::to_lsp(a, d, "agentmark-lint")]),
-                edit: Some(edit(&uri, edits)),
+                edit: Some(edit),
+                data,
                 ..Default::default()
             });
         }

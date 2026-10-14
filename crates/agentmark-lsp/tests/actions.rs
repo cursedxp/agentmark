@@ -257,3 +257,37 @@ fn model_actions_explain_a_block_and_suggest_a_guard_when_the_flag_is_on() {
     c2.shutdown();
     c.shutdown();
 }
+
+#[test]
+fn doc_and_comment_stubs_are_snippets_for_clients_that_can_take_them() {
+    let main = "# Import: ./records/invoice.agent.md\n\n# Agent: chaser\n- model: mock\n- tools: log\n\n## On start\n- log: \"hi\"\n";
+    for (snippets, want) in [(true, "> ${1:describe what this agent does}\n"), (false, "> TODO: describe what this agent does.\n")] {
+        let (_dir, root) = project(&files(main, PLAIN));
+        let file = root.join("main.agent.md");
+        let mut c = Client::start_with(None, snippets);
+        c.open(&file, main, 1);
+        let diags = c.diagnostics(&file, Some(1));
+        let d = diags.iter().find(|d| d.code == Some(lsp_types::NumberOrString::String("missing-doc".into()))).unwrap().clone();
+        let raw = c.request_value(
+            "textDocument/codeAction",
+            serde_json::to_value(CodeActionParams {
+                text_document: TextDocumentIdentifier { uri: uri(&file) },
+                range: d.range,
+                context: CodeActionContext { diagnostics: vec![], only: None, trigger_kind: None },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            })
+            .unwrap(),
+        );
+        let a = &raw[0];
+        assert!(a.get("data").is_none());
+        if snippets {
+            let e = &a["edit"]["documentChanges"][0]["edits"][0];
+            assert_eq!(e["newText"], want);
+            assert_eq!(e["insertTextFormat"], 2);
+        } else {
+            assert_eq!(a["edit"]["changes"][uri(&file).as_str()][0]["newText"], want);
+        }
+        c.shutdown();
+    }
+}

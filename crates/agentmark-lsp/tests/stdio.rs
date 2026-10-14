@@ -66,3 +66,21 @@ fn the_binary_initializes_serves_a_request_and_exits_cleanly() {
     drop(stdin);
     assert!(child.wait().unwrap().success());
 }
+
+#[test]
+fn exit_without_shutdown_is_exit_code_1() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agentmark-lsp"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    stdin.write_all(&frame(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}))).unwrap();
+    read_message(&mut out);
+    stdin.write_all(&frame(&serde_json::json!({"jsonrpc":"2.0","method":"initialized","params":{}}))).unwrap();
+    stdin.write_all(&frame(&serde_json::json!({"jsonrpc":"2.0","method":"exit"}))).unwrap();
+    drop(stdin);
+    assert_eq!(child.wait().unwrap().code(), Some(1));
+}

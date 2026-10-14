@@ -24,6 +24,15 @@ pub fn message(d: &Diagnostic) -> String {
 
 pub fn range(a: &Analysis, d: &Diagnostic) -> Range {
     let text = a.text(&d.file).unwrap_or("");
+    // config errors point at a line, not at a word: underline what is on the line
+    if !d.file.ends_with(".agent.md") && d.span.len <= 1 {
+        let line = crate::text::line_text(text, d.span.line.saturating_sub(1) as usize);
+        let lead = line.chars().take_while(|c| c.is_whitespace()).count() as u32;
+        let len = line.trim().chars().count() as u32;
+        if len > 0 {
+            return span_range(text, agentmark::diag::Span::new(d.span.line, lead + 1, len));
+        }
+    }
     span_range(text, d.span)
 }
 

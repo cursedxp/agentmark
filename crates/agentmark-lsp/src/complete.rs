@@ -323,7 +323,7 @@ fn expression_items(a: &Analysis, path: &str, line: usize) -> Vec<CompletionItem
     }
     if let Some(ck) = a.any_facts() {
         let fid = ck.files.iter().position(|f| f == path);
-        if let Some((var, rec)) = fid.and_then(|f| block_param(ck, f, line as u32 + 1)) {
+        if let Some((var, rec)) = fid.and_then(|f| block_param(ck, f, a.facts_line(path, line))) {
             if let Some(r) = ck.records.get(&rec) {
                 for f in &r.fields {
                     out.push(item(f.name.clone(), CompletionItemKind::FIELD, Some(format!("{}: {}", rec, f.ty)), None));
@@ -397,7 +397,7 @@ fn field_items(
     let ck = a.any_facts();
     let fid = ck.and_then(|ck| ck.files.iter().position(|f| f == path));
     let base = ck
-        .and_then(|ck| var_type(ck, fid, chain[0], line as u32 + 1))
+        .and_then(|ck| var_type(ck, fid, chain[0], a.facts_line(path, line)))
         .or_else(|| state_type(text, chain[0], line));
     match (base, ck) {
         (Some(t), Some(ck)) => {

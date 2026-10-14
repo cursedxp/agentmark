@@ -60,6 +60,10 @@ pub struct Diagnostic {
     pub did_you_mean: Option<String>,
     /// Optional extra line of advice (e.g. the suggested fix for a hard limit).
     pub help: Option<String>,
+    /// Machine-readable facts behind the finding (lint: the rule's literal, lines, variable), so
+    /// tools never have to parse `message`. Not part of `check --json`.
+    #[serde(skip)]
+    pub data: Option<serde_json::Value>,
 }
 
 impl Diagnostic {
@@ -72,6 +76,7 @@ impl Diagnostic {
             message: message.into(),
             did_you_mean: None,
             help: None,
+            data: None,
         }
     }
 
@@ -91,6 +96,11 @@ impl Diagnostic {
     pub fn suggesting<'a>(self, word: &str, candidates: impl IntoIterator<Item = &'a str>) -> Self {
         let hit = did_you_mean(word, candidates);
         self.with_did_you_mean(hit)
+    }
+
+    pub fn with_data(mut self, data: serde_json::Value) -> Self {
+        self.data = Some(data);
+        self
     }
 
     pub fn with_help(mut self, help: impl Into<String>) -> Self {

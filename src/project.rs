@@ -471,6 +471,7 @@ impl Loader<'_> {
                                     ("model_actions", None) => self.diags.push(bad(line_of(k), "\"model_actions\" under [lsp] must be true or false.")),
                                     _ => self.diags.push(
                                         bad(line_of(k), &format!("Unknown key \"{k}\" under [lsp] in agentmark.toml."))
+                                            .suggesting(k, ["model_actions"])
                                             .with_help("[lsp] accepts: model_actions."),
                                     ),
                                 }

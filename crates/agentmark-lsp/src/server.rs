@@ -35,6 +35,9 @@ use crate::uri::{path_from_uri, uri_from_path};
 use crate::workspace::{in_bindings, project_target, Analysis, Doc, Docs, Good, OverlayFs};
 use crate::{complete, diagnostics, nav};
 
+/// The message of an error that is answered with `null` instead (Q259).
+const QUIET: &str = "(quiet)";
+
 type BoxErr = Box<dyn Error + Sync + Send>;
 
 pub struct Server {
@@ -46,6 +49,8 @@ pub struct Server {
     published: HashSet<String>,
     runner: Option<ModelRunner>,
     dirty: bool,
+    /// The client understands snippet text edits (`experimental.snippetTextEdit`, Q255).
+    snippets: bool,
 }
 
 fn capabilities() -> ServerCapabilities {
@@ -87,7 +92,7 @@ fn cast<P: DeserializeOwned>(v: Value) -> Result<P, String> {
 impl Server {
     pub fn new(conn: Connection, model: Option<Arc<dyn ModelClient>>) -> Server {
         let runner = model.and_then(|m| ModelRunner::new(m).ok());
-        Server { conn, docs: Docs::new(), cache: HashMap::new(), goods: HashMap::new(), published: HashSet::new(), runner, dirty: false }
+        Server { conn, docs: Docs::new(), cache: HashMap::new(), goods: HashMap::new(), published: HashSet::new(), runner, dirty: false, snippets: false }
     }
 
     /// Do the `initialize` handshake and serve until `exit`.
@@ -104,6 +109,13 @@ impl Server {
             .workspace
             .and_then(|w| w.did_change_watched_files)
             .and_then(|d| d.dynamic_registration)
+            .unwrap_or(false);
+        self.snippets = init
+            .capabilities
+            .experimental
+            .as_ref()
+            .and_then(|e| e.get("snippetTextEdit"))
+            .and_then(Value::as_bool)
             .unwrap_or(false);
         if dynamic_watch {
             self.register_watchers();
@@ -130,6 +142,10 @@ impl Server {
                         return Ok(());
                     }
                     self.request(req);
+                }
+                Message::Notification(n) if n.method == "exit" => {
+                    // `exit` without a `shutdown` before it: the protocol says exit code 1
+                    return Err("exit without shutdown".into());
                 }
                 Message::Notification(n) => self.notification(n),
                 Message::Response(_) => {}
@@ -276,6 +292,7 @@ impl Server {
         };
         let resp = match result {
             Ok(v) => Response::new_ok(id, v),
+            Err((_, msg)) if msg == QUIET => Response::new_ok(id, Value::Null),
             Err((code, msg)) => Response::new_err(id, code as i32, msg),
         };
         self.send(resp);
@@ -291,8 +308,10 @@ impl Server {
     }
 
     fn doc(&self, uri: &Uri) -> Result<(String, String), (ErrorCode, String)> {
-        let path = path_from_uri(uri).map(|p| normalize(&p)).ok_or((ErrorCode::InvalidParams, "not a file URI".to_string()))?;
-        let text = self.disk_or_buffer(&path).ok_or((ErrorCode::InvalidParams, format!("cannot read {path}")))?;
+        // not a file we can read (another scheme, gone from the disk): answered with `null`
+        let quiet = || (ErrorCode::InvalidParams, QUIET.to_string());
+        let path = path_from_uri(uri).map(|p| normalize(&p)).ok_or_else(quiet)?;
+        let text = self.disk_or_buffer(&path).ok_or_else(quiet)?;
         Ok((path, text))
     }
 
@@ -342,14 +361,21 @@ impl Server {
     fn code_action(&mut self, p: CodeActionParams) -> Result<Value, (ErrorCode, String)> {
         let (path, text) = self.doc(&p.text_document.uri)?;
         let a = self.analysis_for(&path);
-        let mut acts = actions::quick_fixes(&a, &path, &text, p.range);
+        let mut acts = actions::quick_fixes(&a, &path, &text, p.range, self.snippets);
         if a.model_actions_enabled() && self.runner.is_some() {
             acts.extend(actions::model_actions(&p.text_document.uri, &text, p.range.start.line as usize));
         }
         if let Some(only) = &p.context.only {
             acts.retain(|c| c.kind.as_ref().is_some_and(|k| only.iter().any(|o| k.as_str().starts_with(o.as_str()))));
         }
-        let list: Vec<CodeActionOrCommand> = acts.into_iter().map(CodeActionOrCommand::CodeAction).collect();
+        let list: Vec<Value> = acts
+            .into_iter()
+            .map(|a| {
+                let mut v = json!(CodeActionOrCommand::CodeAction(a));
+                actions::mark_snippets(&mut v);
+                v
+            })
+            .collect();
         Ok(json!(list))
     }
 
@@ -387,10 +413,11 @@ impl Server {
         let (path, text) = self.doc(&uri)?;
         self.model_gate(&path)?;
         let a = self.analysis_for(&path);
-        let effects = a.facts(&path).and_then(|ck| {
+        let effects = a.facts(&path).and_then(|(ck, map)| {
             let fid = ck.files.iter().position(|f| *f == path)?;
             let (start, _) = actions::block_lines(&text, line as usize)?;
-            ck.blocks.iter().find(|b| b.file == fid && b.span.line as usize == start + 1).map(|b| b.effect.to_string())
+            let old = map.new_to_old(start)?;
+            ck.blocks.iter().find(|b| b.file == fid && b.span.line as usize == old + 1).map(|b| b.effect.to_string())
         });
         let runner = self.runner.as_ref().ok_or((ErrorCode::InvalidRequest, "no model is configured".to_string()))?;
         let answer = actions::explain(runner, &text, line as usize, effects.as_deref()).map_err(|e| (ErrorCode::RequestFailed, e))?;

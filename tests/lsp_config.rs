@@ -31,3 +31,9 @@ fn a_wrong_lsp_table_is_a_config_error() {
         assert!(d.message.contains(want), "{}", d.message);
     }
 }
+
+#[test]
+fn an_unknown_lsp_key_gets_a_suggestion() {
+    let p = load("[lsp]\nmodel_action = true\n");
+    assert_eq!(p.load_diagnostics[0].did_you_mean.as_deref(), Some("model_actions"));
+}

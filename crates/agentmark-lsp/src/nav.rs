@@ -3,7 +3,6 @@
 use agentmark::diag::Span;
 use agentmark::project::ResolvedImport;
 use agentmark::sema::{BlockInfo, BlockKind, CallKind, Checked, Resolution, Type};
-use agentmark::syntax::ast::{Decl, Trigger};
 use lsp_types::{Hover, HoverContents, Location, MarkupContent, MarkupKind, Position, Range};
 
 use crate::index::{decl_name, dotted_word_at, var_type, block_param};
@@ -11,16 +10,12 @@ use crate::text::{char_pos, line_text, span_contains, span_range};
 use crate::uri::uri_from_path;
 use crate::workspace::Analysis;
 
-/// A location in file `path`, unless that file changed since the facts were computed.
+/// A location in file `path` for a span of the facts, in the lines the file has now; `None` when
+/// that line was changed since the check.
 fn location(a: &Analysis, path: &str, span: Span) -> Option<Location> {
-    if !a.fresh {
-        let good = a.good.as_ref()?;
-        if good.texts.get(path) != a.text(path).map(|t| t.to_string()).as_ref() {
-            return None;
-        }
-    }
+    let cur = a.current_span(path, span)?;
     let text = a.text(path)?;
-    Some(Location::new(uri_from_path(path), span_range(text, span)))
+    Some(Location::new(uri_from_path(path), span_range(text, cur)))
 }
 
 fn file_path(ck: &Checked, file: usize) -> Option<&str> {
@@ -75,9 +70,12 @@ pub fn definition(a: &Analysis, path: &str, text: &str, pos: Position) -> Vec<Lo
     }
     let Some(word) = dotted_word_at(line_s, col) else { return Vec::new() };
     let (_, _, seg) = &word.segs[word.at];
-    let facts = a.facts(path).and_then(|ck| ck.files.iter().position(|f| f == path).map(|fid| (ck, fid)));
-    if let Some((ck, fid)) = facts {
-        if let Some(loc) = resolved_definition(a, ck, fid, line, col, &word, seg) {
+    let facts = a.facts(path).and_then(|(ck, map)| {
+        let fid = ck.files.iter().position(|f| f == path)?;
+        Some((ck, fid, map.new_to_old(line)?))
+    });
+    if let Some((ck, fid, old_line)) = facts {
+        if let Some(loc) = resolved_definition(a, ck, fid, old_line, col, &word, seg) {
             return vec![loc];
         }
     }
@@ -148,15 +146,9 @@ fn resolved_definition(
                     location(a, file_path(ck, d.file)?, d.span)
                 }
                 CallKind::DoBlock => {
-                    let f = &a.project.files[fid];
-                    f.ast.decls.iter().find_map(|d| match d {
-                        Decl::Agent(ag) => ag.blocks.iter().find_map(|b| match &b.trigger {
-                            Trigger::Do(n) if n.name == *decl => Some(n.span),
-                            _ => None,
-                        }),
-                        _ => None,
-                    })
-                    .and_then(|sp| location(a, here, sp))
+                    let want = format!("do {decl}");
+                    let b = ck.blocks.iter().find(|b| b.kind == BlockKind::Action && b.label.eq_ignore_ascii_case(&want))?;
+                    location(a, file_path(ck, b.file)?, b.span)
                 }
             }
         }
@@ -235,10 +227,12 @@ fn block_title(b: &BlockInfo) -> String {
 
 pub fn hover(a: &Analysis, path: &str, text: &str, pos: Position) -> Option<Hover> {
     let (line, col) = char_pos(text, pos);
-    let ck = a.facts(path)?;
+    let (ck, map) = a.facts(path)?;
     let fid = ck.files.iter().position(|f| f == path)?;
-    let line1 = line as u32 + 1;
+    // the facts talk about the lines of the last good check; the text is the current one
     let line_s = line_text(text, line);
+    let line = map.new_to_old(line)?;
+    let line1 = line as u32 + 1;
     let mut parts: Vec<String> = Vec::new();
 
     // 1. a heading: the effect summary of the block (SPEC 8)
