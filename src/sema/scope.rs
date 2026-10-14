@@ -75,7 +75,7 @@ pub fn decl_header(d: &Decl) -> Option<(Kind, &str, Span)> {
         Decl::Binding(x) => (Kind::Binding, &x.name.name, x.name.span),
         Decl::Constant(x) => (Kind::Constant, &x.name.name, x.name.span),
         Decl::RustBlock(x) => (Kind::RustBlock, &x.name.name, x.name.span),
-        Decl::Run(_) => return None,
+        Decl::Run(_) | Decl::Entry(_) => return None,
     })
 }
 

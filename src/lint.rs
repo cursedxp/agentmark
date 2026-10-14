@@ -267,9 +267,12 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         StmtKind::Respond { body, .. } => body.iter().collect(),
         StmtKind::ReadFile { path, .. } => vec![path],
         StmtKind::Append { value, list } => vec![value, list],
-        StmtKind::Stop | StmtKind::ReadBody { .. } | StmtKind::Try { .. } | StmtKind::Parallel(_) => {
-            Vec::new()
-        }
+        StmtKind::Stop
+        | StmtKind::ReadBody { .. }
+        | StmtKind::Try { .. }
+        | StmtKind::Parallel(_)
+        | StmtKind::ModelCall { .. }
+        | StmtKind::Trace(_) => Vec::new(),
     }
 }
 
@@ -338,6 +341,7 @@ fn body_lines(file: &File) -> u32 {
                 see(r.span.line);
                 r.fields.iter().for_each(|f| see(f.span.line));
             }
+            Decl::Entry(e) => see(e.span.line),
             Decl::Rule(r) => see(r.when.span.line.max(r.span.line)),
             Decl::Constant(c) => see(c.value.span.line.max(c.span.line)),
             Decl::Run(r) => {
@@ -640,7 +644,7 @@ fn vague_name(ctx: &mut Ctx, file: &File) {
             }
             Decl::Constant(c) => add(&mut names, &c.name),
             Decl::RustBlock(r) => add(&mut names, &r.name),
-            Decl::Run(_) => {}
+            Decl::Run(_) | Decl::Entry(_) => {}
         }
         for p in decl_params(d) {
             add(&mut names, &p.name);

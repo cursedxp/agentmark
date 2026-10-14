@@ -4,7 +4,8 @@
 //! `Serialize` so parse snapshots are stable `insta` YAML.
 //!
 //! Names are [`Ident`]s (text + span) so semantic errors can put the caret under the exact word.
-//! Layer-2-only nodes that `agent_lower` produces (`Entry`, `Trace`) are added by that pass.
+//! Layer-2-only nodes that `agent_lower` produces ([`Entry`], [`StmtKind::Trace`],
+//! [`StmtKind::ModelCall`]) live here too; the parser never builds them.
 
 use crate::diag::Span;
 use serde::Serialize;
@@ -94,6 +95,8 @@ pub enum Decl {
     Run(Run),
     /// A `## Rust: name` block, hoisted to module level (OPEN_QUESTIONS Q2).
     RustBlock(RustBlock),
+    /// Layer 2 only, produced by `agent_lower`: a block that runs on a trigger.
+    Entry(Entry),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -175,6 +178,36 @@ pub enum Trigger {
     OnEvent { tool: Ident, event: Ident },
     OnStart,
     Do(Ident),
+}
+
+/// Layer 2 only (`agent_lower`): what is left of an agent's trigger block. The agent name and the
+/// heading survive only as the plain strings `unit` and `label`, which traces report.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Entry {
+    pub span: Span,
+    pub doc: Option<String>,
+    /// Trace label of the agent that owned the block (`invoice-chaser`).
+    pub unit: String,
+    /// Heading text exactly as written (`Every day at 09:00`).
+    pub label: String,
+    pub trigger: EntryTrigger,
+    /// The record the event delivers (`## When crm receives lead` -> `lead: Lead`).
+    pub param: Option<Param>,
+    /// The agent's `timeout:`, if it set one.
+    pub timeout: Option<DurationLit>,
+    /// The agent's `memory:` (`None` unless the agent said `file`).
+    pub memory: Memory,
+    pub body: Vec<Stmt>,
+}
+
+/// Layer 2 trigger of an [`Entry`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum EntryTrigger {
+    Every(DurationLit),
+    DailyAt { hour: u8, minute: u8 },
+    Weekly { day: Weekday, hour: u8, minute: u8 },
+    Event { tool: Ident, event: Ident },
+    Start,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -405,6 +438,25 @@ pub enum StmtKind {
         otherwise: Option<Vec<Stmt>>,
     },
     Parallel(Vec<Stmt>),
+    /// Layer 2 only (`agent_lower`): ask the model. `ask model with v: "p" as R -> x`.
+    /// `model` is the driver string of the agent that wrote it (`claude:haiku`).
+    ModelCall {
+        with: Option<Expr>,
+        prompt: Expr,
+        schema: Option<Ident>,
+        into: Ident,
+        model: Option<String>,
+    },
+    /// Layer 2 only (`agent_lower`): a line for the trace.
+    Trace(TraceEvent),
+}
+
+/// What a [`StmtKind::Trace`] records (DESIGN 5.1).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum TraceEvent {
+    /// One `guard` line: `name` is the guard's source text with constants inlined, `ok` the
+    /// (already evaluated) result.
+    Guard { name: String, ok: Expr },
 }
 
 /// One word or string after a tool verb: `customer`, `invoice`, `address "x@y.z"`.

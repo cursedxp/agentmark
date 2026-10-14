@@ -364,6 +364,9 @@ impl Checker<'_> {
                 let diags = parallel::conflicts(self.path(cx.file), body);
                 self.diags.extend(diags);
             }
+            StmtKind::ModelCall { .. } | StmtKind::Trace(_) => {
+                unreachable!("L2-only node in sema")
+            }
         }
     }
 

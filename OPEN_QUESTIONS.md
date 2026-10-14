@@ -240,3 +240,22 @@ SPEC 15.3 says "uses std::fs -> local, reqwest/tokio::net -> network, otherwise 
 The brief wants tests to work offline; real use may need to download a crate. **Choice:** every cargo call the binder makes (resolve version, build rustdoc JSON, type-check scratch crate) takes `--offline` iff `BindOptions::offline`/`FetchSpec::offline` is set; default is online. Fixtures were built with `default-features = false` for `reqwest` and `chrono` so they resolve from the offline cache; the public API of the fixtures is therefore the no-default-features API.
 
 Q82 addendum: `AGENTMARK_RUSTDOC_JSON` (main crate) and `AGENTMARK_RUSTDOC_JSON_DIR` (dependencies) treat an empty value as unset everywhere (`ENV_JSON=""` used to disable one code path but not another). Dependency lookup order: files in `BindOptions::foreign_rustdoc`, the `foreign_fetch` hook, the JSON dir, then a build next to the main JSON (only when the binder built that itself and `AGENTMARK_RUSTDOC_JSON` is unset).
+
+## Q90 — Guards outside an agent (step 4)
+DESIGN 4.1 lowers every `guard` to `set tmp; Trace; if not tmp`, but DESIGN 7 says `agent_lower` is the identity on example 05.
+**Choice (controller, review):** guards trace uniformly everywhere (SPEC 4.4; the trace's `agent` field is the unit label of the agent, service or command). `agent_lower` expands guards in agent blocks; outside agents a `Guard` stays in the L2 AST (so 05 is unchanged) and the IR builder expands it to the same `Let guard_ok_<line>; Trace(Guard); If(not tmp){else | Stop}`. `ask model` is lowered everywhere (`ModelCall`).
+
+## Q91 — L2 AST shape and synthetic nodes (step 4)
+**Choice:** the L2 AST reuses `ast` types plus `Decl::Entry`, `StmtKind::ModelCall`, `StmtKind::Trace` (the DESIGN `Call{rt::model_complete}` cannot carry the schema record). `do <action>` becomes `do <agent>__<block>` (declared names, no sanitizing; codegen maps to Rust identifiers) with the caller's record as argument; rules become `Function`s; names created by lowering are unique (a rule sharing a name with a function becomes `<name>__rule`). Nodes lowering invents have `col == 0` spans (`lower::is_synthetic`), copied nodes keep theirs so `Checked` lookups work.
+
+## Q92 — Agent knobs in the IR (step 4)
+`timeout:` and `memory: file` are agent properties with no agent in the IR. **Choice:** they are plain fields of `Entry` (`timeout` default 5 minutes, `memory_file`); the model driver string is a field of each `ModelCall`.
+
+## Q93 — Input of `no amounts changed in x` (step 4)
+SPEC does not say what "input" is. **Choice:** the `with` value of the model call that produced `x`, else that call's prompt; if `x` did not come from a model call, `x` itself (the check is trivially true). The expression is re-evaluated at the guard.
+
+## Q94 — `try … -> x` without an assigning `otherwise` (step 4)
+Sema lets `x` be used after the `try` whatever `otherwise` does. **Choice:** IR `Try.defines` names `x`; if `otherwise` neither assigns nor stops, codegen uses the type's default value (records without a default are a codegen internal error). Not reachable from examples 01–05.
+
+## Q95 — Binding payloads and unknown result types (step 4)
+**Choice:** a binding call takes only its target words/values as arguments (sema ignores a payload there; the IR drops it). A tool result sema cannot type keeps `Type::Unknown` (JSON value).

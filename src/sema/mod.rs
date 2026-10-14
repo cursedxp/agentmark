@@ -107,6 +107,11 @@ pub struct ToolResolution {
     /// Field of that record the runtime reads: the `to` address of `email send customer`
     /// (`customer_email`, else `customer`, Q4) or the `id` of a crm target (Q5).
     pub field: Option<String>,
+    /// The plural source of a crm-like target word (`invoice` -> `invoices`, Q5).
+    pub source: Option<String>,
+    /// Type of the call's result (`-> x`): `get` gives the record, `list` a list of it, a
+    /// text-only tool gives text, a binding its declared `out`; `None` when sema cannot tell.
+    pub result: Option<Type>,
 }
 
 /// A named declaration and where its name is written (go-to-definition, hover).

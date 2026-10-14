@@ -8,3 +8,5 @@ pub mod binder;
 pub mod manifest;
 pub mod project;
 pub mod sema;
+pub mod ir;
+pub mod lower;
