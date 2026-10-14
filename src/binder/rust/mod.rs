@@ -7,5 +7,5 @@ pub mod rustdoc;
 pub mod types;
 
 pub use checker::{rust_fn_header, CargoChecker};
-pub use fetch::{fetch_dep_rustdoc_json, fetch_rustdoc_json, fetch_rustdoc_json_with, resolve_version, FetchSpec};
+pub use fetch::{ScratchGuard, fetch_dep_rustdoc_json, fetch_rustdoc_json, fetch_rustdoc_json_with, resolve_version, FetchSpec};
 pub use rustdoc::{foreign_crates, read_crate, read_crate_with, SUPPORTED_FORMAT};

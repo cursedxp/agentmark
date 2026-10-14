@@ -225,6 +225,8 @@ pub fn bind(crate_name: &str, opts: &BindOptions) -> Result<BindOutcome, BindErr
         Some(p) => p,
         None => rust::fetch_rustdoc_json_with(&spec(crate_name, Some(&version), opts)).map_err(BindError::Metadata)?,
     };
+    // the scratch crate the JSON was built in goes when binding is over, whatever the outcome
+    let _scratch = if built_here { rust::ScratchGuard::of_json(&json_path) } else { rust::ScratchGuard::new_none() };
     let json = std::fs::read_to_string(&json_path)
         .map_err(|e| BindError::Metadata(format!("{}: {e}", json_path.display())))?;
     let mut foreign = Vec::new();

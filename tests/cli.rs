@@ -639,6 +639,24 @@ fn check_binds_a_missing_crate_like_build_does() {
 }
 
 #[test]
+fn binding_without_supplied_rustdoc_leaves_no_scratch_crates_behind() {
+    let d = sha2_project("noscratch");
+    let tmp = temp("noscratch-tmp");
+    // no AGENTMARK_RUSTDOC_JSON: the binder resolves the version (and tries a rustdoc build) in
+    // scratch crates under $TMPDIR; whatever the outcome, nothing may stay
+    for args in [vec!["check", s(&d)], vec!["bind", "sha2", "--project", s(&d)]] {
+        let _ = agentmark(&args)
+            .env("TMPDIR", &tmp)
+            .env("AGENTMARK_MODEL", format!("mock:{ROOT}/tests/binder/model.json"))
+            .env("AGENTMARK_OFFLINE", "1")
+            .output()
+            .unwrap();
+        let left: Vec<_> = std::fs::read_dir(&tmp).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert!(left.is_empty(), "{args:?} left {left:?}");
+    }
+}
+
+#[test]
 fn check_that_cannot_bind_says_how_and_reports_one_error_on_the_import_line() {
     let d = sha2_project("checknobind");
     let o = agentmark(&["check", s(&d)]).env("AGENTMARK_OFFLINE", "1").output().unwrap();
