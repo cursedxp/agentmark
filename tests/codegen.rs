@@ -406,6 +406,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     assert!(e.contains("shout.agent.md:13"), "points at the line of the mistake:\n{e}");
     assert!(e.contains("loud.len_of_it()"), "shows the source line:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
+    assert!(e.contains("mismatched types: expected `String`, found `()`"), "rustc's primary label is appended:\n{e}");
     assert!(!e.contains("internal compiler error"), "{e}");
 }
 

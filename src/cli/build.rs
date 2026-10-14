@@ -367,9 +367,21 @@ fn cargo_build(dir: &Path, sub: &str) -> Result<CargoRun, String> {
                 if m["level"].as_str() != Some("error") {
                     continue;
                 }
-                let msg = m["message"].as_str().unwrap_or_default().to_string();
+                let mut msg = m["message"].as_str().unwrap_or_default().to_string();
                 if msg.starts_with("aborting due to") {
                     continue;
+                }
+                // rustc's primary label says what is wrong ("expected `String`, found `()`");
+                // the headline alone ("mismatched types") does not
+                let label = m["spans"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|sp| sp["is_primary"].as_bool() == Some(true))
+                    .and_then(|sp| sp["label"].as_str())
+                    .filter(|l| !l.is_empty() && !msg.contains(*l));
+                if let Some(l) = label {
+                    msg = format!("{msg}: {l}");
                 }
                 let mut spans: Vec<(String, u32, bool)> = Vec::new();
                 fn collect(m: &Value, spans: &mut Vec<(String, u32, bool)>) {
