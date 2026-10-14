@@ -276,6 +276,7 @@ SPEC 15.3: `check` lists unverified bindings and the release build refuses them.
 `agentmark doc [<dir>]` (SPEC 18.7) and `agentmark doc <crate>` (brief) share one argument. **Choice:** if the argument exists on disk it is a project (file or folder); otherwise it is a library name looked up as `<project>/bindings/<name>.agent.md` (`--project`, default `.`; also `.agentmark/bindings/`). No argument = the current folder. A library whose name equals a local folder must be asked for with `--project`.
 
 ## Q115 — Model and clock for `bind`
+**Amended: see Q240** (the binder honours `[models]` and `AGENTMARK_ENV` now).
 **Choice:** `AGENTMARK_MODEL` selects the `ModelClient`: unset or `claude` = `AnthropicModel` with model id `claude-sonnet-4-5` and `ANTHROPIC_API_KEY`; `claude:<id>` picks the id; `mock:<path>` loads a `MockModel` `model.json` (tests, offline). Anything else (`openai:…`, `local:…`) is refused with a plain message until those drivers exist (SPEC 19). `AGENTMARK_OFFLINE=1` passes `--offline` to every cargo call of the binder. The header date is the mock's `today` when it has one, else the system date (UTC). The agent's own `- model:` line and `[models]` environments are not consulted: they describe the program, not the toolchain.
 
 ## Q116 — Effect summary lines for functions and rules
@@ -555,3 +556,11 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q271 — `agentmark.toml` schema and `[models]` (step 16)
 **Choice:** `schemas/agentmark.schema.json` covers `name`, `version`, `targets`, `[lint] deny`, `[rust.dependencies]`, `[lsp] model_actions` and `[models]`, mirroring the compiler on dev: driver `^\s*(claude(:.*\S)?|openai:.*\S|local:.*\S|mock(:.*\S)?)\s*$` (step 18: like `Driver::parse`, which trims the string and takes everything after the first colon as the name, so surrounding whitespace and names with spaces are valid) (azure and bedrock are rejected), `local` is either a driver string or a table with `base_url` matching `^https?://`. The schema is registered as `tomlValidation` (Even Better TOML's contribution point, no manual association). The extension is bundled with esbuild into `dist/extension.js`, so the vsix has 9 files and vsce prints no warnings.
 **Why:** SPEC 19 defines the keys; the schema must not lag the compiler.
+
+## Q290 — Setup snippets for Zed, Neovim and Helix are not executed (step 18)
+**Choice:** `docs/editor.md` gives configuration for Neovim (`vim.lsp.config`, `nvim-treesitter` main branch with a local `path`), Helix (`languages.toml`, `hx --grammar build`) and Zed (a dev extension with a `file://` grammar). Only what the repository can check is tested: the paths exist, the `agentmark.toml` sample is accepted, the settings match `package.json`. The editors themselves are not installed in CI, so their option names (for example `install_info.path`, `file-types` globs, Zed `[grammars]` keys) follow each editor's documentation as understood at writing time and may need adjusting for a given editor version. The doc says "adjust to the version of your editor".
+**Why:** running three more editors in the test-suite costs more than the snippets are worth; the fallback (any LSP client plus `agentmark-lsp`) is stated first.
+
+## Q291 — Templates carry no copy of the reference (step 18)
+**Choice:** `templates/CLAUDE.md` and `templates/.cursorrules` tell the assistant to read `docs/reference.md` and, for a project outside the checkout, to keep a copy of it (suggested name `docs/agentmark-reference.md`). The templates themselves do not embed the reference, so there is one file to keep current (SPEC 20.6).
+**Why:** a pasted copy in two templates would drift; the test-suite pins that both templates name `docs/reference.md` and only show commands `agentmark --help` lists.

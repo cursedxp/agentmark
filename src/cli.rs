@@ -11,7 +11,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-pub mod bind;
+mod bind;
+
+/// The binder's model choice, shared with the language server's model actions (Q240).
+pub use bind::{model_for, provider_config};
 mod build;
 mod check;
 mod docgen;
