@@ -48,8 +48,12 @@
 //! text, so the author sees what the parser saw. Expressions are shown as the statement that
 //! contains them (`- set x = ...`).
 
+mod support;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use support::OutputLocked;
 
 use agentmark::diag::{render_all, Severity};
 use agentmark::project::Project;
@@ -344,10 +348,25 @@ fn invalid_programs_really_fail() {
 fn fragment_semantic_errors(src: &str) -> Option<String> {
     let project = Project::from_str("fragment.agent.md", src, TOOLS);
     let Err(diags) = sema::check(&project) else { return None };
-    // unknown name, type, tool or source, a tool not listed, unknown action/function, missing imports, `Which x?`
-    const UNRESOLVED: [&str; 8] = ["E111", "E112", "E113", "E201", "E202", "E207", "E208", "E213"];
-    let rest: Vec<_> = diags.into_iter().filter(|d| d.severity == Severity::Error && !UNRESOLVED.contains(&d.code)).collect();
+    // Only names a fragment cannot see are ignored: missing imports, unknown names/types, and an unknown `do`
+    // action or function (E209 also covers wrong arguments, so it is matched by its message). The wrapper
+    // lists every manifest tool, so E207 (unknown tool/verb/target/event, missing verb) and E208 stay errors.
+    const UNRESOLVED: [&str; 5] = ["E111", "E112", "E113", "E201", "E202"];
+    let unresolved = |d: &agentmark::diag::Diagnostic| {
+        UNRESOLVED.contains(&d.code) || (d.code == "E209" && d.message.starts_with("Unknown action or function"))
+    };
+    let rest: Vec<_> = diags.into_iter().filter(|d| d.severity == Severity::Error && !unresolved(d)).collect();
     (!rest.is_empty()).then(|| project.render(&rest))
+}
+
+/// The semantic check of fragments must keep catching mistakes inside the fragment itself.
+#[test]
+fn fragment_check_still_catches_tool_mistakes() {
+    for bad in ["- crm delete invoice: x", "- email send custmer: \"x\"", "- crm: \"x\"", "- email teleport customer: \"x\""] {
+        let src = wrapped(bad);
+        assert!(fragment_semantic_errors(&src).is_some(), "{bad:?} should be an error in a fragment");
+    }
+    assert!(fragment_semantic_errors(&wrapped("- log: \"fine\"")).is_none());
 }
 
 #[test]
@@ -432,13 +451,15 @@ fn console_output_is_real() {
             };
             let mut cmd = Command::new(exe);
             cmd.args(args.split_whitespace()).current_dir(&cwd);
+            // keep what the compiler caches and builds out of the system temp folder
+            cmd.env("TMPDIR", support::compiler_tmp()).env("CARGO_TARGET_DIR", support::gen_target());
             for w in b.words().iter().skip(1) {
                 if let Some(kv) = w.strip_prefix("env=") {
                     let (k, v) = kv.split_once('=').expect("env=KEY=VALUE");
                     cmd.env(k, v.replace("$REPO", repo.to_str().unwrap()));
                 }
             }
-            let out = cmd.output().unwrap();
+            let out = cmd.output_locked();
             let got = if b.has_word("both") {
                 format!("{}{}", String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(&out.stdout))
             } else if b.has_word("stderr") {
@@ -707,8 +728,9 @@ fn check_json_doc_matches_the_real_output() {
     let out = Command::new(env!("CARGO_BIN_EXE_agentmark"))
         .args(["check", "--json", "a.agent.md"])
         .current_dir(dir.path())
-        .output()
-        .unwrap();
+        .env("TMPDIR", support::compiler_tmp())
+        .env("CARGO_TARGET_DIR", support::gen_target())
+        .output_locked();
     let real: serde_json::Value = serde_json::from_slice(&out.stdout).expect("check --json prints JSON");
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
