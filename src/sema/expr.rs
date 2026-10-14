@@ -91,6 +91,28 @@ fn currency_of(e: &Expr) -> Option<&str> {
 
 impl Checker<'_> {
     /// Type of `e`, recording it in `expr_types`.
+    /// Write a path the way narrowing remembers it: a bare field `score` is `lead.score` when
+    /// `lead` is the record in front of the block.
+    pub(super) fn norm_key(&self, cx: &Cx, key: &str) -> String {
+        let first = key.split('.').next().unwrap_or(key);
+        if cx.var(first).is_none() {
+            if let Some(b) = cx.bare() {
+                let has = self
+                    .records
+                    .get(&b.record)
+                    .is_some_and(|r| r.fields.iter().any(|f| f.name == first));
+                if has {
+                    return format!("{}.{key}", b.var);
+                }
+            }
+        }
+        key.to_string()
+    }
+
+    pub(super) fn norm_facts(&self, cx: &Cx, keys: Vec<String>) -> Vec<String> {
+        keys.iter().map(|k| self.norm_key(cx, k)).collect()
+    }
+
     pub fn expr(&mut self, cx: &mut Cx, e: &Expr) -> Type {
         let outer = std::mem::take(&mut cx.acc);
         let ty = self.expr_inner(cx, e);
@@ -197,6 +219,7 @@ impl Checker<'_> {
                 let elem = self.list_elem(cx, source.span, &st, "first … in");
                 cx.push();
                 cx.top().vars.insert(var.name.clone(), elem.clone());
+                cx.top().defs.insert(var.name.clone(), var.span);
                 if let Type::Record(r) = &elem {
                     cx.top().bare = Some(super::body::Implicit {
                         var: var.name.clone(),
@@ -210,10 +233,14 @@ impl Checker<'_> {
             }
             ExprKind::IsEmpty(x) | ExprKind::IsNotEmpty(x) => {
                 let t = self.expr(cx, x);
-                if !matches!(
-                    t,
-                    Type::Maybe(_) | Type::Text | Type::List(_) | Type::Bytes | Type::Unknown
-                ) {
+                // a second check of a value already known to be present is harmless
+                let rechecked = self.unwraps.contains_key(&NodeKey::new(cx.file, x.span));
+                if !rechecked
+                    && !matches!(
+                        t,
+                        Type::Maybe(_) | Type::Text | Type::List(_) | Type::Bytes | Type::Unknown
+                    )
+                {
                     let d = Diagnostic::error(
                         E_TYPE,
                         self.path(cx.file),
@@ -357,6 +384,7 @@ impl Checker<'_> {
                 key,
                 Resolution::Var {
                     name: first.name.clone(),
+                    def: cx.def_of(&first.name),
                 },
             );
             return self.chain(cx, t, segs, 1, first.name.clone());
@@ -377,7 +405,7 @@ impl Checker<'_> {
                         field: first.name.clone(),
                     },
                 );
-                return self.chain(cx, t, segs, 1, first.name.clone());
+                return self.chain(cx, t, segs, 1, format!("{}.{}", imp.var, first.name));
             }
         }
         // a constant, possibly qualified by a module alias
@@ -572,10 +600,10 @@ impl Checker<'_> {
             self.want_bool(cx, l.span, &lt, word);
             cx.push();
             if op == BinOp::And {
-                let f = facts(l);
+                let f = self.norm_facts(cx, facts(l));
                 cx.narrow(&f);
             } else {
-                let f = neg_facts(l);
+                let f = self.norm_facts(cx, neg_facts(l));
                 cx.narrow(&f);
             }
             let rt = self.expr(cx, r);

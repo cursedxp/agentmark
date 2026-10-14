@@ -81,6 +81,7 @@ impl Checker<'_> {
                 self.check_limit(cx, s);
                 cx.push();
                 cx.top().vars.insert(var.name.clone(), elem.clone());
+                cx.top().defs.insert(var.name.clone(), var.span);
                 if let Type::Record(r) = &elem {
                     cx.top().bare = Some(Implicit {
                         var: var.name.clone(),
@@ -94,7 +95,10 @@ impl Checker<'_> {
                 let t = self.expr(cx, cond);
                 self.want_bool(cx, cond.span, &t, "if");
                 self.check_limit(cx, s);
-                let (pos, neg) = (facts(cond), neg_facts(cond));
+                let (pos, neg) = (
+                    self.norm_facts(cx, facts(cond)),
+                    self.norm_facts(cx, neg_facts(cond)),
+                );
                 cx.push();
                 cx.narrow(&pos);
                 self.stmts(cx, then);
@@ -139,7 +143,9 @@ impl Checker<'_> {
                 self.check_limit(cx, s);
                 cx.push();
                 cx.top().vars.insert(bind.name.clone(), inner);
+                cx.top().defs.insert(bind.name.clone(), bind.span);
                 if let Some(k) = path_key(expr) {
+                    let k = self.norm_key(cx, &k);
                     cx.narrow(&[k]);
                 }
                 self.stmts(cx, then);
@@ -207,7 +213,7 @@ impl Checker<'_> {
                     }
                     None => Type::Text,
                 };
-                cx.define(&into.name, result);
+                cx.define(&into.name, result, into.span);
                 cx.acc.add(Effect::Model, "model");
                 self.check_limit(cx, s);
             }
@@ -223,7 +229,7 @@ impl Checker<'_> {
                 if let Some(e) = else_ {
                     self.stmt(cx, e);
                 }
-                let f = facts(cond);
+                let f = self.norm_facts(cx, facts(cond));
                 cx.narrow(&f);
                 self.check_limit(cx, s);
             }
@@ -246,7 +252,7 @@ impl Checker<'_> {
                             self.diags.push(d);
                         }
                     }
-                    None => cx.define(&var.name, t),
+                    None => cx.define(&var.name, t, var.span),
                 }
                 cx.forget(&var.name);
                 self.check_limit(cx, s);
@@ -278,7 +284,7 @@ impl Checker<'_> {
                     self.diags.push(d);
                 }
                 let t = self.resolve_type(cx.file, ty);
-                cx.define(&into.name, t);
+                cx.define(&into.name, t, into.span);
                 self.check_limit(cx, s);
             }
             StmtKind::ReadFile { path, ty, into } => {
@@ -296,7 +302,7 @@ impl Checker<'_> {
                     self.diags.push(d);
                 }
                 let t = self.resolve_type(cx.file, ty);
-                cx.define(&into.name, t);
+                cx.define(&into.name, t, into.span);
                 cx.acc.add(Effect::Local, "file");
                 self.check_limit(cx, s);
             }
@@ -488,7 +494,7 @@ impl Checker<'_> {
                 )
                 .with_help("Use a \"# Function\" when you need a value back.");
                 self.diags.push(d);
-                cx.define(&i.name, Type::Unknown);
+                cx.define(&i.name, Type::Unknown, i.span);
             }
             let implicit = cx.bare().cloned();
             match self.do_ctx.get(&key) {
@@ -540,7 +546,7 @@ impl Checker<'_> {
             );
             self.diags.push(d);
             if let Some(i) = into {
-                cx.define(&i.name, Type::Unknown);
+                cx.define(&i.name, Type::Unknown, i.span);
             }
             let _ = E_UNKNOWN_NAME;
             return;
@@ -560,7 +566,7 @@ impl Checker<'_> {
             self.check_args(cx, s.span, &name.name, &sig, args, &arg_types);
             if let Some(i) = into {
                 match &sig.out {
-                    Some(t) => cx.define(&i.name, t.clone()),
+                    Some(t) => cx.define(&i.name, t.clone(), i.span),
                     None => {
                         let d = Diagnostic::error(
                             E_CALL,
@@ -569,7 +575,7 @@ impl Checker<'_> {
                             format!("The function \"{}\" returns nothing, so there is no result to store.", name.name),
                         );
                         self.diags.push(d);
-                        cx.define(&i.name, Type::Unknown);
+                        cx.define(&i.name, Type::Unknown, i.span);
                     }
                 }
             }

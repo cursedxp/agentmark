@@ -227,7 +227,7 @@ impl Checker<'_> {
         // still check what is written, so names inside are not reported as unused later
         self.value_parts(cx, target, payload);
         if let Some(i) = into {
-            cx.define(&i.name, Type::Unknown);
+            cx.define(&i.name, Type::Unknown, i.span);
         }
     }
 
@@ -269,6 +269,7 @@ impl Checker<'_> {
         payload: &Option<Payload>,
         into: &Option<Ident>,
     ) {
+        let before = self.diags.len();
         self.require_listed(cx, tool);
         match verb {
             Some(v) if def.verbs.is_empty() => {
@@ -422,9 +423,11 @@ impl Checker<'_> {
                 _ if def.sources.is_empty() && def.targets.is_empty() => Type::Text,
                 _ => Type::Unknown,
             };
-            cx.define(&i.name, ty);
+            cx.define(&i.name, ty, i.span);
         }
-        let (record, var, field) = self.target_binding(cx, def, target, target_word, &target_record);
+        let clean = self.diags.len() == before;
+        let (record, var, field) =
+            self.target_binding(cx, def, tool, verb, target, target_word, &target_record, clean);
         self.tool_calls.insert(
             sk,
             ToolResolution {
@@ -486,58 +489,117 @@ impl Checker<'_> {
     }
 
     /// The record, variable and field a target word stands for: `crm update invoice` ->
-    /// (Invoice, the in-scope Invoice variable, `id`); `email send customer` -> (the record in
-    /// front of the block, its variable, `customer_email` else `customer`).
+    /// (Invoice, the Invoice variable, `id`); `email send customer` -> (the record in front of
+    /// the block, its variable, `customer_email` else `customer`). Reports when no record can
+    /// supply what the word needs, or when more than one variable could.
+    #[allow(clippy::too_many_arguments)]
     fn target_binding(
-        &self,
+        &mut self,
         cx: &Cx,
         def: &ToolDef,
+        tool: &Ident,
+        verb: &Option<Ident>,
         target: &[TargetPart],
         word: Option<&Ident>,
         target_record: &Option<String>,
+        report: bool,
     ) -> (Option<String>, Option<String>, Option<String>) {
-        let has_field = |rec: &str, f: &str| {
-            self.records
+        let has_field = |this: &Self, rec: &str, f: &str| {
+            this.records
                 .get(rec)
                 .is_some_and(|r| r.fields.iter().any(|x| x.name == f))
         };
-        if let Some(r) = target_record {
-            let var = match cx.bare() {
-                Some(b) if b.record == *r => Some(b.var.clone()),
-                _ => cx
-                    .frames
-                    .iter()
-                    .rev()
-                    .flat_map(|f| {
-                        let mut v: Vec<_> = f.vars.iter().collect();
-                        v.sort_by(|a, b| a.0.cmp(b.0));
-                        v
-                    })
-                    .find(|(_, t)| **t == Type::Record(r.clone()))
-                    .map(|(n, _)| n.clone()),
-            };
-            let field = has_field(r, "id").then(|| "id".to_string());
-            return (Some(r.clone()), var, field);
-        }
         let Some(w) = word else {
             return (None, None, None);
         };
-        if !def.targets.contains(&w.name) || target.len() > 1 {
+        // an explicit value after the word (`crm get invoice id`, `email send address "x"`)
+        // says which record or address; nothing to look up
+        if target.len() > 1 {
+            return (target_record.clone(), None, None);
+        }
+        if let Some(r) = target_record {
+            let in_front = match cx.bare() {
+                Some(b) if b.record == *r => Some(b.var.clone()),
+                _ => None,
+            };
+            let var = match in_front {
+                Some(v) => Some(v),
+                None => {
+                    let mut cands: Vec<String> = cx
+                        .frames
+                        .iter()
+                        .flat_map(|f| f.vars.iter())
+                        .filter(|(_, t)| **t == Type::Record(r.clone()))
+                        .map(|(n, _)| n.clone())
+                        .collect();
+                    cands.sort();
+                    cands.dedup();
+                    match cands.len() {
+                        0 => None,
+                        1 => Some(cands.remove(0)),
+                        _ => {
+                            let shown = cands
+                                .iter()
+                                .map(|c| format!("\"{c}\""))
+                                .collect::<Vec<_>>()
+                                .join(" or ");
+                            let d = Diagnostic::error(
+                                E_MANIFEST,
+                                self.path(cx.file),
+                                w.span,
+                                format!("Which {}? {shown} are both in scope.", w.name),
+                            )
+                            .with_help(format!(
+                                "Name the one you mean, for example \"{} {} {}: ...\".",
+                                tool.name,
+                                verb.as_ref().map(|v| v.name.as_str()).unwrap_or(""),
+                                w.name
+                            ));
+                            self.diags.push(d);
+                            return (Some(r.clone()), None, None);
+                        }
+                    }
+                }
+            };
+            let field = (var.is_some() && has_field(self, r, "id")).then(|| "id".to_string());
+            return (Some(r.clone()), var, field);
+        }
+        if !def.targets.contains(&w.name) {
             return (None, None, None);
         }
-        match cx.bare() {
-            Some(b) => {
-                let email = format!("{}_email", w.name);
-                let field = if has_field(&b.record, &email) {
-                    Some(email)
-                } else if has_field(&b.record, &w.name) {
-                    Some(w.name.clone())
-                } else {
-                    None
-                };
-                (Some(b.record.clone()), Some(b.var.clone()), field)
+        // `email send customer`: the record in front of the block must say who `customer` is
+        let found = cx.bare().and_then(|b| {
+            let email = format!("{}_email", w.name);
+            let field = if has_field(self, &b.record, &email) {
+                Some(email)
+            } else if has_field(self, &b.record, &w.name) {
+                Some(w.name.clone())
+            } else {
+                None
+            };
+            field.map(|f| (b.record.clone(), b.var.clone(), f))
+        });
+        match found {
+            Some((rec, var, field)) => (Some(rec), Some(var), Some(field)),
+            None if !report => (None, None, None),
+            None => {
+                let d = Diagnostic::error(
+                    E_MANIFEST,
+                    self.path(cx.file),
+                    w.span,
+                    format!(
+                        "\"{0}\" needs a record in front of this block with a \"{0}_email\" or \"{0}\" field.",
+                        w.name
+                    ),
+                )
+                .with_help(format!(
+                    "Use it inside a loop over such records, or write the address: \"{} {} address \\\"name@example.com\\\"\".",
+                    tool.name,
+                    verb.as_ref().map(|v| v.name.as_str()).unwrap_or("send")
+                ));
+                self.diags.push(d);
+                (None, None, None)
             }
-            None => (None, None, None),
         }
     }
 
@@ -664,6 +726,13 @@ impl Checker<'_> {
                 self.expr(cx, &a.value);
             }
         }
+        self.resolutions.insert(
+            sk,
+            Resolution::Call {
+                kind: super::CallKind::Binding,
+                decl: bname.to_string(),
+            },
+        );
         self.tool_calls.insert(
             sk,
             ToolResolution {
@@ -677,7 +746,7 @@ impl Checker<'_> {
             },
         );
         if let Some(i) = into {
-            cx.define(&i.name, out);
+            cx.define(&i.name, out, i.span);
         }
         if let Some(info) = &info {
             cx.acc.add(info.effect, bname);

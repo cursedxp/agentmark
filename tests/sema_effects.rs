@@ -102,7 +102,7 @@ fn a_pure_function_may_not_log() {
 
 #[test]
 fn a_local_function_may_not_email() {
-    let e = first_error(&function("local", "- email send customer: \"x\""));
+    let e = first_error(&function("local", "- email send address \"a@b.c\": \"x\""));
     assert!(
         e.contains("says \"- effect: local\", but this line has the effect network (email)."),
         "{e}"
@@ -122,7 +122,7 @@ fn a_network_function_may_not_ask_a_model() {
 fn a_model_function_may_do_everything() {
     ok(&function(
         "model",
-        "- ask model: \"hi\" -> t\n  - email send customer: \"{t}\"\n  - log: \"x\"",
+        "- ask model: \"hi\" -> t\n  - email send address \"a@b.c\": \"{t}\"\n  - log: \"x\"",
     ));
 }
 
@@ -141,7 +141,7 @@ fn only_the_first_excess_is_reported_per_function() {
 
 #[test]
 fn a_function_calling_a_network_function_inherits_the_effect() {
-    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - email send customer: \"x\"\n  - return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- effect: local\n  - return inner(invoice)\n");
+    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - email send address \"a@b.c\": \"x\"\n  - return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- effect: local\n  - return inner(invoice)\n");
     let e = first_error(&src);
     assert!(e.contains("The function \"outer\" says \"- effect: local\", but this line has the effect network (email)."), "{e}");
 }
@@ -198,7 +198,7 @@ fn every_statement_and_block_has_an_effect_set() {
 
 #[test]
 fn a_do_action_contributes_its_effect_to_the_caller() {
-    let src = format!("{PRE}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - do tell\n\n## Do tell\n- email send customer: \"x\"\n");
+    let src = format!("{PRE}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - do tell\n\n## Do tell\n- email send address \"a@b.c\": \"x\"\n");
     let c = ok(&src);
     let entry = c
         .blocks

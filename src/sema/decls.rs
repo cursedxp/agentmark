@@ -174,6 +174,8 @@ impl Checker<'_> {
                             params: self.params(fi, &x.params),
                             out: x.out.as_ref().map(|t| self.resolve_type(fi, t)),
                             effect: x.effect.value,
+                            file: fi,
+                            span: x.name.span,
                         };
                         self.sigs
                             .entry((Kind::Function, x.name.name.clone()))
@@ -184,6 +186,8 @@ impl Checker<'_> {
                             params: self.params(fi, &x.params),
                             out: x.out.as_ref().map(|t| self.resolve_type(fi, t)),
                             effect: x.effect.value,
+                            file: fi,
+                            span: x.name.span,
                         };
                         self.sigs
                             .entry((Kind::RustBlock, x.name.name.clone()))
@@ -201,6 +205,8 @@ impl Checker<'_> {
                             params: self.params(fi, &x.args),
                             out: None,
                             effect: Effect::Model,
+                            file: fi,
+                            span: x.name.span,
                         };
                         self.sigs
                             .entry((Kind::Command, x.name.name.clone()))
@@ -225,6 +231,8 @@ impl Checker<'_> {
                                 params: self.params(fi, &it.params),
                                 out: it.out.as_ref().map(|t| self.resolve_type(fi, t)),
                                 effect: x.effect.value,
+                                file: fi,
+                                span: it.name.span,
                             };
                             items.push(BindingItemInfo {
                                 name: it.name.name.clone(),
@@ -332,6 +340,7 @@ impl Checker<'_> {
             ConstInfo {
                 name: name.to_string(),
                 file: ent.file,
+                span: c.name.span,
                 ty: ty.clone(),
                 value: c.value.clone(),
             },

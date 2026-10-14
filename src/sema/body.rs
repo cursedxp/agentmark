@@ -29,6 +29,8 @@ pub enum PureKind {
 #[derive(Debug, Default)]
 pub struct Frame {
     pub vars: HashMap<String, Type>,
+    /// Where each variable of this frame was defined (same file), when there is a place.
+    pub defs: HashMap<String, crate::diag::Span>,
     pub bare: Option<Implicit>,
     /// Paths (`found`, `ticket.priority`) known not to be empty in this frame.
     pub narrowed: Vec<String>,
@@ -105,15 +107,26 @@ impl Cx {
     }
 
     /// Set (or define in the innermost frame) a variable.
-    pub fn define(&mut self, name: &str, ty: Type) {
+    /// Where the variable `name` in scope was defined.
+    pub fn def_of(&self, name: &str) -> Option<crate::diag::Span> {
+        self.frames.iter().rev().find_map(|f| {
+            f.vars
+                .contains_key(name)
+                .then(|| f.defs.get(name).copied())
+        })?
+    }
+
+    pub fn define(&mut self, name: &str, ty: Type, span: crate::diag::Span) {
         self.forget(name);
         for f in self.frames.iter_mut().rev() {
             if let Some(slot) = f.vars.get_mut(name) {
                 *slot = ty;
+                f.defs.entry(name.to_string()).or_insert(span);
                 return;
             }
         }
         self.top().vars.insert(name.to_string(), ty);
+        self.top().defs.insert(name.to_string(), span);
     }
 
     pub fn bare(&self) -> Option<&Implicit> {
@@ -332,6 +345,7 @@ impl Checker<'_> {
                 if let Some(s) = &sig {
                     for (param, info) in f.params.iter().zip(&s.params) {
                         cx.top().vars.insert(info.name.clone(), info.ty.clone());
+                        cx.top().defs.insert(info.name.clone(), param.name.span);
                         self.check_default(file, param, &info.ty);
                     }
                 }
@@ -380,6 +394,7 @@ impl Checker<'_> {
                 if let Some(rec) = self.rule_records.get(&r.name.name).cloned() {
                     let var = super::body::snake(&rec);
                     cx.top().vars.insert(var.clone(), Type::Record(rec.clone()));
+                    cx.top().defs.insert(var.clone(), r.name.span);
                     cx.top().bare = Some(Implicit { var, record: rec });
                 } else {
                     cx.lenient = true;
@@ -429,6 +444,7 @@ impl Checker<'_> {
                             cx.top()
                                 .vars
                                 .insert(imp.var.clone(), Type::Record(imp.record.clone()));
+                            cx.top().defs.insert(imp.var.clone(), event.span);
                             param = Some((imp.var.clone(), imp.record.clone()));
                             cx.top().bare = Some(imp);
                         }
@@ -473,6 +489,7 @@ impl Checker<'_> {
                 cx.route = true;
                 for pp in &r.path_params {
                     cx.top().vars.insert(pp.clone(), Type::Text);
+                    cx.top().defs.insert(pp.clone(), r.span);
                 }
                 if let Some(st) = &s.state {
                     let te = crate::syntax::ast::TypeExpr {
@@ -509,6 +526,7 @@ impl Checker<'_> {
                 if let Some(s) = &sig {
                     for (param, info) in c.args.iter().zip(&s.params) {
                         cx.top().vars.insert(info.name.clone(), info.ty.clone());
+                        cx.top().defs.insert(info.name.clone(), param.name.span);
                         self.check_default(file, param, &info.ty);
                     }
                 }

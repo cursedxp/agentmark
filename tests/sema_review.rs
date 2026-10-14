@@ -88,7 +88,7 @@ fn resolutions_say_what_every_name_stands_for() {
     assert!(has(&|r| matches!(r, Resolution::Const { name } if name == "grace_period")));
     assert!(has(&|r| matches!(r, Resolution::Field { var: Some(v), record, field }
         if v == "invoice" && record == "Invoice" && field == "customer")));
-    assert!(has(&|r| matches!(r, Resolution::Var { name } if name == "reminder")));
+    assert!(has(&|r| matches!(r, Resolution::Var { name, .. } if name == "reminder")));
 }
 
 #[test]
@@ -118,6 +118,9 @@ fn bindings_are_resolved_as_bindings() {
     let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
     let t = c.tool_calls.values().next().unwrap();
     assert_eq!((t.tool.as_str(), t.kind), ("pdf", ToolKind::Binding));
+    assert!(c.resolutions.values().any(
+        |r| matches!(r, Resolution::Call { kind: CallKind::Binding, decl } if decl == "pdf")
+    ));
 }
 
 #[test]
@@ -215,4 +218,116 @@ fn only_one_service_may_have_a_state() {
 #[test]
 fn types_still_display_for_literals() {
     assert_eq!(Type::Object(vec![("a".into(), Type::Text)]).to_string(), "{ a: text }");
+}
+
+// ------------------------------------------------------------------ tool targets (round 2)
+
+const REC: &str = "# Record: Lead\n- id: text\n- score: maybe int\n\n# Record: Invoice\n- id: text\n- status: text\n\n";
+
+fn agent(body: &str) -> String {
+    format!("{REC}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## On start\n{body}")
+}
+
+#[test]
+fn email_customer_needs_a_record_in_front_of_the_block() {
+    let e = first_error(&agent("- email send customer: \"x\"\n"));
+    assert!(
+        e.contains("\"customer\" needs a record in front of this block with a \"customer_email\" or \"customer\" field."),
+        "{e}"
+    );
+    assert!(e.contains("address"), "{e}");
+}
+
+#[test]
+fn email_customer_needs_a_field_on_that_record() {
+    let e = first_error(&agent("for each l in crm.leads:\n  - email send customer: \"x\"\n"));
+    assert!(e.contains("\"customer\" needs a record in front of this block"), "{e}");
+    // a record with only `customer` works, and `customer_email` wins when both exist
+    let src = "# Record: Lead\n- id: text\n- customer: text\n\n# Agent: a\n- model: claude\n- tools: email, crm\n\n## On start\nfor each l in crm.leads:\n  - email send customer: \"x\"\n";
+    let c = ok(src);
+    assert_eq!(c.tool_calls.values().next().unwrap().field.as_deref(), Some("customer"));
+}
+
+#[test]
+fn a_literal_address_needs_no_record() {
+    ok(&agent("- email send address \"a@b.c\": \"x\"\n"));
+}
+
+#[test]
+fn a_crm_target_with_two_candidate_variables_is_ambiguous() {
+    let e = first_error(&agent(
+        "- crm get invoice \"x\" -> b\n- crm get invoice \"y\" -> a2\n- crm update invoice: status = \"z\"\n",
+    ));
+    assert!(e.contains("Which invoice? \"a2\" or \"b\" are both in scope."), "{e}");
+}
+
+#[test]
+fn a_crm_target_uses_the_one_matching_variable_or_the_one_in_front() {
+    let c = ok(&agent("- crm get invoice \"x\" -> b\n- crm update invoice: status = \"z\"\n"));
+    let upd = c.tool_calls.values().find(|t| t.verb.as_deref() == Some("update")).unwrap();
+    assert_eq!((upd.var.as_deref(), upd.field.as_deref()), (Some("b"), Some("id")));
+    // an explicit target value means no variable is looked up
+    let get = c.tool_calls.values().find(|t| t.verb.as_deref() == Some("get")).unwrap();
+    assert_eq!((get.var.as_deref(), get.field.as_deref()), (None, None));
+    // the loop record is in front of the block and wins over another Invoice variable
+    let c = ok(&agent(
+        "- crm get invoice \"x\" -> b\nfor each i in crm.invoices:\n  - crm update invoice: status = \"z\"\n",
+    ));
+    let upd = c.tool_calls.values().find(|t| t.verb.as_deref() == Some("update")).unwrap();
+    assert_eq!(upd.var.as_deref(), Some("i"));
+}
+
+#[test]
+fn no_matching_variable_leaves_the_var_empty() {
+    let c = ok(&agent("- crm update invoice: { id: \"x\", status: \"y\" }\n"));
+    let upd = c.tool_calls.values().next().unwrap();
+    assert_eq!((upd.var.as_deref(), upd.field.as_deref()), (None, None));
+}
+
+// ------------------------------------------------------------------ narrowing of bare fields
+
+const EVENT: &str = "# Record: Lead\n- id: text\n- score: maybe int\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## When crm receives lead\n";
+
+#[test]
+fn a_bare_field_is_narrowed_by_the_qualified_check_and_back() {
+    ok(&format!("{EVENT}- guard: lead.score is not empty\n- log: \"{{score}}\"\n"));
+    ok(&format!("{EVENT}- guard: score is not empty\n- log: \"{{lead.score}}\"\n"));
+    let e = first_error(&format!("{EVENT}- log: \"{{score}}\"\n"));
+    assert!(e.contains("so it cannot be written into text yet."), "{e}");
+}
+
+#[test]
+fn checking_a_present_value_again_is_fine() {
+    ok(&format!("{EVENT}- guard: lead.score is not empty\n- guard: lead.score is not empty\n- log: \"{{score}}\"\n"));
+    ok(&format!("{EVENT}- guard: score is not empty\n- if score is not empty:\n  - log: \"{{score}}\"\n"));
+}
+
+// ------------------------------------------------------------------ declaration sites
+
+#[test]
+fn declaration_and_definition_sites_are_exported() {
+    let c = example_01();
+    let var = c
+        .resolutions
+        .values()
+        .find_map(|r| match r {
+            Resolution::Var { name, def } if name == "reminder" => Some(def),
+            _ => None,
+        })
+        .unwrap();
+    // `reminder` is defined by the `ask model … -> reminder` line
+    assert_eq!(var.unwrap().line, 15);
+    assert!(c.constants["grace_period"].span.line > 0);
+    let agent = c.declarations.iter().find(|d| d.name == "invoice-chaser").unwrap();
+    assert_eq!(agent.kind, agentmark::sema::Kind::Agent);
+    assert!(c.files[agent.file].ends_with("invoice-chaser.agent.md"));
+    assert!(c.declarations.iter().any(|d| d.name == "overdue" && d.kind == agentmark::sema::Kind::Rule));
+    assert!(c.declarations.iter().any(|d| d.name == "Invoice" && d.kind == agentmark::sema::Kind::Record));
+}
+
+#[test]
+fn function_signatures_know_where_they_are_declared() {
+    let c = ok("# Function: five\n- out: int\n- effect: pure\n  - return 5\n\n# Function: g\n- out: int\n- effect: pure\n  - return five()\n");
+    assert_eq!(c.functions["five"].span.line, 1);
+    assert_eq!(c.functions["g"].span.line, 6);
 }

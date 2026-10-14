@@ -50,7 +50,12 @@ impl NodeKey {
 pub enum Resolution {
     /// A variable: loop variable, `->`/`set` result, parameter, route parameter, `state`,
     /// event record. For a path (`invoice.amount`) this is the first segment.
-    Var { name: String },
+    Var {
+        name: String,
+        /// Where it was defined, in the same file (parameter, loop variable, `->` result, …);
+        /// `None` for `state` and the record a `## Do` block receives.
+        def: Option<Span>,
+    },
     /// A bare field of the record in front of the block (`amount` for `invoice.amount`);
     /// `var` is that record's variable.
     Field {
@@ -104,6 +109,15 @@ pub struct ToolResolution {
     pub field: Option<String>,
 }
 
+/// A named declaration and where its name is written (go-to-definition, hover).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DeclInfo {
+    pub kind: Kind,
+    pub name: String,
+    pub file: usize,
+    pub span: Span,
+}
+
 /// A field whose type came from SPEC 2.1 inference.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InferredField {
@@ -148,6 +162,9 @@ pub struct Sig {
     pub out: Option<Type>,
     /// The effect the author declared.
     pub effect: Effect,
+    /// File and span of the declaring name (go-to-definition).
+    pub file: usize,
+    pub span: Span,
 }
 
 /// What kind of code a [`BlockInfo`] describes.
@@ -190,6 +207,8 @@ pub struct BlockInfo {
 pub struct ConstInfo {
     pub name: String,
     pub file: usize,
+    /// Span of the constant's name.
+    pub span: Span,
     pub ty: Type,
     pub value: Expr,
 }
@@ -256,6 +275,9 @@ pub struct Checked {
     /// segment indices whose value must be unwrapped (`found.id` after `guard: found is not
     /// empty` -> `[0]`). Codegen unwraps exactly there.
     pub unwraps: HashMap<NodeKey, Vec<usize>>,
+    /// Every named declaration (record, rule, function, constant, Rust block, binding, agent,
+    /// service, command) with the span of its name.
+    pub declarations: Vec<DeclInfo>,
     /// Every field whose type was inferred (SPEC 2.1), for `check` to print.
     pub inferred_fields: Vec<InferredField>,
     /// Effect of every function, rule, entry, action, route and command, in source order.
@@ -457,6 +479,17 @@ impl<'a> Checker<'a> {
             resolutions: self.resolutions,
             tool_calls: self.tool_calls,
             unwraps: self.unwraps,
+            declarations: self
+                .reg
+                .ents
+                .values()
+                .map(|e| DeclInfo {
+                    kind: e.kind,
+                    name: e.name.clone(),
+                    file: e.file,
+                    span: e.span,
+                })
+                .collect(),
             inferred_fields: self.inferred_fields,
             blocks: self.blocks,
             manifest: self.p.manifest.clone(),
