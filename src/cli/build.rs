@@ -172,7 +172,8 @@ fn adopt_connect(prepared: &Prepared, dir: &Path, files: &mut [GeneratedFile], c
     let Some(slot) = files.iter_mut().find(|f| f.path == USER_FILE) else { return Ok(()) };
     let path = connect_path(&prepared.project.root);
     if !path.exists() {
-        if !create {
+        // nothing to connect (no tool with verbs): no file to ask the author for
+        if !create || !slot.content.contains("struct NotConnected") {
             return Ok(());
         }
         let seed = std::fs::read_to_string(dir.join(USER_FILE)).unwrap_or_else(|_| slot.content.clone());

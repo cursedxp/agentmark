@@ -323,6 +323,56 @@ fn service_serves_a_real_get() {
     assert_eq!(t.last().unwrap(), &json!({"kind":"http","method":"GET","path":"/invoices/INV-1/net","status":200}));
 }
 
+fn http_post(addr: &str, path: &str, body: &str) -> String {
+    let mut s = std::net::TcpStream::connect(addr).unwrap();
+    s.write_all(format!("POST {path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes()).unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    out
+}
+
+const PAY: &str = "# Record: Payment\n- id: text\n- amount: money\n\n# Service: pay\n- listen: 0.0.0.0:8080\n\n## POST /total\n- read body as Payment -> p\n- set total = p.amount + 5 USD\n- respond 200 { id: p.id, total: total }\n\n## GET /ping\n- respond 200 { ok: true }\n";
+
+#[test]
+fn a_route_that_fails_answers_500_and_traces_the_error_before_the_http_line() {
+    let (d, file) = single("pay500", "pay.agent.md", PAY);
+    let out = d.join("out");
+    assert!(agentmark(&["build", s(&file), "-o", s(&out), "--no-check"]).output().unwrap().status.success());
+    let b = cargo_build_in(&out);
+    assert!(b.status.success(), "{}", stderr(&b));
+    assert!(!stderr(&b).contains("warning"), "a route without effects must not leave an unused ctx:\n{}", stderr(&b));
+    let port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let addr = format!("127.0.0.1:{port}");
+    let trace = d.join("trace.jsonl");
+    let mut child = Command::new(gen_bin("pay")).args(["--serve", &addr, "--trace", s(&trace)]).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+    let (mut bad, mut good) = (String::new(), String::new());
+    for _ in 0..50 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            // EUR + USD: the currencies do not match, so the route fails
+            bad = http_post(&addr, "/total", r#"{"id":"P-1","amount":"10.00 EUR"}"#);
+            good = http_post(&addr, "/total", r#"{"id":"P-2","amount":"10.00 USD"}"#);
+            break;
+        }
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(bad.starts_with("HTTP/1.1 500"), "{bad}");
+    let body: Value = serde_json::from_str(bad.split("\r\n\r\n").nth(1).unwrap().trim()).unwrap();
+    assert_eq!(body, json!({"error": "internal error"}), "the cause stays in the trace, not in the answer");
+    assert!(good.starts_with("HTTP/1.1 200"), "a good request after a bad one still works: {good}");
+    let t = parse_lines(&std::fs::read_to_string(trace).unwrap());
+    assert_eq!(t.len(), 3, "{t:#?}");
+    assert_eq!(t[0]["kind"], "error", "{t:#?}");
+    assert_eq!(t[0]["block"], "POST /total");
+    assert!(t[0]["message"].as_str().unwrap().to_lowercase().contains("currenc"), "{t:#?}");
+    assert_eq!(t[1], json!({"kind":"http","method":"POST","path":"/total","status":500}));
+    assert_eq!(t[2], json!({"kind":"http","method":"POST","path":"/total","status":200}));
+}
+
 #[test]
 fn command_line_runs_the_command_with_its_arguments() {
     let (d, bin) = built_05();

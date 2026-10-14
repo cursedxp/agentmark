@@ -227,7 +227,7 @@ fn entry_fn(c: &Ctxt, module: &str, idx: usize, e: &Entry) -> String {
         Some(d) => format!(".with_model({})", lit(&super::model_id(&d))),
         None => String::new(),
     };
-    b.raw_line(&format!("let ctx = &ctx.enter({}, {}){with_model};", lit(&e.unit), lit(&e.label)));
+    b.raw_line(&format!("#[allow(unused_variables)] let ctx = &ctx.enter({}, {}){with_model};", lit(&e.unit), lit(&e.label)));
     b.function_body(&e.body);
     let src = b.src_comment(&e.source);
     let text = b.finish();
@@ -278,7 +278,7 @@ pub fn service_rs(c: &Ctxt, idx: usize, s: &Service) -> String {
         let ident = ns.take(&slug(&r.label));
         rows.push((r.label.clone(), r.effect.clone()));
         let mut b = Body::new(c.p, c.n, &c.o.root, module, Kind::Route, None);
-        b.raw_line(&format!("let ctx = &ctx.enter({}, {});", lit(&s.name), lit(&r.label)));
+        b.raw_line(&format!("#[allow(unused_variables)] let ctx = &ctx.enter({}, {});", lit(&s.name), lit(&r.label)));
         let text_probe = {
             let mut p = Body::new(c.p, c.n, &c.o.root, module, Kind::Route, None);
             p.function_body(&r.body);
@@ -438,6 +438,7 @@ struct Reply {
 }
 
 impl Reply {
+    #[allow(dead_code)]
     fn status(status: u16) -> Reply {
         Reply { status, body: None }
     }
@@ -477,7 +478,7 @@ fn reply(ctx: &Ctx, unit: &str, label: &str, method: &str, uri: &Uri, result: Re
 pub fn command_rs(c: &Ctxt, idx: usize, cmd: &Command) -> String {
     let module = &c.n.commands[idx];
     let mut b = Body::new(c.p, c.n, &c.o.root, module, Kind::Unit, None);
-    b.raw_line(&format!("let ctx = &ctx.enter({}, \"Run\");", lit(&cmd.name)));
+    b.raw_line(&format!("#[allow(unused_variables)] let ctx = &ctx.enter({}, \"Run\");", lit(&cmd.name)));
     b.function_body(&cmd.body);
     let src = b.src_comment(&cmd.run);
     let text = b.finish();
