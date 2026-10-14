@@ -111,7 +111,8 @@ fn example_01_reproduces_the_expected_trace() {
 #[test]
 fn build_writes_the_spec_layout_and_the_project_compiles_warning_free() {
     let out = temp("layout");
-    let o = agentmark(&["build", &format!("{ROOT}/examples/01-invoice-chaser"), "--target", "rust", "-o", s(&out), "--no-check"]).output().unwrap();
+    let ex = example_copy("01-invoice-chaser");
+    let o = agentmark(&["build", s(&ex), "--target", "rust", "-o", s(&out), "--no-check"]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     for f in ["Cargo.toml", "src/main.rs", "src/records.rs", "src/rules.rs", "src/tools.rs", "src/bindings.rs", "src/agent_invoice_chaser.rs"] {
         assert!(out.join(f).is_file(), "missing {f}");
@@ -199,7 +200,8 @@ fn a_missing_model_answer_is_reported_not_swallowed() {
 /// Example 05 as it is in the repository (its sha2 binding is approved), built with cargo.
 fn built_05() -> (Tmp, PathBuf) {
     let d = temp("p05");
-    let o = agentmark(&["build", &format!("{ROOT}/examples/05-invoice-service"), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
+    let ex = example_copy("05-invoice-service");
+    let o = agentmark(&["build", s(&ex), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("binding sha2: cached"), "{}", stderr(&o));
     let cargo = std::fs::read_to_string(d.join("out/Cargo.toml")).unwrap();
@@ -241,6 +243,13 @@ fn build_binds_missing_crates_and_refuses_unapproved_ones() {
     let o = agentmark(&["build", s(&d), "-o", s(&out.join("p")), "--no-check"]).output().unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stderr(&o).contains("binding sha2: cached"));
+}
+
+/// A copy of an example project: builds create `rust/connect.rs` in the project, never in `examples/`.
+fn example_copy(name: &str) -> Tmp {
+    let d = temp(&format!("ex-{name}"));
+    copy_dir(Path::new(&format!("{ROOT}/examples/{name}")), &d);
+    d
 }
 
 fn copy_dir(from: &Path, to: &Path) {
@@ -456,7 +465,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     assert!(e.contains("shout.agent.md:13"), "points at the line of the mistake:\n{e}");
     assert!(e.contains("loud.len_of_it()"), "shows the source line:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
-    assert!(e.contains("mismatched types: expected `String`, found `()`"), "rustc's primary label is appended:\n{e}");
+    assert!(e.contains("method not found in `std::string::String`"), "rustc's primary label is appended:\n{e}");
     assert!(!e.contains("internal compiler error"), "{e}");
 }
 
@@ -475,7 +484,8 @@ fn cargo_build_in(out: &Path) -> Output {
 fn every_example_compiles_without_a_single_warning() {
     for name in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
         let out = temp("nowarn");
-        let o = agentmark(&["build", &format!("{ROOT}/examples/{name}"), "-o", s(&out), "--no-check"]).output().unwrap();
+        let ex = example_copy(name);
+        let o = agentmark(&["build", s(&ex), "-o", s(&out), "--no-check"]).output().unwrap();
         assert!(o.status.success(), "{name}: {}", stderr(&o));
         let b = cargo_build_in(&out);
         assert!(b.status.success(), "{name}: {}", stderr(&b));
@@ -495,6 +505,7 @@ fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
     assert_eq!(o.status.code(), Some(1), "{e}");
     assert!(e.contains("semi.agent.md:8"), "points at the block heading:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
+    assert!(e.contains("mismatched types: expected `String`, found `()`"), "rustc's primary label is appended:\n{e}");
     assert!(!e.contains("internal compiler error"), "{e}");
 }
 

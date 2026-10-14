@@ -50,8 +50,8 @@ pub fn check(ck: &mut Checker<'_>) {
                     match binding {
                         None => {
                             // OPEN_QUESTIONS Q36, Q201: nothing binds it yet. Used as a tool, that
-                            // is an error on this line (and the only one); we cannot tell whether
-                            // an unbound crate is otherwise used, so no "unused import" either.
+                            // is an error on this line (and the only one); otherwise Rust code
+                            // decides whether the import is unused.
                             let help = format!(
                                 "Run \"agentmark bind {name}\" to create bindings/{name}.agent.md (\"agentmark build\" and \"agentmark check\" do it for you when a model is reachable)."
                             );
@@ -74,6 +74,14 @@ pub fn check(ck: &mut Checker<'_>) {
                                 ck.diags.last_mut().unwrap().help = Some(format!(
                                     "Run \"agentmark bind {name}\" to create bindings/{name}.agent.md; \"## Rust\" blocks can already use it."
                                 ));
+                                if !used_code {
+                                    ck.warn(
+                                        W_UNUSED_IMPORT,
+                                        fi,
+                                        imp.span,
+                                        format!("Unused import: the crate \"{name}\" is not used in this file."),
+                                    );
+                                }
                             }
                         }
                         Some(_) => {

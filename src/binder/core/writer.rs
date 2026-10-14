@@ -136,12 +136,13 @@ pub fn render_binding(
 /// that ends inside the word ends in a `\` marker, and the parser joins the next line to it
 /// WITHOUT a space. So that a real backslash at the end of a wrapped line is not mistaken for the
 /// marker, the trailing backslashes of every line that is followed by another are doubled; the
-/// parser halves them again (`syntax::parser::join_wrapped`). A backslash counts two columns here, and one
-/// column is kept free for the marker, so the 120 limit holds.
+/// parser halves them again (`syntax::parser::join_wrapped`). A backslash counts two columns here, and a split
+/// line keeps one column free for the marker, so the 120 limit holds (and text without backslashes
+/// wraps exactly as before).
 pub fn not_bound_entry(name: &str, reason: &str) -> String {
     const MAX: usize = 120;
     let cost = |s: &str| s.chars().map(|c| if c == '\\' { 2 } else { 1 }).sum::<usize>();
-    let limit = MAX - 1;
+    let limit = MAX;
     let mut lines = vec![format!("- {name}:")];
     let mut split_after = vec![false];
     let mut width = cost(&lines[0]);
@@ -161,6 +162,7 @@ pub fn not_bound_entry(name: &str, reason: &str) -> String {
             if fresh {
                 // a single word longer than a line: split it, losing nothing
                 let mut take = String::new();
+                let room = room.saturating_sub(1); // the marker
                 for ch in word.chars() {
                     if !take.is_empty() && cost(&take) + cost(&ch.to_string()) > room {
                         break;
