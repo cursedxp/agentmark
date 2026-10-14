@@ -6,9 +6,9 @@
 - It is for anyone who wants programs that read like a checklist, including people who never programmed.
 - After this page you can install it, run your first program and find the rest of the docs.
 
-**Jump to:** [Example](#a-whole-program-in-20-lines) · [Install](#install) · [Your first program in 3 steps](#your-first-program-in-3-steps) · [Where to go next](#where-to-go-next) · [The commands](#the-commands) · [Agents](#agents-ai-workflows-as-a-feature)
+**Jump to:** [Example](#a-whole-program) · [Install](#install) · [Your first program in 3 steps](#your-first-program-in-3-steps) · [Where to go next](#where-to-go-next) · [The commands](#the-commands) · [Agents](#agents-ai-workflows-as-a-feature)
 
-## A whole program in 20 lines
+## A whole program
 
 A program is a few `.agent.md` files. Headings say what a part is, bullet points say what it does, and `>` lines describe it. This one reads a sales file and prints what every region brought in:
 
