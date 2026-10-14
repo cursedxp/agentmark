@@ -32,7 +32,7 @@ fn is_offline() -> bool {
 }
 
 /// Check, auto-bind imported crates, refuse unapproved bindings, lower to IR.
-fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
+fn prepare(path: &str, allow_unverified: bool, show_notes: bool) -> Result<Prepared, u8> {
     require_source(path)?;
     let mut announced: Vec<String> = Vec::new();
     for _round in 0..2 {
@@ -76,8 +76,11 @@ fn prepare(path: &str, allow_unverified: bool) -> Result<Prepared, u8> {
             return Err(1);
         }
         let program = ir::lower(&project, &checked);
-        for n in cg::notes(&program, &project.root) {
-            eprintln!("{n}");
+        // build notes belong to `build`; `run` and `trace` stay quiet about them
+        if show_notes {
+            for n in cg::notes(&program, &project.root) {
+                eprintln!("{n}");
+            }
         }
         let versions = crate_versions(&project);
         return Ok(Prepared { project, program, versions });
@@ -216,7 +219,7 @@ pub(crate) fn build(path: &str, target: &str, out: &str, allow_unverified: bool,
     if target != "rust" {
         return fail(format!("unknown target \"{target}\": only \"rust\" is implemented"));
     }
-    let prepared = match prepare(path, allow_unverified) {
+    let prepared = match prepare(path, allow_unverified, true) {
         Ok(p) => p,
         Err(c) => return c,
     };
@@ -451,7 +454,7 @@ fn build_and_run(path: &str, mock: bool, fixtures: Option<&str>, allow_unverifie
             return fail(format!("cannot find the fixtures folder \"{f}\""));
         }
     }
-    let prepared = match prepare(path, allow_unverified) {
+    let prepared = match prepare(path, allow_unverified, false) {
         Ok(p) => p,
         Err(c) => return c,
     };

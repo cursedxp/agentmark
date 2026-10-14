@@ -627,6 +627,22 @@ fn build_warns_about_memory_file_and_serialized_parallel_blocks() {
 }
 
 #[test]
+fn build_notes_are_printed_by_build_only_not_by_run_or_trace() {
+    let src = "# Agent: a\n- model: claude\n- tools: log\n- memory: file\n\n## On start\n- parallel:\n  - log: \"x\"\n";
+    let (d, file) = single("notesrun", "a.agent.md", src);
+    let fx = d.join("fx");
+    write(&fx, "model.json", &model_json(&[]));
+    for sub in ["run", "trace"] {
+        let o = agentmark(&[sub, s(&file), "--mock", "--fixtures", s(&fx)]).output().unwrap();
+        let e = stderr(&o);
+        assert!(o.status.success(), "{e}");
+        assert!(!e.contains("memory: file") && !e.contains("this `parallel:` runs in order"), "{sub} must not repeat build notes: {e}");
+    }
+    let o = agentmark(&["build", s(&file), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
+    assert!(stderr(&o).contains("`memory: file` is not supported"), "{}", stderr(&o));
+}
+
+#[test]
 fn a_failing_command_leaves_an_error_line_in_the_trace() {
     let src = "# Command: slurp\n- args: path: text\n\n## Run\n- read file path as text -> t\n- print: \"got {t}\"\n";
     let (d, file) = single("cmderr", "slurp.agent.md", src);
