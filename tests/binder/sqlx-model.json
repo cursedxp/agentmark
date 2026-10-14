@@ -1,0 +1,13 @@
+{
+  "today": "2026-10-14",
+  "responses": [
+    {"prompt_prefix": "bind sqlx::SqlitePool::connect\n", "response": "Ok(sqlx::SqlitePool::connect(&url).await?)"},
+    {"prompt_prefix": "bind sqlx::query\n", "response": "Ok(sqlx::query::<sqlx::Sqlite>(Box::leak(sql.into_boxed_str())))"},
+    {"prompt_prefix": "bind sqlx::query_scalar\n", "response": "Ok(sqlx::query_scalar::<sqlx::Sqlite, String>(Box::leak(sql.into_boxed_str())))"},
+    {"prompt_prefix": "bind sqlx::query::Query::bind\n", "response": "Ok(self_.bind(value))"},
+    {"prompt_prefix": "bind sqlx::query::QueryScalar::bind\n", "response": "Ok(self_.bind(value))"},
+    {"prompt_prefix": "bind sqlx::query::Query::execute\n", "response": "Ok(self_.execute(executor).await?)"},
+    {"prompt_prefix": "bind sqlx::query::QueryScalar::fetch_one\n", "response": "Ok(self_.fetch_one(executor).await?)"},
+    {"prompt_prefix": "bind sqlx::query::QueryScalar::fetch_optional\n", "response": "Ok(self_.fetch_optional(executor).await?)"}
+  ]
+}

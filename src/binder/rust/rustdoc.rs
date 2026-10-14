@@ -147,6 +147,10 @@ fn without_generics(ty: &str) -> String {
     }
 }
 
+fn has_generic_arg(t: &RT) -> bool {
+    matches!(t, RT::Generic(_) | RT::Impl(_))
+}
+
 fn kind(it: &Value) -> &str {
     it["inner"]
         .as_object()
@@ -203,6 +207,35 @@ pub fn foreign_crates(json: &str) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// Names of the crates this crate re-exports items from, other than through the foreign-trait
+/// rule of [`foreign_crates`]: a facade (`sqlx`) is mostly `pub use sqlx_core::…`. Their rustdoc JSON
+/// is merged into this crate's (Q411). Macros are not callable and do not count.
+pub fn reexported_crates(json: &str) -> Result<Vec<String>, String> {
+    let doc = parse_doc(json)?;
+    let aliased = foreign_crates(json)?;
+    let mut out: Vec<String> = Vec::new();
+    let Some(index) = doc["index"].as_object() else { return Ok(out) };
+    for it in index.values().filter(|i| kind(i) == "use" && i["visibility"] == "public") {
+        let u = &it["inner"]["use"];
+        let Some(id) = u["id"].as_u64() else { continue };
+        if doc["index"].get(id.to_string()).is_some() {
+            continue;
+        }
+        let p = &doc["paths"][id.to_string()];
+        let k = p["kind"].as_str().unwrap_or("");
+        if !matches!(k, "function" | "struct" | "enum" | "union" | "type_alias" | "trait" | "module") {
+            continue;
+        }
+        let c = p["path"][0].as_str().unwrap_or("").to_string();
+        if c.is_empty() || matches!(c.as_str(), "std" | "core" | "alloc" | "crate") || aliased.contains(&c) || out.contains(&c) {
+            continue;
+        }
+        out.push(c);
+    }
+    out.sort();
+    Ok(out)
+}
+
 fn parse_doc(json: &str) -> Result<Value, String> {
     let doc: Value = serde_json::from_str(json).map_err(|e| format!("rustdoc JSON is not valid JSON: {e}"))?;
     let fv = doc["format_version"].as_u64().unwrap_or(0);
@@ -245,7 +278,22 @@ fn walked(doc: &Value) -> Result<Walk<'_>, String> {
 /// re-exports gets its receiver-less methods bound on this crate's type aliases of that crate's
 /// types (OPEN_QUESTIONS Q73).
 pub fn read_crate_with(json: &str, foreign: &[String]) -> Result<CrateItems, String> {
-    let doc = parse_doc(json)?;
+    let mut doc = parse_doc(json)?;
+    // a crate that is not a foreign-trait source is merged into this one (Q411)
+    let aliased = foreign_crates(json)?;
+    let mut merged = Vec::new();
+    let mut traits_from = Vec::new();
+    for f in foreign {
+        let fdoc = parse_doc(f)?;
+        if super::merge::root_name(&fdoc).is_some_and(|n| aliased.contains(&n)) {
+            traits_from.push(fdoc);
+        } else {
+            merged.push(fdoc);
+        }
+    }
+    if !merged.is_empty() {
+        doc = super::merge::merge(doc, merged);
+    }
     let mut w = walked(&doc)?;
     let root_id = doc["root"].as_u64().unwrap();
     let name = doc["index"][root_id.to_string()]["name"].as_str().unwrap().to_string();
@@ -253,10 +301,20 @@ pub fn read_crate_with(json: &str, foreign: &[String]) -> Result<CrateItems, Str
         .as_str()
         .ok_or("rustdoc JSON has no crate_version (was it built from a published crate?)")?
         .to_string();
+    let (base_extra, base_names) = (w.extra.clone(), w.names.clone());
     w.emit_all();
-    for f in foreign {
-        let fdoc = parse_doc(f)?;
-        w.emit_foreign(&fdoc);
+    // A method of `Query<'q, DB, A>` can only say which `Query` it means once `query` has shown the
+    // instantiation: with handle types known, bind everything once more (Q412).
+    if !w.ctx.rust_types.borrow().is_empty() {
+        w.items.clear();
+        w.extra = base_extra;
+        w.names = base_names;
+        w.seen_impls.clear();
+        w.alias_entries.clear();
+        w.emit_all();
+    }
+    for fdoc in &traits_from {
+        w.emit_foreign(fdoc);
     }
     let handle_types = w.ctx.rust_types.borrow().clone();
     Ok(CrateItems {
@@ -427,6 +485,19 @@ impl<'a> Walk<'a> {
                 ctx.handles.entry(c).or_insert(d);
             }
         }
+        // what an `Executor` bound stands for: the crate's one pool alias (`SqlitePool = Pool<Sqlite>`)
+        let pools: Vec<Vec<String>> = self
+            .order
+            .iter()
+            .filter(|id| self.get(**id).is_some_and(|it| kind(it) == "type_alias"))
+            .filter_map(|id| {
+                let t = TypeParser::new(self.doc, None).parse(&self.get(*id)?["inner"]["type_alias"]["type"]);
+                matches!(&t, RT::Path { full, args } if full.last().is_some_and(|n| n == "Pool") && args.iter().all(|a| !is_erased(a))).then(|| self.pub_paths[id].clone())
+            })
+            .collect();
+        if let [only] = pools.as_slice() {
+            ctx.executor = Some(RT::Ref { inner: Box::new(RT::Path { full: only.clone(), args: vec![] }), mutable: false });
+        }
         // implementors of traits: the crate's own concrete types
         if let Some(index) = self.doc["index"].as_object() {
             for it in index.values().filter(|i| kind(i) == "impl") {
@@ -442,10 +513,31 @@ impl<'a> Walk<'a> {
                 let concrete = matches!(&ty, RT::Path { args, .. } if args.is_empty())
                     && imp["generics"]["params"].as_array().is_none_or(|p| p.is_empty());
                 if concrete {
+                    if let RT::Path { full, .. } = &ty {
+                        for aid in imp["items"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
+                            let Some(a) = self.get(aid).filter(|a| kind(a) == "assoc_type") else { continue };
+                            let (Some(n), t) = (a["name"].as_str(), &a["inner"]["assoc_type"]["type"]) else { continue };
+                            if !t.is_null() {
+                                ctx.assoc.insert((full.clone(), n.to_string()), TypeParser::new(self.doc, None).parse(t));
+                            }
+                        }
+                    }
                     let v = ctx.implementors.entry(tname).or_default();
                     if !v.contains(&ty) {
                         v.push(ty);
                     }
+                }
+            }
+            // a type-erased `Any…` implementor (sqlx's `Any` driver) stands for "whichever of the
+            // others", so it is not a second instantiation (Q412)
+            if std::env::var("AGENTMARK_BIND_DEBUG").is_ok() {
+                for (k, v) in &ctx.implementors {
+                    if k.contains("Database") { eprintln!("DEBUG implementors {k}: {}", v.iter().map(render).collect::<Vec<_>>().join(", ")); }
+                }
+            }
+            for v in ctx.implementors.values_mut() {
+                if v.len() > 1 && v.iter().any(|t| !is_erased(t)) {
+                    v.retain(|t| !is_erased(t));
                 }
             }
         }
@@ -463,11 +555,43 @@ impl<'a> Walk<'a> {
         n
     }
 
+    /// `Pool<DB>` reached through a concrete alias of it (`SqlitePool = Pool<Sqlite>`): the alias's
+    /// target struct and arguments. Aliases that name the type-erased driver (`AnyPool`) do not count.
+    fn alias_target(&self, it: &Value) -> Option<(u64, Vec<RT>)> {
+        let a = &it["inner"]["type_alias"];
+        if !a["generics"]["params"].as_array().is_some_and(|p| p.is_empty()) {
+            return None;
+        }
+        let tid = a["type"]["resolved_path"]["id"].as_u64()?;
+        let target = self.get(tid)?;
+        if kind(target) != "struct" || target["inner"]["struct"]["generics"]["params"].as_array().is_none_or(|p| p.is_empty()) {
+            return None;
+        }
+        let RT::Path { args, .. } = TypeParser::new(self.doc, None).parse(&a["type"]) else { return None };
+        (!args.is_empty() && args.iter().all(|x| !has_generic_arg(x) && !is_erased(x))).then_some((tid, args))
+    }
+
     fn emit_all(&mut self) {
         let order = self.order.clone();
+        // generic structs that a concrete alias covers are bound through the alias only
+        let aliased: HashSet<u64> = order
+            .iter()
+            .filter_map(|id| self.get(*id).filter(|it| kind(it) == "type_alias").and_then(|it| self.alias_target(it)))
+            .map(|(t, _)| t)
+            .collect();
         for id in order {
             let Some(it) = self.get(id) else { continue };
             let path = self.pub_paths[&id].clone();
+            if kind(it) == "struct" && aliased.contains(&id) {
+                continue;
+            }
+            if kind(it) == "type_alias" {
+                if let Some((tid, args)) = self.alias_target(it) {
+                    let alias_ty = RT::Path { full: path.clone(), args: vec![] };
+                    self.emit_impls(tid, &path, Some((alias_ty, args)));
+                    continue;
+                }
+            }
             match kind(it) {
                 "function" => {
                     let doc = self.doc;
@@ -511,6 +635,13 @@ impl<'a> Walk<'a> {
     }
 
     fn emit_type(&mut self, id: u64, tpath: &[String]) {
+        self.emit_impls(id, tpath, None);
+    }
+
+    /// The methods of struct `id`. `alias` is set when the type is reached through a concrete alias of
+    /// it (`SqlitePool = Pool<Sqlite>`): the methods are bound on the alias and the impl's own type
+    /// parameters are the alias's arguments.
+    fn emit_impls(&mut self, id: u64, tpath: &[String], alias: Option<(RT, Vec<RT>)>) {
         let it = self.get(id).unwrap();
         let k = kind(it);
         let impls: Vec<u64> = it["inner"][k]["impls"]
@@ -519,7 +650,7 @@ impl<'a> Walk<'a> {
             .unwrap_or_default();
         for iid in impls {
             let Some(imp) = self.get(iid) else { continue };
-            if !self.seen_impls.insert(iid) {
+            if alias.is_none() && !self.seen_impls.insert(iid) {
                 continue;
             }
             let inner = &imp["inner"]["impl"];
@@ -554,12 +685,22 @@ impl<'a> Walk<'a> {
                 if kind(f) != "function" || (trait_.is_none() && !is_public(f)) {
                     continue;
                 }
+                let for_ty = TypeParser::new(self.doc, None).parse(&inner["for"]);
+                let mut fixed = HashMap::new();
+                if let (Some((_, aargs)), RT::Path { args, .. }) = (&alias, &for_ty) {
+                    for (a, v) in args.iter().zip(aargs) {
+                        if let RT::Generic(n) = a {
+                            fixed.insert(n.clone(), v.clone());
+                        }
+                    }
+                }
                 let owner = Owner {
-                    self_ty: TypeParser::new(self.doc, None).parse(&inner["for"]),
+                    self_ty: alias.as_ref().map(|(t, _)| t.clone()).unwrap_or(for_ty),
                     impl_generics: inner["generics"].clone(),
                     type_path: tpath.to_vec(),
                     trait_: trait_.clone(),
                     foreign_trait: false,
+                    fixed,
                 };
                 let path = tpath.to_vec();
                 let doc = self.doc;
@@ -625,6 +766,7 @@ impl<'a> Walk<'a> {
                         type_path: apath.clone(),
                         trait_: Some((tname.to_string(), local_path.clone())),
                         foreign_trait: true,
+                        fixed: HashMap::new(),
                     };
                     let item = self.build_fn(fdoc, m, apath, Some(owner));
                     self.items.push(item);
@@ -778,9 +920,9 @@ impl<'a> Walk<'a> {
         // owns whatever the Rust value borrows, and the assisted tier writes that glue.
         let borrowy = hz.lifetimes || hz.assoc;
         let borrow_reason = if hz.lifetimes { "lifetimes in the public API" } else { "associated types in the signature" };
-        let fail = |msg: String| skipped(if borrowy { borrow_reason.to_string() } else { msg });
+        let fail = |msg: String| { if std::env::var("AGENTMARK_BIND_DEBUG").is_ok() { eprintln!("DEBUG {display_path}: {msg}"); } skipped(if borrowy { borrow_reason.to_string() } else { msg }) };
         let build = |catchall: bool| -> (Shape, Option<String>, BTreeMap<String, String>) {
-        let lifter = Lifter { bounds: &bounds, ctx: &ctx, catchall, pending: RefCell::new(BTreeMap::new()) };
+        let lifter = Lifter { bounds: &bounds, ctx: &ctx, catchall, pending: RefCell::new(BTreeMap::new()), fixed: owner.as_ref().map(|o| o.fixed.clone()).unwrap_or_default() };
         // a method of a handle type is written with its method name; the handle tells methods apart
         let recv_handle = match recv {
             Recv::None | Recv::Other => None,
@@ -934,6 +1076,9 @@ struct Owner {
     trait_: Option<(String, Vec<String>)>,
     /// The trait comes from another crate's rustdoc JSON (so `path` shows `<T as Trait>::m`).
     foreign_trait: bool,
+    /// Type parameters of the impl that the type it is reached through already fixes
+    /// (`Pool<DB>` reached as the alias `SqlitePool = Pool<Sqlite>`: `DB` is `Sqlite`).
+    fixed: HashMap<String, RT>,
 }
 
 #[derive(Clone, Copy, PartialEq)]

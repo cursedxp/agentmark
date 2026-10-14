@@ -104,7 +104,7 @@ def main(src, dst, full_traits=()):
                 keep_item(iid, imp)
                 for fid in inner["items"]:
                     f = get(fid)
-                    if f is not None and kind(f) == "function":
+                    if f is not None and kind(f) in ("function", "assoc_type"):
                         keep_item(fid, f)
 
     for i, it in index.items():
@@ -140,6 +140,9 @@ def main(src, dst, full_traits=()):
             o["inner"]["function"] = {key: body.get(key) for key in ("sig", "generics", "header")}
         elif k == "type_alias":
             o["inner"]["type_alias"] = {"type": body["type"], "generics": body.get("generics")}
+        elif k == "assoc_type":
+            # `<Sqlite as Database>::QueryResult` is read from the impl's associated types
+            o["inner"]["assoc_type"] = {"type": body.get("type")}
         elif k == "trait" and o["name"] in full_traits:
             o["inner"]["trait"] = {"items": body["items"]}
         else:
@@ -160,7 +163,15 @@ def main(src, dst, full_traits=()):
 
     for o in out_index.values():
         collect(o["inner"])
-    paths = {str(i): {"path": doc["paths"][str(i)]["path"]} for i in ids if str(i) in doc["paths"]}
+    # a facade's `pub use other_crate::item` names its target by id only (no `path` next to it), and a
+    # crate it is merged into finds the item by the path of every kept item: keep both (Q411)
+    for o in out_index.values():
+        u = o["inner"].get("use")
+        if u and isinstance(u.get("id"), int):
+            ids.add(u["id"])
+    ids |= set(keep.keys())
+    paths = {str(i): {k: doc["paths"][str(i)][k] for k in ("path", "crate_id", "kind") if k in doc["paths"][str(i)]}
+             for i in ids if str(i) in doc["paths"]}
     res = {"format_version": doc["format_version"], "crate_version": doc["crate_version"],
            "root": root, "index": out_index, "paths": paths}
     with open(dst, "w") as f:

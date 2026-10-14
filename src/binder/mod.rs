@@ -219,7 +219,9 @@ fn load_crate(
         .map_err(|e| BindError::Metadata(format!("{}: {e}", json_path.display())))?;
     let mut foreign = Vec::new();
     let mut foreign_errors: Vec<(String, String)> = Vec::new();
-    for c in rust::foreign_crates(&json).map_err(BindError::Metadata)? {
+    let mut wanted = rust::foreign_crates(&json).map_err(BindError::Metadata)?;
+    wanted.extend(rust::reexported_crates(&json).map_err(BindError::Metadata)?);
+    for c in wanted {
         match foreign_json(&c, &json_path, built_here, opts) {
             Ok(text) => foreign.push(text),
             Err(e) => foreign_errors.push((c, e)),

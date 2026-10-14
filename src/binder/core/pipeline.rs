@@ -70,16 +70,6 @@ pub async fn run_tiers(
         handle_types: Default::default(),
     };
     for item in &ci.items {
-        let too_long = match &item.shape {
-            Shape::Direct { sig, .. } | Shape::Assisted { sig, .. } => heading_too_long(item, sig),
-            Shape::Skipped { .. } => None,
-        };
-        if let Some(reason) = too_long {
-            out.not_bound.push((item.name.clone(), with_path(item, &reason)));
-            out.counts.skipped += 1;
-            out.placements.push((item.name.clone(), Tier::Skipped));
-            continue;
-        }
         let tier = match &item.shape {
             Shape::Direct { sig, body, verify } => {
                 let checked = if *verify {
@@ -145,16 +135,6 @@ pub async fn run_tiers(
         }
     }
     out
-}
-
-/// SPEC 18.3: no line over 120 characters; a heading cannot be wrapped (Q110).
-const MAX_HEADING: usize = 120;
-
-/// The reason an item cannot be written as a binding heading, if its heading is too long.
-fn heading_too_long(item: &Item, sig: &Sig) -> Option<String> {
-    let h = sig.heading(item.heading.as_deref().unwrap_or(&item.name));
-    let n = "## ".len() + h.chars().count();
-    (n > MAX_HEADING).then(|| format!("its signature is {n} characters, over the 120 a line may have (SPEC 18.3)"))
 }
 
 fn push_bound(out: &mut BoundCrate, item: &Item, sig: &Sig, body: String, tier: Tier) {

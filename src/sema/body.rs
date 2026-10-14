@@ -90,6 +90,9 @@ pub struct Cx {
     /// Handles (SPEC 22.4) that were used up (`self` methods, passing them on): variable ->
     /// the span of the line that used it up.
     pub consumed: HashMap<String, crate::diag::Span>,
+    /// Handle variables this body uses up, changes or hands back (a function's parameter among them
+    /// is then taken from the caller; otherwise it is only lent, Q414).
+    pub took: std::collections::HashSet<String>,
     /// The path read next may be a handle: the caller moves or borrows it (`set`, call
     /// arguments, `return`). Anywhere else a handle read is an error (E362).
     pub handle_ok: bool,
@@ -114,6 +117,7 @@ impl Cx {
             pending: HashMap::new(),
             pending_reported: Default::default(),
             consumed: HashMap::new(),
+            took: Default::default(),
             handle_ok: false,
         }
     }
@@ -443,6 +447,10 @@ impl Checker<'_> {
                 });
                 self.stmts(&mut cx, &f.body);
                 self.end_of_body(&mut cx);
+                if let Some(s) = &sig {
+                    let lends = s.params.iter().map(|p| p.ty.is_handle() && !cx.took.contains(&p.name)).collect();
+                    self.fn_lends.insert(f.name.name.clone(), lends);
+                }
                 if out.is_some() && !f.body.is_empty() && !contains_return(&f.body) {
                     self.error(
                         "E210",

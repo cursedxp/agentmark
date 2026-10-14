@@ -32,3 +32,28 @@ done
 # scratch crate so it has the version sha2 was built against.
 cargo +nightly rustdoc --offline --quiet -p digest --target-dir "$scratch/target" -- -Z unstable-options --output-format json
 python3 "$here/trim.py" "$scratch/target/doc/digest.json" "$here/digest.json" Digest
+
+# sqlx 0.8 (example 08): the facade plus the two crates it re-exports from, built with the features of
+# examples/08-notes-api/agentmark.toml. Needs the crates in the local cargo cache (fetch them once
+# with network access). The facade's rustdoc JSON only names the items it re-exports; the binder merges
+# the other two into it (Q411).
+scratch=$(mktemp -d)
+mkdir -p "$scratch/src"
+: > "$scratch/src/lib.rs"
+cat > "$scratch/Cargo.toml" <<'EOF'
+[package]
+name = "agentmark_binder_fixtures"
+version = "0.0.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+sqlx = { version = "=0.8.6", features = ["sqlite", "runtime-tokio"] }
+EOF
+cd "$scratch"
+for c in sqlx sqlx-core sqlx-sqlite; do
+  cargo +nightly rustdoc --offline --quiet -p "$c" --target-dir "$scratch/target" -- -Z unstable-options --output-format json
+  python3 "$here/trim.py" "$scratch/target/doc/$(echo "$c" | tr - _).json" "$here/$(echo "$c" | tr - _).json"
+done
+rm -rf "$scratch"

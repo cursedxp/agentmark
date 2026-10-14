@@ -238,11 +238,30 @@ impl Checker<'_> {
         );
     }
 
+    /// The handles given to a function or `## Rust` block: a `## Rust` block takes them; a `# Function`
+    /// takes the ones its body uses up, changes or hands back, and only borrows the rest (Q414).
+    pub(super) fn move_call_args(&mut self, cx: &mut Cx, kind: super::scope::Kind, decl: &str, args: &[Expr]) {
+        let lends: Vec<bool> = if kind == super::scope::Kind::Function {
+            if let Some(ent) = self.reg.get(kind, decl).cloned() {
+                self.ensure_body(super::body::BodyKey::Function { file: ent.file, decl: ent.decl });
+            }
+            self.fn_lends.get(decl).cloned().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        for (i, a) in args.iter().enumerate() {
+            if !lends.get(i).copied().unwrap_or(false) {
+                self.move_out(cx, a);
+            }
+        }
+    }
+
     /// An expression whose value was handed over (`set`, a function argument): a plain handle
     /// variable is used up.
     pub(super) fn move_out(&mut self, cx: &mut Cx, e: &Expr) {
         if let ExprKind::Path(segs) = &e.kind {
             if segs.len() == 1 && matches!(cx.var(&segs[0].name), Some(Type::Handle(_))) {
+                cx.took.insert(segs[0].name.clone());
                 cx.consumed.entry(segs[0].name.clone()).or_insert(e.span);
             }
         }
@@ -291,6 +310,9 @@ impl Checker<'_> {
                         );
                     }
                     seen.push(v.clone());
+                    if mode != HandleMode::Shared {
+                        cx.took.insert(v.clone());
+                    }
                     if mode == HandleMode::Consume {
                         used_up.push(v);
                     }
@@ -313,6 +335,9 @@ impl Checker<'_> {
         }
         for v in used_up {
             cx.consumed.entry(v).or_insert(sk.span);
+        }
+        if recv_mode != HandleMode::Shared && recv_is_var {
+            cx.took.insert(tool.name.clone());
         }
         if recv_mode == HandleMode::Consume && recv_is_var {
             cx.consumed.entry(tool.name.clone()).or_insert(sk.span);

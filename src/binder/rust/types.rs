@@ -310,6 +310,23 @@ fn publicize(t: &RT, pubmap: &HashMap<Vec<String>, Vec<String>>) -> RT {
     }
 }
 
+/// `sqlx::Any`, `AnyConnection`: a type named `Any…` that erases which concrete type it is.
+pub fn is_erased(t: &RT) -> bool {
+    matches!(t, RT::Path { full, .. } if full.last().is_some_and(|n| n == "Any" || (n.starts_with("Any") && n[3..].starts_with(|c: char| c.is_ascii_uppercase()))))
+}
+
+/// A type that cannot be written out as a handle's one instantiation: a parameter or an associated
+/// type that is still open, or the type-erased driver.
+fn is_open(t: &RT) -> bool {
+    match t {
+        RT::Generic(_) | RT::Impl(_) | RT::Qual { .. } => true,
+        RT::Path { args, .. } => is_erased(t) || args.iter().any(is_open),
+        RT::Slice(i) | RT::Array(i) | RT::Ref { inner: i, .. } => is_open(i),
+        RT::Tuple(v) => v.iter().any(is_open),
+        _ => false,
+    }
+}
+
 fn has_generic(t: &RT) -> bool {
     match t {
         RT::Generic(_) | RT::Impl(_) => true,
@@ -365,6 +382,11 @@ pub struct LiftCtx {
     pub pubmap: HashMap<Vec<String>, Vec<String>>,
     /// Handle name -> its Rust type, for the generic / lifetime ones as the signatures instantiate them.
     pub rust_types: RefCell<BTreeMap<String, String>>,
+    /// `(Self type, associated type name)` -> the type, from the crate's trait impls
+    /// (`<Sqlite as Database>::QueryResult` is `SqliteQueryResult`).
+    pub assoc: HashMap<(Vec<String>, String), RT>,
+    /// What an `Executor` bound stands for: a borrow of the crate's one pool alias (Q412).
+    pub executor: Option<RT>,
 }
 
 pub struct Lifter<'a> {
@@ -376,6 +398,8 @@ pub struct Lifter<'a> {
     pub catchall: bool,
     /// Rust types of handles met while lifting this item; the caller keeps them only if the item is bound.
     pub pending: RefCell<BTreeMap<String, String>>,
+    /// Type parameters already known (an impl for `Pool<DB>` reached through the alias `SqlitePool`).
+    pub fixed: HashMap<String, RT>,
 }
 
 fn utc() -> RT {
@@ -404,6 +428,12 @@ impl Lifter<'_> {
                     _ => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
                 },
                 ("ToString" | "Display" | "IntoUrl", _) => std_path("String", vec![]),
+                // a value handed to a database: text is the one value every column takes (Q412)
+                ("Encode" | "Type", _) if self.catchall => std_path("String", vec![]),
+                ("Executor", _) if self.catchall => match &self.ctx.executor {
+                    Some(e) => e.clone(),
+                    None => return Err(format!("bound `{}` has no single obvious instantiation", render_bounds(std::slice::from_ref(b)))),
+                },
                 ("TimeZone", _) => utc(),
                 _ if self.catchall => match self.ctx.implementors.get(&b.full.join("::")).map(Vec::as_slice) {
                     Some([only]) => only.clone(),
@@ -418,10 +448,18 @@ impl Lifter<'_> {
                 _ => found = Some(one),
             }
         }
+        // a parameter nothing but markers (`Send`) constrains is a value of any kind; text is the AgentMark
+        // value that stands for one (`query_scalar::<DB, O>`: the column read as text, Q412)
+        if found.is_none() && self.catchall && bounds.iter().all(|b| b.marker) {
+            return Ok(std_path("String", vec![]));
+        }
         found.ok_or_else(|| "unbounded generic has no single obvious instantiation".into())
     }
 
     fn generic(&self, name: &str) -> Result<RT, String> {
+        if let Some(t) = self.fixed.get(name) {
+            return Ok(t.clone());
+        }
         let bounds = self
             .bounds
             .iter()
@@ -440,6 +478,18 @@ impl Lifter<'_> {
                 full: full.clone(),
                 args: args.iter().map(|a| self.resolve(a)).collect(),
             },
+            RT::Qual { self_ty, trait_path, name, lifetimes } => {
+                let st = self.resolve(self_ty);
+                if let RT::Path { full, .. } = &st {
+                    if let Some(t) = self.ctx.assoc.get(&(full.clone(), name.clone())) {
+                        return t.clone();
+                    }
+                }
+                RT::Qual { self_ty: Box::new(st), trait_path: trait_path.clone(), name: name.clone(), lifetimes: *lifetimes }
+            }
+            RT::Ref { inner, mutable } => RT::Ref { inner: Box::new(self.resolve(inner)), mutable: *mutable },
+            RT::Slice(i) => RT::Slice(Box::new(self.resolve(i))),
+            RT::Tuple(v) => RT::Tuple(v.iter().map(|t| self.resolve(t)).collect()),
             _ => rt.clone(),
         }
     }
@@ -495,6 +545,10 @@ impl Lifter<'_> {
             }
             RT::Generic(g) => self.value(&self.generic(g)?),
             RT::Impl(b) => self.value(&self.instantiate(b)?),
+            RT::Qual { .. } => {
+                let r = self.resolve(rt);
+                if r == *rt { no() } else { self.value(&r) }
+            }
             _ => no(),
         }
     }
@@ -512,18 +566,50 @@ impl Lifter<'_> {
         for a in args {
             let r = self.resolve(a);
             if has_generic(&r) {
+                // a type parameter of the impl that nothing here pins down is the instantiation the
+                // handle already has (`Query<'q, DB, A>` in a method: the `Query` that `query` returned)
+                if std::env::var("AGENTMARK_BIND_DEBUG2").is_ok() {
+                    eprintln!("DEBUG2 {} arg {:?} catchall={}", def.name, r, self.catchall);
+                }
+                if self.catchall && self.ctx.rust_types.borrow().contains_key(&def.name) {
+                    return Some(def.name.clone());
+                }
                 return None;
             }
-            parts.push(render(&publicize(&r, &self.ctx.pubmap)));
+            if is_open(&r) {
+                return None;
+            }
+            parts.push(self.rust_arg(&r));
         }
         let ty = if parts.is_empty() { def.rust_path.clone() } else { format!("{}<{}>", def.rust_path, parts.join(", ")) };
         let mut pending = self.pending.borrow_mut();
         match self.ctx.rust_types.borrow().get(&def.name).or_else(|| pending.get(&def.name)) {
-            Some(prev) if *prev != ty => None,
+            Some(prev) if *prev != ty => {
+                if std::env::var("AGENTMARK_BIND_DEBUG2").is_ok() {
+                    eprintln!("DEBUG2 mismatch {}: prev {prev} vs {ty}", def.name);
+                }
+                None
+            }
             _ => {
                 pending.insert(def.name.clone(), ty);
                 Some(def.name.clone())
             }
+        }
+    }
+
+    /// A type argument of a handle's Rust type, by public paths and with `'static` for every lifetime
+    /// parameter of a type of the crate (rustdoc's paths do not keep lifetime arguments).
+    fn rust_arg(&self, t: &RT) -> String {
+        match t {
+            RT::Path { full, args } => {
+                let name = render(&RT::Path { full: self.ctx.pubmap.get(full).unwrap_or(full).clone(), args: vec![] });
+                let lifetimes = self.ctx.handles.get(full).map_or(0, |d| d.lifetimes);
+                let mut parts: Vec<String> = vec!["'static".to_string(); lifetimes];
+                parts.extend(args.iter().map(|a| self.rust_arg(a)));
+                if parts.is_empty() { name } else { format!("{name}<{}>", parts.join(", ")) }
+            }
+            RT::Ref { inner, mutable } => format!("&{}{}", if *mutable { "mut " } else { "" }, self.rust_arg(inner)),
+            other => render(&publicize(other, &self.ctx.pubmap)),
         }
     }
 
@@ -546,6 +632,15 @@ impl Lifter<'_> {
 
     /// A parameter: a handle is lent (`&T`), lent mutably (`&mut T`) or handed over (`T`).
     pub fn param(&self, rt: &RT) -> Result<Ty, String> {
+        // `E: Executor` stands for `&SqlitePool`: look at what the parameter is instantiated as
+        let inst;
+        let rt = match rt {
+            RT::Generic(_) | RT::Impl(_) => {
+                inst = self.instantiated(rt);
+                &inst
+            }
+            _ => rt,
+        };
         if let RT::Ref { inner, mutable } = rt {
             if let Some(h) = self.handle_of(inner) {
                 return Ok(Ty::handle(h, if *mutable { HandleMode::Mut } else { HandleMode::Shared }));
@@ -740,7 +835,7 @@ mod tests {
             vec![Bound { name: "AsRef".into(), full: vec![], args: vec![p("str")], output: None, marker: false }],
         )];
         let ctx = LiftCtx::default();
-        let l = Lifter { bounds: &bounds, ctx: &ctx, catchall: false, pending: Default::default() };
+        let l = Lifter { bounds: &bounds, ctx: &ctx, catchall: false, pending: Default::default(), fixed: Default::default() };
         assert_eq!(l.value(&RT::Generic("S".into())), Ok(Ty::Text));
         assert!(l.value(&RT::Generic("T".into())).is_err());
     }

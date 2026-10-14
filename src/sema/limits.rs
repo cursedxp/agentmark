@@ -108,11 +108,17 @@ fn counted_len(line: &str, exempt: bool) -> (usize, Option<usize>) {
 
 fn line_lengths(path: &str, text: &str, out: &mut Vec<Diagnostic>) {
     let mut in_fence = false;
+    // the heading of a binding item is generated from the library's signature and cannot be wrapped
+    // (Q110, Q413), so the limit does not apply to it
+    let binding = text.lines().any(|l| l.starts_with("# Binding"));
     for (i, line) in text.lines().enumerate() {
         let trimmed = line.trim_start();
         let is_fence = trimmed.starts_with("```");
         if is_fence {
             in_fence = !in_fence;
+        }
+        if binding && !in_fence && !is_fence && line.starts_with("## ") {
+            continue;
         }
         let exempt = !(in_fence || is_fence || trimmed.starts_with('>'));
         let (len, over) = counted_len(line, exempt);

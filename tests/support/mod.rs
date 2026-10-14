@@ -238,9 +238,14 @@ pub fn run_program_fixture(bin: &Path, label: &str, dir: &Path) {
     let mut cmd = Command::new(bin);
     cmd.current_dir(&*work);
     let mut stdin_text = None;
+    let mut fixtures_dir = None;
     if let Some(r) = &requests {
         std::fs::copy(r, work.join("requests.json")).unwrap();
-        cmd.args(["--once", "--mock", "--fixtures", "."]);
+        // mock mode wants a fixtures folder with a model file, which a non-agent service never asks
+        let fx = work.join("..").join(format!("{}-fixtures", work.file_name().unwrap().to_string_lossy()));
+        write(&fx, "model.json", r#"{"today": "2026-10-14", "responses": []}"#);
+        cmd.args(["--once", "--mock", "--fixtures"]).arg(&fx);
+        fixtures_dir = Some(fx);
     } else {
         let run: Value = serde_json::from_str(&std::fs::read_to_string(fixture_part(dir, "run.json").unwrap_or_else(|| panic!("{label}: no run.json"))).unwrap()).unwrap();
         for a in run["args"].as_array().into_iter().flatten() {
@@ -262,6 +267,9 @@ pub fn run_program_fixture(bin: &Path, label: &str, dir: &Path) {
         }
     }
     let o = child.wait_with_output().unwrap();
+    if let Some(fx) = fixtures_dir {
+        let _ = std::fs::remove_dir_all(fx);
+    }
     assert!(o.status.success(), "{label}: the program failed ({}):\n{}", o.status, stderr(&o));
     if let Some(want) = fixture_part(dir, "expected.stdout") {
         assert_eq!(stdout(&o), std::fs::read_to_string(want).unwrap(), "{label}: stdout differs");

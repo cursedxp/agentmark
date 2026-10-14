@@ -43,7 +43,7 @@ fn every_example_is_a_project_folder_with_an_entry_point() {
             assert!(Path::new("examples").join(n).join(f).is_file(), "examples/{n}/{f} is missing");
         }
     }
-    assert_eq!(example_files().len(), 60);
+    assert_eq!(example_files().len(), 61);
 }
 
 #[test]

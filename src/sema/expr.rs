@@ -822,13 +822,14 @@ impl Checker<'_> {
         let arg_types: Vec<Type> = args
             .iter()
             .map(|a| {
-                let t = self.expr_handle_ok(cx, a);
-                self.move_out(cx, a);
-                t
+                self.expr_handle_ok(cx, a)
             })
             .collect();
         let Some((kind, decl)) = self.lookup(cx.file, &name, &[Kind::Function, Kind::RustBlock])
         else {
+            for a in args {
+                self.move_out(cx, a);
+            }
             if let Some(ty) = self.user_tool_expr(cx, e, func, args, &arg_types) {
                 return ty;
             }
@@ -852,6 +853,7 @@ impl Checker<'_> {
             self.diags.push(d);
             return Type::Unknown;
         };
+        self.move_call_args(cx, kind, &decl, args);
         self.resolutions.insert(
             NodeKey::new(cx.file, e.span),
             Resolution::Call {
