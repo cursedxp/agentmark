@@ -6,11 +6,22 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "name": { "type": "string", "description": "Project name; also the name of the built binary." },
-    "version": { "type": "string", "description": "Project version, for example \"0.1.0\"." },
+    "name": {
+      "type": "string",
+      "description": "Project name; also the name of the built binary."
+    },
+    "version": {
+      "type": "string",
+      "description": "Project version, for example \"0.1.0\"."
+    },
     "targets": {
       "type": "array",
-      "items": { "type": "string", "enum": ["rust"] },
+      "items": {
+        "type": "string",
+        "enum": [
+          "rust"
+        ]
+      },
       "description": "Compilation targets. Only \"rust\" exists in v0.x."
     },
     "lint": {
@@ -23,7 +34,15 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
-            "enum": ["long-file", "magic-value", "unnamed-guard", "duplicate-rule", "prompt-in-loop", "missing-doc", "vague-name"]
+            "enum": [
+              "long-file",
+              "magic-value",
+              "unnamed-guard",
+              "duplicate-rule",
+              "prompt-in-loop",
+              "missing-doc",
+              "vague-name"
+            ]
           },
           "description": "Lint rules promoted from warnings to errors."
         }
@@ -39,8 +58,12 @@
           "description": "Copied verbatim into [dependencies] of the generated Cargo.toml. Each entry is a version text or a Cargo dependency table.",
           "additionalProperties": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "object" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
             ]
           }
         }
@@ -62,30 +85,52 @@
       "type": "object",
       "description": "Maps an environment name to a model driver string (SPEC 19). Any environment name is allowed; production, test and dev are the usual ones.",
       "properties": {
-        "production": { "$ref": "#/definitions/driver" },
-        "test": { "$ref": "#/definitions/driver" },
-        "dev": { "$ref": "#/definitions/driver" },
+        "production": {
+          "$ref": "#/definitions/driver"
+        },
+        "test": {
+          "$ref": "#/definitions/driver"
+        },
+        "dev": {
+          "$ref": "#/definitions/driver"
+        },
         "local": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Settings for local:<model> drivers (any OpenAI-compatible server: Ollama, LM Studio, vLLM).",
-          "properties": {
-            "base_url": {
-              "type": "string",
-              "description": "Base URL of the OpenAI-compatible server, for example http://localhost:11434/v1."
+          "description": "Either a driver string (an environment named local) or the settings table for local:<model> drivers (any OpenAI-compatible server).",
+          "oneOf": [
+            {
+              "$ref": "#/definitions/driver"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "base_url": {
+                  "type": "string",
+                  "pattern": "^https?://",
+                  "description": "Base URL of the OpenAI-compatible server, for example http://localhost:11434/v1."
+                }
+              }
             }
-          }
+          ]
         }
       },
-      "additionalProperties": { "$ref": "#/definitions/driver" }
+      "additionalProperties": {
+        "$ref": "#/definitions/driver"
+      }
     }
   },
   "definitions": {
     "driver": {
       "type": "string",
-      "pattern": "^(claude(:[^\\s:]+)?|openai:[^\\s:]+|local:[^\\s]+|azure:[^\\s:]+|bedrock:[^\\s]+|mock)$",
-      "description": "A model driver string: claude, claude:<model>, openai:<model>, local:<model>, azure:<deployment>, bedrock:<model> or mock.",
-      "examples": ["claude", "claude:haiku", "openai:gpt-4o", "local:kat-coder", "mock"]
+      "pattern": "^(claude(:\\S+)?|openai:\\S+|local:\\S+|mock(:\\S+)?)$",
+      "description": "A model driver string: claude, claude:<model>, openai:<model>, local:<model>, mock or mock:<path>. azure and bedrock are not supported yet.",
+      "examples": [
+        "claude",
+        "claude:haiku",
+        "openai:gpt-4o",
+        "local:kat-coder",
+        "mock"
+      ]
     }
   }
 }

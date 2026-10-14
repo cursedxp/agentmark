@@ -52,12 +52,6 @@
         }
       }
     ],
-    "jsonValidation": [
-      {
-        "fileMatch": "agentmark.toml",
-        "url": "./schemas/agentmark.schema.json"
-      }
-    ],
     "configurationDefaults": {
       "[agentmark]": {
         "editor.formatOnSave": true,
@@ -90,12 +84,14 @@
         "agentmark.server.path": {
           "type": "string",
           "default": "agentmark-lsp",
-          "description": "Path to the agentmark-lsp binary (looked up on PATH by default)."
+          "description": "Path to the agentmark-lsp binary (looked up on PATH by default).",
+          "scope": "machine"
         },
         "agentmark.cli.path": {
           "type": "string",
           "default": "agentmark",
-          "description": "Path to the agentmark binary used for `check --json` (the touch panel)."
+          "description": "Path to the agentmark binary used for `check --json` (the touch panel).",
+          "scope": "machine"
         }
       }
     },
@@ -124,5 +120,15 @@
     "smol-toml": "^1.3.0",
     "vscode-languageclient": "^9.0.1",
     "esbuild": "^0.21.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The language server and CLI paths are only read from user settings in an untrusted workspace.",
+      "restrictedConfigurations": [
+        "agentmark.server.path",
+        "agentmark.cli.path"
+      ]
+    }
   }
 }

@@ -11,7 +11,6 @@ test("every file the manifest points at exists", () => {
   const files = [
     c.languages[0].configuration,
     c.grammars[0].path,
-    c.jsonValidation[0].url,
     c.tomlValidation[0].url,
     "LICENSE",
     "README.md",

@@ -20,12 +20,12 @@ const CLASS_HINT: Record<EffectClass, string> = {
 };
 
 function badge(c: EffectClass): string {
-  return `<span class="badge ${c}" title="${esc(CLASS_HINT[c])}">${esc(c)}</span>`;
+  return `<span class="badge ${esc(String(c))}" title="${esc(CLASS_HINT[c] ?? CLASS_HINT.unverified)}">${esc(String(c))}</span>`;
 }
 
 function link(file: string, line: number, text?: string): string {
   const label = text ?? `${file}:${line}`;
-  return `<a href="#" data-file="${esc(file)}" data-line="${line}">${esc(label)}</a>`;
+  return `<a href="#" data-file="${esc(file)}" data-line="${esc(String(line))}">${esc(label)}</a>`;
 }
 
 /** Plain-language lines for an operations manager, from one effect summary. */
@@ -33,7 +33,7 @@ export function describeEffects(e: Effects): string[] {
   const out: string[] = [];
   if (e.tools.network.length) out.push(`can reach the network: ${e.tools.network.join(", ")}`);
   if (e.tools.model) out.push("asks the AI model");
-  if (e.tools.local.length) out.push(`writes local files or logs: ${e.tools.local.join(", ")}`);
+  if (e.tools.local.length) out.push(`uses this machine: ${e.tools.local.join(", ")}`);
   if (e.tools.unverified.length) out.push(`uses libraries nobody approved yet: ${e.tools.unverified.join(", ")}`);
   if (out.length === 0) out.push("pure: touches nothing outside itself");
   return out;
@@ -46,7 +46,7 @@ function plain(e: Effects): string {
 function reachList(e: Effects): string {
   const r = reach(e);
   if (r.length === 0) return `<span class="muted">nothing</span>`;
-  return r.map((x) => `<span class="chip ${x.class}">${esc(x.name)}</span>`).join(" ");
+  return r.map((x) => `<span class="chip ${esc(String(x.class))}">${esc(x.name)}</span>`).join(" ");
 }
 
 function unitSection(u: Unit): string {
@@ -57,7 +57,7 @@ function unitSection(u: Unit): string {
     )
     .join("");
   return `<section class="unit">
-  <h2>${esc(u.name)} <span class="kind">${esc(u.kind)}</span> ${badge(u.effects.class)}</h2>
+  <h2>${esc(u.name)} <span class="kind">${esc(String(u.kind))}</span> ${badge(u.effects.class)}</h2>
   ${plain(u.effects)}
   <p class="summary">${esc(u.effects.summary)}</p>
   <p>Can touch: ${reachList(u.effects)}</p>
@@ -76,7 +76,7 @@ export function renderPanel(report: CheckReport | null, error?: string, nonce: s
     body.push(
       `<div class="banner ${report.ok ? "ok" : "error"}">${
         report.ok ? "Check passed" : "Check failed"
-      } for ${esc(report.path)} &middot; ${errs.length} error(s), ${warns.length} warning(s)</div>`,
+      } for ${esc(report.path)} &middot; ${esc(String(errs.length))} error(s), ${esc(String(warns.length))} warning(s)</div>`,
     );
     if (report.units.length === 0 && !report.ok) {
       body.push(`<p class="muted">The project has errors, so no effect summary is available yet.</p>`);
@@ -88,7 +88,7 @@ export function renderPanel(report: CheckReport | null, error?: string, nonce: s
         `<section><h2>Needs your approval</h2><p>These libraries have a binding whose <code>- effect:</code> line nobody approved.</p><ul>${report.unverified_bindings
           .map(
             (b) =>
-              `<li>${link(b.file, b.line, b.name)} (crate <code>${esc(b.crate)}</code>, ${b.items} item(s)) proposed effect: ${esc(
+              `<li>${link(b.file, b.line, b.name)} (crate <code>${esc(b.crate)}</code>, ${esc(String(b.items))} item(s)) proposed effect: ${esc(
                 b.proposed_effect ?? "none",
               )}</li>`,
           )
@@ -110,7 +110,7 @@ export function renderPanel(report: CheckReport | null, error?: string, nonce: s
         `<section><h2>Problems</h2><ul>${report.diagnostics
           .map(
             (d) =>
-              `<li class="${d.severity}">${link(d.file, d.line)} <strong>${esc(d.code)}</strong> ${esc(d.message)}${
+              `<li class="${esc(String(d.severity))}">${link(d.file, d.line)} <strong>${esc(String(d.code))}</strong> ${esc(d.message)}${
                 d.did_you_mean ? ` Did you mean <code>${esc(d.did_you_mean)}</code>?` : ""
               }${d.help ? `<div class="help">${esc(d.help)}</div>` : ""}</li>`,
           )

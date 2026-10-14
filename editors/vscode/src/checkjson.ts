@@ -86,10 +86,13 @@ export class CheckJsonError extends Error {}
 
 const emptyTools = (): EffectTools => ({ model: false, network: [], local: [], unverified: [] });
 
+const CLASSES = ["pure", "local", "network", "model", "unverified"];
+
 function normEffects(e: any): Effects {
   const t = e?.tools ?? {};
   return {
-    class: e?.class ?? "pure",
+    // an effect class this extension does not know is treated as the most cautious one
+    class: CLASSES.includes(e?.class) ? e.class : e?.class === undefined ? "pure" : "unverified",
     summary: String(e?.summary ?? "pure"),
     tools: {
       ...emptyTools(),

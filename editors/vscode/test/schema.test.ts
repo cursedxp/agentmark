@@ -44,3 +44,16 @@ test("rust dependencies, lsp and lint tables", () => {
   bad(`unknown_key = 1\n`);
   bad(`targets = ["java"]\n`);
 });
+
+test("[models] matches the compiler: drivers, mock:<path>, local as string or table, http(s) base_url", () => {
+  ok(`[models]\nproduction = "claude:haiku"\ntest = "mock:fixtures/model.json"\ndev = "openai:gpt-4o"\nlocal = "local:llama3"\n`);
+  ok(`[models]\ntest = "mock"\n[models.local]\nbase_url = "https://llm.internal/v1"\n`);
+  bad(`[models]\nproduction = "azure:deploy"\n`);
+  bad(`[models]\nproduction = "bedrock:model"\n`);
+  bad(`[models]\nproduction = "openai:"\n`);
+  bad(`[models]\nproduction = "local:"\n`);
+  bad(`[models]\ndev = "gpt-4"\n`);
+  bad(`[models.local]\nbase_url = "localhost:11434"\n`);
+  bad(`[models.local]\nbase_url = "ftp://x"\n`);
+  bad(`[models.local]\nbase_url = 5\n`);
+});

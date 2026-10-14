@@ -70,7 +70,7 @@ test("plain-language wording for an operations manager", () => {
   assert.deepEqual(describeEffects(agent.effects), [
     "can reach the network: crm, email",
     "asks the AI model",
-    "writes local files or logs: log",
+    "uses this machine: log",
   ]);
   const pure = parseCheckJson(JSON.stringify({ schema_version: 1, ok: true, units: [{ name: "f", kind: "function", effects: { class: "pure", summary: "pure", tools: {} }, blocks: [] }] }));
   assert.deepEqual(describeEffects(pure.units[0].effects), ["pure: touches nothing outside itself"]);
@@ -82,4 +82,24 @@ test("strict CSP: nonce only, no remote sources", () => {
   assert.doesNotMatch(html, /unsafe-inline|https?:\/\//);
   assert.equal((html.match(/<script nonce="abc123">/g) ?? []).length, 1);
   assert.match(html, /<style nonce="abc123">/);
+});
+
+test("unverified and machine wording; unknown effect class is treated as unverified", () => {
+  const r = parseCheckJson(
+    JSON.stringify({
+      schema_version: 1,
+      ok: false,
+      units: [
+        { name: "a", kind: "agent", effects: { class: "teleport", summary: "x", tools: { local: ["log"], unverified: ["sha2"] } }, blocks: [] },
+      ],
+    }),
+  );
+  assert.equal(r.units[0].effects.class, "unverified");
+  assert.deepEqual(describeEffects(r.units[0].effects), [
+    "uses this machine: log",
+    "uses libraries nobody approved yet: sha2",
+  ]);
+  const html = renderPanel(r);
+  assert.match(html, /badge unverified/);
+  assert.doesNotMatch(html, /teleport/);
 });

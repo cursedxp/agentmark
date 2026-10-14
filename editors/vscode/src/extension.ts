@@ -9,6 +9,7 @@ import { checkInvocation, projectTarget } from "./server";
 let client: LanguageClient | undefined;
 let panel: vscode.WebviewPanel | undefined;
 let lastRoot = "";
+let generation = 0;
 
 function startServer(context: vscode.ExtensionContext): void {
   const cfg = vscode.workspace.getConfiguration("agentmark");
@@ -54,6 +55,7 @@ async function showTouchPanel(): Promise<void> {
     vscode.window.showInformationMessage("Open an AgentMark file or folder first.");
     return;
   }
+  const mine = ++generation;
   const target = projectTarget(file);
   lastRoot = checkInvocation("agentmark", target).cwd;
   if (!panel) {
@@ -62,8 +64,7 @@ async function showTouchPanel(): Promise<void> {
     });
     panel.onDidDispose(() => (panel = undefined));
     panel.webview.onDidReceiveMessage(async (m: { file: string; line: number }) => {
-      const abs = path.isAbsolute(m.file) ? m.file : path.resolve(process.cwd(), m.file);
-      const candidates = [path.resolve(lastRoot, m.file), abs];
+      const candidates = [path.resolve(lastRoot, m.file)];
       for (const c of candidates) {
         try {
           const doc = await vscode.workspace.openTextDocument(c);
@@ -79,9 +80,10 @@ async function showTouchPanel(): Promise<void> {
   panel.webview.html = renderPanel(null, "Running agentmark check ...");
   const cli = vscode.workspace.getConfiguration("agentmark").get<string>("cli.path", "agentmark");
   try {
-    panel.webview.html = renderPanel(await runCheck(cli, target));
+    const report = await runCheck(cli, target);
+    if (mine === generation && panel) panel.webview.html = renderPanel(report);
   } catch (e) {
-    panel.webview.html = renderPanel(null, `Could not run "${cli} check --json": ${(e as Error).message}`);
+    if (mine === generation && panel) panel.webview.html = renderPanel(null, `Could not run "${cli} check --json": ${(e as Error).message}`);
   }
 }
 
