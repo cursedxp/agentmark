@@ -22,7 +22,7 @@ Rules that hold everywhere, so they are not repeated below:
 A complete program that uses all three layers is the weekly report. The agent (layer 3) wakes up on
 Monday, counts invoices with two rules, asks a model for two sentences, checks them and mails them.
 
-```agentmark file=examples/04-daily-report.agent.md
+```agentmark
 # Record: Invoice
 - id: text
 - customer: text
@@ -324,8 +324,6 @@ The control forms, each shown once in this section or as noted:
   - log: "small"
 - if lead.score is some s:
   - log: "{s}"
-- do remind
-- do net_amount(invoice, 19) -> n
 - stop
 ```
 
@@ -650,7 +648,7 @@ The built-in types:
 Tools are declared in `tools.toml` next to the source file (for a project: at its root). This is the
 manifest every example project uses:
 
-```toml file=examples/tools.toml
+```toml file=examples/01-invoice-chaser/tools.toml
 [email]
 verbs = ["send"]
 targets = ["customer", "address"]
@@ -751,21 +749,48 @@ agentmark run   <file|dir> --mock --fixtures <dir>         build, then run once 
 agentmark trace <file|dir> --mock --fixtures <dir>         the same, printing the tool-call trace (JSON lines)
 ```
 
-`check`, `fmt`, `lint`, `doc` and `bind` are the tools that read and judge the program. `build`, `run` and
-`trace` produce a program from it.
+`check`, `fmt`, `lint`, `doc` and `bind` read and judge the program. `build`, `run` and `trace` produce a program from it.
+`run` and `trace` build the project into a cache folder, then run every entry once; `trace` prints the trace on stdout
+(the folder `fixtures/01-invoice-chaser` holds the test data and the trace this run must produce):
+
+```console cwd=repo
+$ agentmark trace examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+{"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
+{"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
+{"kind":"guard","agent":"invoice-chaser","name":"reminder length < 800","result":"pass"}
+{"kind":"tool","tool":"email","verb":"send","target":"customer","to":"ap@mueller.de"}
+{"kind":"tool","tool":"crm","verb":"update","source":"invoices","id":"INV-1","set":{"status":"reminded"}}
+{"kind":"tool","tool":"log","message":"Reminded Müller GmbH about 1200.00 EUR"}
+```
+
+`run` does not print the trace; the built-in `log` tool writes its lines to standard error (`[log] ...`), and `print`
+writes to standard output unless the trace owns it:
+
+```console cwd=repo stderr
+$ agentmark run examples/01-invoice-chaser --mock --fixtures fixtures/01-invoice-chaser
+[log] Reminded Müller GmbH about 1200.00 EUR
+```
+
+`build` only writes the Cargo project (`-o <dir>`, required) and then runs `cargo check` on it unless `--no-check` is given.
 
 * The pipeline is `source -> lexer -> parser -> AST -> semantic check -> L2 lowering -> IR -> Rust code`. The IR is
-  independent of the target. A new target is one new file under `src/codegen/` (see `docs/internals.md`);
-  only Rust exists in v0.1.
+  independent of the target. A new target is one new folder under `src/codegen/` (see `docs/internals.md`);
+  only Rust exists in v0.1 (`--target rust`, the default).
 * `check` exits 1 while an unverified library is left, unless `--allow-unverified` is given; the listing is printed
-  either way (Q112). `build` applies the same rule: a release build refuses unapproved libraries, and
-  `--allow-unverified` overrides for development.
+  either way (Q112). `build`, `run` and `trace` apply the same rule: they refuse unapproved libraries.
+  With `--allow-unverified` (all four commands) an unverified library counts as its `proposed-effect` for the effect
+  checks, so a `pure` function that calls a library proposed `pure` passes; each such library gets one warning
+  (W008) saying so, and nothing is approved (Q203). Without the flag, such a function is an error.
 * Exit codes: 0 fine; 1 the project has problems (errors, denied lint rules, files that are not canonical with
   `--check`, unapproved libraries, a failed bind); 2 the command itself cannot run (bad arguments,
   a path that does not exist or is not a `.agent.md` file, no model for `bind`). Diagnostics go to stderr, reports
   and counts to stdout (Q113).
-* `build` and `run` auto-bind: every `# Import: crate x` that has no cached binding gets one before the code is
-  written, and the command prints `binding x: generated` or `binding x: cached`.
+* `check`, `build`, `run` and `trace` auto-bind: every `# Import: crate x` that has no binding file gets one before the
+  program is checked, and `binding x: generated` is printed on standard error. Existing bindings are used as they are
+  (Q137, Q201). If binding is impossible (no API key, no mock, offline without cached metadata) the message is
+  `agentmark: cannot bind "x": <why>` and the program is checked without it; a crate that a statement or an agent's
+  `tools:` line needs then gets error E219 on its import line.
+* The generated program calls real systems through the project's own file `rust/connect.rs` (section 9.1).
 * A project is a folder (normally with an `agentmark.toml` at its root). A single `.agent.md` file is also a project, with fewer rules (Q34).
 
 ### 9.1 Generated Rust project layout
@@ -777,11 +802,12 @@ out/
   src/agent_<name>.rs     one file per agent; one async fn per block
   src/records.rs          structs for every # Record, with serde derives
   src/rules.rs            one fn per # Rule (and per # Function)
-  src/tools.rs            traits generated from tools.toml
+  src/tools.rs            one trait per tool of tools.toml, a MockTools impl, and `Connected`
+  src/bindings.rs         bound library items and `## Rust` blocks
+  src/connect.rs          a copy of the project's rust/connect.rs (see below)
 ```
 
-Services and commands get a file each (`service_<name>.rs` with an axum router, `command_<name>.rs` with a clap
-subcommand) and `bindings.rs` holds bound library items and `## Rust` blocks. The generated code reads like the
+Services and commands get a file each (an axum router, a clap subcommand). The generated code reads like the
 source: one function per block, the block heading as its doc comment, and a comment
 `// <file>.agent.md:<line>` before every statement. The `Cargo.toml` pins a library to the exact version in its
 binding header (Q155).
@@ -789,6 +815,12 @@ binding header (Q155).
 The main program takes `--once` (run every scheduled entry once, in `# Run` order, then each event entry once per
 fixture item), `--schedule` (run for real on the schedule), `--mock` with `--fixtures <dir>` (pretend tools and
 model) and `--trace <file|->`.
+
+**Real tools: `rust/connect.rs`.** In a real run (no `--mock`) every tool call goes through `Connected`, which `connect()` in the user's file
+`rust/connect.rs` (beside `agentmark.toml`; next to the source file for a single-file project) builds. `build`, `run` and `trace` create the
+file from a stub when it is missing (the stub's methods fail with `not connected yet: implement Crm::list in rust/connect.rs`), never overwrite
+it, and copy it to `src/connect.rs` of the output on every build; with `--mock` it is used if it exists and never created (Q135). `log` is built in.
+The example projects ship the stubs: `examples/01-invoice-chaser/rust/connect.rs`. `docs/libraries.md` section 7 shows one.
 
 ### 9.2 Runtime crate `agentmark-rt`
 
@@ -837,7 +869,7 @@ typo.agent.md:7
   call, E210 statement, E211 hard limit, E212 `parallel` write conflict, E213 `do`, E214 `# Run`, E215 agent
   properties, E216 constants, E217 duplicate field, E218 two services with state), and warnings `W001` guessed
   type, `W002` unused import, `W003` unused declaration, `W004` library without binding, `W005` unapproved
-  library, `W006` several runnable declarations in one file, `W007` long line caused by string text.
+  library, `W006` several runnable declarations in one file, `W007` long line caused by string text, `W008` a library whose effect is assumed from its proposal (`--allow-unverified`). E219 is a crate import that has no binding although a statement or an agent's `tools:` line uses it.
 
 ## 11. Testing contract
 
@@ -971,7 +1003,7 @@ One file is one module; files in subfolders are nested modules. A file sees **on
 Two more top-level declarations turn AgentMark into a general application language. No model is involved
 unless the author writes `ask model`. This single file is a complete program with a service and a command:
 
-````agentmark file=examples/05-invoice-service.agent.md
+````agentmark
 > Non-agent example: an HTTP service plus a CLI command, using a crate binding.
 > Proves that Layer 2 + Layer 1 can build an ordinary Rust application.
 
@@ -1100,17 +1132,28 @@ value is used (Q94).
 
 A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rust, and its callers must use `try`:
 
-```agentmark fragment gap
+```agentmark
 # Function: half
 - in: n: int
 - out: result of int
 - effect: pure
   - return n / 2
+
+> Halves a number, or uses 0 when the function fails.
+# Function: half_or_zero
+- in: n: int
+- out: int
+- effect: pure
+  - try do half(n) -> h
+    otherwise:
+      - set h = 0
+  - return h
 ```
 
-(The semantic check of v0.1 does not yet accept this pair: a plain `T` is rejected by `return`, and `try do half(n) -> h`
-leaves `h` typed `result of int`. This is recorded in `OPEN_QUESTIONS.md` Q170. Use `try` on tool calls, reads and
-bindings, which work.)
+Inside a `result of T` function, `return v` takes a plain `T` (it is wrapped in `Ok`), and a `try` without `otherwise` that
+fails does not trace-and-stop as it does everywhere else: the error is handed to the caller. The caller writes
+`try do f(x) -> h`; afterwards `h` is a plain `T`, also when `otherwise` assigns it (Q200). Calling such a function
+without `try`, or inside an expression, is an error. A failure has exactly one source, a failing `try`.
 
 `maybe` values are unwrapped the same way, with `is some`:
 
@@ -1190,7 +1233,8 @@ The form is `- <binding> <item> <arguments> -> var`; the effect of the call is t
 ```
 
 Bindings live in `bindings/<crate>.agent.md` (or `.agentmark/bindings/`). `agentmark bind <crate>` runs the binder
-explicitly; `agentmark bind --all` refreshes every binding. `docs/libraries.md` walks through it.
+explicitly; `agentmark bind --all` refreshes every binding. `check`, `build`, `run` and `trace` run it for a crate that has
+no binding file yet, so the workflow is `# Import`, `check`, approve one line. `docs/libraries.md` walks through it with real output.
 
 ### 15.2 The binder
 
@@ -1214,7 +1258,7 @@ A generated binding is born `- effect: unverified`, with the binder's guess as `
 heuristics: `std::fs` means `local`, `reqwest` or `tokio::net` means `network`, otherwise `pure`; Q81).
 
 * `agentmark check` lists every unverified binding and refuses to build a release while any remain; `--allow-unverified`
-  overrides for development.
+  overrides for development: the library then counts as its `proposed-effect` for effect checks, with warning W008 (Q203).
 * A person approves by editing that one line to `- effect: pure` (or `local`, `network`). It is once per crate version.
 * A binding approved for version X is marked `unverified` again when the crate version changes.
 
@@ -1519,7 +1563,7 @@ for each invoice in crm.invoices:
 ```console
 $ agentmark fmt --check messy.agent.md
 not canonical: messy.agent.md
-1 of 1 file are not canonical; run "agentmark fmt" to fix it.
+1 of 1 file is not canonical; run "agentmark fmt" to fix it.
 ```
 
 and this is what `agentmark fmt messy.agent.md` writes:

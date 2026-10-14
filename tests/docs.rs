@@ -11,9 +11,9 @@
 //!
 //! | info string | the test |
 //! |---|---|
-//! | `agentmark` | a **complete program**: the first line that is not blank or a `>` comment must be a `# ` heading, and `check` (the library, against `examples/tools.toml`) must report 0 errors. A single-file program may hold several declarations. It also has to be in the canonical style `fmt` writes. It sees the `tools.toml` and the `bindings/` files named by earlier blocks of the same doc (see `name=`). |
+//! | `agentmark` | a **complete program**: the first line that is not blank or a `>` comment must be a `# ` heading, and `check` (the library, against `examples/01-invoice-chaser/tools.toml`) must report 0 errors. A single-file program may hold several declarations. It also has to be in the canonical style `fmt` writes. It sees the `tools.toml` and the `bindings/` files named by earlier blocks of the same doc (see `name=`). |
 //! | `agentmark invalid` | a complete program that is **meant to fail**: `check` must report at least one error (used where the text says "this is an error") |
-//! | `agentmark fragment` | a **fragment**: parsed inside the minimal wrapper below, then checked with errors about names it cannot see (other records, actions, files) ignored. `agentmark fragment gap` is parsed only: a documented gap of the checker |
+//! | `agentmark fragment` | a **fragment**: parsed inside the minimal wrapper below, then checked with errors about names it cannot see (other records, actions, files) ignored. |
 //! | `agent.md` | same as `agentmark` (the older spelling) |
 //! | anything else (`text`, `toml`, `json`, `rust`, `bash`, `console`) | not an AgentMark sample; the modifiers below still apply |
 //!
@@ -28,7 +28,7 @@
 //! A `console` block whose first line is `$ agentmark <args>` is **run**; its stdout (or stderr, when
 //! the info string also says `stderr`) must equal the rest of the block. Without `cwd=repo` the
 //! command runs in a scratch folder that holds every `name=` file written so far, plus
-//! `tools.toml` (a copy of `examples/tools.toml` unless the doc names its own).
+//! `tools.toml` (a copy of `examples/01-invoice-chaser/tools.toml` unless the doc names its own).
 //!
 //! # The fragment wrapper rule
 //!
@@ -56,7 +56,7 @@ use agentmark::project::Project;
 use agentmark::sema;
 use agentmark::syntax::parser::parse_file;
 
-const TOOLS: &str = include_str!("../examples/tools.toml");
+const TOOLS: &str = include_str!("../examples/01-invoice-chaser/tools.toml");
 
 const DOCS: [&str; 4] = ["guide", "reference", "libraries", "internals"];
 
@@ -262,10 +262,11 @@ fn info_strings_are_known() {
         assert!(!b.info.is_empty(), "{}: a fenced block with no info string (is a fence closing early? give it text/console/...)", b.at());
         let words = b.words();
         for w in words.iter().skip(1) {
-            let known = matches!(*w, "fragment" | "invalid" | "stderr" | "gap")
+            let known = matches!(*w, "fragment" | "invalid" | "stderr" | "both" | "fresh")
                 || w.starts_with("name=")
                 || w.starts_with("file=")
                 || w.starts_with("says=")
+                || w.starts_with("env=")
                 || *w == "cwd=repo";
             assert!(known, "{}: unknown word \"{w}\" in the info string \"{}\"", b.at(), b.info);
         }
@@ -343,13 +344,9 @@ fn invalid_programs_really_fail() {
 fn fragment_semantic_errors(src: &str) -> Option<String> {
     let project = Project::from_str("fragment.agent.md", src, TOOLS);
     let Err(diags) = sema::check(&project) else { return None };
-    let unresolved = |m: &str| {
-        ["Unknown name", "no record", "Unknown tool", "Unknown type", "Unknown source", "Unknown function", "Unknown rule",
-         "Unknown agent", "is not visible", "not listed", "Unknown record", "arrives as a record", "Which ", "Unknown action or function", "Cannot find the", "matches no files"]
-            .iter()
-            .any(|p| m.contains(p))
-    };
-    let rest: Vec<_> = diags.into_iter().filter(|d| d.severity == Severity::Error && !unresolved(&d.message)).collect();
+    // unknown name, type, tool or source, a tool not listed, unknown action/function, missing imports, `Which x?`
+    const UNRESOLVED: [&str; 8] = ["E111", "E112", "E113", "E201", "E202", "E207", "E208", "E213"];
+    let rest: Vec<_> = diags.into_iter().filter(|d| d.severity == Severity::Error && !UNRESOLVED.contains(&d.code)).collect();
     (!rest.is_empty()).then(|| project.render(&rest))
 }
 
@@ -362,9 +359,7 @@ fn fragments_parse_inside_the_wrapper() {
         if let Err(d) = parse_file("fragment.agent.md", &src) {
             failures.push(format!("{}: fragment does not parse:\n{}", b.at(), render_all(&d, &src)));
         }
-        else if b.has_word("gap") {
-            // a known gap of the checker (OPEN_QUESTIONS Q170): parsed only
-        } else if let Some(rendered) = fragment_semantic_errors(&src) {
+        else if let Some(rendered) = fragment_semantic_errors(&src) {
             failures.push(format!("{}: fragment has errors beyond unresolved names:\n{rendered}", b.at()));
         }
         n += 1;
@@ -426,18 +421,27 @@ fn console_output_is_real() {
                     std::fs::write(scratch.path().join("tools.toml"), TOOLS).unwrap();
                 }
                 for (n, text) in &named {
+                    if b.has_word("fresh") && n.starts_with("bindings/") {
+                        continue;
+                    }
                     let p = scratch.path().join(n);
                     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
                     std::fs::write(p, format!("{}\n", trim_end_lines(text))).unwrap();
                 }
                 scratch.path().to_path_buf()
             };
-            let out = Command::new(exe)
-                .args(args.split_whitespace())
-                .current_dir(&cwd)
-                .output()
-                .unwrap();
-            let got = if b.has_word("stderr") {
+            let mut cmd = Command::new(exe);
+            cmd.args(args.split_whitespace()).current_dir(&cwd);
+            for w in b.words().iter().skip(1) {
+                if let Some(kv) = w.strip_prefix("env=") {
+                    let (k, v) = kv.split_once('=').expect("env=KEY=VALUE");
+                    cmd.env(k, v.replace("$REPO", repo.to_str().unwrap()));
+                }
+            }
+            let out = cmd.output().unwrap();
+            let got = if b.has_word("both") {
+                format!("{}{}", String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(&out.stdout))
+            } else if b.has_word("stderr") {
                 String::from_utf8_lossy(&out.stderr).to_string()
             } else {
                 String::from_utf8_lossy(&out.stdout).to_string()
@@ -524,13 +528,8 @@ fn internals_mentions_only_files_that_exist() {
     let text = read_doc("internals");
     let tokens = path_tokens(&text);
     assert!(tokens.len() >= 40, "internals.md should name many files, found {}", tokens.len());
-    let codegen_present = Path::new("src/codegen").exists();
     let mut missing = Vec::new();
     for t in &tokens {
-        // The code generator is written in a parallel worktree; its paths are checked as soon as it is merged.
-        if !codegen_present && t.starts_with("src/codegen") {
-            continue;
-        }
         if !Path::new(t).exists() {
             missing.push(t.clone());
         }
@@ -697,8 +696,17 @@ fn check_json_doc_matches_the_real_output() {
     let start = text.find("```json\n").expect("a json sample") + 8;
     let end = start + text[start..].find("\n```").unwrap();
     let doc: serde_json::Value = serde_json::from_str(&text[start..end]).expect("the sample parses as JSON");
+    // a program with one warning (an unused record), one unit and one guessed field type
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("tools.toml"), TOOLS).unwrap();
+    std::fs::write(
+        dir.path().join("a.agent.md"),
+        "# Record: Order\n- total\n\n> Logs.\n# Agent: logger\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n",
+    )
+    .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_agentmark"))
-        .args(["check", "--json", "examples/05-invoice-service"])
+        .args(["check", "--json", "a.agent.md"])
+        .current_dir(dir.path())
         .output()
         .unwrap();
     let real: serde_json::Value = serde_json::from_slice(&out.stdout).expect("check --json prints JSON");
@@ -708,11 +716,12 @@ fn check_json_doc_matches_the_real_output() {
         k
     };
     assert_eq!(keys(&doc), keys(&real), "top-level keys of docs/check-json.md and `check --json`");
-    for (section, field) in [("units", "blocks"), ("diagnostics", "code")] {
-        let d = doc[section].as_array().and_then(|a| a.first());
-        let r = real[section].as_array().and_then(|a| a.first());
-        if let (Some(d), Some(r)) = (d, r) {
-            assert!(d.get(field).is_some() && r.get(field).is_some(), "{section}[].{field}");
-        }
+    for section in ["diagnostics", "units", "inferred_fields"] {
+        let d = doc[section].as_array().and_then(|a| a.first()).unwrap_or_else(|| panic!("doc sample: {section} is empty"));
+        let r = real[section].as_array().and_then(|a| a.first()).unwrap_or_else(|| panic!("real output: {section} is empty"));
+        assert_eq!(keys(d), keys(r), "keys of {section}[0]");
     }
+    let (d, r) = (&doc["units"][0]["blocks"][0], &real["units"][0]["blocks"][0]);
+    assert_eq!(keys(d), keys(r), "keys of units[0].blocks[0]");
+    assert_eq!(keys(&doc["units"][0]["effects"]), keys(&real["units"][0]["effects"]), "keys of effects");
 }

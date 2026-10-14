@@ -13,28 +13,52 @@ That is all the Rust vocabulary the first half of this page needs.
 
 ## 1. The three-line workflow
 
-The goal: write down a SHA-256 fingerprint of every invoice. The crate that does hashing is called `sha2`.
+The goal: write down a fingerprint of every invoice. The crate that does hashing is called `sha2`. The workflow is
+**import, check, approve**.
 
-**Line 1. Say you want the crate.** In the file that uses it:
+**Line 1. Say you want the crate, and use it.** In the file that uses it:
 
-```agentmark fragment
+```agentmark invalid name=report.agent.md says=has_no_binding_yet
 # Import: crate sha2
+
+# Record: Invoice
+- id: text
+- amount: money
+
+> Fingerprints every invoice, so a changed invoice is easy to spot.
+# Agent: fingerprinter
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - sha2 sha256_digest "{invoice.id}{invoice.amount}" -> digest
+  - log: "fingerprinted {invoice.id}"
 ```
 
-**Line 2. Bind it.** Run this once; it writes `bindings/sha2.agent.md` (`agentmark build` does the same
-automatically for every crate that has no binding yet):
+A statement against a library is the binding's name, the item's name, the arguments, and where to keep the result.
+This file is marked as one that fails, because at this moment there is nothing that says what `sha2` can do:
+`check` reports "has no binding yet" if it cannot make one.
 
-```bash
-agentmark bind sha2
+**Line 2. Run `check`.** It binds every crate that has no binding file yet (`agentmark build`, `run` and `trace` do
+the same), writing `bindings/sha2.agent.md`. Binding needs a model for the harder items and the crate's metadata
+(section 3 explains both); this transcript uses the project's recorded test metadata and a canned model, which is why
+it works offline. With a real key you would see the same lines for the live version:
+
+```console env=AGENTMARK_MODEL=mock:$REPO/tests/binder/model.json env=AGENTMARK_RUSTDOC_JSON=$REPO/tests/binder/sha2.json env=AGENTMARK_RUSTDOC_JSON_DIR=$REPO/tests/binder env=AGENTMARK_OFFLINE=1 both
+$ agentmark check report.agent.md
+binding sha2: generated
+Effects (what each block can touch)
+  fingerprinter / Every day at 09:00: network(crm), local(log), unverified(sha2)
+
+Libraries nobody approved yet (one line each to approve)
+  sha2 (library sha2): bindings/sha2.agent.md:5: change "- effect: unverified" to "- effect: pure" (or the right class) to approve
+
+0 warnings, but 1 unapproved library: approve the lines above, or use --allow-unverified while developing.
 ```
 
-```text
-sha2 0.10.9: generated ./bindings/sha2.agent.md: 0 direct, 1 assisted, 81 not bound.
-  Effect is unverified: change the line "- effect: unverified" to "- effect: pure" (or the right class) to approve it.
-```
-
-(That output comes from the project's own test run, which uses recorded crate metadata and a canned model so
-that it works offline. Yours will name the live version and today's date.)
+`check` stops short of "ok" and names the one line to change. If it cannot bind (no API key, nothing offline), it says
+`agentmark: cannot bind "sha2": <why>` and reports the missing binding as an error on the import line.
 
 **Line 3. Approve it.** Open the file. This is what the binder wrote (shortened here: the real file lists 81
 items it did not bind):
@@ -57,47 +81,12 @@ items it did not bind):
 - sha256_new: return type: `sha2::Sha256` has no AgentMark type (<sha2::Sha256 as sha2::Digest>::new)
 ````
 
-Read it like any AgentMark declaration. `sha256_digest(data: bytes) -> bytes` is the statement you can
-now write. The line above it, `> Compute hash of ...`, is the first sentence of the crate's own documentation
-for that function, so you know what it does without leaving the file. The `rust` fence is the body that
-makes the call. And `- effect: unverified` says: *nobody has decided yet what this library may touch.*
-
-Use it in an agent. A statement is the binding's name, the item's name, the arguments, and where to keep the
-result:
-
-```agentmark name=report.agent.md
-# Import: crate sha2
-
-# Record: Invoice
-- id: text
-- amount: money
-
-> Fingerprints every invoice, so a changed invoice is easy to spot.
-# Agent: fingerprinter
-- model: claude
-- tools: crm, log
-
-## Every day at 09:00
-- for each invoice in crm.invoices:
-  - sha2 sha256_digest "{invoice.id}{invoice.amount}" -> digest
-  - log: "fingerprinted {invoice.id}"
-```
-
-Ask for the safety check:
-
-```console
-$ agentmark check report.agent.md
-Effects (what each block can touch)
-  fingerprinter / Every day at 09:00: network(crm), local(log), unverified(sha2)
-
-Libraries nobody approved yet (one line each to approve)
-  sha2 (library sha2): bindings/sha2.agent.md:5: change "- effect: unverified" to "- effect: pure" (or the right class) to approve
-
-0 warnings, but 1 unapproved library: approve the lines above, or use --allow-unverified while developing.
-```
-
-The report already shows the library in the effect summary, as `unverified(sha2)`, and says exactly which
-line to change. Change it. Hashing text touches nothing, so the right class is `pure`:
+Read it like any AgentMark declaration. `sha256_digest(data: bytes) -> bytes` is the statement you can now write. A
+`text` argument is accepted where a binding wants `bytes` (it means the text's UTF-8 bytes). The line above the
+heading, `> Compute hash of ...`, is the first sentence of the crate's own documentation for that function, so you
+know what it does without leaving the file. The `rust` fence is the body that makes the call. And
+`- effect: unverified` says: *nobody has decided yet what this library may touch.* Hashing text touches nothing, so
+the right class is `pure`:
 
 ````agentmark name=bindings/sha2.agent.md
 > generated by agentmark bind — sha2 0.10.9 — 2026-10-14
@@ -125,12 +114,9 @@ Effects (what each block can touch)
 ok: 0 errors, 0 warnings.
 ```
 
-That is the whole workflow: **import, bind, approve one line**. The library is now part of the program and
-`agentmark build` will accept it.
-
-`agentmark check` does not run the binder itself. If you check a file that imports a crate and uses its
-statements before the binding file exists, you get the warning "The crate "sha2" has no binding yet. Run
-"agentmark bind sha2" ..." and an error that the statement's tool is unknown. Run `bind`, then check.
+That is the whole workflow: **import, check, approve one line**. The library is now part of the program and
+`agentmark build` will accept it. You can also run the binder by hand, `agentmark bind sha2`, for example to refresh a
+binding (section 3).
 
 ## 2. What the approval line means
 
@@ -151,13 +137,24 @@ only a hint. Look at the bodies, and at the crate's purpose, before you accept i
 
 What the line does:
 
-* While it says `unverified`, `agentmark check` lists the library (and exits 1), and `agentmark build` refuses to
-  produce a release. During development `--allow-unverified` lets you carry on; the listing still prints.
+* While it says `unverified`, `agentmark check` lists the library (and exits 1), and `agentmark build`, `run` and
+  `trace` refuse to produce a program. During development `--allow-unverified` lets you carry on: for the effect
+  checks the library then counts as its `proposed-effect`, so a `pure` function calling a library proposed `pure`
+  passes, and every such library gets one warning (W008) that says so. Nothing is approved by the flag:
+  the listing still prints, the file still says `unverified`, and a release build still needs the human decision.
+
+  ```text
+  bindings/sha2.agent.md:5
+    - effect: unverified
+              ^^^^^^^^^^
+    The binding "sha2" is unverified: its effect is assumed to be "pure" from the proposal (--allow-unverified).
+    Approve it before a release build by changing the line to "- effect: pure" (or the right class).
+  ```
 * Once it says `pure`, `local` or `network`, calls of that library count in the effect summary as that class.
   A `pure` library shows nothing extra; a `network` one shows `network(<binding>)`.
-* A function declared `- effect: pure` cannot call a library that is still unverified. `check` says
-  "The function ... says "- effect: pure", but this line has the effect unverified (sha2)". Approve the library
-  first, or declare the function to match.
+* Without the flag, a function declared `- effect: pure` cannot call a library that is still unverified. `check` says
+  "The function ... says "- effect: pure", but this line has the effect unverified (sha2)", and the advice is to
+  approve the library's `- effect:` line.
 * The approval belongs to one **version** of the crate. The binding file's first line records which version it
   was made for. When the crate's version changes, the next `bind` regenerates the file and marks it
   `unverified` again, because the interface may have changed. The previous file is saved as
@@ -370,12 +367,84 @@ Because bindings are plain files, a team can share them: a git repository of `bi
 registry. A first-class registry that `bind` consults before running the binder is planned; the file format will not need
 to change.
 
-## 7. When it does not work
+## 7. Connecting the tools to real systems: `rust/connect.rs`
+
+Tools such as `crm` and `email` (the manifest, `docs/reference.md` section 7) are only names to the language. In a mock
+run, fixtures answer for them. In a real run, something has to talk to your CRM and your mail server, and that
+something is the **one file** you write, `rust/connect.rs`, beside `agentmark.toml` (next to the source file for a
+single-file project). `agentmark build`, `run` and `trace` create it from a stub when it is missing, never overwrite it,
+and copy it into the generated project on every build, so you can delete the output folder without losing it.
+It is the only place plain Rust is expected of you, and the right place to use the crates of this page (`reqwest` for an HTTP API,
+an SMTP crate for mail). The committed stub of the invoice chaser:
+
+```rust file=examples/01-invoice-chaser/rust/connect.rs
+//! Connect the tools to the real world.
+//!
+//! This file is yours: it lives in your project as `rust/connect.rs` (beside agentmark.toml);
+//! `agentmark build` creates it once, when it is missing, and never changes it again. Every
+//! build copies it to `src/connect.rs` of the generated project, so edit THIS one. Implement the traits of `tools.rs` for your systems and return them from `connect()`.
+//! A real run (without --mock) uses what `connect()` returns. If tools.toml gains a tool, add it here.
+
+use agentmark_rt::RtError;
+use async_trait::async_trait;
+use serde_json::Value;
+
+use crate::tools::{Connected, Crm, Email, Http};
+
+/// A tool nobody has connected yet: every call says what to implement.
+struct NotConnected;
+
+#[async_trait]
+impl Crm for NotConnected {
+    async fn list(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Crm::list in rust/connect.rs".into()))
+    }
+    async fn get(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Crm::get in rust/connect.rs".into()))
+    }
+    async fn update(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Crm::update in rust/connect.rs".into()))
+    }
+}
+
+#[async_trait]
+impl Email for NotConnected {
+    async fn send(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Email::send in rust/connect.rs".into()))
+    }
+}
+
+#[async_trait]
+impl Http for NotConnected {
+    async fn get(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Http::get in rust/connect.rs".into()))
+    }
+    async fn post(&self, _args: Value) -> Result<Value, RtError> {
+        Err(RtError::Tool("not connected yet: implement Http::post in rust/connect.rs".into()))
+    }
+}
+
+/// The tools of a real run.
+pub fn connect() -> Connected {
+    Connected {
+        crm: Box::new(NotConnected),
+        email: Box::new(NotConnected),
+        http: Box::new(NotConnected),
+    }
+}
+```
+
+There is one trait per tool that has verbs (`Crm`, `Email`, `Http`; the `log` tool is built in), one method per verb, and
+`connect()` returns the struct that holds one implementation per tool. Each method receives the call's arguments as JSON
+and returns JSON (for `crm list`, the records). Replace a `NotConnected` with your own type, one tool at a time; until
+you do, a real run fails with a message that names the exact method to implement. When `tools.toml` gains a tool, add it here.
+A rustc error in this file is reported against the project file, as your own code, and never as an internal error.
+
+## 8. When it does not work
 
 | what you see | why | what to do |
 |---|---|---|
-| "The crate ... has no binding yet" | no `bindings/<crate>.agent.md` | `agentmark bind <crate>` |
-| "Unknown tool "sha2"" | the same, seen from the statement that uses it | the same |
+| `The crate "x" has no binding yet, but this file uses it` (E219) | `check` could not bind it: no model, no metadata, or offline | set `ANTHROPIC_API_KEY` (or `AGENTMARK_MODEL=mock:<file>`) and run `agentmark bind <crate>` |
 | "... is unverified: nobody approved what it may touch" | the approval line was never changed | read the bodies, set `- effect:` to `pure`, `local` or `network` |
 | after `cargo update`, a library is unverified again | its version changed | run `bind`, read the diff against the `.prev` file, approve again |
 | "environment variable ANTHROPIC_API_KEY is not set" | the binder needs a model for the assisted tier | set the key, or `AGENTMARK_MODEL=mock:<file>` |

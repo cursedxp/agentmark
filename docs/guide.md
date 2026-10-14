@@ -95,7 +95,7 @@ A tool is a system the agent can reach: your CRM, your email, a log. The agent c
 tools on its list. Which tools exist at all, and what each one can do, is written once by whoever set
 up your computer, in a file called `tools.toml` next to your agent. A typical one looks like this:
 
-```toml file=examples/tools.toml
+```toml file=examples/01-invoice-chaser/tools.toml
 [email]
 verbs = ["send"]
 targets = ["customer", "address"]
@@ -317,7 +317,7 @@ Applies to Invoice. Always pure.
 Before an agent touches real customers, run it against **test data**. Make a folder `fixtures` next to
 your file with two small files. The first is a pretend CRM with three invoices:
 
-```json file=fixtures/01-invoice-chaser/crm.invoices.json
+```json file=fixtures/01-invoice-chaser/crm.invoices.json name=fixtures/crm.invoices.json
 [
   {"id":"INV-1","customer":"Müller GmbH","customer_email":"ap@mueller.de","amount":"1200.00 EUR","due":"2026-09-01","status":"open"},
   {"id":"INV-2","customer":"Schmidt AG","customer_email":"buch@schmidt.de","amount":"450.00 EUR","due":"2026-10-10","status":"open"},
@@ -327,7 +327,7 @@ your file with two small files. The first is a pretend CRM with three invoices:
 
 The second says what the pretend AI answers, and what day "today" is:
 
-```json file=fixtures/01-invoice-chaser/model.json
+```json file=fixtures/01-invoice-chaser/model.json name=fixtures/model.json
 {
   "today": "2026-10-13",
   "responses": [
@@ -336,18 +336,11 @@ The second says what the pretend AI answers, and what day "today" is:
 }
 ```
 
-Then run the agent once, with nothing real attached:
+Then run the agent once, with nothing real attached. `trace` does the work against the pretend data and also
+prints a line for every step that mattered, as a diary of the run:
 
-```bash
-agentmark run invoice-chaser.agent.md --mock --fixtures fixtures
-agentmark trace invoice-chaser.agent.md --mock --fixtures fixtures
-```
-
-`run` does the work against the pretend data. `trace` does the same and also prints a line for every
-step that mattered, as a diary of the run. This is what the diary looks like for the three invoices
-above:
-
-```json file=fixtures/01-invoice-chaser/expected.trace.jsonl
+```console
+$ agentmark trace invoice-chaser.agent.md --mock --fixtures fixtures
 {"kind":"model","agent":"invoice-chaser","block":"Every day at 09:00","prompt_prefix":"Write a short, polite payment reminder","context":{"id":"INV-1"}}
 {"kind":"guard","agent":"invoice-chaser","name":"no amounts changed in reminder","result":"pass"}
 {"kind":"guard","agent":"invoice-chaser","name":"reminder length < 800","result":"pass"}
@@ -361,9 +354,16 @@ For INV-1 the agent asked the AI, both safety checks passed, one email went to `
 invoice was marked, and one line went to the log. Nothing was really sent anywhere. If a guard had
 failed, you would see `"result":"fail"` and the diary would stop there for that invoice.
 
-When the diary looks right, the same file is turned into a real program that does exactly this
-against your real systems. That step is for whoever installs it for you; it never changes what the
-agent does, because the steps are the same.
+`run` does the same work without the diary; the only thing it shows is what the agent wrote to the log:
+
+```console stderr
+$ agentmark run invoice-chaser.agent.md --mock --fixtures fixtures
+[log] Reminded Müller GmbH about 1200.00 EUR
+```
+
+Connecting the agent to your real systems, so that "send an email" really sends one, is a developer's job. It
+lives in one file of your project, `rust/connect.rs`, which nobody else touches and which is created for them the
+first time they ask for a real run. The steps of your agent do not change.
 
 ## 7. When something is wrong
 
@@ -528,14 +528,14 @@ people publish, called *crates* in the Rust world). You name the library in one 
 # Import: crate sha2
 ```
 
-and AgentMark writes a small description file for it, with plain-sounding statements such as
-`sha2 sha256_digest "some text" -> digest`. Nobody has checked yet what a new library may touch, so it
-starts as **unapproved**. `check` says so, names the file and the line, and refuses to let the agent go
+and use it in a step, such as `sha2 sha256_digest "some text" -> digest`. The first time you run `check`,
+AgentMark writes a small description file for the library. Nobody has checked yet what a new library may touch, so
+it starts as **unapproved**. `check` says so, names the file and the line, and refuses to let the agent go
 live until a person changes that one line from `- effect: unverified` to what is true: `pure` (only
 looks), `local` (touches this computer) or `network` (talks to other systems). It is your decision, and
 it is the one decision about a library that always stays with a human. While you are still trying
-things out, `agentmark check --allow-unverified` lets you carry on. The developer's page,
-`docs/libraries.md`, explains the rest.
+things out, `agentmark check --allow-unverified` lets you carry on (it assumes the library's own proposal and
+says so in a warning). The developer's page, `docs/libraries.md`, shows the whole thing with real output.
 
 ## 11. Five agents to read
 
@@ -549,34 +549,40 @@ The `examples/` folder has five finished programs. Reading them is the fastest w
 | `04-daily-report` | counting with rules, a weekly trigger, and a report mailed to you |
 | `05-invoice-service` | no AI at all: a small web service and a command, using a library |
 
-Here is the second one in full, a complete agent on one page. Read it with the report in mind. It uses
-the CRM, email and the log, and it asks the AI:
+Here is the second one. The record it works on comes first, then the agent:
 
-```agentmark file=examples/02-lead-qualifier.agent.md
+```agentmark file=examples/02-lead-qualifier/records/lead.agent.md
+> An inbound lead as delivered by the CRM.
 # Record: Lead
 - id: text
 - company: text
 - message: text
 - email: text
 - score: maybe int
+```
 
-# Record: Qualification
-- score: int
-- reason: text
+```agentmark file=examples/02-lead-qualifier/agents/lead-qualifier.agent.md
+# Import: ../constants.agent.md
+# Import: ../records/lead.agent.md
+# Import: ../records/qualification.agent.md
 
+> Scores every inbound lead and alerts sales about the hot ones. Never contacts the lead itself.
 # Agent: lead-qualifier
 - model: claude:haiku
 - tools: crm, email, log
 
 ## When crm receives lead
-- ask model with lead: "Score this inbound lead from 1 to 10 for a web agency and explain why in one sentence." as Qualification -> q
+- ask model with lead: scoring_prompt as Qualification -> q
 - guard: q matches Qualification
 - crm update lead: score = q.score
-- if q.score >= 7:
+- if q.score >= hot_lead_score:
   - email send address "sales@optimotion.dev": "Hot lead: {lead.company} ({q.score}/10). {q.reason}"
 - else:
   - log: "Lead {lead.company} scored {q.score}, no action"
 ```
+
+Read it with the report in mind. It uses the CRM, email and the log, and it asks the AI. `scoring_prompt` and
+`hot_lead_score` are named values from the constants file.
 
 Three things to notice. `score: maybe int` says a lead may have no score yet: anything that can be missing
 must say `maybe`, there is no "empty by accident". `as Qualification` tells the AI to answer in the shape
