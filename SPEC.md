@@ -670,6 +670,8 @@ From v0.3 AgentMark is first a general-purpose programming language written as M
     - print: "{problem}"
 ```
 
+Records are built the same way as variants: `Sale { region: "EU", amount: 120.00 EUR }`. Every field that is not `maybe` must be given.
+
 Every variant must be handled or an `- otherwise:` branch given; a missing variant is a compile error naming it. `match` is a statement; it is pure unless its branches are not.
 
 ### 22.2 Collection words
@@ -710,6 +712,8 @@ The library is part of the language, not a binding; every function has a fixed e
 | `path` | `join(a, b)`, `name(p)`, `stem(p)`, `extension(p)`, `parent(p)` |
 | `json` | `parse(t) as T` → `result of T`, `encode(v)` → text |
 | `csv` | `parse(t) as list of T` → `result of list of T` (header row maps to field names), `encode(rows)` → text |
+
+A function that returns `result of T` (such as `csv.parse` or `date.parse`) is used in one of two ways: `- try <call> -> var` with an optional `otherwise:` block (section 14), after which `var` has type `T`; or `- match <call>:` with `ok`/`error` branches. `if <expr> is some x:` works on any `maybe` expression, including a call.
 
 Files are a built-in tool `file` with effect `local`; it needs no `tools.toml` entry:
 
@@ -771,7 +775,7 @@ Five examples, none an agent, none containing `## Rust`:
 | `09-markdown-to-html` | text and regex functions, an `# Enum` for block kinds, `match`, string building |
 | `10-log-analyzer` | `lines`, regex captures, `group by`, `count of`, `take … from`, top-N report |
 
-A non-agent fixture folder holds `run.json` (`{"args": […]}`, optional `"stdin"`), an `input/` folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional `expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`. Services use `requests.json` as in v0.2.
+A non-agent fixture folder holds `run.json` (`{"args": […]}`, optional `"stdin"`), an `input/` folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional `expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`. Services use `requests.json` as in v0.2. A variant folder under `fixtures/<name>/variants/<case>/` holds only what differs from its parent; anything it lacks (`input/`, `run.json`, …) is taken from the parent folder. For services, each entry of `requests.json` may carry `expect_status` and `expect_body`; a mismatch fails the test.
 
 ### 22.8 Out of scope for v0.3
 
