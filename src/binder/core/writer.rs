@@ -131,40 +131,63 @@ pub fn render_binding(
 /// SPEC 18.3: no line over 120 characters, and generated files obey it too (Q110). Nothing is
 /// cut (SPEC 15.2: never silently drop): a long reason continues on `  > ` comment lines under
 /// the entry, each at most 120 characters.
+///
+/// A single word longer than a line is split without losing or adding anything (Q202): the line
+/// that ends inside the word ends in a `\` marker, and the parser joins the next line to it
+/// WITHOUT a space. So that a real backslash at the end of a wrapped line is not mistaken for the
+/// marker, the trailing backslashes of every line that is followed by another are doubled; the
+/// parser halves them again (`syntax::parser::join_wrapped`). A backslash counts two columns here, and one
+/// column is kept free for the marker, so the 120 limit holds.
 pub fn not_bound_entry(name: &str, reason: &str) -> String {
     const MAX: usize = 120;
-    let first = format!("- {name}:");
-    let mut lines = vec![first];
-    let mut width = lines[0].chars().count();
+    let cost = |s: &str| s.chars().map(|c| if c == '\\' { 2 } else { 1 }).sum::<usize>();
+    let limit = MAX - 1;
+    let mut lines = vec![format!("- {name}:")];
+    let mut split_after = vec![false];
+    let mut width = cost(&lines[0]);
     let mut fresh = true; // nothing but the prefix on the current line yet
     for word in reason.split_whitespace() {
         let mut word = word.to_string();
         loop {
             let cur = lines.last_mut().unwrap();
-            let room = MAX.saturating_sub(width + 1);
-            if word.chars().count() <= room {
+            let room = limit.saturating_sub(width + 1);
+            if cost(&word) <= room {
                 cur.push(' ');
                 cur.push_str(&word);
-                width += 1 + word.chars().count();
+                width += 1 + cost(&word);
                 fresh = false;
                 break;
             }
             if fresh {
                 // a single word longer than a line: split it, losing nothing
-                let take: String = word.chars().take(room.max(1)).collect();
+                let mut take = String::new();
+                for ch in word.chars() {
+                    if !take.is_empty() && cost(&take) + cost(&ch.to_string()) > room {
+                        break;
+                    }
+                    take.push(ch);
+                }
                 word = word.chars().skip(take.chars().count()).collect();
                 cur.push(' ');
                 cur.push_str(&take);
                 fresh = false;
                 if word.is_empty() {
-                    width += 1 + take.chars().count();
+                    width += 1 + cost(&take);
                     break;
                 }
+                *split_after.last_mut().unwrap() = true;
             }
             lines.push("  >".to_string());
+            split_after.push(false);
             width = 3;
             fresh = true;
         }
+    }
+    let last = lines.len() - 1;
+    for (i, line) in lines.iter_mut().enumerate().take(last) {
+        let run = line.chars().rev().take_while(|c| *c == '\\').count();
+        line.truncate(line.len() - run);
+        line.push_str(&"\\".repeat(run * 2 + usize::from(split_after[i])));
     }
     let mut out = lines.join("\n");
     out.push('\n');

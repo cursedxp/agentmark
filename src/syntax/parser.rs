@@ -1178,6 +1178,7 @@ impl<'l> Builder<'l> {
                 }
                 // `  > ` lines directly under an entry continue its reason (Q24, Q110)
                 let mut last: Option<usize> = None;
+                let mut pieces: Vec<Vec<&str>> = vec![Vec::new(); not_bound.len()];
                 for l in &lines {
                     match l.kind {
                         LineKind::Item => {
@@ -1185,14 +1186,16 @@ impl<'l> Builder<'l> {
                         }
                         LineKind::Comment if l.indent >= 1 => {
                             if let (Some(i), false) = (last, l.text.is_empty()) {
-                                let r = not_bound[i].reason.get_or_insert_with(String::new);
-                                if !r.is_empty() {
-                                    r.push(' ');
-                                }
-                                r.push_str(&l.text);
+                                pieces[i].push(&l.text);
                             }
                         }
                         _ => last = None,
+                    }
+                }
+                // the writer's line wrapping, undone (Q202)
+                for (n, p) in not_bound.iter_mut().zip(&pieces) {
+                    if !p.is_empty() {
+                        n.reason = Some(join_wrapped(n.reason.as_deref().unwrap_or(""), p));
                     }
                 }
                 continue;
@@ -1466,6 +1469,30 @@ impl<'l> Builder<'l> {
         }
         out
     }
+}
+
+/// The reverse of the line wrapping of `binder::core::writer::not_bound_entry` (Q202): the first
+/// line's reason and the texts of the `  > ` lines below it become one reason. A line that ends in
+/// an odd number of backslashes was split inside a word (joined without a space, marker removed);
+/// every pair of trailing backslashes stands for one real backslash. The runs are read per line.
+pub fn join_wrapped(first: &str, rest: &[&str]) -> String {
+    let mut out = String::new();
+    let mut join_plain = false;
+    for (i, line) in std::iter::once(first).chain(rest.iter().copied()).enumerate() {
+        if i > 0 && !join_plain && !out.is_empty() {
+            out.push(' ');
+        }
+        let last = i == rest.len();
+        if last {
+            out.push_str(line);
+            break;
+        }
+        let run = line.chars().rev().take_while(|c| *c == '\\').count();
+        out.push_str(&line[..line.len() - run]);
+        out.push_str(&"\\".repeat(run / 2));
+        join_plain = run % 2 == 1;
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------------- docs
