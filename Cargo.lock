@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agentmark"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "agentmark-rt",
  "chrono",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "agentmark-lsp"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "agentmark",
  "agentmark-rt",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "agentmark-rt"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "chrono",

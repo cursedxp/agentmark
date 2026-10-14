@@ -61,11 +61,11 @@ Needs Node.js and the language server above. The extension also works without th
    npx @vscode/vsce package
    ```
 
-2. Expect `agentmark-0.1.0.vsix` in the same folder.
+2. Expect `agentmark-0.3.0.vsix` in the same folder.
 3. Install it from the command line, or from the Extensions view. In the view, open the `...` menu and pick "Install from VSIX...".
 
    ```sh
-   code --install-extension agentmark-0.1.0.vsix
+   code --install-extension agentmark-0.3.0.vsix
    ```
 
 4. Open a folder that holds an `agentmark.toml`, or any `.agent.md` file.
