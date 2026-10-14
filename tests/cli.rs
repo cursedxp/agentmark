@@ -226,6 +226,29 @@ fn check_json_nested_entries_have_the_documented_keys() {
 }
 
 #[test]
+fn check_json_of_example_05_has_no_diagnostics() {
+    let o = run(&["check", "examples/05-invoice-service", "--json"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    let v: Value = serde_json::from_str(&out(&o)).unwrap();
+    assert_eq!(v["diagnostics"], serde_json::json!([]));
+}
+
+#[test]
+fn committed_example_connect_stubs_equal_a_freshly_generated_stub() {
+    for name in ["01-invoice-chaser", "02-lead-qualifier", "03-support-triage", "04-daily-report", "05-invoice-service"] {
+        let d = temp(&format!("stub-{name}"));
+        copy_dir(&Path::new("examples").join(name), &d);
+        let committed = std::fs::read_to_string(d.join("rust/connect.rs")).unwrap_or_else(|_| panic!("{name} has no rust/connect.rs"));
+        std::fs::remove_dir_all(d.join("rust")).unwrap();
+        let out_dir = temp(&format!("stub-out-{name}"));
+        let o = run(&["build", s(&d), "-o", s(&out_dir), "--no-check"]);
+        assert_eq!(code(&o), 0, "{}", err(&o));
+        let fresh = std::fs::read_to_string(d.join("rust/connect.rs")).unwrap();
+        assert_eq!(committed, fresh, "{name}: regenerate with a build after deleting examples/{name}/rust");
+    }
+}
+
+#[test]
 fn check_json_of_a_broken_project_still_parses() {
     let d = temp("badjson");
     write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
