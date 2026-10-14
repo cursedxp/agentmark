@@ -670,6 +670,10 @@ From v0.3 AgentMark is first a general-purpose programming language written as M
     - print: "{problem}"
 ```
 
+Records are built the same way as variants: `Sale { region: "EU", amount: 120.00 EUR }`. Every field that is not `maybe` must be given.
+
+A `maybe` value is written `some x` or `none`. In a branch the name after the variant is optional (`- error:` when the problem is not used).
+
 Every variant must be handled or an `- otherwise:` branch given; a missing variant is a compile error naming it. `match` is a statement; it is pure unless its branches are not.
 
 ### 22.2 Collection words
@@ -703,13 +707,15 @@ The library is part of the language, not a binding; every function has a fixed e
 | module | functions (all pure) |
 |---|---|
 | `text` | `split(t, sep)`, `lines(t)`, `trim(t)`, `lower(t)`, `upper(t)`, `replace(t, from, to)`, `contains(t, part)`, `starts with(t, p)` (spelled `starts_with`), `ends_with`, `length(t)`, `pad(t, width)`, `repeat(t, n)` |
-| `regex` | `matches(t, pattern)`, `find(t, pattern)` → `maybe text`, `captures(t, pattern)` → `maybe list of text`, `replace(t, pattern, with)` |
+| `regex` | `matches(t, pattern)`, `find(t, pattern)` → `maybe text`, `captures(t, pattern)` → `maybe list of text`, `replace(t, pattern, with)` (every match) |
 | `number` | `round(x, places)`, `parse(t)` → `result of int`, `min(a, b)`, `max(a, b)`, `abs(x)`, `format(x, places)` |
 | `money` | `parse(t)` → `result of money`, `format(m)` |
 | `date` | `parse(t, pattern)` → `result of date`, `format(d, pattern)`, `days between(a, b)` (spelled `days_between`), `today` stays a built-in |
 | `path` | `join(a, b)`, `name(p)`, `stem(p)`, `extension(p)`, `parent(p)` |
 | `json` | `parse(t) as T` → `result of T`, `encode(v)` → text |
 | `csv` | `parse(t) as list of T` → `result of list of T` (header row maps to field names), `encode(rows)` → text |
+
+A function that returns `result of T` (such as `csv.parse` or `date.parse`) is used in one of two ways: `- try <call> -> var` (the `do` of section 14, `- try do <call> -> var`, is accepted and means the same) with an optional `otherwise:` block (section 14), after which `var` has type `T`; or `- match <call>:` with `ok`/`error` branches. `if <expr> is some x:` works on any `maybe` expression, including a call.
 
 Files are a built-in tool `file` with effect `local`; it needs no `tools.toml` entry:
 
@@ -730,7 +736,7 @@ Every `file` call is traced (`{"kind":"file","verb":…,"path":…}`) so tests s
 When the binder (section 15) meets a Rust type that has no AgentMark equivalent, it no longer skips the API around it: it declares the type as `handle of <crate>.<Type>` and binds its constructors and methods.
 
 ```
-- sha2 sha256 new -> hasher              > hasher: handle of sha2.Sha256
+- sha2 sha256_new -> hasher              > hasher: handle of sha2.Sha256
 - hasher update data                     > &mut self method, data: bytes (text accepted, Q151)
 - hasher finalize -> digest              > self method: consumes hasher
 ```
@@ -738,6 +744,8 @@ When the binder (section 15) meets a Rust type that has no AgentMark equivalent,
 - A handle can be stored in variables and passed to functions; it cannot be printed, compared, put in a record that is serialized, or traced.
 - A method that takes `self` by value consumes the handle; using it afterwards is a compile error that names the line where it was consumed.
 - A method call is an ordinary tool-style statement `- <handle> <method> <arguments> [-> var]` with the binding's checked effect.
+- A handle owns whatever the Rust value borrows: types with lifetimes, and generic types whose parameters have a single instantiation in the crate as configured (for example `sqlx::query` with the `sqlite` feature, `DB = Sqlite`), are bound as handles through the assisted tier instead of being skipped. Rust integers wider than `int` (`u64`) convert with a checked conversion that fails the call on overflow.
+- Crate features come from `agentmark.toml`: `[crates] sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }`. The binder and the generated `Cargo.toml` both use them; without an entry the crate's defaults apply.
 - Target: for `sha2`, at least half of the items that v0.2 listed under `## Not bound` become bound.
 
 ### 22.5 User-defined tools
@@ -771,7 +779,7 @@ Five examples, none an agent, none containing `## Rust`:
 | `09-markdown-to-html` | text and regex functions, an `# Enum` for block kinds, `match`, string building |
 | `10-log-analyzer` | `lines`, regex captures, `group by`, `count of`, `take … from`, top-N report |
 
-A non-agent fixture folder holds `run.json` (`{"args": […]}`, optional `"stdin"`), an `input/` folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional `expected/` folder compared file by file with the working directory after the run, and an optional `expected.trace.jsonl`. Services use `requests.json` as in v0.2.
+A non-agent fixture folder holds `run.json` (`{"args": […]}`, optional `"stdin"`), an `input/` folder copied into a fresh working directory before the run, and the expected results: `expected.stdout`, an optional `expected/` folder compared file by file with the working directory after the run (the working directory must then hold exactly those files), and an optional `expected.trace.jsonl`. Services use `requests.json` as in v0.2. A variant folder under `fixtures/<name>/variants/<case>/` holds only what differs from its parent; anything it lacks (`input/`, `run.json`, …) is taken from the parent folder. For services, each entry of `requests.json` may carry `expect_status` and `expect_body`; a mismatch fails the test.
 
 ### 22.8 Out of scope for v0.3
 

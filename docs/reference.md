@@ -1807,6 +1807,12 @@ Nothing here changes the language. Built after v0.1 passes all its tests, in thi
 * Targets other than Rust.
 * Closures and generics in the core language.
 
+## 22. v0.3: a general-purpose Markdown language
+
+Section 22 of the specification turns the core (Layer 2) into a general-purpose language: user-defined types and `match`,
+collection words, a built-in library, opaque library handles and user-defined tools. Each subsection below is added as the
+construct lands in the compiler, with checked samples like every other section.
+
 ## Appendix A. Statement index
 
 Every statement form of the language, with where it is explained:
