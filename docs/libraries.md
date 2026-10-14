@@ -1,130 +1,178 @@
 # Using any Rust library from AgentMark
 
-*For a developer who knows another language (TypeScript, Python, Go, Java) but not Rust.*
+**In short**
 
-AgentMark is a Markdown programming language, and a lot is built in before you need a library: the modules `text`, `regex`,
-`number`, `money`, `date`, `path`, `json` and `csv`, and the `file` tool (`docs/reference.md`, section 22.3). Reach for a
-crate for what is not there: hashing, PDF, a database, an HTTP client. Libraries are used the same way by every kind of
-program (a command, a service, an agent), and so is the rest of this page.
+* This page shows how to use a Rust library, called a **crate**, from an AgentMark program without writing Rust.
+* It is for developers who know TypeScript, Python, Go or Java but not Rust.
+* After reading it you can import a crate, approve it, use objects from it, and cover what the binder cannot.
 
-AgentMark programs can use any Rust library, called a **crate**, without you writing a line of Rust. You
-name the crate; AgentMark reads the crate's public interface and writes a small *binding* file that
-turns each usable function into a plain statement. This page walks through the workflow once, end to
-end, then explains each piece: what the approval line means, what to do when something is listed under
-`## Not bound`, and how `## Rust` blocks cover what the binder cannot.
+**Jump to**
+
+* [Do I even need a library?](#do-i-even-need-a-library)
+* [The 3-step workflow](#the-3-step-workflow)
+* [Something went wrong?](#something-went-wrong)
+* [What the approval line means](#what-the-approval-line-means)
+* [Use an object from a library: handles](#use-an-object-from-a-library-handles)
+* [Something is under `## Not bound`](#something-is-under--not-bound)
+* [Write Rust yourself: `## Rust` blocks](#write-rust-yourself--rust-blocks)
+* [Connect tools to real systems: `rust/connect.rs`](#connect-tools-to-real-systems-rustconnectrs)
 
 If you have used `npm`, a crate is a package, `Cargo.toml` is `package.json`, and crates.io is the registry.
-That is all the Rust vocabulary the first half of this page needs.
+That is all the Rust vocabulary you need for the first half of this page.
 
-## 1. The three-line workflow
+## Do I even need a library?
 
-The goal: write down a fingerprint of an invoice. The crate that does hashing is called `sha2`. The workflow is
-**import, check, approve**.
+Check this table first. AgentMark has many modules built in, listed in `docs/reference.md`, section 22.3.
 
-**Line 1. Say you want the crate, and use it.** In the file that uses it:
+| I need | Use |
+|---|---|
+| text, split, replace, case | built in: `text` |
+| pattern matching | built in: `regex` |
+| numbers and rounding | built in: `number` |
+| amounts of money | built in: `money` |
+| dates, times, durations | built in: `date` |
+| file paths | built in: `path` |
+| JSON | built in: `json` |
+| CSV | built in: `csv` |
+| reading and writing files | built in: the `file` tool |
+| hashing | crate: `sha2` |
+| a PDF file | crate: `printpdf` |
+| a database | crate: `sqlx` |
+| an HTTP client | crate: `reqwest` |
+| time zones and calendar maths beyond `date` | crate: `chrono` |
 
-```agentmark invalid name=report.agent.md says=has_no_binding_yet
-# Import: crate sha2
+Libraries work the same way in every kind of program: a command, a service or an agent.
 
-> Fingerprints an invoice, so a changed invoice is easy to spot: `fingerprint-invoice <id> <amount>`.
-# Command: fingerprint-invoice
-- args: id: text, amount: money
+**Next:** [The 3-step workflow](#the-3-step-workflow).
 
-## Run
-- sha2 sha256_digest "{id}{amount}" -> digest
-- print: "fingerprinted {id}"
+## The 3-step workflow
 
-# Run
-- fingerprint-invoice
-```
+The goal is to write down a fingerprint of an invoice. The crate that does hashing is `sha2`. The workflow is **import, check, approve**.
 
-A statement against a library is the binding's name, the item's name, the arguments, and where to keep the result.
-This file is marked as one that fails, because at this moment there is nothing that says what `sha2` can do:
-`check` reports "has no binding yet" if it cannot make one.
+1. **Import the crate and use it.** A statement against a library is the binding's name, the item's name, the arguments, and where to keep the result.
 
-**Line 2. Run `check`.** It binds every crate that has no binding file yet (`agentmark build`, `run` and `trace` do
-the same), writing `bindings/sha2.agent.md`. Binding needs a model for the harder items and the crate's metadata
-(section 3 explains both); this transcript uses the project's recorded test metadata and a canned model, which is why
-it works offline. With a real key you would see the same lines for the live version:
+   ```agentmark invalid name=report.agent.md says=has_no_binding_yet
+   # Import: crate sha2
 
-```console env=AGENTMARK_MODEL=mock:$REPO/tests/binder/model.json env=AGENTMARK_RUSTDOC_JSON=$REPO/tests/binder/sha2.json env=AGENTMARK_RUSTDOC_JSON_DIR=$REPO/tests/binder env=AGENTMARK_OFFLINE=1 both
-$ agentmark check report.agent.md
-binding sha2: generated
-Effects (what each block can touch)
-  fingerprint-invoice / Run: local(print), unverified(sha2)
+   > Fingerprints an invoice, so a changed invoice is easy to spot: `fingerprint-invoice <id> <amount>`.
+   # Command: fingerprint-invoice
+   - args: id: text, amount: money
 
-Libraries nobody approved yet (one line each to approve)
-  sha2 (library sha2): bindings/sha2.agent.md:5: change "- effect: unverified" to "- effect: pure" (or the right class) to approve
+   ## Run
+   - sha2 sha256_digest "{id}{amount}" -> digest
+   - print: "fingerprinted {id}"
 
-0 warnings, but 1 unapproved library: approve the lines above, or use --allow-unverified while developing.
-```
+   # Run
+   - fingerprint-invoice
+   ```
 
-`check` stops short of "ok" and names the one line to change. If it cannot bind (no API key, nothing offline), it says
-`agentmark: cannot bind "sha2": <why>` and reports the missing binding as an error on the import line.
+   This file is marked as one that fails, because nothing yet says what `sha2` can do. `check` reports "has no binding yet" if it cannot make one.
 
-**Line 3. Approve it.** Open the file. This is what the binder wrote (shortened here: the real file also binds
-a hasher you can feed piece by piece, section 4a, and lists 33 items it did not bind):
+2. **Run `check`.** It binds every crate that has no binding file yet, and writes `bindings/sha2.agent.md`. The commands `agentmark build`, `run` and `trace` do the same. This transcript uses recorded test metadata and a canned model, so it works offline.
 
-````agentmark name=bindings/sha2.agent.md
-> generated by agentmark bind — sha2 0.10.9 — 2026-10-14
-> edit freely; re-run `agentmark bind sha2 --force` to regenerate
-# Binding: sha2
-- crate: sha2
-- effect: unverified
-- proposed-effect: pure
+   ```console env=AGENTMARK_MODEL=mock:$REPO/tests/binder/model.json env=AGENTMARK_RUSTDOC_JSON=$REPO/tests/binder/sha2.json env=AGENTMARK_RUSTDOC_JSON_DIR=$REPO/tests/binder env=AGENTMARK_OFFLINE=1 both
+   $ agentmark check report.agent.md
+   binding sha2: generated
+   Effects (what each block can touch)
+     fingerprint-invoice / Run: local(print), unverified(sha2)
 
-> Compute hash of `data`.
-## sha256_digest(data: bytes) -> bytes
-  ```rust
-  Ok(<sha2::Sha256 as sha2::Digest>::digest(&data).to_vec())
-  ```
+   Libraries nobody approved yet (one line each to approve)
+     sha2 (library sha2): bindings/sha2.agent.md:5: change "- effect: unverified" to "- effect: pure" (or the right class) to approve
 
-## Not bound
-- sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
-````
+   0 warnings, but 1 unapproved library: approve the lines above, or use --allow-unverified while developing.
+   ```
 
-Read it like any AgentMark declaration. `sha256_digest(data: bytes) -> bytes` is the statement you can now write. A
-`text` argument is accepted where a binding wants `bytes` (it means the text's UTF-8 bytes). The line above the
-heading, `> Compute hash of ...`, is the first sentence of the crate's own documentation for that function, so you
-know what it does without leaving the file. The `rust` fence is the body that makes the call. And
-`- effect: unverified` says: *nobody has decided yet what this library may touch.* Hashing text touches nothing, so
-the right class is `pure`:
+   `check` stops short of "ok" and names the one line to change. With a real API key you see the same lines for the live version. Binding needs a model for the harder items and the crate's metadata, see [Run the binder yourself](#run-the-binder-yourself).
 
-````agentmark name=bindings/sha2.agent.md
-> generated by agentmark bind — sha2 0.10.9 — 2026-10-14
-> edit freely; re-run `agentmark bind sha2 --force` to regenerate
-# Binding: sha2
-- crate: sha2
-- effect: pure
-- proposed-effect: pure
+   If `check` cannot bind, it says `agentmark: cannot bind "sha2": <why>`. It then reports the missing binding as an error on the import line.
 
-> Compute hash of `data`.
-## sha256_digest(data: bytes) -> bytes
-  ```rust
-  Ok(<sha2::Sha256 as sha2::Digest>::digest(&data).to_vec())
-  ```
+3. **Approve one line.** Open the file the binder wrote. It is shortened here, because the real file also binds a hasher you can feed piece by piece, see [handles](#use-an-object-from-a-library-handles), and lists 33 items it did not bind.
 
-## Not bound
-- sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
-````
+   ````agentmark name=bindings/sha2.agent.md
+   > generated by agentmark bind — sha2 0.10.9 — 2026-10-14
+   > edit freely; re-run `agentmark bind sha2 --force` to regenerate
+   # Binding: sha2
+   - crate: sha2
+   - effect: unverified
+   - proposed-effect: pure
+
+   > Compute hash of `data`.
+   ## sha256_digest(data: bytes) -> bytes
+     ```rust
+     Ok(<sha2::Sha256 as sha2::Digest>::digest(&data).to_vec())
+     ```
+
+   ## Not bound
+   - sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
+   ````
+
+   Read it like any AgentMark declaration. `sha256_digest(data: bytes) -> bytes` is the statement you can now write. A `text` argument is accepted where a binding wants `bytes`, and means the text's UTF-8 bytes.
+
+   The line above the heading is the first sentence of the crate's own documentation for that function. The `rust` fence is the body that makes the call. The line `- effect: unverified` says that nobody has decided yet what this library may touch.
+
+   Hashing text touches nothing, so the right class is `pure`. Change that one line.
+
+   ````agentmark name=bindings/sha2.agent.md
+   > generated by agentmark bind — sha2 0.10.9 — 2026-10-14
+   > edit freely; re-run `agentmark bind sha2 --force` to regenerate
+   # Binding: sha2
+   - crate: sha2
+   - effect: pure
+   - proposed-effect: pure
+
+   > Compute hash of `data`.
+   ## sha256_digest(data: bytes) -> bytes
+     ```rust
+     Ok(<sha2::Sha256 as sha2::Digest>::digest(&data).to_vec())
+     ```
+
+   ## Not bound
+   - sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
+   ````
+
+   ```console
+   $ agentmark check report.agent.md
+   Effects (what each block can touch)
+     fingerprint-invoice / Run: local(print)
+
+   ok: 0 errors, 0 warnings.
+   ```
+
+The library is now part of the program, and `agentmark build` accepts it. You can also run the binder by hand with `agentmark bind sha2`, for example to refresh a binding.
+
+To see a library as a cheat sheet without opening the file, ask for its page:
 
 ```console
-$ agentmark check report.agent.md
-Effects (what each block can touch)
-  fingerprint-invoice / Run: local(print)
+$ agentmark doc sha2
+sha2 0.10.9 (bound 2026-10-14)
+effect: pure
 
-ok: 0 errors, 0 warnings.
+Use in a statement as `<binding> <item> args`; items:
+  sha2.sha256_digest(data: bytes) -> bytes
+      Compute hash of `data`.
+
+Not bound (use a `## Rust` block for these):
+  sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
 ```
 
-That is the whole workflow: **import, check, approve one line**. The library is now part of the program and
-`agentmark build` will accept it. You can also run the binder by hand, `agentmark bind sha2`, for example to refresh a
-binding (section 3).
+**Next:** [Something went wrong?](#something-went-wrong).
 
-## 2. What the approval line means
+## Something went wrong?
 
-Every AgentMark program carries a promise: a reviewer can read the safety check and know everything the
-program can touch (`docs/reference.md`, section 8). A library breaks that promise unless someone decides what
-it is allowed to do. The `- effect:` line is that decision, written down once:
+| what you see | why | what to do |
+|---|---|---|
+| `The crate "x" has no binding yet, but this file uses it` (E219) | `check` could not bind it: no model, no metadata, or offline | set `ANTHROPIC_API_KEY` (or `AGENTMARK_MODEL=mock:<file>`) and run `agentmark bind <crate>` |
+| "... is unverified: nobody approved what it may touch" | the approval line was never changed | read the bodies, set `- effect:` to `pure`, `local` or `network` |
+| after `cargo update`, a library is unverified again | its version changed | run `bind`, read the diff against the `.prev` file, approve again |
+| "environment variable ANTHROPIC_API_KEY is not set" | the binder needs a model for the assisted tier | set the key, or `AGENTMARK_MODEL=mock:<file>` |
+| `Could not bind "x" of y on demand` (E220) | the model's code for an item you used did not pass the type check twice | write a `## Rust` block for it, or bind it by hand; nothing was changed |
+| a handle line is an error: "was used up on line N" | a `consume` method or a function took the handle | make a new one, or move the use before line N |
+| a Rust error in your `## Rust` block | your Rust has a mistake | the message points at the `.agent.md` line; fix it there |
+| "internal compiler error: generated Rust did not compile" | a bug in AgentMark itself | report it with the generated file path it prints |
+
+## What the approval line means
+
+Every AgentMark program carries a promise: a reviewer can read the safety check and know everything the program can touch. See `docs/reference.md`, section 8. A library breaks that promise unless someone decides what it may do. The `- effect:` line is that decision, written down once.
 
 | line | means |
 |---|---|
@@ -133,39 +181,35 @@ it is allowed to do. The `- effect:` line is that decision, written down once:
 | `- effect: network` | it talks to other systems |
 | `- effect: unverified` | nobody has decided; the binder always starts here |
 
-The binder also writes `- proposed-effect: pure` (or `local`, `network`), a guess from what the code uses:
-`std::fs` suggests `local`, `reqwest` or `tokio::net` suggests `network`, nothing of the kind suggests `pure`. It is
-only a hint. Look at the bodies, and at the crate's purpose, before you accept it.
+The binder also writes `- proposed-effect: pure`, or `local`, or `network`. It is a guess from what the code uses. `std::fs` suggests `local`, `reqwest` or `tokio::net` suggests `network`, and nothing of the kind suggests `pure`.
+
+**Watch out:** the proposal is only a hint, so read the bodies and the crate's purpose before you accept it.
 
 What the line does:
 
-* While it says `unverified`, `agentmark check` lists the library (and exits 1), and `agentmark build`, `run` and
-  `trace` refuse to produce a program. During development `--allow-unverified` lets you carry on: for the effect
-  checks the library then counts as its `proposed-effect`, so a `pure` function calling a library proposed `pure`
-  passes, and every such library gets one warning (W008) that says so. Nothing is approved by the flag:
-  the listing still prints, the file still says `unverified`, and a release build still needs the human decision.
+* While it says `unverified`, `agentmark check` lists the library and exits 1. `agentmark build`, `run` and `trace` refuse to produce a program.
+* During development, `--allow-unverified` lets you carry on. For the effect checks the library then counts as its `proposed-effect`, so a `pure` function calling a library proposed `pure` passes. Every such library gets one warning, W008.
+* Nothing is approved by the flag. The listing still prints, the file still says `unverified`, and a release build still needs the human decision.
+* Once it says `pure`, `local` or `network`, calls of that library count in the effect summary as that class. A `pure` library shows nothing extra. A `network` one shows `network(<binding>)`.
+* Without the flag, a function declared `- effect: pure` cannot call a library that is still unverified. `check` says "The function ... says "- effect: pure", but this line has the effect unverified (sha2)". The advice is to approve the library's `- effect:` line.
+* The approval belongs to one **version** of the crate. The binding file's first line records which version it was made for.
+* When the crate's version changes, the next `bind` regenerates the file and marks it `unverified` again, because the interface may have changed. The previous file is saved as `bindings/<crate>.agent.md.prev`, so your approval and any hand edits are not lost.
 
-  ```text
-  bindings/sha2.agent.md:5
-    - effect: unverified
-              ^^^^^^^^^^
-    The binding "sha2" is unverified: its effect is assumed to be "pure" from the proposal (--allow-unverified).
-    Approve it before a release build by changing the line to "- effect: pure" (or the right class).
-  ```
-* Once it says `pure`, `local` or `network`, calls of that library count in the effect summary as that class.
-  A `pure` library shows nothing extra; a `network` one shows `network(<binding>)`.
-* Without the flag, a function declared `- effect: pure` cannot call a library that is still unverified. `check` says
-  "The function ... says "- effect: pure", but this line has the effect unverified (sha2)", and the advice is to
-  approve the library's `- effect:` line.
-* The approval belongs to one **version** of the crate. The binding file's first line records which version it
-  was made for. When the crate's version changes, the next `bind` regenerates the file and marks it
-  `unverified` again, because the interface may have changed. The previous file is saved as
-  `bindings/<crate>.agent.md.prev`, so your approval and any hand edits are not lost.
+The warning that `--allow-unverified` prints looks like this:
 
-## 3. What the binder does
+```text
+bindings/sha2.agent.md:5
+  - effect: unverified
+            ^^^^^^^^^^
+  The binding "sha2" is unverified: its effect is assumed to be "pure" from the proposal (--allow-unverified).
+  Approve it before a release build by changing the line to "- effect: pure" (or the right class).
+```
 
-The binder looks at every public function and method of the crate and puts each one in exactly one of three
-tiers. The tiers are tried in order:
+**Next:** [What the binder does](#what-the-binder-does).
+
+## What the binder does
+
+The binder looks at every public function and method of the crate. It puts each one in exactly one of three tiers, tried in order.
 
 | tier | when | who writes the body |
 |---|---|---|
@@ -173,8 +217,9 @@ tiers. The tiers are tried in order:
 | assisted | everything else that can still be written in AgentMark types: generics with one obvious choice, `Result`, `async` | an AI model writes the Rust body, then `cargo check` compiles it against the declared signature. It is accepted only if it compiles |
 | skipped | opaque types, lifetimes, `&mut`, closures, `unsafe`, or a body that failed to compile | nobody: it goes under `## Not bound`, with the reason |
 
-Nothing is silently dropped. The counts in the `bind` output add up to every item. A larger crate, `chrono`
-(dates and times), shows how the first tier works. Seventy-one items bound by rules alone, for example:
+Nothing is silently dropped. The counts in the `bind` output add up to every item.
+
+A larger crate, `chrono`, shows how the first tier works. It handles dates and times, and 71 of its items bind by rules alone.
 
 ````text
 chrono 0.4.45: generated ./bindings/chrono.agent.md: 71 direct, 5 assisted, 338 not bound.
@@ -192,82 +237,32 @@ chrono 0.4.45: generated ./bindings/chrono.agent.md: 71 direct, 5 assisted, 338 
   ```
 ````
 
-Notice how names are built: the Rust type and function joined with underscores (`date_time_timestamp`), the
-receiver as the first parameter, `Option<T>` as `maybe T`. The sentence above each is rustdoc's.
+Names are built from the Rust type and function joined with underscores, as in `date_time_timestamp`. The receiver becomes the first parameter, and `Option<T>` becomes `maybe T`. The sentence above each item is rustdoc's.
 
-To see a library as a cheat sheet, without opening the file, ask for the page of the library:
+### Run the binder yourself
 
-```console
-$ agentmark doc sha2
-sha2 0.10.9 (bound 2026-10-14)
-effect: pure
+`agentmark bind <crate>` needs two things the first time it makes a file.
 
-Use in a statement as `<binding> <item> args`; items:
-  sha2.sha256_digest(data: bytes) -> bytes
-      Compute hash of `data`.
-
-Not bound (use a `## Rust` block for these):
-  sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
-```
-
-### Running the binder yourself
-
-`agentmark bind <crate>` needs two things the first time it makes a file:
-
-* **Crate metadata.** For Rust that is rustdoc's JSON output, which needs a nightly Rust toolchain
-  (`cargo +nightly rustdoc ...`). Without nightly, point `AGENTMARK_RUSTDOC_JSON` at a JSON file you made
-  elsewhere; for dependencies a crate re-exports, `AGENTMARK_RUSTDOC_JSON_DIR` names a folder of
-  `<crate>.json` files.
-* **A model**, for the assisted tier: `ANTHROPIC_API_KEY`, or `AGENTMARK_MODEL=mock:<model.json>` for a canned
-  one. `AGENTMARK_MODEL=openai:<model>` or `local:<model>` pick another provider, and the project's `[models]`
-  table of `agentmark.toml` works with `AGENTMARK_ENV` (reference section 19). A company that forbids external
-  APIs can run the binder on a local model.
+* **Crate metadata.** For Rust that is rustdoc's JSON output, which needs a nightly Rust toolchain, `cargo +nightly rustdoc ...`. Without nightly, point `AGENTMARK_RUSTDOC_JSON` at a JSON file you made elsewhere.
+* For dependencies a crate re-exports, `AGENTMARK_RUSTDOC_JSON_DIR` names a folder of `<crate>.json` files.
+* **A model**, for the assisted tier: `ANTHROPIC_API_KEY`, or `AGENTMARK_MODEL=mock:<model.json>` for a canned one. `AGENTMARK_MODEL=openai:<model>` or `local:<model>` pick another provider.
+* The `[models]` table of `agentmark.toml` works with `AGENTMARK_ENV`, see reference section 19. A company that forbids external APIs can run the binder on a local model.
 
 `AGENTMARK_OFFLINE=1` adds `--offline` to every cargo call the binder makes.
 
-Other flags: `--force` regenerates even an up-to-date, even an approved, binding (the old file is kept as
-`.prev`); `--all` refreshes every file in `bindings/`; `--project <dir>` says which project's `bindings/` to use.
-A binding file that lacks the generated header (one you wrote by hand) is left alone unless you say `--force`.
+| flag | does |
+|---|---|
+| `--force` | regenerates even an up-to-date or approved binding, and keeps the old file as `.prev` |
+| `--all` | refreshes every file in `bindings/` |
+| `--project <dir>` | says which project's `bindings/` to use |
 
-## 4. When something is under `## Not bound`
+A binding file without the generated header, one you wrote by hand, is left alone unless you say `--force`.
 
-Every item the binder could not bind is listed, one line each, with the reason and the crate path in brackets:
+**Next:** [Use an object from a library: handles](#use-an-object-from-a-library-handles).
 
-```text
-## Not bound
-- sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
-- sha256_var_core_write_alg_name: lifetimes in the public API (sha2::Sha256VarCore::write_alg_name)
-- redirect_policy_custom: takes a closure and AgentMark has no function type (reqwest::redirect::Policy::custom)
-```
+## Use an object from a library: handles
 
-Long reasons continue on indented `> ` lines. What each kind of reason means, and what to do:
-
-| the reason says | it means | what you do |
-|---|---|---|
-| `... has no AgentMark type` | the item uses a type that is neither one AgentMark knows nor a public type of the crate itself (which would be a *handle*, section 4a) | write a `## Rust` block that does the whole sequence in one block (section 5) |
-| `... is a mutable borrow` | the function wants a buffer of a type AgentMark cannot lend (`&mut` of a number or a byte array) | a `## Rust` block |
-| `lifetimes in the public API` | the result borrows from an argument | `## Rust` block |
-| `takes a closure and AgentMark has no function type` | the function wants a callback | `## Rust` block |
-| `assisted tier: ...` followed by a message | the model did not produce a body that compiles; or there was no model | run `agentmark bind <crate> --force` with a real model, or write a `## Rust` block |
-| `re-export of ... from another crate` | the crate re-exports another crate's items | `agentmark bind <that crate>` |
-
-A library whose API is made of objects (a hasher, an HTTP client and its requests) binds as **handles**: see the next
-section. What stays here is what a handle cannot do (a buffer to write into, a callback, a borrow that outlives the call).
-For an item that only needs its glue written, there is a shortcut: the section after.
-
-### 4a. Objects the library hands you: handles
-
-Some libraries work on an object you create, change and finish: a hasher, a client, a request builder. AgentMark cannot
-look inside such an object, so the binder declares it as a **handle**, `handle of <crate>.<Type>`, and binds the
-functions that create it and the methods that use it. The sha2 binding has, among others:
-
-```text
-## sha256_new() -> handle of sha2.Sha256
-## update(self: mut handle of sha2.Sha256, data: bytes)
-## finalize(self: consume handle of sha2.Sha256) -> bytes
-```
-
-You create the handle with a statement on the library and call methods with the **variable as the first word**:
+Some libraries work on an object you create, change and finish: a hasher, a client, a request builder. This is the sha2 hasher, fed in pieces.
 
 ```text
 - sha2 sha256_new -> hasher
@@ -276,26 +271,26 @@ You create the handle with a statement on the library and call methods with the 
 - hasher finalize -> digest
 ```
 
-`mut` says the method changes the handle, `consume` says it uses it up: after `hasher finalize`, any further use of `hasher`
-is an error that names the line it was used up on. A handle can be passed to your own functions (the function then owns
-it) and returned from them, but it cannot be printed, compared, saved in a record or sent anywhere. Methods of different
-handle types may share a name (`update` exists for Sha224 and Sha256): the handle type tells them apart. The rules and
-error codes are in `docs/reference.md`, section 15.4.
+The first line creates the object with a statement on the library. The next lines call methods with the **variable as the first word**. The last line finishes the object and keeps the result.
 
-Which features of a crate are switched on is a project setting, the `[crates]` table of `agentmark.toml`, for example
-`sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }`. The binder and the generated `Cargo.toml` both read
-it, so the handles you get (`handle of sqlx.SqlitePool`) are the ones for the database you configured. Types that borrow
-(a query that holds its text) and generic types with a single instantiation in that configuration are bound as handles too,
-and an integer wider than `int` (`u64`) is converted with a check that fails the call on overflow.
+AgentMark cannot look inside such an object. The binder declares it as a **handle**, written `handle of <crate>.<Type>`, and binds the functions that create it and the methods that use it. The sha2 binding has, among others:
 
-A binding item whose one-line heading would be longer than 120 characters is written over several lines, with the same
-words as a function: `## execute`, then `- in: self: consume handle of sqlx.query.Query, executor: handle of
-sqlx.SqlitePool` (one `- in:` line per parameter when they do not fit together) and `- out: handle of
-sqlx.sqlite.SqliteQueryResult`. The binder writes it, `agentmark fmt` keeps it, and the meaning is the same. Where a library
-asks for a value of its own (`bind` takes any encodable value), the binding takes AgentMark `text`.
+```text
+## sha256_new() -> handle of sha2.Sha256
+## update(self: mut handle of sha2.Sha256, data: bytes)
+## finalize(self: consume handle of sha2.Sha256) -> bytes
+```
 
-`examples/08-notes-api` is a web service built on this. Its `ensure_schema` function takes the pool handle that a route
-connected, runs a statement on it, and lends it back: a function only borrows a handle it does not use up.
+The rules:
+
+* `mut` says the method changes the handle.
+* `consume` says it uses the handle up. After `hasher finalize`, any further use of `hasher` is an error that names the line it was used up on.
+* A handle can be passed to your own functions and returned from them. The function then owns it.
+* A handle cannot be printed, compared, saved in a record or sent anywhere.
+* Methods of different handle types may share a name. `update` exists for Sha224 and Sha256, and the handle type tells them apart.
+* The full rules and error codes are in `docs/reference.md`, section 15.4.
+
+`examples/08-notes-api` is a web service built on this. Its `ensure_schema` function takes the pool handle that a route connected, runs a statement on it, and lends it back. A function only borrows a handle it does not use up.
 
 ```agentmark file=examples/08-notes-api/functions/ensure-schema.agent.md
 # Import: ../constants.agent.md
@@ -312,11 +307,62 @@ connected, runs a statement on it, and lends it back: a function only borrows a 
   - return true
 ```
 
+### Binding items in the wrapped form
+
+A binding item normally fits on one heading line. When that heading would be longer than 120 characters, the binder writes the same item over several lines. The words are the same as for a function.
+
+```text
+## execute
+- in: self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool
+- out: handle of sqlx.sqlite.SqliteQueryResult
+```
+
+The rules:
+
+* The heading is only the item's name: `## execute`.
+* Each `- in:` line holds parameters, written `name: type`, separated by commas. When they do not fit on one line, use one `- in:` line per parameter.
+* The `- out:` line holds the result type. Leave it out when the item returns nothing.
+* The binder writes this form and `agentmark fmt` keeps it. The meaning is the same as the one-line heading.
+
+### Handles and project settings
+
+Which features of a crate are switched on is a project setting. It lives in the `[crates]` table of `agentmark.toml`, for example `sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }`. The binder and the generated `Cargo.toml` both read it. The handles you get, such as `handle of sqlx.SqlitePool`, are the ones for the database you configured.
+
+Two more kinds of type are bound as handles. These are types that borrow, such as a query that holds its text, and generic types with a single instantiation in that configuration. An integer wider than `int`, such as `u64`, is converted with a check that fails the call on overflow.
+
+Where a library asks for a value of its own, such as `bind` taking any encodable value, the binding takes AgentMark `text`.
+
+**Next:** [Something is under `## Not bound`](#something-is-under--not-bound).
+
+## Something is under `## Not bound`
+
+Every item the binder could not bind is listed, one line each, with the reason and the crate path in brackets.
+
+```text
+## Not bound
+- sha256_finalize_into: parameter `out` is a mutable borrow (<sha2::Sha256 as sha2::Digest>::finalize_into)
+- sha256_var_core_write_alg_name: lifetimes in the public API (sha2::Sha256VarCore::write_alg_name)
+- redirect_policy_custom: takes a closure and AgentMark has no function type (reqwest::redirect::Policy::custom)
+```
+
+Long reasons continue on indented `> ` lines. A handle covers objects. What stays here is what a handle cannot do: a buffer to write into, a callback, a borrow that outlives the call.
+
+| the reason says | it means | what you do |
+|---|---|---|
+| `... has no AgentMark type` | the item uses a type that is neither one AgentMark knows nor a public type of the crate itself, which would be a [handle](#use-an-object-from-a-library-handles) | write a `## Rust` block that does the whole sequence in one block |
+| `... is a mutable borrow` | the function wants a buffer of a type AgentMark cannot lend, such as `&mut` of a number or a byte array | a `## Rust` block |
+| `lifetimes in the public API` | the result borrows from an argument | `## Rust` block |
+| `takes a closure and AgentMark has no function type` | the function wants a callback | `## Rust` block |
+| `assisted tier: ...` followed by a message | the model did not produce a body that compiles, or there was no model | run `agentmark bind <crate> --force` with a real model, or write a `## Rust` block |
+| `re-export of ... from another crate` | the crate re-exports another crate's items | `agentmark bind <that crate>` |
+
+For an item that only needs its glue written, there is a shortcut.
+
 ### Not bound yet: just write the statement
 
-An item under `## Not bound` is "not bound yet". Write the statement you want, as if it were bound, and `check` or
-`build` asks the model to write the glue from your statement and the library's own documentation. Say a project
-needs the 224-bit hash, and the binding lists it as not bound:
+An item under `## Not bound` is "not bound yet". Write the statement you want, as if it were bound. `check` or `build` then asks the model to write the glue from your statement and the library's own documentation.
+
+Say a project needs the 224-bit hash, and the binding lists it as not bound.
 
 ````text name=ondemand/bindings/sha2.agent.md
 # Binding: sha2
@@ -363,21 +409,19 @@ Libraries nobody approved yet (one line each to approve)
 
 What happened, in order:
 
-* The binder found that `sha224_digest` is listed as not bound, and wrote its glue. You did not see any Rust and did
-  not need to. Each attempt is one plain line on screen.
-* The glue was compiled against the library, the same check the assisted tier uses. Only code that compiles is kept.
-* The item moved out of `## Not bound` into the binding file, with the note "Written on demand; not reviewed yet" in
-  the line above it, and the file went back to `- effect: unverified`, even if you had approved it before: code
-  nobody read was added, so the approval is asked for again. `check` shows the one line to change, as always, and
-  `--allow-unverified` lets a development build go on meanwhile.
-* The next `check` or `build` finds the item bound and does not ask the model again. The old file is kept as
-  `bindings/<crate>.agent.md.prev`.
+1. The binder found that `sha224_digest` is listed as not bound, and wrote its glue. You did not see any Rust and did not need to. Each attempt is one plain line on screen.
+2. The glue was compiled against the library, the same check the assisted tier uses. Only code that compiles is kept.
+3. The item moved out of `## Not bound` into the binding file, with the note "Written on demand; not reviewed yet" in the line above it.
+4. The file went back to `- effect: unverified`, even if you had approved it before. Code nobody read was added, so the approval is asked for again. `check` shows the one line to change, and `--allow-unverified` lets a development build go on meanwhile.
+5. The next `check` or `build` finds the item bound and does not ask the model again. The old file is kept as `bindings/<crate>.agent.md.prev`.
 
-The model gets two tries; the second one is told what was wrong with the first. If both fail, nothing is changed
-and the build stops at your statement. The error names the item, says which of three things went wrong (the code did not
-pass the type check; the model could not be reached, with the reason; the signature the model chose does not fit your
-statement) and what to do. The compiler's own text is not shown; it is written to the log file named in the last line,
-for a bug report:
+The model gets two tries, and the second one is told what was wrong with the first. If both fail, nothing is changed and the build stops at your statement. The error names the item and says which of three things went wrong.
+
+* The code did not pass the type check.
+* The model could not be reached, with the reason.
+* The signature the model chose does not fit your statement.
+
+The compiler's own text is not shown. It is written to the log file named in the last line, for a bug report.
 
 ```console env=AGENTMARK_MODEL=mock:$REPO/tests/binder/ondemand-bad.json env=AGENTMARK_RUSTDOC_JSON=$REPO/tests/binder/sha2.json env=AGENTMARK_RUSTDOC_JSON_DIR=$REPO/tests/binder env=AGENTMARK_OFFLINE=1 both
 $ agentmark check ondemand
@@ -392,15 +436,15 @@ ondemand/main.agent.md:8
 1 error, 0 warnings: not ok.
 ```
 
-The same error stops `build`, `run` and `trace` (they print `1 error: not built.`), and no output folder is written.
-It only works for an item whose statement the binder can find: a plain `<library> <item> value ...` line. A `## Rust`
-block (section 5) is always the way that never needs a model.
+The same error stops `build`, `run` and `trace`. They print `1 error: not built.`, and no output folder is written.
 
-## 5. `## Rust` blocks: when the binder cannot help
+This only works for an item whose statement the binder can find, a plain `<library> <item> value ...` line. A `## Rust` block is always the way that never needs a model.
 
-A `## Rust` block is verbatim Rust inside an AgentMark program, for the cases the binder skips. It is a
-named function with typed inputs, a declared effect, and a body that ends in a value. Here the hasher
-object `Sha256::new()` is not bound (listed above), so one block builds, feeds and finishes it:
+**Next:** [Write Rust yourself: `## Rust` blocks](#write-rust-yourself--rust-blocks).
+
+## Write Rust yourself: `## Rust` blocks
+
+A `## Rust` block is verbatim Rust inside an AgentMark program, for the cases the binder skips. It is a named function with typed inputs, a declared effect, and a body that ends in a value. Here the hasher object `Sha256::new()` is built, fed and finished by one block.
 
 ````agentmark name=pair.agent.md
 # Import: crate sha2
@@ -426,34 +470,32 @@ object `Sha256::new()` is not bound (listed above), so one block builds, feeds a
 
 The pieces:
 
-* `## Rust: checksum_parts -> text`: the function name and its result type.
-* `- in:` the inputs, as in a function. Inside the block they are ordinary variables with the names you gave.
+* `## Rust: checksum_parts -> text` is the function name and its result type.
+* `- in:` lists the inputs, as in a function. Inside the block they are ordinary variables with the names you gave.
 * `- effect:` is **mandatory** and **trusted**. AgentMark cannot look inside Rust, so this line is a promise.
-  `agentmark check` lists every Rust block with its promise so a reviewer sees where trust is extended:
-
-  ```console
-  $ agentmark check pair.agent.md
-  Effects (what each block can touch)
-    function pair_fingerprint: pure
-
-  Rust blocks (trusted, not checked by AgentMark)
-    checksum_parts in pair_fingerprint: declared pure (pair.agent.md:10)
-
-  ok: 0 errors, 2 warnings.
-  ```
-
-  (The two warnings only say that nothing calls the function yet and that this file does not use the earlier `sha2`
-  binding.)
-* The block ends with a value: the last expression, with no `return` and no trailing semicolon. Here that is
-  `format!(...)`, which builds a `String`.
+* The block ends with a value: the last expression, with no `return` and no trailing semicolon. Here that is `format!(...)`, which builds a `String`.
 * Any function in the project calls it by name, `checksum_parts(first, second)`.
 * Anything the block imports with `use` must be a crate you listed with `# Import: crate ...`.
-* A mistake inside the block shows the Rust compiler's message, mapped to the line of your `.agent.md` file.
-  That is the one place Rust errors reach you, and the reason `## Rust` blocks should stay short.
+* A mistake inside the block shows the Rust compiler's message, mapped to the line of your `.agent.md` file. That is the one place Rust errors reach you, so keep `## Rust` blocks short.
+
+`agentmark check` lists every Rust block with its promise, so a reviewer sees where trust is extended.
+
+```console
+$ agentmark check pair.agent.md
+Effects (what each block can touch)
+  function pair_fingerprint: pure
+
+Rust blocks (trusted, not checked by AgentMark)
+  checksum_parts in pair_fingerprint: declared pure (pair.agent.md:10)
+
+ok: 0 errors, 2 warnings.
+```
+
+The two warnings only say that nothing calls the function yet and that this file does not use the earlier `sha2` binding.
 
 ### The five Rust ideas you need
 
-You do not need to learn Rust to write these blocks. These five lines of vocabulary cover the examples:
+You do not need to learn Rust to write these blocks. These five lines of vocabulary cover the examples.
 
 | Rust | read it as |
 |---|---|
@@ -463,7 +505,7 @@ You do not need to learn Rust to write these blocks. These five lines of vocabul
 | `format!("{:x}", v)` | build a text; `{}` is a hole, `:x` writes in hex |
 | `x?` | stop with an error if `x` failed (valid in binding bodies, which return `Result`) |
 
-The AgentMark types arrive as these Rust types:
+### How AgentMark types look in Rust
 
 | AgentMark | inside a Rust block |
 |---|---|
@@ -476,15 +518,13 @@ The AgentMark types arrive as these Rust types:
 | `list of T`, `maybe T` | `Vec<T>`, `Option<T>` |
 | a record | the generated struct of the same name, with the same field names |
 
-Binding bodies (the `rust` fence under a `## name(...)` heading) follow one extra rule: the body is the inside of
-`pub async fn name(args) -> Result<T, Box<dyn std::error::Error + Send + Sync>>`. Arguments arrive owned, the body
-ends in `Ok(value)`, `?` and `.await` work, and the library is named by its full path, with no `use` lines.
+Binding bodies are the `rust` fence under a `## name(...)` heading. They follow one extra rule: the body is the inside of `pub async fn name(args) -> Result<T, Box<dyn std::error::Error + Send + Sync>>`. Arguments arrive owned, the body ends in `Ok(value)`, `?` and `.await` work, and the library is named by its full path, with no `use` lines.
 
-## 6. Editing and sharing bindings by hand
+**Next:** [Edit and share bindings by hand](#edit-and-share-bindings-by-hand).
 
-A binding is an ordinary file. The header says "edit freely". Typical reasons: add a missing function by
-writing its heading and body yourself, narrow the effect, fix a doc line. The format is the same for generated and
-handwritten ones:
+## Edit and share bindings by hand
+
+A binding is an ordinary file, and its header says "edit freely". Typical reasons to edit are adding a missing function, narrowing the effect, or fixing a doc line. The format is the same for generated and handwritten files.
 
 ````agentmark
 > Invoice titles as PDF files.
@@ -499,30 +539,23 @@ handwritten ones:
   ```
 ````
 
-* Each `##` heading is `name(param: type, ...) -> type`; the body is one `rust` fence, indented two spaces.
+* Each `##` heading is `name(param: type, ...) -> type`. The body is one `rust` fence, indented two spaces.
 * A handwritten file has no `generated by` header, so `agentmark bind` never overwrites it unless you use `--force`.
-* `agentmark fmt` and `agentmark lint` skip `bindings/`. The binder owns their layout, and a lint like `vague-name`
-  would only complain about names that mirror the library. `check` still reads and checks them.
+* `agentmark fmt` and `agentmark lint` skip `bindings/`. The binder owns their layout, and a lint like `vague-name` would only complain about names that mirror the library.
+* `check` still reads and checks them.
 * Commit the folder. A reviewer then sees the exact Rust that was added and the approval line, in a diff.
 
-Because bindings are plain files, a team can share them: a git repository of `bindings/*.agent.md` is already a
-registry. A first-class registry that `bind` consults before running the binder is planned; the file format will not need
-to change.
+Because bindings are plain files, a team can share them. A git repository of `bindings/*.agent.md` is already a registry. A first-class registry that `bind` consults before running the binder is planned, and the file format will not need to change.
 
-## 7. Connecting the tools to real systems: `rust/connect.rs`
+## Connect tools to real systems: `rust/connect.rs`
 
-Not every tool needs this. The built-in `file` tool and any tool you write in AgentMark itself (a `# Tool` declaration,
-`docs/reference.md` section 22.5) are part of the program; a project that uses only those has no `tools.toml` and no
-`rust/connect.rs`. This section is for the tools that live outside the program: a CRM, a mail provider, a database you
-manage yourself.
+Not every tool needs this. The built-in `file` tool and any tool you write in AgentMark itself are part of the program. A `# Tool` declaration is described in `docs/reference.md`, section 22.5. A project that uses only those has no `tools.toml` and no `rust/connect.rs`.
 
-Tools such as `crm` and `email` (the manifest, `docs/reference.md` section 7) are only names to the language. In a mock
-run, fixtures answer for them. In a real run, something has to talk to your CRM and your mail server, and that
-something is the **one file** you write, `rust/connect.rs`, beside `agentmark.toml` (next to the source file for a
-single-file project). `agentmark build`, `run` and `trace` create it from a stub when it is missing, never overwrite it,
-and copy it into the generated project on every build, so you can delete the output folder without losing it.
-It is the only place plain Rust is expected of you, and the right place to use the crates of this page (`reqwest` for an HTTP API,
-an SMTP crate for mail). The committed stub of the invoice chaser:
+This section is for tools that live outside the program: a CRM, a mail provider, a database you manage yourself. Tools such as `crm` and `email` are only names to the language, see the manifest in `docs/reference.md`, section 7. In a mock run, fixtures answer for them.
+
+In a real run, something has to talk to your CRM and your mail server. That something is the **one file** you write, `rust/connect.rs`, beside `agentmark.toml`. In a single-file project it sits next to the source file.
+
+`agentmark build`, `run` and `trace` create it from a stub when it is missing, and never overwrite it. They copy it into the generated project on every build, so you can delete the output folder without losing it. It is the only place plain Rust is expected of you, and the right place to use the crates of this page, such as `reqwest` for an HTTP API or an SMTP crate for mail. This is the committed stub of the invoice chaser:
 
 ```rust file=examples/01-invoice-chaser/rust/connect.rs
 //! Connect the tools to the real world.
@@ -581,21 +614,10 @@ pub fn connect() -> Connected {
 }
 ```
 
-There is one trait per tool that has verbs (`Crm`, `Email`, `Http`; the `log` tool is built in), one method per verb, and
-`connect()` returns the struct that holds one implementation per tool. Each method receives the call's arguments as JSON
-and returns JSON (for `crm list`, the records). Replace a `NotConnected` with your own type, one tool at a time; until
-you do, a real run fails with a message that names the exact method to implement. When `tools.toml` gains a tool, add it here.
-A rustc error in this file is reported against the project file, as your own code, and never as an internal error.
+There is one trait per tool that has verbs: `Crm`, `Email` and `Http`. The `log` tool is built in. Each trait has one method per verb, and `connect()` returns the struct that holds one implementation per tool.
 
-## 8. When it does not work
+Each method receives the call's arguments as JSON and returns JSON, for `crm list` the records. Replace a `NotConnected` with your own type, one tool at a time. Until you do, a real run fails with a message that names the exact method to implement.
 
-| what you see | why | what to do |
-|---|---|---|
-| `The crate "x" has no binding yet, but this file uses it` (E219) | `check` could not bind it: no model, no metadata, or offline | set `ANTHROPIC_API_KEY` (or `AGENTMARK_MODEL=mock:<file>`) and run `agentmark bind <crate>` |
-| "... is unverified: nobody approved what it may touch" | the approval line was never changed | read the bodies, set `- effect:` to `pure`, `local` or `network` |
-| after `cargo update`, a library is unverified again | its version changed | run `bind`, read the diff against the `.prev` file, approve again |
-| "environment variable ANTHROPIC_API_KEY is not set" | the binder needs a model for the assisted tier | set the key, or `AGENTMARK_MODEL=mock:<file>` |
-| `Could not bind "x" of y on demand` (E220) | the model's code for an item you used did not pass the type check twice | write a `## Rust` block for it, or bind it by hand; nothing was changed |
-| a handle line is an error: "was used up on line N" | a `consume` method or a function took the handle | make a new one, or move the use before line N |
-| a Rust error in your `## Rust` block | your Rust has a mistake | the message points at the `.agent.md` line; fix it there |
-| "internal compiler error: generated Rust did not compile" | a bug in AgentMark itself | report it with the generated file path it prints |
+When `tools.toml` gains a tool, add it here. A rustc error in this file is reported against the project file, as your own code, and never as an internal error.
+
+**Next:** back to [Something went wrong?](#something-went-wrong) if a step fails.
