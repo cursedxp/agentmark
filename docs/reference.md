@@ -1,0 +1,1675 @@
+# AgentMark language reference (v0.1)
+
+This is the whole language in one file, written so that a person, an editor plugin or an AI assistant
+can read it once and then write correct AgentMark. It follows `SPEC.md` section by section and in the
+same order, so section numbers here are the specification's numbers (the specification has no
+section 12). Where the specification left a question open, the choice that was made is stated in the
+text and listed in `OPEN_QUESTIONS.md` as a `Q` number.
+
+Every section starts with an example. Code blocks marked as programs are complete and are checked by
+the test-suite (`tests/docs.rs`); pieces are shown without a heading line and are parsed there.
+Whatever this file shows as output is the real output of the tools.
+
+Rules that hold everywhere, so they are not repeated below:
+
+* One statement is one line, at most 120 characters. The text between the quotes of a string does not
+  count (Q35).
+* Indentation is exactly 2 spaces per level. A tab is an error.
+* A file ends in `.agent.md`. Names are case-sensitive, headings are not.
+
+## 0. Architecture: three layers
+
+A complete program that uses all three layers is the weekly report. The agent (layer 3) wakes up on
+Monday, counts invoices with two rules, asks a model for two sentences, checks them and mails them.
+
+```agentmark file=examples/04-daily-report.agent.md
+# Record: Invoice
+- id: text
+- customer: text
+- amount: money
+- due: date
+- status: text
+
+# Rule: overdue
+- for: Invoice
+- when: today > due + 14 days and status != "paid"
+
+# Rule: open
+- for: Invoice
+- when: status != "paid"
+
+# Agent: daily-report
+- model: claude
+- tools: crm, email, log
+
+## Every Monday at 08:00
+- set open_count = count of open invoices in crm.invoices
+- set overdue_count = count of overdue invoices in crm.invoices
+- ask model: "Write a two-sentence Monday summary. Open invoices: {open_count}. Overdue: {overdue_count}." -> summary
+- guard: summary is not empty
+- email send address "anil@optimotion.dev": "{summary}"
+- log: "Report sent: {open_count} open, {overdue_count} overdue"
+```
+
+| layer | what lives there | where it is described |
+|---|---|---|
+| 3. Agent layer | `# Agent`, `# Rule`, triggers (`## Every ...`), `ask model`, `guard` | sections 2 to 4 |
+| 2. Core language | `# Record`, `# Function`, `# Service`, `# Command`, `# Constant`, control flow, `try`, bindings | sections 13 to 16 |
+| 1. Escape hatch | `## Rust` blocks: verbatim Rust inside any block | section 17 |
+
+Layer 3 is sugar over layer 2. Before the program is turned into Rust, every agent construct is
+rewritten into layer 2: a rule becomes a pure function returning yes or no, a trigger block becomes an
+*entry* that runs on a schedule or an event, a `## Do` block becomes a function named
+`<agent>__<block>`, `ask model` becomes a model call, and a `guard` becomes "evaluate, write a trace
+line, stop if it failed". After that step no agent, rule, trigger or guard remains (the code that does
+it is `src/lower/agent_lower.rs`). The generator that writes Rust never sees an agent.
+
+The rule for growing the language: a feature enters layer 2 only after it has appeared in layer 1
+three times.
+
+## 1. File structure
+
+A file is a sequence of **declarations**. Each starts with a level-1 heading `# Kind: name`. Under it,
+`- key: value` lines are **properties**, `## heading` lines start **blocks**, and the lines of a block
+are **statements**.
+
+```agentmark
+> Counts open invoices. The comment above a heading documents it.
+# Agent: counter
+- model: claude
+- tools: crm, log
+
+> This comment documents the block.
+## Every day at 09:00
+> A plain comment, about the next statement only.
+- log: "counting"
+```
+
+* Declaration kinds: `Record`, `Rule`, `Agent`, `Function`, `Service`, `Command`, `Binding`,
+  `Constant`, `Import`, `Run`. Anything else is an error that suggests the closest kind.
+* Properties come before the first `##` heading. Statements sit at indentation 0 directly under
+  a `##` heading, and every nested body (`for each`, `if`, `else`, `otherwise`, `parallel`) is indented
+  by one more 2-space step (Q16). Function bodies are the exception: they are indented under the
+  `- effect:` property, as section 13.1 shows.
+* Statements are list items (`- `), except `otherwise:` and (in older files) bare `for each ...:` and
+  `stop` lines. The formatter writes every statement as a list item (Q51).
+* A line starting with `>` is a comment. A run of comment lines directly above a `#` or `##` heading
+  is that heading's documentation. A run at the top of a file followed by a blank line is the
+  documentation of the file. All other comments belong to the next statement, field or property
+  (Q17, Q28).
+* Identifiers are letters, digits, `-` and `_`, starting with a letter. Declaration, rule, record and
+  type names may contain `-` (`very-overdue`). Variables, fields and paths inside expressions may not,
+  because there `-` is subtraction and needs a space on both sides (`today - 1 month`, Q19, Q29).
+* Blank lines are ignored. A line that is neither a heading, a comment, a `- ` item, a fence nor a
+  control line is an error (Q22).
+
+## 2. Declarations
+
+### 2.1 Record
+
+A record describes a data shape. Fields are list items with an optional type.
+
+```agentmark name=invoice.agent.md
+# Record: Invoice
+- id: text
+- customer: text
+- amount: money
+- due: date
+- paid_on: maybe date
+- shipped_at
+- items_count
+- total
+- remark
+
+> Lists invoices.
+# Agent: lister
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - log: "{invoice.id} {invoice.total} {invoice.remark}"
+```
+
+A field without a type gets one from the **last word** of its name. Words are separated by `_`, `-` or
+a change from lower to upper case (`dueDate`), and the whole word has to match (Q32):
+
+| last word | type |
+|---|---|
+| `date`, `at`, `on` | `date` |
+| `amount`, `price`, `total`, `fee` | `money` |
+| `count`, `qty`, `number` | `int` |
+| anything else | `text`, with warning W001 that prints the type it picked |
+
+In the example, `shipped_at` is a `date`, `items_count` an `int`, `total` is `money`, and `remark` falls
+back to `text` and produces the warning. `agentmark check` lists every guessed type (the warning itself goes to
+standard error, the list to standard output):
+
+```console
+$ agentmark check invoice.agent.md
+Effects (what each block can touch)
+  lister / Every day at 09:00: network(crm), local(log)
+
+Field types guessed from names
+  Invoice.shipped_at: date (from the field name; invoice.agent.md:7)
+  Invoice.items_count: int (from the field name; invoice.agent.md:8)
+  Invoice.total: money (from the field name; invoice.agent.md:9)
+  Invoice.remark: text (no naming rule matched, so it is text; write the type to be sure; invoice.agent.md:10)
+
+ok: 0 errors, 1 warning.
+```
+
+Writing the type is always allowed and always clearer.
+
+### 2.2 Rule
+
+A rule is a named, pure yes/no question about one record. A rule has no side effects, and anything
+effectful inside it is an error.
+
+```agentmark
+# Record: Invoice
+- id: text
+- due: date
+- status: text
+
+> Unpaid and more than 14 days past due.
+# Rule: overdue
+- for: Invoice
+- when: today > due + 14 days and status != "paid"
+
+> Logs the overdue invoices.
+# Agent: lister
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each overdue invoice in crm.invoices:
+  - log: "{id} is overdue"
+```
+
+Inside `when:`, a bare field name (`due`) is a field of the record the rule is `for:`. A rule is used
+by a filtered loop (`for each overdue invoice in ...`, section 4.1) and by `count of overdue invoices in
+...` (section 5). `when:` must be a yes/no value.
+
+### 2.3 Agent
+
+An agent is the executable unit.
+
+```agentmark
+> Mails a note once an hour, remembers nothing, and gives itself ten minutes per run.
+# Agent: notifier
+- model: claude:haiku
+- tools: email, log
+- memory: file
+- timeout: 10 minutes
+
+## Every 1 hour
+- email send address "ops@example.com": "Still alive"
+- log: "sent"
+```
+
+| key | required | meaning |
+|---|---|---|
+| `model` | yes | the model driver string: `claude`, `claude:<model>`, `mock` (section 19) |
+| `tools` | no | comma-separated tool names the agent may use (default: none) |
+| `memory` | no | `none` (default) or `file`: keep state between runs |
+| `timeout` | no | a duration; default `5 minutes` per block execution |
+
+An agent may call only tools listed in `tools`; calling another is an error ("The tool "email" is not
+listed in the tools of agent ..."). The same list limits reading a tool's source, as in
+`for each ... in crm.invoices`. Services, commands and functions have no `tools` line and may use every
+tool of the manifest; a function's declared `effect` is what bounds it (Q38).
+
+## 3. Blocks (triggers)
+
+```agentmark
+# Record: Ticket
+- id: text
+- subject: text
+
+> Shows every trigger heading once.
+# Agent: triggers
+- model: claude:haiku
+- tools: crm, log
+
+## On start
+- log: "started"
+
+## Every 30 minutes
+- do ping
+
+## Every day at 09:00
+- log: "daily"
+
+## Every Friday at 17:30
+- log: "weekly"
+
+## When crm receives ticket
+- log: "New ticket {ticket.subject}"
+
+## Do ping
+- log: "ping"
+```
+
+| heading | fires when |
+|---|---|
+| `## Every <duration>` | periodically, for example `Every 30 minutes`, `Every 1 hour` |
+| `## Every day at <HH:MM>` | daily at local time, 24-hour clock |
+| `## Every <weekday> at <HH:MM>` | weekly; `Monday` to `Sunday` |
+| `## When <tool> receives <event>` | an inbound event of a tool; the event word must be in the tool's `events` list |
+| `## On start` | once when the program starts |
+| `## Do <name>` | never by itself: a named action, called by `do <name>` |
+
+* Duration units: `second`, `minute`, `hour`, `day`, `week`, `month`, `year`, singular or plural.
+* Blocks of one agent run one after the other. Two triggers firing together are queued, never run in
+  parallel.
+* Schedules use naive local time without daylight-saving handling. `Every` fires an interval after
+  the previous tick (Q15).
+* The heading is the block's **label**. It is what the effect summary and the trace report, so the
+  formatter rewrites a loosely typed heading into the canonical one (`## every  MONDAY at 08:00`
+  becomes `## Every Monday at 08:00`, Q50).
+* `## When tool receives event` binds the event's record to a variable named after the event
+  (`ticket`). The record `Ticket` must be visible in the file (the event word, capitalised).
+* A `## Do` block has no parameter list. It works on the record "in front of" its caller: the
+  innermost `for each` record, or the event record. All callers must hand it the same record; the
+  first caller's variable name becomes the name inside the block (Q30). A `## Do` block that nobody
+  calls is a warning.
+
+## 4. Statements
+
+Statements are list items (`- `). Control statements end in `:` and own the more-indented lines below.
+
+### 4.1 Control
+
+```agentmark
+# Record: Invoice
+- id: text
+- amount: money
+- due: date
+- status: text
+
+# Rule: overdue
+- for: Invoice
+- when: today > due + 14 days and status != "paid"
+
+> Escalates big overdue invoices, reminds for the rest.
+# Agent: router
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each overdue invoice in crm.invoices:
+  - if invoice.amount > 1000 EUR:
+    - do escalate
+  - else:
+    - do remind
+
+## Do escalate
+- log: "Escalate {id}"
+
+## Do remind
+- log: "Remind {id}"
+```
+
+The control forms, each shown once in this section or as noted:
+
+```agentmark fragment
+- for each invoice in crm.invoices:
+  - log: "{invoice.id}"
+- for each overdue invoice in crm.invoices:
+  - log: "{id}"
+- if invoice.amount > 1000 EUR:
+  - log: "big"
+- else:
+  - log: "small"
+- if lead.score is some s:
+  - log: "{s}"
+- do remind
+- do net_amount(invoice, 19) -> n
+- stop
+```
+
+* `for each <var> in <source>:` runs the body once per item. The source is a tool source
+  (`crm.invoices`), a list variable, or a list in `state`.
+* `for each <rule> <var> in <source>:` keeps only the items for which the rule is true, and its body
+  sees the record's fields as bare names (`id` above).
+* `if <condition>:` with an optional `else:` directly after it, at the same indentation. The condition
+  must be yes/no. `if <expr> is some <name>:` is the `maybe` unwrap (section 14).
+* `do <name>` calls a `## Do` block of the same agent. `do f(args) -> x` calls a function
+  (section 13.1).
+* **`stop` ends the current block, not only the current loop iteration** (Q3). It is how an agent says
+  "enough for this run". This is deliberate, and the third example shows it:
+
+```agentmark file=examples/03-support-triage/agents/support-triage.agent.md
+# Import: ../constants.agent.md
+# Import: ../records/ticket.agent.md
+# Import: ../records/triage.agent.md
+
+> Classifies tickets that have no priority yet and alerts on the high ones. Never replies to customers.
+# Agent: support-triage
+- model: claude
+- tools: crm, http, log
+
+## Every 15 minutes
+- for each ticket in crm.tickets:
+  - if ticket.priority is not empty:
+    - stop
+  - ask model with ticket: triage_prompt as Triage -> t
+  > The model must pick one of the three allowed priorities, nothing else.
+  - guard: t.priority = "low" or t.priority = "medium" or t.priority = "high"
+  - crm update ticket: priority = t.priority
+  - if t.priority = "high":
+    - http post "https://hooks.example.com/alert": { ticket: ticket.id, category: t.category }
+  - log: "Triaged {ticket.id} as {t.priority}/{t.category}"
+```
+
+In this agent the first ticket that already has a priority ends the whole 15-minute run. That is the
+specified behaviour; use a negated `if` around the rest of the body when you want to skip one item only.
+
+### 4.2 Model
+
+```agentmark
+# Record: Lead
+- id: text
+- company: text
+
+# Record: Qualification
+- score: int
+- reason: text
+
+> Asks the model three ways.
+# Agent: asker
+- model: claude:haiku
+- tools: crm, log
+
+## When crm receives lead
+- ask model: "Name one famous company." -> plain
+- ask model with lead: "Describe this lead in one sentence." -> description
+- ask model with lead: "Score this lead from 1 to 10." as Qualification -> q
+- guard: q matches Qualification
+- log: "{plain} / {description} / {q.score}: {q.reason}"
+```
+
+```agentmark fragment
+- ask model: "<prompt>" -> answer
+- ask model: "<prompt>" as Qualification -> verdict
+- ask model with lead: "<prompt>" -> answer
+- ask model with lead: "<prompt>" as Qualification -> verdict
+```
+
+* `ask model` is effectful (class `model`). The result is `text` unless `as <Record>` is given; then it is
+  a value of that record.
+* `with <var>` passes a value as context. The request the model receives is the prompt text, then a
+  blank line, then the context as JSON; without `with` it is the prompt alone (Q156). A mock model matches
+  on the prompt prefix, so `with` does not disturb fixtures.
+* A reply that is not valid JSON for the record (not JSON, a field missing, a field of the wrong type)
+  is not a runtime error: `q matches Qualification` is then false, the guard fails, and the block stops
+  (Q157). So always write the `matches` guard after `as <Record>`.
+* The prompt may be a string with `{holes}` or the name of a constant of type text
+  (`ask model with ticket: triage_prompt as Triage -> t`).
+* The agent's `model:` line selects the driver (section 19). `ask model` also works outside an agent, in a function
+  declared `effect: model`, in a route or in a command; there is simply no `model:` line to say which driver, and the
+  IR records none for such a call (Q92).
+
+### 4.3 Tool calls
+
+```agentmark
+# Record: Ticket
+- id: text
+- subject: text
+- priority: maybe text
+
+> Shows the shapes of a tool call.
+# Agent: caller
+- model: claude
+- tools: crm, email, http, log
+
+## Every 15 minutes
+- for each ticket in crm.tickets:
+  - crm get ticket id -> fresh
+  - crm update ticket: priority = "low", subject = "changed"
+  - http get "https://example.com/status" -> status
+  - http post "https://example.com/hook": { id: ticket.id, subject: ticket.subject }
+  - email send address "ops@example.com": "Ticket {ticket.subject}"
+  - log: "done {ticket.id}"
+```
+
+The shape is `- <tool> <verb> [<target>]: <payload> [-> var]`.
+
+| piece | forms |
+|---|---|
+| tool and verb | both from `tools.toml`; an unknown verb is an error with "Did you mean ...?". A tool without verbs, like `log`, is written `- log: "..."` |
+| target | a word from the tool's `targets` (`email send customer`, `email send address "x@y.z"`), or the singular of one of its sources (`crm update invoice`), or a URL (`http get "https://..."`) |
+| payload, text | `"Your invoice {amount} is overdue."` |
+| payload, record | `{ id: invoice.id }` |
+| payload, assignments | `status = "reminded"`, `score = q.score, status = "scored"` |
+| payload, a value | `crm update invoice: inv` (a whole record) |
+| result | `-> name` keeps the result of `get`/`list`/`post`, typed by the manifest when it can |
+
+How target words are resolved (Q4, Q5):
+
+* `email send customer` reads the field `customer_email` of the record in front of the block when it
+  exists, otherwise `customer`. The trace reports the word `customer` as the target and the address as `to`.
+* `crm update invoice` names the source `invoices` (the plural of the word) and takes the `id` of the
+  record in front of the block. When several variables of that record are in scope the call is an error
+  ("Which invoice?"); name the one you mean with a value after the word.
+* A tool's name alone is never a value, so a field called `email` is a field.
+
+Reading a tool's source, `for each ... in crm.invoices`, is an effect of that tool (`network(crm)`).
+
+### 4.4 Guards
+
+```agentmark
+# Record: Invoice
+- id: text
+- amount: money
+- customer: text
+
+> Mails a reminder only when the model left the amounts alone.
+# Agent: careful
+- model: claude
+- tools: crm, email, log
+
+## Do remind
+- ask model with invoice: "Write a short, polite payment reminder." -> reminder
+- guard: no amounts changed in reminder
+- guard: reminder is not empty
+- guard: reminder length < 800
+- guard: reminder length > 20 else set reminder = "Please settle your open invoice."
+- email send customer: "{reminder}"
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - do remind
+```
+
+A guard is a pure check. If it fails and no `else` is given, the current block stops and the failure is logged with the
+guard's source line. With `else <statement>`, that statement runs *instead of stopping*, and the block carries on
+afterwards unless the statement ends it: `else respond 404` in a route does (section 13.3), `else stop` does, and
+`else set reminder = "..."` as above does not, which makes it a way to fall back to a default when the check fails.
+The trace line says `fail` in both cases.
+
+Built-in helpers:
+
+| helper | true when |
+|---|---|
+| `no amounts changed in <var>` | the model output holds no money value that was not in its input (the `with` value of the call that produced it, else its prompt). `1200 EUR` equals `1200.00 EUR` (Q13, Q93) |
+| `<var> is not empty` | the text, list or `maybe` value has something in it. After the guard, a `maybe` value counts as present |
+| `<var> matches <Record>` | the value has the shape of the record |
+| `<var> length < <int>` | the length of a text or list; any comparison works (`>`, `<=`, `=`, ...) |
+
+Every guard, in an agent, a service, a command or a function, writes one trace line with its source text
+and `pass` or `fail`. Guards may use constants, which are inlined into that text (Q90). The lint rule
+`unnamed-guard` asks for a `>` comment above a guard whose condition is longer than 60 characters.
+
+### 4.5 Assignment
+
+```agentmark
+# Record: Invoice
+- id: text
+- amount: money
+- status: text
+
+> Counts.
+# Agent: totals
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- set total = 0 EUR
+- for each invoice in crm.invoices:
+  - set total = total + invoice.amount
+- log: "Total {total}"
+```
+
+`set <var> = <expression>` creates the variable or changes it. A `maybe T` variable may be given a plain `T`,
+never the other way round (Q40).
+
+## 5. Expressions
+
+```agentmark
+# Record: Invoice
+- id: text
+- customer: text
+- amount: money
+- due: date
+- status: text
+
+# Rule: overdue
+- for: Invoice
+- when: today > due + 14 days and status != "paid"
+
+> Shows the expression forms.
+# Agent: expressions
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- set open_count = count of overdue invoices in crm.invoices
+- set net = 120.50 EUR - 20.50 EUR * 2 / 4
+- set next_check = today + 14 days
+- set a_month_ago = today - 1 month
+- set late = open_count > 3 or not open_count = 0
+- set first_late = first invoice in crm.invoices where invoice.status = "open"
+- log: "{open_count} invoices, {net}, due on {next_check}, since {a_month_ago}, {late}"
+```
+
+**Literals**
+
+| form | example |
+|---|---|
+| text | `"text"`; escapes `\"`, `\\`, `\n`, `\{`, `\}` |
+| int | `42` |
+| money | `12.50 EUR`, `0 EUR`, `1200 JPY`; integer minor units, never a float (Q20) |
+| date | `2026-10-13` (a date that does not exist is an error, never arithmetic) |
+| duration | `14 days`, `1 month`, `15 minutes` |
+| bool | `true`, `false` |
+
+A decimal needs a currency (`3.5` is an error) and may not have more digits than the currency's minor unit
+(`12.505 EUR` is an error): no silent rounding can enter a program (Q20).
+
+**Names and fields.** `invoice.amount` is a field of a variable; a bare `amount` is a field of the record in
+front of the block (inside `for each` over a record, in a rule, in an event block). A name resolves as: variable, bare
+field, constant, and only with a dot a tool source `crm.invoices` (Q41).
+
+**Interpolation.** In a string, `{customer}` and `{invoice.amount}` insert values. A hole holds a full expression.
+
+**Operators**, from loosest to tightest:
+
+| level | operators |
+|---|---|
+| 1 | `or` |
+| 2 | `and` |
+| 3 | `not` |
+| 4 | `=`, `!=`, `<`, `>`, `<=`, `>=`, `is empty`, `is not empty`, `matches <Record>` |
+| 5 | `+`, `-` (spaces on both sides of `-`) |
+| 6 | `*`, `/` |
+| 7 | `<expr> length` |
+
+**Built-ins:** `today`, `now`, `count of <source>` (list length), `count of <rule> <plural> in <source>`
+(how many pass the rule), `first <var> in <source> where <condition>` (a `maybe` of the item).
+
+**Units are real types.** Money, dates, durations and numbers combine only in sensible ways:
+
+| expression | type |
+|---|---|
+| `money + money`, `money - money` | `money` (a currency mismatch between two written literals is an error; otherwise it is checked at run time) |
+| `money * int`, `money / int` | `money`, rounded half away from zero at the currency's minor unit (Q7) |
+| `date + duration`, `date - duration` | `date` |
+| `date - date`, `datetime - datetime` | `duration` |
+| `12 EUR + 3 days` | error: "Cannot add a duration to money" |
+| `money / money`, `money * money`, `text + text` | error; use interpolation for text |
+
+## 6. Types
+
+```agentmark
+# Record: Showcase
+- name: text
+- visits: int
+- price: money
+- opened: date
+- checked_at: datetime
+- grace: duration
+- active: bool
+- tags: list of text
+- nickname: maybe text
+- history: list of maybe date
+
+> Describes a showcase in one line.
+# Function: describe
+- in: s: Showcase
+- out: text
+- effect: pure
+  - return "{s.name} has {s.visits} visits and costs {s.price}"
+```
+
+The built-in types:
+
+| type | Rust representation |
+|---|---|
+| `text` | `String` |
+| `int` | `i64` |
+| `money` | `Money { minor: i64, currency: Currency }` (integer minor units, no floats) |
+| `date` | `chrono::NaiveDate` |
+| `datetime` | `chrono::DateTime<Utc>` |
+| `duration` | `chrono::Duration` |
+| `bool` | `bool` |
+| `bytes` | `Vec<u8>` (added for bindings, Q8) |
+| `list of <T>` | `Vec<T>` |
+| `maybe <T>` | `Option<T>` |
+| `result of <T>` | `Result<T, AgentError>`, function results only (section 14) |
+
+* A record's name is also a type. Record names are unique in a project (Q31).
+* Any value that can be absent must be declared `maybe`. There is no null.
+* Where a binding takes `bytes`, a `text` argument is accepted and means its UTF-8 bytes. No other
+  position coerces (Q151).
+* The type of a record literal `{ id: x }` is an object type; it is accepted wherever a record with those fields is.
+
+## 7. Tool manifest
+
+Tools are declared in `tools.toml` next to the source file (for a project: at its root). This is the
+manifest every example project uses:
+
+```toml file=examples/tools.toml
+[email]
+verbs = ["send"]
+targets = ["customer", "address"]
+effect = "network"
+
+[crm]
+verbs = ["list", "get", "update"]
+sources = ["invoices", "leads", "tickets"]
+events = ["lead", "ticket"]
+effect = "network"
+
+[http]
+verbs = ["get", "post"]
+effect = "network"
+
+[log]
+verbs = []
+effect = "local"
+```
+
+| key | meaning |
+|---|---|
+| table name (`[email]`) | the tool's name, as written in `tools:` and in statements |
+| `verbs` | the words allowed after the tool name; an empty list means the tool is written `- log: "..."` |
+| `targets` | words allowed after the verb (`email send customer`) |
+| `sources` | names readable as `tool.source` (`crm.invoices`); each is plural, and its singular names a record (`Invoice`) and is also the target word of `update` (Q5) |
+| `events` | names usable in `## When <tool> receives <event>`; each names a record (`lead` is `Lead`) |
+| `effect` | `local`, `network` or `model`. `pure` is not allowed for a tool (Q40) |
+
+An unknown tool, verb, target or source is an error with a suggestion; a tool the agent does not list in
+`tools:` is an error (section 2.3). `agentmark.toml` is separate: it holds the project's `name`,
+`version`, `targets` and `[lint]` settings (section 9).
+
+The generated program defines one trait per tool, and the runtime ships `MockTools`, an implementation
+that returns fixture data and records calls. The user supplies real implementations for production.
+
+## 8. Effects
+
+The report that matters most is the effect summary: for every block, everything it can touch. This is the
+real report for the invoice service, which has no agent and no model call:
+
+```console cwd=repo
+$ agentmark check examples/05-invoice-service
+Effects (what each block can touch)
+  import-csv / Run: local(file, print, state)
+  function invoice_fingerprint: pure
+  function net_amount: pure
+  api / GET /invoices/{id}: pure
+  api / GET /invoices/{id}/net: pure
+  api / POST /invoices: local(state)
+
+Rust blocks (trusted, not checked by AgentMark)
+  fingerprint in invoice_fingerprint: declared pure (examples/05-invoice-service/functions/invoice-fingerprint.agent.md:13)
+
+ok: 0 errors, 0 warnings.
+```
+
+Every statement has an effect class, ordered from least to most reach: `pure`, `local`, `network`,
+`model`. A fifth, `unverified`, marks calls into a library nobody approved yet (section 15.3).
+
+| class | what it is | where it comes from |
+|---|---|---|
+| `pure` | computes from values it already has | expressions, rules, guards, reading `state`, `set`, `return`, `respond`, `read body`, `append` to a local list |
+| `local` | touches this machine | a `local` tool (`log`), `print`, `read file` (source `file`), `append ... to state.<field>` (source `state`), a function or Rust block declared `local` |
+| `network` | talks to another system | a `network` tool, reading a tool source such as `crm.invoices` |
+| `model` | asks a model | `ask model` |
+
+Rules and consequences:
+
+* `# Rule` bodies and `guard` conditions must be `pure`. A rule that calls a `network` function is an error.
+* A function's body must not exceed its declared `effect`. A function that calls an unapproved library
+  cannot claim `pure`, and `check` says so.
+* Rust blocks and bindings contribute their declared effect. It is trusted, because the checker cannot
+  look inside Rust.
+* The summary line is `unit / heading: model, network(email, crm), local(log)`: the class names the
+  highest reach, the brackets name the tools in order of first use. Agents, services and commands print
+  `unit / heading:`; functions and rules print `function name:` and `rule name:` (Q116).
+* The summary is also written into the generated Rust file as `// Effects: ...` at the top.
+* `agentmark check --json` prints the same facts as one JSON document for editors and CI; its layout is
+  documented in `docs/check-json.md`.
+
+## 9. Compilation
+
+```console cwd=repo
+$ agentmark fmt --check examples/01-invoice-chaser
+5 files are canonical.
+```
+
+```text
+agentmark check <file|dir> [--json] [--allow-unverified]   validate; print the effect summary, guessed types, unapproved libraries
+agentmark fmt   <file|dir> [--check]                       rewrite into the canonical style (section 18.6)
+agentmark lint  <file|dir>                                 style rules (section 18.4)
+agentmark doc   [<dir|file|crate>] [--project <dir>]       the documentation page of a project, or a library's cheat sheet
+agentmark bind  <crate> [--force] [--project <dir>]        create or refresh a library binding (section 15)
+agentmark bind  --all                                      refresh every binding of the project
+agentmark build <file|dir> --target rust -o <dir>          write a Cargo project (auto-binds imported crates first)
+agentmark run   <file|dir> --mock --fixtures <dir>         build, then run once against MockTools and the fixtures
+agentmark trace <file|dir> --mock --fixtures <dir>         the same, printing the tool-call trace (JSON lines)
+```
+
+`check`, `fmt`, `lint`, `doc` and `bind` are the tools that read and judge the program. `build`, `run` and
+`trace` produce a program from it.
+
+* The pipeline is `source -> lexer -> parser -> AST -> semantic check -> L2 lowering -> IR -> Rust code`. The IR is
+  independent of the target. A new target is one new file under `src/codegen/` (see `docs/internals.md`);
+  only Rust exists in v0.1.
+* `check` exits 1 while an unverified library is left, unless `--allow-unverified` is given; the listing is printed
+  either way (Q112). `build` applies the same rule: a release build refuses unapproved libraries, and
+  `--allow-unverified` overrides for development.
+* Exit codes: 0 fine; 1 the project has problems (errors, denied lint rules, files that are not canonical with
+  `--check`, unapproved libraries, a failed bind); 2 the command itself cannot run (bad arguments,
+  a path that does not exist or is not a `.agent.md` file, no model for `bind`). Diagnostics go to stderr, reports
+  and counts to stdout (Q113).
+* `build` and `run` auto-bind: every `# Import: crate x` that has no cached binding gets one before the code is
+  written, and the command prints `binding x: generated` or `binding x: cached`.
+* A project is a folder (normally with an `agentmark.toml` at its root). A single `.agent.md` file is also a project, with fewer rules (Q34).
+
+### 9.1 Generated Rust project layout
+
+```text
+out/
+  Cargo.toml              depends on agentmark-rt (runtime crate) + tokio + chrono + serde
+  src/main.rs             CLI: --once, --schedule, --mock, --fixtures <dir>, --trace <file|->
+  src/agent_<name>.rs     one file per agent; one async fn per block
+  src/records.rs          structs for every # Record, with serde derives
+  src/rules.rs            one fn per # Rule (and per # Function)
+  src/tools.rs            traits generated from tools.toml
+```
+
+Services and commands get a file each (`service_<name>.rs` with an axum router, `command_<name>.rs` with a clap
+subcommand) and `bindings.rs` holds bound library items and `## Rust` blocks. The generated code reads like the
+source: one function per block, the block heading as its doc comment, and a comment
+`// <file>.agent.md:<line>` before every statement. The `Cargo.toml` pins a library to the exact version in its
+binding header (Q155).
+
+The main program takes `--once` (run every scheduled entry once, in `# Run` order, then each event entry once per
+fixture item), `--schedule` (run for real on the schedule), `--mock` with `--fixtures <dir>` (pretend tools and
+model) and `--trace <file|->`.
+
+### 9.2 Runtime crate `agentmark-rt`
+
+`crates/agentmark-rt` is in the same repository and provides: `Money` and `Currency`; the scheduler; the
+`ModelClient` trait with an Anthropic implementation and `MockModel`; `MockTools` and the fixture loader; the
+`Trace` recorder (one JSON line per tool or model call); and `Ctx`, which bundles them. Money text is
+`"1200.00 EUR"`: EUR, USD, GBP, CHF with two decimals, JPY with none; parsing a number with more decimals than the
+currency has is an error, never silent rounding (Q14).
+
+## 10. Error messages
+
+Every error points at a line and says what was expected, in plain words, with a caret under the offending
+token, and a suggestion when a known word is within edit distance 2:
+
+```agentmark invalid name=typo.agent.md
+> Mails a reminder.
+# Agent: reminder
+- model: claude
+- tools: email, log
+
+## Every day at 09:00
+- email send custmer: "Please pay."
+```
+
+```console stderr
+$ agentmark check typo.agent.md
+typo.agent.md:7
+  - email send custmer: "Please pay."
+               ^^^^^^^
+  Unknown target "custmer" for tool email. Did you mean "customer"?
+```
+
+* The distance is Damerau-Levenshtein (a swapped pair of letters is one edit), at most 2 and less than the number
+  of letters of the typed word. A word that already matches exactly is never a suggestion (Q26).
+* The parser suggests only from closed sets of keywords (block headings, statement words, time units, type
+  constructors). Tool, verb, target and field typos are the semantic check's job (Q27).
+* A mistake in AgentMark source never shows a Rust compiler error. If the Rust written for a program does not
+  build, that is reported as `internal compiler error: generated Rust did not compile` with the generated file, and
+  is a bug of AgentMark. Errors inside your own `## Rust` or binding bodies are mapped back to the `.agent.md` line.
+* JSON diagnostics (`check --json`) carry a stable `code`. Codes: `E0xx` syntax and structure (E001 tab, E002
+  odd indentation, E003 unclosed fence, E004 unreadable line, E010 to E012 properties, E020 unknown declaration,
+  E030 to E032 structure, E040 syntax, E050 import syntax), `E1xx` project files (E100 to E105 `tools.toml`, E110
+  to E113 files and imports including cycles, E114 `agentmark.toml`), `E2xx` meaning (E200 duplicate name, E201
+  unknown type, E202 unknown name, E203 type mismatch, E204 `maybe` not unwrapped, E205 effect in a pure place,
+  E206 effect above the declared one, E207 unknown tool, verb, target or source, E208 tool not listed, E209
+  call, E210 statement, E211 hard limit, E212 `parallel` write conflict, E213 `do`, E214 `# Run`, E215 agent
+  properties, E216 constants, E217 duplicate field, E218 two services with state), and warnings `W001` guessed
+  type, `W002` unused import, `W003` unused declaration, `W004` library without binding, `W005` unapproved
+  library, `W006` several runnable declarations in one file, `W007` long line caused by string text.
+
+## 11. Testing contract
+
+For every program there is a folder of fixtures that makes its behaviour reproducible without any real system.
+This is the fixture folder of the invoice chaser:
+
+```text
+fixtures/01-invoice-chaser/
+  crm.invoices.json        input data of the tool source crm.invoices
+  model.json               canned model answers, plus what "today" is
+  expected.trace.jsonl     the exact sequence of tool and model calls the agent must make
+```
+
+The input is one file per tool source, `<tool>.<source>.json` (`crm.invoices.json`). The same file also feeds
+events: each item of `crm.leads.json` fires `## When crm receives lead` once (Q154). The model file answers
+`ask model`; the longest matching prompt prefix wins:
+
+```json file=fixtures/02-lead-qualifier/model.json
+{
+  "today": "2026-10-13",
+  "responses": [
+    {"prompt_prefix": "Score this inbound lead from 1 to 10", "response": "{\"score\": 9, \"reason\": \"Budget and timeline are stated.\"}"}
+  ]
+}
+```
+
+A service folder adds `requests.json` (`[{method, path, body?, expect_body?}]`), a command adds `command.json`
+(`{command, args}`) and `state.<field>.json` seeds the application state (Q153). The program runs with the fixture
+folder as its working directory. The expected trace of the invoice service shows all the kinds of line a service
+and a command write:
+
+```json file=fixtures/05-invoice-service/expected.trace.jsonl
+{"kind":"guard","agent":"api","name":"found is not empty","result":"pass"}
+{"kind":"http","method":"GET","path":"/invoices/INV-1","status":200}
+{"kind":"guard","agent":"api","name":"found is not empty","result":"fail"}
+{"kind":"http","method":"GET","path":"/invoices/INV-404","status":404}
+{"kind":"guard","agent":"api","name":"found is not empty","result":"pass"}
+{"kind":"http","method":"GET","path":"/invoices/INV-1/net","status":200}
+{"kind":"guard","agent":"api","name":"inv.amount > 0 EUR","result":"pass"}
+{"kind":"http","method":"POST","path":"/invoices","status":201}
+{"kind":"guard","agent":"api","name":"inv.amount > 0 EUR","result":"fail"}
+{"kind":"http","method":"POST","path":"/invoices","status":400}
+{"kind":"print","message":"Imported 3 rows"}
+```
+
+The trace is JSON lines. Tests compare the parsed objects line by line, never generated source text:
+
+| `kind` | fields |
+|---|---|
+| `model` | `agent`, `block`, `prompt_prefix` (the fixture key that matched), `context` (only with `ask model with v`: `{"id": v.id}`) |
+| `guard` | `agent`, `name` (the guard's source text, constants inlined), `result` (`"pass"` or `"fail"`) |
+| `tool`, email | `tool`, `verb`, `target`, `to` |
+| `tool`, crm | `tool`, `verb`, `source`, `id`, and for `update` also `set` (the assigned fields, or the whole record) |
+| `tool`, http | `tool`, `verb`, `url`, `body` (when there is one) |
+| `tool`, log | `tool`, `message` |
+| `http` | `method`, `path` (the concrete path, not the route template), `status` |
+| `print` | `message` |
+| `error` | `agent`, `block`, `message` (a `try` without `otherwise` that failed) |
+
+`agent` is the name of the agent, service or command; `block` is the heading of the entry that started the run (a
+`## Do` block called from `## Every day at 09:00` reports `Every day at 09:00`). Reading a source with `for each` is
+not traced.
+
+One mock response exists per prompt, so one run cannot take both branches of an `if` on a model answer. The
+fixture folder covers the main path; every other branch lives in `variants/<case>/` with the same set of files,
+and a test harness runs each as its own fixture folder (Q150). `cargo test` builds every example, runs it with
+`--mock --fixtures` and compares the trace.
+
+## 13. Core language: functions and modules (layer 2)
+
+### 13.1 Function
+
+```agentmark
+# Record: Invoice
+- id: text
+- amount: money
+
+> The invoice amount after taking off VAT.
+# Function: net_amount
+- in: invoice: Invoice, vat: int
+- out: money
+- effect: pure
+  - return invoice.amount - invoice.amount * vat / 100
+
+> Logs the net amount of every invoice, calling the function two ways.
+# Agent: calc
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - do net_amount(invoice, 19) -> n
+  - log: "{n} or {net_amount(invoice, 19)}"
+```
+
+| line | meaning |
+|---|---|
+| `- in: name: Type, other: Type` | parameters (optional) |
+| `- out: Type` | the result type (optional for a function that returns nothing) |
+| `- effect: pure` | **mandatory**: `pure`, `local`, `network` or `model`. The checker verifies the body does not exceed it |
+| indented lines | the body, under the `effect` line (Q16) |
+
+* A function is called in an expression, `net_amount(invoice, 19)`, or as a statement, `- do net_amount(invoice, 19) -> n`.
+* `return <expr>` ends the function with a value. A function with `out:` and no `return` is an error; `return` outside a
+  function is an error, and so is `stop` inside one (Q40).
+* Recursion is allowed. Closures are not (v0.1).
+* Declared names are unique per project, whatever file they sit in (Q31).
+
+### 13.2 Module and import
+
+One file is one module; files in subfolders are nested modules. A file sees **only** what it imports.
+
+```agentmark fragment
+# Import: ./billing/rules.agent.md as billing
+# Import: ./records/invoice.agent.md
+# Import: ./rules/*.agent.md
+# Import: ./billing as billing
+# Import: crate serde_json
+# Import: crate reqwest as http_client
+```
+
+* A name from an aliased import is written `billing.overdue(invoice)`: the checker looks up the full dotted name (Q37).
+  A file that needs a record from an aliased folder also imports the record file plainly, because the parser accepts
+  qualified names in expressions and calls but not in type positions.
+* Crate imports make the library available to `## Rust` blocks and to bindings (section 15).
+* Import cycles are an error with the cycle printed. Unused imports and unused declarations are warnings.
+* A crate import without a binding file is warning W004 ("run `agentmark bind sha2`"), never an error (Q36).
+
+### 13.3 Service and Command
+
+Two more top-level declarations turn AgentMark into a general application language. No model is involved
+unless the author writes `ask model`. This single file is a complete program with a service and a command:
+
+````agentmark file=examples/05-invoice-service.agent.md
+> Non-agent example: an HTTP service plus a CLI command, using a crate binding.
+> Proves that Layer 2 + Layer 1 can build an ordinary Rust application.
+
+# Import: crate sha2
+
+# Record: Invoice
+- id: text
+- customer: text
+- amount: money
+- due: date
+- status: text
+
+# Record: AppState
+- invoices: list of Invoice
+
+# Function: net_amount
+- in: invoice: Invoice, vat: int
+- out: money
+- effect: pure
+  - return invoice.amount - invoice.amount * vat / 100
+
+## Rust: fingerprint -> text
+- in: invoice: Invoice
+- effect: pure
+  ```rust
+  use sha2::{Digest, Sha256};
+  format!("{:x}", Sha256::digest(format!("{}{}", invoice.id, invoice.amount).as_bytes()))
+  ```
+
+# Service: api
+- listen: 0.0.0.0:8080
+- state: AppState
+
+## GET /invoices/{id}
+- set found = first invoice in state.invoices where invoice.id = id
+- guard: found is not empty else respond 404
+- respond 200 found
+
+## GET /invoices/{id}/net
+- set found = first invoice in state.invoices where invoice.id = id
+- guard: found is not empty else respond 404
+- respond 200 { id: found.id, net: net_amount(found, 19), fingerprint: fingerprint(found) }
+
+## POST /invoices
+- read body as Invoice -> inv
+- guard: inv.amount > 0 EUR else respond 400
+- append inv to state.invoices
+- respond 201 inv
+
+# Command: import-csv
+- args: path: text, dry_run: bool = false
+
+## Run
+- try read file path as list of Invoice -> rows
+  otherwise:
+    - print: "Could not read {path}"
+    - stop
+- for each row in rows:
+  - if not dry_run:
+    - append row to state.invoices
+- print: "Imported {count of rows} rows"
+````
+
+A **service** has `listen:` (address and port) and `state:` (the record that holds its memory). Each `## METHOD /path`
+block is a route; `GET`, `POST`, `PUT`, `PATCH` and `DELETE` exist, and each `{name}` in the path becomes a text variable of
+the block. It lowers to an axum router over shared state.
+
+A **command** has `args:` (`name: Type`, with an optional default `= value`) and exactly one `## Run` block. It lowers to a
+clap subcommand. A command may use the `state` record of the project's single service; a second service with `state:`
+is an error (Q9, Q41).
+
+Statements for services and commands:
+
+```agentmark fragment
+## POST /invoices
+- read body as Invoice -> inv
+- guard: inv.amount > 0 EUR else respond 400
+- append inv to state.invoices
+- respond 201 inv
+- respond 204
+- return inv
+```
+
+```agentmark fragment
+## Run
+- read file path as list of Invoice -> rows
+- print: "Imported {count of rows} rows"
+```
+
+| statement | meaning |
+|---|---|
+| `respond <status>` / `respond <status> <expr>` | end the route with that HTTP status and an optional JSON body |
+| `read body as <Type> -> var` | parse the request body as that type |
+| `read file <path> as <Type> -> var` | read a file into that type (the example reads a CSV file into a `list of Invoice`); effect `local(file)` |
+| `append <value> to <list>` | add to a list, usually `state.<field>`; on `state` it is `local(state)` |
+| `print: "text"` | write a line to the output; effect `local(print)` |
+| `return <expr>` | the value of a function |
+
+Reading `state` is pure. In a mock run the state is seeded from `fixtures/<name>/state.<field>.json` when present.
+
+## 14. Errors
+
+There is no exception mechanism. A statement that can fail is written with `try`:
+
+```agentmark
+# Record: Invoice
+- id: text
+- amount: money
+
+> Reads rates from the web, falls back to a fixed text when that fails.
+# Agent: rates
+- model: claude
+- tools: http, log
+
+## Every day at 06:00
+- try http get "https://api.example.com/rates" -> rates
+  otherwise:
+    - log: "Rates unavailable, using cached"
+    - set rates = "cached"
+- log: "Rates: {rates}"
+```
+
+Without `otherwise`, a failed `try` stops the current block and records the error in the trace (`error` line). With
+`otherwise:` the indented lines run instead; `otherwise:` is the only child of its `try` line (Q18). The variable a
+`try ... -> x` introduces is visible after the `try`. When `otherwise` neither assigns it nor stops, the type's default
+value is used (Q94).
+
+A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rust, and its callers must use `try`:
+
+```agentmark fragment
+# Function: half
+- in: n: int
+- out: result of int
+- effect: pure
+  - return n / 2
+```
+
+(The semantic check of v0.1 does not yet accept this pair: a plain `T` is rejected by `return`, and `try do half(n) -> h`
+leaves `h` typed `result of int`. This is recorded in `OPEN_QUESTIONS.md` Q170. Use `try` on tool calls, reads and
+bindings, which work.)
+
+`maybe` values are unwrapped the same way, with `is some`:
+
+```agentmark
+# Record: Lead
+- id: text
+- score: maybe int
+
+> Logs the score of every new lead, or says it has none.
+# Agent: scorer
+- model: claude
+- tools: crm, log
+
+## When crm receives lead
+- if lead.score is some s:
+  - log: "scored {s}"
+- else:
+  - log: "unscored"
+```
+
+Outside an `is some`, `is not empty` or `guard`, using a `maybe` value where a plain one is needed is an error.
+After `guard: x is not empty`, `x` counts as present for the rest of the block.
+
+## 15. Library access: automatic bindings
+
+**Principle: using a library must never require writing Rust.** A user who writes `# Import: crate printpdf` gets
+statements such as `- pdf render doc -> bytes`. AgentMark generates and caches the **binding** itself. A binding is an
+ordinary layer-2 file: reviewable, diffable and editable by hand. This one is written in the same format as the
+generated ones:
+
+````agentmark
+> Invoice titles as PDF files.
+# Binding: pdf
+- crate: printpdf
+- effect: local
+
+> Renders a title into a one-page PDF.
+## render(title: text) -> bytes
+  ```rust
+  Ok(printpdf_render(&title))
+  ```
+
+## Not bound
+- save_to_file: takes a writer (printpdf::PdfDocument::save)
+````
+
+A statement then reads `- pdf render title -> bytes`: the binding name, the item name, the arguments, the result.
+
+### 15.1 Flow
+
+```text
+# Import: crate printpdf    -> is bindings/printpdf.agent.md there and current?
+                               no  -> run the binder, write the file, continue
+                               yes -> use it
+```
+
+Bindings live in `bindings/<crate>.agent.md` (or `.agentmark/bindings/`). `agentmark bind <crate>` runs the binder
+explicitly; `agentmark bind --all` refreshes every binding. `docs/libraries.md` walks through it.
+
+### 15.2 The binder
+
+The binder is target-agnostic by design: `src/binder/rust/` reads the library's metadata (rustdoc JSON for Rust; a TypeScript
+target would read `.d.ts` files) and `src/binder/core/` turns it into AgentMark declarations. Three tiers apply, in order, to
+every public function and method:
+
+| tier | condition | result |
+|---|---|---|
+| direct | every parameter and the return type map 1:1 onto AgentMark types, no generics, no closures | binding written by rules, no model call |
+| assisted | generics with one obvious instantiation, `Result`/`Option` wrapping, `async` | the binder asks the model for the Rust body, then type-checks it against the declared signature before accepting it |
+| skipped | traits with associated types, lifetimes in the public API, `unsafe`, `&mut` receivers, closures, types AgentMark cannot hold, anything the assisted tier fails to type-check | listed under `## Not bound` with the reason |
+| on-demand (v0.2) | the user writes a plain statement against a skipped item | the binder writes the body from the statement and the rustdoc, saves it as `unverified`, and continues |
+
+The binder never silently drops an item: everything is bound or listed as not bound. The precise edge cases are
+decisions Q70 to Q82; for example, closures stay skipped because AgentMark has no function type (Q75).
+
+### 15.3 Effects and trust
+
+A generated binding is born `- effect: unverified`, with the binder's guess as `- proposed-effect: network` (from
+heuristics: `std::fs` means `local`, `reqwest` or `tokio::net` means `network`, otherwise `pure`; Q81).
+
+* `agentmark check` lists every unverified binding and refuses to build a release while any remain; `--allow-unverified`
+  overrides for development.
+* A person approves by editing that one line to `- effect: pure` (or `local`, `network`). It is once per crate version.
+* A binding approved for version X is marked `unverified` again when the crate version changes.
+
+### 15.4 Binding file format
+
+A binding is a layer-2 declaration whose bodies are layer 1 Rust. Every body is the body of
+`pub async fn <item>(<params>) -> Result<<ret>, Box<dyn std::error::Error + Send + Sync>>`: values arrive owned, the
+body ends in `Ok(value)`, may use `?` and `.await`, and names the library by full path (Q70). Above every bound item
+the binder writes one `>` line: the first sentence of the library's own documentation for it (Q80). The generated
+header lets the binder see staleness:
+
+```text
+> generated by agentmark bind — printpdf 0.7.0 — 2026-10-13
+> edit freely; re-run `agentmark bind printpdf --force` to regenerate
+```
+
+### 15.5 Sharing
+
+Bindings are plain files, so a community registry is a git repository of `bindings/*.agent.md`. The file format needs
+no change for that. It is out of scope for v0.1.
+
+## 16. Concurrency
+
+v0.1 runs blocks one after the other. The IR carries an effect graph so that a later version can run independent
+pure and local statements concurrently. Explicit opt-in works now:
+
+```agentmark
+# Record: Invoice
+- id: text
+- amount: money
+
+> Fetches rates and invoices at the same time.
+# Function: load_all
+- out: list of Invoice
+- effect: network
+  - parallel:
+    - http get "https://api.example.com/rates" -> rates
+    - crm list invoice -> invoices
+  - return invoices
+
+> Runs it at start.
+# Agent: loader
+- model: claude
+- tools: crm, http, log
+
+## On start
+- do load_all -> all
+- log: "{count of all} invoices"
+```
+
+Statements inside `parallel:` must not write the same variable; the checker reports a conflict. All generated functions
+are `async` and use `tokio` from the start.
+
+## 17. Escape hatch: `## Rust` blocks (layer 1)
+
+Any agent, service, command or function may contain a block `## Rust: <name>` whose body is a fenced `rust` block.
+Variables in scope are available by name, and the block must end with a value of its declared type:
+
+````agentmark
+# Import: crate sha2
+
+> Fingerprints a payload with SHA-256.
+# Function: fingerprint_of
+- in: payload: text
+- out: text
+- effect: pure
+  - return hash_payload(payload)
+
+## Rust: hash_payload -> text
+- in: payload: text
+- effect: pure
+  ```rust
+  use sha2::{Digest, Sha256};
+  format!("{:x}", Sha256::digest(payload.as_bytes()))
+  ```
+````
+
+* The heading is `## Rust: <name>` or `## Rust: <name> -> <type>`. `- in:` lists the parameters and `- effect:` is
+  **mandatory**. The effect is trusted: the checker cannot verify arbitrary Rust. `agentmark check` lists every Rust
+  block in its summary so a reviewer sees where trust is extended.
+* A Rust block defines a module-level function called `<name>`; the declaration it sits under only groups it (Q2).
+  Any function in the project can call it like a function: `hash_payload(payload)`.
+* The block is wrapped in its own `fn` with `#[allow(unused)]` and a source-mapping comment, so a Rust error inside it
+  points at the `.agent.md` line.
+* Rust blocks may `use` any crate imported with `# Import: crate`.
+
+## 18. Code organization and readability
+
+AgentMark is Markdown so that a person reads a program like a document, and the language enforces it.
+
+### 18.1 Project layout
+
+```text
+my-project/
+  agentmark.toml          name, version, targets, lint settings
+  tools.toml              tool manifest (section 7)
+  main.agent.md           entry point: imports + a single `# Run`
+  records/                one # Record per file:  records/invoice.agent.md
+  rules/                  one # Rule per file:     rules/overdue.agent.md
+  agents/                 one # Agent per file:    agents/invoice-chaser.agent.md
+  functions/              one # Function per file
+  bindings/               generated by the binder; reviewed, committed
+  fixtures/               test data and expected traces
+  docs/                   optional prose; not compiled
+```
+
+`agentmark.toml` is small:
+
+```toml file=examples/01-invoice-chaser/agentmark.toml
+name = "invoice-chaser"
+version = "0.1.0"
+targets = ["rust"]
+
+[lint]
+deny = ["prompt-in-loop", "missing-doc"]
+```
+
+`# Run` is the only declaration allowed in `main.agent.md` besides imports. Each item is an imported `# Agent`,
+`# Service` or `# Command`:
+
+```agentmark file=examples/05-invoice-service/main.agent.md
+# Import: ./commands/import-csv.agent.md
+# Import: ./services/api.agent.md
+
+> Entry point. The API runs as a service; the CSV import is a subcommand.
+# Run
+- api
+- import-csv
+```
+
+The binary starts all listed agents and services; commands become subcommands. A project with no `# Run` compiles
+to a library, not a binary. Unknown keys in `agentmark.toml` are errors with a suggestion (Q40).
+
+### 18.2 Imports
+
+```agentmark fragment
+# Import: ./records/invoice.agent.md
+# Import: ./rules/*.agent.md
+# Import: ./billing as billing
+# Import: crate printpdf
+```
+
+A file sees only what it imports; there is no global scope. Paths are relative to the importing file. A glob imports
+every matching file. An import cycle is an error, and the cycle is printed.
+
+### 18.3 Hard limits
+
+These are errors and cannot be switched off, because they are what keep a file readable.
+
+```agentmark invalid name=deep.agent.md
+# Record: Invoice
+- id: text
+- amount: money
+- status: text
+
+> Walks too deep.
+# Agent: deep
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - if invoice.status = "open":
+    - if invoice.amount > 100 EUR:
+      - if invoice.amount > 500 EUR:
+        - log: "big"
+```
+
+```console stderr
+$ agentmark check deep.agent.md
+deep.agent.md:15
+        - if invoice.amount > 500 EUR:
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  Statements are nested 4 levels deep; the limit is 3.
+  Move lines 15–16 into a "## Do <name>" block and call it with "do <name>".
+```
+
+| rule | limit |
+|---|---|
+| nesting depth of statements | 3 (`for each`, `if`, `if` is the maximum) |
+| statements per block | 25, counting nested ones too (Q33) |
+| declarations per file | in a project folder: one of agent, service or command per file; several records only in `records/`, several rules only in `rules/`, never records and rules together. A single file is a whole program and is exempt, with warning W006 (Q34) |
+| line length | 120 characters; the text between string quotes does not count (Q35), and a line that is long only because of such text is warning W007 |
+| block with no statements | error |
+
+### 18.4 Soft rules (`agentmark lint`)
+
+Warnings by default. `agentmark.toml` can promote any to an error with `[lint] deny = ["..."]`; an unknown rule name is an
+error with a suggestion.
+
+```agentmark name=loose.agent.md
+# Record: Invoice
+- id: text
+- data: text
+- amount: money
+- status: text
+
+# Agent: loose
+- model: claude
+- tools: crm, email, log
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - ask model with invoice: "Summarise." -> result
+  - email send address "a@b.de": "{result}"
+  - if invoice.amount > 100 EUR:
+    - log: "over 100 EUR"
+```
+
+```console stderr
+$ agentmark lint loose.agent.md
+loose.agent.md:3
+  - data: text
+    ^^^^
+  "data" does not say what it holds. [vague-name]
+  Name it after its content, like "invoice_rows" or "reminder_text".
+
+loose.agent.md:7
+  # Agent: loose
+    ^^^^^^^^^^^^
+  The agent "loose" has no description. [missing-doc]
+  Put a "> description" comment on the line directly above its heading.
+
+loose.agent.md:13
+    - ask model with invoice: "Summarise." -> result
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  "ask model" runs for every item of a "for each" loop and nothing checks its result "result". [prompt-in-loop]
+  Add "- guard: ..." on "result" after it: the model can answer differently for every item (SPEC 4.4).
+
+loose.agent.md:13
+    - ask model with invoice: "Summarise." -> result
+                                              ^^^^^^
+  "result" does not say what it holds. [vague-name]
+  Name it after its content, like "invoice_rows" or "reminder_text".
+```
+
+| rule | fires on |
+|---|---|
+| `long-file` | a file over 150 lines |
+| `magic-value` | a money, duration or URL literal used inline more than once in a file (zero amounts are exempt); name it with a `# Constant` |
+| `unnamed-guard` | a guard whose condition is longer than 60 characters and has no `>` comment line above it |
+| `duplicate-rule` | two rules with identical `when:` expressions, compared structurally across files |
+| `prompt-in-loop` | `ask model` inside `for each` without a later `guard` on its result in the same loop body |
+| `missing-doc` | an agent, service or command with no `>` description directly above its heading |
+| `vague-name` | an identifier called `data`, `tmp`, `x`, `result` or `thing` where it is introduced |
+
+`fmt` and `lint` skip `bindings/` (Q111).
+
+### 18.5 Constants
+
+```agentmark
+# Constant: grace_period
+- value: 14 days
+
+# Constant: sales_inbox
+- value: "sales@optimotion.dev"
+
+# Record: Invoice
+- id: text
+- due: date
+
+# Rule: overdue
+- for: Invoice
+- when: today > due + grace_period
+
+> Mails sales about overdue invoices.
+# Agent: alerter
+- model: claude
+- tools: crm, email
+
+## Every day at 09:00
+- for each overdue invoice in crm.invoices:
+  - email send address sales_inbox: "{id} is overdue"
+```
+
+Constants are pure, imported like anything else, and inlined at compile time. They can hold any literal: a number, a
+text, money, a duration, a date.
+
+### 18.6 Formatter
+
+`agentmark fmt` rewrites a file into the one canonical form: 2-space indent, one blank line between declarations,
+properties before blocks, imports sorted (local files first, then folders, then crates), trailing whitespace removed.
+This file is not canonical:
+
+```agentmark fragment name=messy.agent.md
+# Record:   Invoice
+- id: text
+- amount: money
+
+
+
+> Logs.
+# Agent: tidy
+- tools: crm, log
+- model: claude
+
+## every day at 09:00
+for each invoice in crm.invoices:
+  - log: "{invoice.id}"
+```
+
+```console
+$ agentmark fmt --check messy.agent.md
+not canonical: messy.agent.md
+1 of 1 file are not canonical; run "agentmark fmt" to fix it.
+```
+
+and this is what `agentmark fmt messy.agent.md` writes:
+
+```agentmark
+# Record: Invoice
+- id: text
+- amount: money
+
+> Logs.
+# Agent: tidy
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+- for each invoice in crm.invoices:
+  - log: "{invoice.id}"
+```
+
+There are no formatting options. A few spellings are fixed (Q51): statements are always list items, a block heading is
+printed from its parsed trigger, money prints decimals only when not whole (`12.50 EUR`, `14 EUR`), durations are singular
+for 1, and `do f()` prints as `do f`. Comments survive (Q52). `fmt --check` fails CI when a file is not canonical.
+
+### 18.7 Documentation comments
+
+A `>` comment immediately before a declaration or block is its documentation. `agentmark doc` collects these into one page
+per project, so the text an operations manager reads is the text the author wrote next to the code:
+
+```console cwd=repo
+$ agentmark doc examples/04-daily-report
+# daily-report
+
+## Agents
+
+### daily-report
+
+Mails Anil a two-sentence summary of open and overdue invoices every Monday. Reads only; changes nothing.
+
+- model: claude
+- tools: crm, email, log
+- can touch: model, network(crm, email), local(log)
+
+**Every Monday at 08:00** (can touch: model, network(crm, email), local(log))
+
+
+## Records
+
+### Invoice
+
+An invoice as stored in the CRM.
+
+- id: text
+- customer: text
+- amount: money
+- due: date
+- status: text
+
+
+## Rules
+
+### open
+
+Not paid yet, whether or not it is late.
+
+Applies to Invoice. Always pure.
+
+### overdue
+
+Unpaid and more than the grace period past due.
+
+Applies to Invoice. Always pure.
+```
+
+`agentmark doc <crate>` prints the cheat sheet of a bound library instead (section 15). If the argument names something on disk it is a
+project, otherwise a library; `--project` says where to look for `bindings/` (Q114).
+
+## 19. Model providers
+
+`- model:` is a driver string, never a vendor lock. The runtime's `ModelClient` trait has one implementation per provider and the
+language is unaware of which is in use.
+
+```agentmark
+# Record: Lead
+- id: text
+
+> Uses the cheap model for classification.
+# Agent: classifier
+- model: claude:haiku
+- tools: crm, log
+
+## When crm receives lead
+- ask model with lead: "Is this lead a company or a person? One word." -> kind
+- log: "{kind}"
+```
+
+| string | implementation | status in v0.1 |
+|---|---|---|
+| `claude`, `claude:<model>` | Anthropic Messages API (key from `ANTHROPIC_API_KEY`) | available |
+| `mock` | fixture-driven, for tests | available |
+| `openai:<model>` | OpenAI Chat Completions | planned (v0.2, step 14) |
+| `local:<model>` | any OpenAI-compatible local server (Ollama, LM Studio, vLLM); base URL from `agentmark.toml` | planned (v0.2) |
+| `azure:<deployment>`, `bedrock:<model>` | enterprise routes | planned (v0.2) |
+
+`agentmark.toml` may map environments, `[models] production = "claude"`, `test = "mock"`, `dev = "local:kat-coder"`; that table is part of the
+v0.2 provider work and v0.1 rejects it as an unknown key. The binder and the on-demand tier use the same trait, so a company that forbids
+external APIs can run the whole toolchain on a local model. For `agentmark bind`, `AGENTMARK_MODEL` selects the client: unset or `claude` is
+Anthropic, `claude:<id>` picks the model, `mock:<path>` loads a canned `model.json`; the agent's own `model:` line describes the program, not the
+toolchain (Q115).
+
+## 20. v0.2 scope: editor and tooling
+
+Nothing here changes the language. Built after v0.1 passes all its tests, in this order:
+
+1. The on-demand binding tier (section 15.2, last row).
+2. Model providers `openai`, `local`, `azure`, `bedrock` and the `[models]` table (section 19).
+3. A language server, `agentmark-lsp`, in the same workspace, reusing the checker as a library: diagnostics with the same messages,
+   completion, go-to-definition across imports, hover with a block's effect summary, format-on-save, code actions for the mechanical
+   lint fixes.
+4. A VS Code extension (`editors/vscode/`): grammar, language-server client, an `agentmark.toml` schema and a "what can this agent
+   touch" panel that reads `check --json`.
+5. A tree-sitter grammar (`editors/tree-sitter-agentmark/`).
+6. AI-assistant compatibility: this file stays the single file an LLM needs, and `templates/` holds a `CLAUDE.md` and `.cursorrules`
+   that point at it.
+
+## 21. Out of scope for v0.2
+
+* Automatic parallelism (explicit `parallel:` only).
+* Several agents talking to each other.
+* Targets other than Rust.
+* Closures and generics in the core language.
+
+## Appendix A. Statement index
+
+Every statement form of the language, with where it is explained:
+
+| form | section |
+|---|---|
+| `for each <var> in <source>:` | 4.1 |
+| `for each <rule> <var> in <source>:` | 4.1 |
+| `if <condition>:` / `else:` | 4.1 |
+| `if <expr> is some <name>:` / `else:` | 14 |
+| `stop` | 4.1 |
+| `do <name>` / `do <name>(args) -> var` | 4.1, 13.1 |
+| `ask model[ with <var>]: "<prompt>"[ as <Record>] -> var` | 4.2 |
+| `<tool> <verb> [<target>]: <payload>[ -> var]` | 4.3 |
+| `guard: <condition>[ else <statement>]` | 4.4 |
+| `set <var> = <expression>` | 4.5 |
+| `return <expr>` | 13.1 |
+| `respond <status>[ <expr>]` | 13.3 |
+| `read body as <Type> -> var` | 13.3 |
+| `read file <path> as <Type> -> var` | 13.3 |
+| `append <value> to <list>` | 13.3 |
+| `print: "<text>"` | 13.3 |
+| `try <statement>` + `otherwise:` | 14 |
+| `parallel:` | 16 |
+| `## Rust: <name>[ -> <type>]` | 17 |
+
+## Appendix B. Decisions the specification left open
+
+The choices made while implementing, by topic. Each is written out in `OPEN_QUESTIONS.md`.
+
+| topic | questions |
+|---|---|
+| syntax details (statement columns, comments, `else`, hyphens, money literals) | Q16 to Q22, Q27 to Q29, Q50 to Q53 |
+| names, scope and imports | Q25, Q30, Q31, Q36, Q37, Q41 |
+| types and units | Q7, Q8, Q13, Q14, Q32, Q40, Q151 |
+| limits and style | Q33 to Q35, Q54 to Q56, Q111 |
+| effects | Q38, Q39, Q81, Q112, Q116 |
+| tool targets and the trace | Q4 to Q6, Q153, Q154 |
+| model use | Q12, Q93, Q156, Q157 |
+| binder | Q70 to Q82, Q110, Q117 |
+| lowering and the IR | Q90 to Q95 |
+| command line | Q113 to Q115 |
+| fixtures | Q150 to Q158 |

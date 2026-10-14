@@ -312,3 +312,26 @@ Written into `fixtures/05-invoice-service/`: (a) the `http` line's `path` is the
 
 ## Q158 — Boundary of `overdue` (04)
 `today > due + grace_period` is strict, so an invoice due exactly 14 days ago (`INV-6`, due 2026-09-28, today 2026-10-12) is open but not overdue: counts 5 open, 2 overdue.
+
+## Q170 — `result of T` functions cannot be written or called in v0.1 (step 12, found while documenting SPEC 14)
+SPEC 14: "A function whose `out` is `result of <T>` returns `Result<T, AgentError>`; callers must use `try`." The semantic check accepts the type but not the two halves: `return n / 2` in a function with `out: result of int` is rejected ("This returns a number, but the function says it returns "result of int""), and `try do half(n) -> h` leaves `h` typed `result of int` instead of `int`, so `- set h = 0` in the `otherwise` fails. Reproduction: a pure function `half` with `out: result of int` and a caller using `try do half(n) -> h otherwise: - set h = 0`.
+**Choice:** the docs (`docs/reference.md` section 14) state the SPEC rule, show the function as a *fragment* (parsed only, never checked) and say plainly that the v0.1 check does not yet accept the pair; the working uses of `try` (tool calls, reads, bindings) are the complete examples. No source change in this step.
+**Why:** a complete example the checker rejects would fail `tests/docs.rs`, and a hidden example would hide the gap. The fix belongs to `sema` (wrap a plain `T` returned by a `result of T` function; unwrap on `try`), then the fragment becomes a complete program.
+
+## Q171 — How docs samples are tagged and tested (step 12)
+**Choice:** `tests/docs.rs` documents the rules in its header. A fenced block tagged `agentmark` is a complete program (first real line is a `# ` heading; `check` must report 0 errors against `examples/tools.toml` plus the `bindings/` files named by earlier blocks of the same doc; and it must already be in `fmt`'s canonical style). `agentmark fragment` is only parsed, inside the smallest wrapper that makes its first line legal (an agent's `## Do` block, a service, a command, a function, a binding). `agentmark invalid` must fail `check`. Modifiers: `name=<path>` (a file of the tutorial project, later blocks see the latest version), `file=<repo path>` (the block must equal that file: this is how the docs quote `examples/` and `fixtures/` without drifting), `cwd=repo`, `stderr`. A `console` block starting `$ agentmark ...` is executed and its stdout (or stderr) must match.
+**Why:** the brief asks that every sample be extracted and checked; complete programs, fragments and quoted files are three different promises, and a console transcript is a fourth. Using the real binary for transcripts means error messages in the guide cannot be out of date.
+
+## Q172 — `build`, `run` and `trace` are documented before the code generator is merged (step 12)
+The generator (step 6/7) is written in a parallel worktree. **Choice:** the docs describe `build/run/trace` from SPEC 9, DESIGN 4.3/5 and the step-6 brief (flags `--once`, `--schedule`, `--mock`, `--fixtures`, `--trace`, auto-binding messages, refusal of unapproved libraries) and show their output by quoting committed files (`fixtures/*/expected.trace.jsonl`, checked by `file=`), never by running them. `tests/docs.rs` does not depend on them, and `internals.md` paths under `src/codegen/` are checked only once that folder exists.
+**Why:** the documentation must not block on, or guess at, a branch that is not merged; once it is, a `console` transcript for `trace` can be added.
+
+## Q173 — The reference has no section 12 (step 12)
+SPEC.md jumps from section 11 to 13. **Choice:** `docs/reference.md` mirrors the SPEC numbering exactly (0 to 11, 13 to 21), and `tests/docs.rs` compares the list of `## N.` headings with SPEC.md's. Appendices are unnumbered.
+**Why:** "one section per SPEC section, same order" is easiest to keep true, and to check, when the numbers are the same.
+
+## Q174 — `check` does not run the binder (step 12)
+SPEC 15.1 says the compiler generates a missing binding when it meets `# Import: crate X`. In this build only `bind` writes bindings; `check` on a file that uses `- sha2 sha256_digest ...` before `bindings/sha2.agent.md` exists reports "no binding yet" and also "Unknown tool "sha2"" (the second message is true but unhelpful). **Choice:** `docs/libraries.md` tells the reader to run `agentmark bind <crate>` first and names both messages; `build` is documented as the command that auto-binds (SPEC 9, brief). **Suggested follow-up (not done here):** let the "Unknown tool" error say `run "agentmark bind sha2"` when an unbound crate import in the file has that name.
+
+## Q175 — The guide's vocabulary (step 12)
+PROMPT step 12 bans "compiler", "IR", "binding" and "effect class" in `docs/guide.md`. **Choice:** `tests/docs.rs` rejects those as whole words, case-insensitively, anywhere in the file including code blocks, plus "bindings", "compile", "compiles" and "compiled". The guide says "library", "what it can access" / "what each block can touch", "safety check", "test data". The real `check` message about an unapproved library contains the word "binding"; the guide therefore describes that message in its own words instead of quoting it (the developer page `docs/libraries.md` quotes it).
