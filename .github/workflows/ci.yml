@@ -24,6 +24,10 @@ jobs:
           cargo init -q --lib --name warm "$d"
           echo 'sha2 = "=0.10.9"' >> "$d/Cargo.toml"
           cargo fetch -q --manifest-path "$d/Cargo.toml"
+      # The codegen and example tests build generated projects with `cargo build --offline`;
+      # building every example once online puts their dependencies (tokio, sqlx, ...) in the cache.
+      - name: Warm the cargo cache for the generated projects
+        run: for ex in examples/*/; do target/debug/agentmark build "$ex" || true; done
       - name: Test
         run: cargo test --workspace
       - name: Examples are canonical, lint-clean and check clean
