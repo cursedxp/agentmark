@@ -16,6 +16,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build
+      # tests/binder.rs runs `cargo check --offline` against sha2 0.10.9, which only works when the
+      # crate is already in the local registry cache; fetch it once here.
+      - name: Warm the cargo cache for the offline binder tests
+        run: |
+          d=$(mktemp -d)
+          cargo init -q --lib --name warm "$d"
+          echo 'sha2 = "=0.10.9"' >> "$d/Cargo.toml"
+          cargo fetch -q --manifest-path "$d/Cargo.toml"
       - name: Test
         run: cargo test --workspace
       - name: Examples are canonical, lint-clean and check clean
