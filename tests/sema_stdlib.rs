@@ -7,16 +7,30 @@ use common::*;
 
 use agentmark::sema::Type;
 
-/// A command with `body` as its `## Run` block.
-fn run(body: &str) -> String {
-    let indented: String = body.lines().map(|l| format!("{l}\n")).collect();
-    format!("# Record: Sale\n- region: text\n- amount: money\n\n# Command: c\n- in: name: text\n- steps:\n  1. {indented}")
+/// Numbered steps: the top-level lines of `body` are numbered, indented lines are the steps
+/// under them, as written.
+fn steps(body: &str) -> String {
+    let mut out = String::new();
+    let mut n = 0;
+    for line in body.lines() {
+        if line.starts_with(' ') {
+            out.push_str(&format!("  {line}\n"));
+        } else {
+            n += 1;
+            out.push_str(&format!("  {n}. {line}\n"));
+        }
+    }
+    out
 }
 
-/// A pure function returning `out` with `body` in it.
+/// A command with `body` as its steps (the first step is on line 8).
+fn run(body: &str) -> String {
+    format!("# Record: Sale\n- region: text\n- amount: money\n\n# Command: c\n- in: name: text\n- steps:\n{}", steps(body))
+}
+
+/// A function returning `out` with `body` as its steps; it touches nothing.
 fn func(out: &str, body: &str) -> String {
-    let lines: String = body.lines().map(|l| format!("  - {l}\n")).collect();
-    format!("# Function: f\n- in: s: text, n: int, m: money, d: date\n- out: {out}\n- touches: nothing\n- steps:")
+    format!("# Function: f\n- in: s: text, n: int, m: money, d: date\n- out: {out}\n- touches: nothing\n- steps:\n{}", steps(body))
 }
 
 fn ty_of(src: &str, text: &str) -> String {
@@ -78,9 +92,9 @@ fn every_function_has_the_type_of_its_table_row() {
 
 #[test]
 fn calls_that_can_fail_are_results_after_try_and_give_the_inner_type() {
-    let src = run("- try number.parse(name) -> n\n- try money.parse(name) -> m\n- try date.parse(name, \"YYYY-MM-DD\") -> d\n- print: \"{n} {money.format(m)} {date.format(d, \"YYYY\")}\"");
+    let src = run("try number.parse(name) into n\ntry money.parse(name) into m\ntry date.parse(name, \"YYYY-MM-DD\") into d\nprint: \"{n} {money.format(m)} {date.format(d, \"YYYY\")}\"");
     let c = ok(&src);
-    let types: Vec<String> = c.expr_types.iter().filter(|(k, _)| k.span.line >= 9 && k.span.line <= 11).map(|(_, t)| t.to_string()).collect();
+    let types: Vec<String> = c.expr_types.iter().filter(|(k, _)| k.span.line >= 8 && k.span.line <= 10).map(|(_, t)| t.to_string()).collect();
     for want in ["result of int", "result of money", "result of date"] {
         assert!(types.iter().any(|t| t == want), "{want} in {types:?}");
     }
@@ -88,13 +102,13 @@ fn calls_that_can_fail_are_results_after_try_and_give_the_inner_type() {
 
 #[test]
 fn decoding_takes_the_type_after_as() {
-    let src = run("- try json.parse(name) as Sale -> one\n- try do csv.parse(name) as list of Sale -> rows\n- try csv.parse(name) as list of Sale -> again\n- print: \"{one.region} {count of rows} {count of again}\"");
+    let src = run("try json.parse(name) as Sale into one\ntry do csv.parse(name) as list of Sale into rows\ntry csv.parse(name) as list of Sale into again\nprint: \"{one.region} {count of rows} {count of again}\"");
     ok(&src);
 }
 
 #[test]
 fn a_decoded_value_has_the_declared_type() {
-    let src = run("- try json.parse(name) as list of Sale -> rows\n- print: \"{count of rows}\"");
+    let src = run("try json.parse(name) as list of Sale into rows\nprint: \"{count of rows}\"");
     let c = ok(&src);
     assert!(c.expr_types.values().any(|t| *t == Type::Result(Box::new(Type::List(Box::new(Type::Record("Sale".into())))))));
 }
@@ -105,15 +119,15 @@ fn a_decoded_value_has_the_declared_type() {
 fn library_calls_are_pure_and_the_file_tool_is_local() {
     let c = ok(&func("text", "return text.upper(s)"));
     assert!(c.blocks.iter().all(|b| b.effect.is_pure()));
-    let c = ok(&run("- try file read name -> t\n- file write \"o.txt\": t\n- read input -> typed\n- print: typed"));
+    let c = ok(&run("try file read name into t\nfile write \"o.txt\": t\nread input into typed\nprint: typed"));
     let shown = c.blocks.iter().find(|b| b.effect.local.contains(&"file".to_string())).expect("a block with the file effect").effect.to_string();
     assert_eq!(shown, "local(file, input, print)");
 }
 
 #[test]
-fn a_function_that_declares_pure_cannot_use_the_file_tool() {
+fn a_function_that_touches_nothing_cannot_use_the_file_tool() {
     let e = first_error(&func("text", "file delete s\nreturn s"));
-    assert!(e.contains("says \"- effect: pure\"") && e.contains("local (file)"), "{e}");
+    assert!(e.contains("says \"- touches: nothing\"") && e.contains("this step touches files."), "{e}");
 }
 
 #[test]
@@ -152,29 +166,31 @@ fn wrong_argument_counts_and_kinds_are_plain() {
 
 #[test]
 fn a_maybe_argument_must_be_checked_first() {
-    let e = first_error(&run("- set found = regex.find(name, \"a\")\n- print: text.upper(found)"));
+    let e = first_error(&run("regex.find(name, \"a\") into found\nprint: text.upper(found)"));
     assert!(e.contains("must be text, but this is maybe text") && e.contains("is some"), "{e}");
 }
 
 #[test]
 fn a_result_without_try_says_how_to_write_it() {
-    let e = first_error(&run("- print: \"{number.parse(name)}\""));
+    let e = first_error(&run("print: \"{number.parse(name)}\""));
     assert!(e.contains("\"number.parse\" can fail (it returns \"result of int\")") && e.contains("try number.parse"), "{e}");
-    let e = first_error(&run("- file read name -> t"));
+    let e = first_error(&run("file read name into t"));
     assert!(e.contains("\"file read\" can fail"), "{e}");
-    let e = first_error(&run("- number.parse(name) -> n"));
-    assert!(e.contains("can fail"), "{e}");
+    // stored without `try`, the result itself is kept and must be matched (Q300, Q457)
+    let e = first_error(&run("number.parse(name) into n"));
+    assert!(e.contains("The result in \"n\" is never matched, so its failure would be lost."), "{e}");
+    assert!(e.contains("Match it with \"match n:\"") && e.contains("or use \"try ... into value\" instead."), "{e}");
 }
 
 #[test]
 fn json_and_csv_parse_need_their_type() {
-    let e = first_error(&run("- try json.parse(name) -> x"));
+    let e = first_error(&run("try json.parse(name) into x"));
     assert!(e.contains("needs to know what to read") && e.contains("json.parse(body) as Note"), "{e}");
-    let e = first_error(&run("- try do csv.parse(name) as Sale -> x"));
+    let e = first_error(&run("try do csv.parse(name) as Sale into x"));
     assert!(e.contains("reads a list of records"), "{e}");
-    let e = first_error(&run("- try do csv.parse(name) as list of text -> x"));
+    let e = first_error(&run("try do csv.parse(name) as list of text into x"));
     assert!(e.contains("csv.parse"), "{e}");
-    let e = first_error(&run("- try json.parse(name) as Nope -> x"));
+    let e = first_error(&run("try json.parse(name) as Nope into x"));
     assert!(e.contains("Nope"), "{e}");
 }
 
@@ -194,26 +210,26 @@ fn a_literal_pattern_that_cannot_work_is_checked_now() {
 
 #[test]
 fn the_file_statement_has_a_shape_per_verb() {
-    let e = first_error(&run("- file raed name"));
+    let e = first_error(&run("file raed name"));
     assert!(e.contains("no verb \"raed\"") && e.contains("Did you mean \"read\"?"), "{e}");
-    let e = first_error(&run("- file rename name"));
+    let e = first_error(&run("file rename name"));
     assert!(e.contains("file rename <old> to <new>"), "{e}");
-    let e = first_error(&run("- file write name"));
+    let e = first_error(&run("file write name"));
     assert!(e.contains("needs the text after a colon"), "{e}");
-    let e = first_error(&run("- file write name to \"x\""));
+    let e = first_error(&run("file write name to \"x\""));
     assert!(e.contains("not after \"to\""), "{e}");
-    let e = first_error(&run("- file delete name: \"x\""));
+    let e = first_error(&run("file delete name: \"x\""));
     assert!(e.contains("takes only a path"), "{e}");
-    let e = first_error(&run("- file list name"));
-    assert!(e.contains("name it with \"-> name\""), "{e}");
-    let e = first_error(&run("- file delete name -> gone"));
+    let e = first_error(&run("file list name"));
+    assert!(e.contains("name it with \"into <name>\""), "{e}");
+    let e = first_error(&run("file delete name into gone"));
     assert!(e.contains("gives nothing back"), "{e}");
-    let e = first_error(&run("- file delete 3"));
+    let e = first_error(&run("file delete 3"));
     assert!(e.contains("A file path must be text"), "{e}");
 }
 
 #[test]
 fn file_results_have_their_types() {
-    let c = ok(&run("- file list name -> names\n- file exists name -> there\n- try file read name -> t\n- if there:\n  - print: \"{count of names} {text.length(t)}\""));
+    let c = ok(&run("file list name into names\nfile exists name into there\ntry file read name into t\nif there:\n   1. print: \"{count of names} {text.length(t)}\""));
     assert!(c.expr_types.values().any(|t| t.to_string() == "list of text"));
 }

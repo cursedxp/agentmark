@@ -207,8 +207,8 @@ impl Checker<'_> {
                 format!("\"{}\" is {ty}, a library value that cannot be printed, compared, saved, sent or traced.", name.name),
             )
             .with_help(
-                "Use it with a call that takes it (\"- hasher update data\"), or take a value out of it first \
-                 (\"- hasher finalize -> digest\").",
+                "Use it with a call that takes it (\"hasher update data\"), or take a value out of it first \
+                 (\"hasher finalize into digest\").",
             ),
         );
     }

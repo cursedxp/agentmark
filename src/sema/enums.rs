@@ -573,7 +573,7 @@ impl Checker<'_> {
             format!("\"{}\" holds a result, which can only be matched.", segs[0].name),
         )
         .with_help(format!(
-            "Write \"- match {}:\" with the branches \"ok value\" and \"error problem\".",
+            "Write \"match {}:\" with the branches \"ok value\" and \"error problem\".",
             segs[0].name
         ));
         self.diags.push(d);
@@ -604,7 +604,7 @@ impl Checker<'_> {
             span,
             format!("A {n} cannot be written into text as a whole."),
         )
-        .with_help("Use \"- match <value>:\" and write what each variant carries.");
+        .with_help("Use \"match <value>:\" and write what each variant carries.");
         self.diags.push(d);
     }
 

@@ -625,7 +625,7 @@ impl Checker<'_> {
                         seg.span,
                         format!("\"{key}\" is a {en}, which has no fields of its own, so \".{}\" cannot be read.", seg.name),
                     )
-                    .with_help(format!("Use \"- match {key}:\" and read the fields inside the branch of the variant that has them."));
+                    .with_help(format!("Use \"match {key}:\" and read the fields inside the branch of the variant that has them."));
                     self.diags.push(d);
                     return Type::Unknown;
                 }

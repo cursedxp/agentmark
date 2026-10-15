@@ -592,7 +592,7 @@ impl Checker<'_> {
                 at,
                 format!("The result in \"{name}\" is never matched, so its failure would be lost."),
             )
-            .with_help(format!("Match it with \"- match {name}:\" (branches \"ok\" and \"error\") on every path, or use \"- try ... -> value\" instead."));
+            .with_help(format!("Match it with \"match {name}:\" (branches \"ok\" and \"error\") on every path, or use \"try ... into value\" instead."));
             self.diags.push(d);
         }
     }
@@ -832,7 +832,7 @@ impl Checker<'_> {
                     ),
                 )
                 .with_help(format!(
-                    "Write \"- try {}(...) -> value\", optionally with an \"otherwise:\" branch.",
+                    "Write \"try {}(...) into value\", optionally with an \"otherwise:\" branch.",
                     name.name
                 ));
                 self.diags.push(d);

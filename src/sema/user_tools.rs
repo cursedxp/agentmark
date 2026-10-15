@@ -306,7 +306,7 @@ impl<'a> Checker<'a> {
                     at,
                     format!("The tool \"{}\" takes values, not \"field = value\" assignments.", tool.name),
                 )
-                .with_help("Write the values after the verb: \"- name verb a b\", and one value after a colon if you like.");
+                .with_help("Write the values after the verb: \"name verb a b\", and one value after a colon if you like.");
                 self.diags.push(d);
                 for a in list {
                     self.expr(cx, &a.value);
@@ -344,7 +344,7 @@ impl<'a> Checker<'a> {
                     out.as_ref().map(|t| t.to_string()).unwrap_or_default()
                 ),
             )
-            .with_help(format!("Write \"- try {tool_name} {vname} ... -> value\", optionally with an \"otherwise:\" branch."));
+            .with_help(format!("Write \"try {tool_name} {vname} ... into value\", optionally with an \"otherwise:\" branch."));
             self.diags.push(d);
         }
         if let Some(i) = into {
@@ -476,7 +476,7 @@ impl<'a> Checker<'a> {
                     e.span,
                     format!("The verb \"{name}\" can fail (it returns \"{}\"), so it cannot be used inside an expression.", sig.out.as_ref().unwrap()),
                 )
-                .with_help(format!("Call it as a statement: \"- try {written} {} ... -> value\".", verb.name));
+                .with_help(format!("Call it as a statement: \"try {written} {} ... into value\".", verb.name));
                 self.diags.push(d);
                 (**inner).clone()
             }
