@@ -641,15 +641,15 @@ fn reference_shows_every_statement_form() {
         "first ",
         "## Rust: ",
         "## Not bound",
-        "# Uses\n- [crate](crate/)",
+        "# Uses\n- [invoice](./records/invoice.agent.md)",
         "# Constant:",
-        "# Program: program",
+        "# Program: ",
         "## Every ",
         "## When ",
         "## On start",
         "## Do ",
         "## GET ",
-        "- pdf render ",
+        "pdf render ",
     ];
     for f in forms {
         assert!(samples.contains(f), "docs/reference.md never shows the form {f:?} in a sample");

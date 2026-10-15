@@ -5,7 +5,7 @@
 - It is for people, editor plugins and AI assistants that write AgentMark.
 - After reading it you can write a correct statement for any task and look up its error.
 
-**Jump to:** [Cheat sheet](#cheat-sheet) · [Statements](#4-statements) · [Expressions](#5-expressions) · [Functions, commands, services](#13-core-language-functions-and-modules-layer-2) · [Errors](#14-errors) · [Collections, library, tools](#22-v03-a-general-purpose-markdown-language) · [Statement index](#appendix-a-statement-index)
+**Jump to:** [Cheat sheet](#cheat-sheet) · [Statements](#4-statements) · [Expressions](#5-expressions) · [Functions, commands, services](#13-core-language-functions-and-modules-layer-2) · [Errors](#14-errors) · [Collections, library, tools](#22-v03-a-general-purpose-markdown-language) · [v0.4 syntax](#23-v04-plain-sentences-real-markdown) · [Statement index](#appendix-a-statement-index)
 
 ## Cheat sheet
 
@@ -25,7 +25,7 @@ The 20 statement forms you will write most. Appendix A lists all of them. Every 
 | `crm update invoice: status = "paid"` | calls a tool | [4.3](#43-tool-calls) |
 | `try http get "https://x.example" into r` | runs a call that can fail, with `otherwise:` as the fallback | [14](#14-errors) |
 | `print: "Total {total}"` | writes a line to standard output | [13.3](#133-service-and-command) |
-| `try file read path into sales` | reads a file; a name that matches a record reads CSV into a list of it | [23.10](#2310-reading-a-file-into-records) |
+| `try file read path into sales` | reads a file; a plural record name (`sales` for `Sale`) reads CSV into a list of it | [23.10](#2310-reading-a-file-into-records) |
 | `file write "out.txt": body` | writes, appends, lists or renames files | [22.3](#223-the-built-in-library) |
 | `add row to rows` | adds to the end of a list | [22.2](#222-collection-words) |
 | `add RegionTotal to totals:` with bullets | builds a record from `name: value` bullets and adds it | [23.11](#2311-adding-to-a-list-add) |
@@ -527,7 +527,7 @@ Asks the model three ways.
 - A mock model matches on the prompt prefix, so `with` does not disturb fixtures.
 - A reply that is not valid JSON for the record is not a runtime error. Not JSON, a missing field and a field of the wrong type all make `q matches Qualification` false, so the guard fails and the block stops, per Q157.
 - So always write the `matches` guard after `as <Record>`.
-- The prompt may be a string with `{holes}` or the name of a constant of type text, as in `ask model with ticket: triage_prompt as Triage -> t`.
+- The prompt may be a string with `{holes}` or the name of a constant of type text, as in `ask model with ticket: triage_prompt as Triage into t`.
 - The agent's `model:` line selects the driver. See section [19](#19-model-providers).
 - `ask model` also works outside an agent: in a function declared `effect: model`, in a route or in a command. There is no `model:` line there to say which driver, and the IR records none for such a call, per Q92.
 
@@ -565,11 +565,11 @@ Shows the shapes of a tool call.
 ```
 
 **Rules**
-- The shape is `- <tool> <verb> [<target>]: <payload> [-> var]`.
+- The shape is `<tool> <verb> [<target>]: <payload> [into var]`.
 - The tool and the verb both come from `tools.toml`. An unknown verb is an error with "Did you mean ...?".
-- A tool without verbs, like `log`, is written `- log: "..."`.
-- `-> name` keeps the result of `get`, `list` or `post`, typed by the manifest when it can.
-- Reading a tool's source, as in `for each ... in crm.invoices`, is an effect of that tool: `network(crm)`.
+- A tool without verbs, like `log`, is written `log: "..."`.
+- `into name` keeps the result of `get`, `list` or `post`, typed by the manifest when it can.
+- Reading a tool's source, as in `for each ... in crm.invoices`, touches that tool: `crm`.
 
 **Pieces of a call**
 
@@ -588,7 +588,7 @@ The rules are Q4 and Q5.
 - `crm update invoice` names the source `invoices`, the plural of the word. It takes the `id` of the record in front of the block.
 - When several variables of that record are in scope, the call is an error: "Which invoice?". Name the one you mean with a value after the word.
 - A tool's name alone is never a value, so a field called `email` is a field.
-- A target word may be a field path of a variable, as in `- statement bind draft.title -> next`, per Q410.
+- A target word may be a field path of a variable, as in `statement bind draft.title into next`, per Q410.
 
 ### 4.4 Guards
 
@@ -862,7 +862,7 @@ effect = "local"
 | key | meaning |
 |---|---|
 | table name (`[email]`) | the tool's name, as written in `tools:` and in statements |
-| `verbs` | the words allowed after the tool name; an empty list means the tool is written `- log: "..."` |
+| `verbs` | the words allowed after the tool name; an empty list means the tool is written `log: "..."` |
 | `targets` | words allowed after the verb (`email send customer`) |
 | `sources` | names readable as `tool.source` (`crm.invoices`); each is plural, and its singular names a record (`Invoice`) and is also the target word of `update` (Q5) |
 | `events` | names usable in `## When <tool> receives <event>`; each names a record (`lead` is `Lead`) |
@@ -1248,7 +1248,7 @@ typo.agent.md:8
 - `"x" holds T, but this is T.`
 - `A file path must be text, but this is T.`
 - `This list holds T, but this is T.`
-- `"append" needs a list, but this is T.`
+- `"append" needs a list, but this is T.` (the message still says "append"; the step is `add`)
 - `This returns T, but the function says it returns "T".`
 
 *Conditions and checks*
@@ -1524,7 +1524,8 @@ Two more top-level declarations turn AgentMark into a general application langua
 
 ````agentmark
 # Program: invoice-service
-An HTTP service plus a command, using a crate binding. It shows that layers 2 and 1 can build an ordinary Rust application.
+An HTTP service plus a command, using a crate binding.
+It shows that layers 2 and 1 can build an ordinary Rust application.
 
 # Import: crate sha2
 
@@ -2116,7 +2117,6 @@ Serves invoices over HTTP and imports new ones from a CSV file.
 ```agentmark fragment
 # Uses
 - [invoice](./records/invoice.agent.md)
-- [crate](crate/)
 - [every rule](./rules/*.agent.md)
 - [billing](./billing/) as billing
 
@@ -2956,12 +2956,16 @@ A result must be handled with try.
 
 - in: answer: text
 - steps:
-  1. number.parse(answer) into days
-  2. print: "{days}"
+  1. print: "{number.parse(answer)}"
 ```
 
 ```console stderr
 $ agentmark check wrong.agent.md
+wrong.agent.md:6
+    1. print: "{number.parse(answer)}"
+                ^^^^^^^^^^^^^^^^^^^^
+  "number.parse" can fail (it returns "result of int"), so it has to be called with "try".
+  Write "- try number.parse(...) -> value", optionally with an "otherwise:" branch.
 ```
 
 #### Files and standard input
@@ -3156,7 +3160,7 @@ Every call is written to the trace before the body runs, like a tool call. `args
 
 This is an error on the line that does it:
 
-```agentmark invalid
+```agentmark invalid name=greeter.agent.md says=touches_print
 # Tool: greeter
 A pure tool cannot print.
 
@@ -3166,12 +3170,18 @@ A pure tool cannot print.
 1. print: "hello {name}"
 ```
 
-```text
-greeter.agent.md:6
-  - print: "hello {name}"
-    ^^^^^^^^^^^^^^^^^^^^^
-  The tool "greeter" says "- effect: pure", but this line has the effect local (print).
-  Change the tool to "- effect: local", or move this line out of the tool.
+```console stderr
+$ agentmark check greeter.agent.md
+greeter.agent.md:1
+  # Tool: greeter
+          ^^^^^^^
+  Unused tool: nothing refers to "greeter".
+
+greeter.agent.md:7
+  1. print: "hello {name}"
+     ^^^^^^^^^^^^^^^^^^^^^
+  The tool "greeter" says "- touches: nothing", but this step touches print.
+  Add print to the "- touches:" line, leave the line out to let the checker work it out, or move this step out of the tool.
 ```
 
 **Errors**
@@ -3179,14 +3189,14 @@ greeter.agent.md:6
 | code | message | fix |
 |---|---|---|
 | E206 | `The tool "x" says "- touches: nothing", but this step touches print.` | add `print` to the tool's `- touches:` line, or move the step out of the tool |
-| E209 | `The verb "x" of "x" can fail (it returns "T"), so it has to be called with "try".` or `The verb "x" can fail (it returns "T"), so it cannot be used inside an expression.` | write `- try tool verb ... -> value`, optionally with an `otherwise:` branch |
+| E209 | `The verb "x" of "x" can fail (it returns "T"), so it has to be called with "try".` or `The verb "x" can fail (it returns "T"), so it cannot be used inside an expression.` | write `try tool verb ... into value`, optionally with an `otherwise:` branch |
 | E380 | `The tool "x" has the same name as x.` | a tool name must be unique, so rename this one; it cannot be named like a tool of `tools.toml`, like `file`, like a binding, or like an agent, command or service |
 | E381 | `The tool "x" has the verb "x" twice.` | remove or rename one |
-| E382 | `The tool "x" has the effect T, so "x(...)" cannot be used inside an expression.` | call it as a statement: `- tool verb ... -> value` |
+| E382 | `The tool "x" has the effect T, so "x(...)" cannot be used inside an expression.` | call it as a step: `tool verb ... into value` |
 | E383 | `The tool x needs a verb.` or `Unknown verb "x" for tool x.` | use one of the verbs the message lists |
-| E384 | `The tool "x" takes values, not "field = value" assignments.` | write the values after the verb: `- name verb a b`, and one value after a colon if you like |
+| E384 | `The tool "x" takes values, not "field = value" assignments.` | write the values after the verb: `name verb a b`, and one value after a colon if you like |
 | E385 | `The verb "x" of "x" returns nothing, so there is no result to store.` or `The verb "x" returns nothing, so it cannot be used as a value.` | call it as a statement |
-| E386 | `The verb "x" of the tool "x" says it returns a value but never does.` | end the body with `- return <value>`, or remove the `-> type` from the heading |
+| E386 | `The verb "x" of the tool "x" says it returns a value but never does.` | end the body with `return <value>`, or remove the `-> type` from the heading |
 | E387 | `The argument "x" would be the flag "--x", which every program already has, and this command is the program's default.` | rename the argument, for example `x_value` |
 | W380 | `The tool "x" has the name of a library module, so "x.something(...)" is easy to misread.` | a call `x.f(...)` means this tool only when it has the verb `f`; consider another name |
 
@@ -3194,10 +3204,11 @@ greeter.agent.md:6
 
 ### 22.6 Programs
 
-A project whose `# Run` lists a single `# Command` and no agent or service makes that command the binary's default:
+A program with a single `# Command` and no agent or service makes that command the binary's default, with or without `- start:`:
 
 ```agentmark
 # Program: label
+Prints a label title.
 
 # Command: label
 Says how many copies of a title it would print: `label <title> [<copies>] [--dry-run]`.
@@ -3263,40 +3274,521 @@ fixtures/07-file-renamer/
 - Async user code. Handles to async library APIs are awaited by the generated code.
 - Operator overloading. Every operator keeps the meaning of section [5](#5-expressions).
 
+## 23. v0.4: plain sentences, real Markdown
+
+**In short**
+- Every line of a program reads out loud as a sentence, and a rendered `.agent.md` file reads like a document.
+- Every Markdown element means what it means in ordinary Markdown.
+- Nothing changes in what a program does. Only the syntax and the wording of `check` and `doc` changed.
+
+**Jump to:** [elements](#231-what-each-markdown-element-means) · [steps](#233-steps) · [Program and Uses](#234-program-and-uses) · [types from names](#236-types-from-names) · [touches](#237-what-a-part-touches) · [into](#239-naming-a-result-into) · [files](#2310-reading-a-file-into-records) · [add](#2311-adding-to-a-list-add) · [removed syntax](#2313-removed-syntax)
+
+This program uses most of it:
+
+```agentmark
+# Program: sales
+Reads a sales file and prints how much it brought in, region by region.
+
+- start: [sales-report](#command-sales-report)
+
+# Record: Sale
+One line of the sales file.
+
+- region: text
+- product: text
+- amount: money
+
+# Record: RegionTotal
+What one region brought in.
+
+- region: text
+- orders: int
+- revenue: money
+
+# Rule: big Sale
+A sale of 100 EUR or more.
+
+- when: amount >= 100 EUR
+
+# Function: region_totals
+Adds up the sales of every region, biggest revenue first.
+
+- in: sales
+- out: region totals
+- touches: nothing
+- steps:
+  1. group sales by region into by_region
+  2. empty list of RegionTotal into totals
+  3. for each region, region_sales in by_region:
+     1. add RegionTotal to totals:
+        - region
+        - orders: count of region_sales
+        - revenue: sum of amount in region_sales
+  4. return sort totals by revenue descending
+
+# Command: sales-report
+Reads a sales file and prints the revenue of every region.
+
+- in: path: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. for each big sale in sales:
+     1. print: "big sale in {sale.region}"
+  3. for each entry in region_totals(sales):
+     1. print: "{entry.region}: {entry.revenue}"
+  4. if count of sales > 0:
+     1. print: "{count of sales} sales"
+     else:
+     1. print: "no sales"
+```
+
+### 23.1 What each Markdown element means
+
+| Markdown | meaning in AgentMark |
+|---|---|
+| `#` heading | a part: `Program`, `Uses`, `Record`, `Enum`, `Type`, `Rule`, `Function`, `Command`, `Agent`, `Service`, `Tool`, `Binding`, `Constant` |
+| `##` heading | a part of a part: an agent's trigger or `Do` block, a service route, a tool verb, a `Rust` block |
+| paragraph directly under a heading | the description of that part |
+| `-` bullet list | properties and fields (order does not matter) |
+| `1.` numbered list | steps (order matters) |
+| `[name](target)` link | a file the program uses, or the command it starts with |
+| fenced `rust` block | Rust code (layer 1) |
+| `>` line | a note for people ([23.12](#2312-notes)) |
+
+Bold, italic and the `*` and `+` bullet markers carry no meaning. A `*` or `+` bullet is read as `-`, and `fmt` writes `-`.
+
+### 23.2 Descriptions
+
+The description of a part is the paragraph directly under its heading, before its first list. It may run over several lines and paragraphs.
+
+```agentmark fragment
+# Rule: big Sale
+A sale of 100 EUR or more.
+
+- when: amount >= 100 EUR
+```
+
+`agentmark doc`, the `missing-doc` lint and the language server read it from there. A `>` line directly above a heading is error E068.
+
+### 23.3 Steps
+
+Every list of steps is numbered: the steps of a command and a function (under `- steps:`), of an agent trigger or `## Do` block, of a service route and of a tool verb. The steps under `for each`, `if`, `else`, `otherwise`, `match` branches and `parallel` are numbered too.
+
+```agentmark fragment
+1. try file read path into content
+   otherwise:
+   1. print: "Could not read {path}"
+   2. stop
+2. for each line in text.lines(content):
+   1. print: "{line}"
+```
+
+**Rules**
+- A line with steps under it ends in `:`. The steps sit one level deeper: under a numbered item they start at its text (3 spaces under `1.` to `9.`, 4 under `10.` to `99.`), under a bullet 2 spaces deeper.
+- `else:` and `otherwise:` are plain lines inside the `if` or `try` step, at the indentation of its steps. The steps after them belong to them.
+- The branches of a `match` are bullets (their order does not matter). The steps of a branch are numbered.
+- The numbers are for people. `1.` on every line works too, and `fmt` writes 1, 2, 3, ... at every level and fixes the indentation.
+- A bullet where a step belongs is error E070. A numbered item where a property belongs is error E071.
+
+```agentmark fragment
+1. if max of qty in sales is some most:
+   1. print: "most: {most}"
+   else:
+   1. print: "nothing sold"
+2. match block:
+   - Heading h:
+     1. print: "heading {h.level}"
+   - Blank:
+     1. print: "blank"
+```
+
+### 23.4 Program and Uses
+
+The program's title, description and starting point are the first part of its entry file: `main.agent.md` in a folder project, the file itself in a single-file program.
+
+```agentmark fragment
+# Program: sales
+Reads a sales file and prints how much it brought in, region by region.
+
+- start: [sales-report](#command-sales-report)
+
+# Uses
+- [constants](../constants.agent.md)
+- [Sale](../records/sale.agent.md)
+- [billing rules](./billing/) as billing
+- [every rule](./rules/*.agent.md)
+```
+
+**Rules**
+- `start:` names the command the program starts with: a link to the command's heading (`#command-<name>`), a link to the file that declares it, or the plain name. The checker verifies that it is a command of the program (E214). `fmt` writes the link form.
+- With exactly one command, `start:` can be left out. Agents and services need no `start:`: they all run.
+- With several commands, `start:` is accepted but the commands stay subcommands (Q441).
+- `# Program` must be the first heading of the entry file, and only the entry file has one (E072). A project without it is a library.
+- `# Uses` is one section at the top, after `# Program` (E073). The link text is a label for people; the path is what counts, relative to the file.
+- A folder needs `as <name>` after the link. A glob is a path too.
+- Libraries keep `# Import: crate sha2` (Q435).
+
+### 23.5 Properties of functions, commands and tools
+
+- `- in:` lists the inputs, `- out:` the result, `- steps:` the steps.
+- Commands use `- in:` exactly like functions, with defaults: `- in: path: text, dry_run: bool = false`.
+- `- touches:` ([23.7](#237-what-a-part-touches)) is optional on a function and a tool.
+
+### 23.6 Types from names
+
+In `- in:` and `- out:` a name alone is enough when it says what it is:
+
+| written | means |
+|---|---|
+| `in: sales` | `sales: list of Sale` (a record `Sale` exists; `sales` is its plural) |
+| `in: invoice` | `invoice: Invoice` |
+| `in: old sales, new sales` | `old_sales: list of Sale`, `new_sales: list of Sale` |
+| `out: region totals` | `list of RegionTotal` |
+| `in: due_date` | `due_date: date` (the last-word table of [2.1](#21-record)) |
+| `in: path: text` | as written |
+
+**Rules**
+- The words of a name are matched against the records, enums and type aliases the file can see, longest ending first, ignoring case and `_`. The words before the matched ones are part of the name.
+- Plurals are regular English only: `+s`, `+es`, `y` to `ies`. A plural means `list of`. Irregular plurals need the type written.
+- No match: the last word decides as for record fields: `date`, `at`, `on` give `date`; `amount`, `price`, `total`, `fee` give `money`; `count`, `qty`, `number` give `int`.
+- An input written `name: type` is never guessed.
+- Still unclear: error E230.
+
+```agentmark invalid name=vat.agent.md says=Could_not_tell
+# Function: gross
+Adds VAT to a price.
+
+- in: price: money, vat
+- out: money
+- steps:
+  1. return price + price * vat / 100
+```
+
+```console stderr
+$ agentmark check vat.agent.md
+vat.agent.md:1
+  # Function: gross
+              ^^^^^
+  Unused function: nothing refers to "gross".
+
+vat.agent.md:4
+  - in: price: money, vat
+                      ^^^
+  Could not tell what "vat" is. Write its type: "vat: <type>".
+  A name works when it is a record's name ("sales" for a list of Sale) or ends in a word such as date, amount or count; otherwise write "vat: text" (or int, money, …).
+```
+
+### 23.7 What a part touches
+
+`- touches:` replaces `- effect:`. The words "effect", "pure", "local", "network" and "model" are no longer part of the syntax or of the reports.
+
+| written | means |
+|---|---|
+| `- touches: nothing` | reads and computes only (was `pure`) |
+| `- touches: files` | the `file` tool |
+| `- touches: print`, `input` | standard output, standard input |
+| `- touches: AI` | asks a model |
+| `- touches: crm, email` | the tools, libraries or `state` named |
+
+**Rules**
+- On a `# Function` and a `# Tool` the line is optional. Without it the checker works out what the part touches. Written, it is a checked promise: a step that touches something not on the list is error E206. Listing more than the body touches is allowed (Q451).
+- A `## Rust` block must say what it touches. The line is trusted.
+- Inside the compiler every part still has its effect class (`pure` < `local` < `network` < `model`, section [8](#8-effects)). The IR and `check --json` keep it.
+- `check` and `doc` write one line per part. `AI` comes first, then the rest in alphabetical order. The `file` tool is written `files`.
+- Libraries (`# Binding`) keep `- effect:` and `- proposed-effect:`, and `tools.toml` keeps `effect =` (Q430).
+
+```agentmark invalid name=promise.agent.md says=touches_files
+# Function: save_total
+Writes a total to a file.
+
+- in: total: int
+- touches: nothing
+- steps:
+  1. file write "total.txt": "{total}"
+```
+
+```console stderr
+$ agentmark check promise.agent.md
+promise.agent.md:1
+  # Function: save_total
+              ^^^^^^^^^^
+  Unused function: nothing refers to "save_total".
+
+promise.agent.md:7
+    1. file write "total.txt": "{total}"
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  The function "save_total" says "- touches: nothing", but this step touches files.
+  Add files to the "- touches:" line, leave the line out to let the checker work it out, or move this step out of the function.
+```
+
+### 23.8 Rules name their record in the heading
+
+The last word of the heading is the record, the words before it the rule's name, joined with `_`. The rule then reads like its use: `for each big sale in sales:`. `- for:` is error E067.
+
+```agentmark fragment
+# Rule: very big Sale
+A sale of 1000 EUR or more.
+
+- when: amount >= 1000 EUR
+```
+
+A rule with several words in its name is used with one word, as `for each very_big sale in sales` (Q449).
+
+### 23.9 Naming a result: `into`
+
+`into <name>` at the end of a step names its result. It is the only way. `set` and `->` are gone.
+
+| v0.3 | v0.4 |
+|---|---|
+| `set by_region = group sales by region` | `group sales by region into by_region` |
+| `set totals = empty list of RegionTotal` | `empty list of RegionTotal into totals` |
+| `file read path -> content` | `file read path into content` |
+| `ask model with invoice: "..." -> reminder` | `ask model with invoice: "..." into reminder` |
+| `slugger slug title -> s` | `slugger slug title into s` |
+| `do net_amount(invoice, 19) -> n` | `do net_amount(invoice, 19) into n` |
+| `read body as Invoice -> inv` | `read body as Invoice into inv` |
+
+- `<value> into <name>` with a name that already exists gives it a new value, as `set` did (Q431).
+- `into` is a reserved word. `->` stays in signatures, where it means "returns": `## slug(title: text) -> text`, `## Rust: fingerprint -> text`, binding items (Q436).
+
+### 23.10 Reading a file into records
+
+The name after `into` decides how a file is read:
+
+```agentmark fragment
+1. try file read path into sales
+   otherwise:
+   1. print: "Could not read {path}"
+   2. stop
+```
+
+**Rules**
+- The name gets its type from the records the file can see, as in [23.6](#236-types-from-names) (`sales` gives `list of Sale`), or from a type written after it: `into content: text`.
+- A `list of` a record: the file is CSV and its header row names the fields (as `csv.parse`). A file whose name does not end in `.csv` (any case) is a read failure (Q440).
+- Anything else, and a name that matches no record, is the raw text, as before. Reading one record from a file is not supported (Q444).
+- A file that cannot be read and a file that is not valid CSV go to the same `otherwise`.
+- `csv.parse(...)` stays in the library. `read file path as list of Sale into rows` also still works and is not traced (Q446).
+
+### 23.11 Adding to a list: `add`
+
+```agentmark
+# Record: Sale
+One line of the sales file.
+
+- region: text
+- amount: money
+
+# Record: RegionTotal
+What one region brought in.
+
+- region: text
+- orders: int
+- revenue: money
+
+# Function: one_total
+Builds the total of a single region.
+
+- in: region: text, region_sales: list of Sale
+- out: list of RegionTotal
+- touches: nothing
+- steps:
+  1. empty list of RegionTotal into totals
+  2. add RegionTotal to totals:
+     - region
+     - orders: count of region_sales
+     - revenue: sum of amount in region_sales
+  3. return totals
+```
+
+- `add <value> to <list>` replaces `append`.
+- `add <Record> to <list>:` builds the record from the bullets under it: `name: value`, as in a record definition, and a bare `name` takes the value of that name. An enum variant with fields is built the same way (Q456).
+- `fmt` writes `add X { ... } to list` in this form. Elsewhere a record is still written `Sale { region: "EU", amount: 120.00 EUR }` (Q432).
+
+### 23.12 Notes
+
+A `>` line that is not directly above a heading is a note for people: `fmt` keeps it and everything else ignores it (Q433). The examples do not use notes.
+
+### 23.13 Removed syntax
+
+There is no backward compatibility and no `migrate` command (Q454). Each removed form is an error that shows the new form:
+
+| code | written | message |
+|---|---|---|
+| E060 | `# Run`, `# Start` | `"# Run" was removed. Start the entry file with "# Program: <name>"; name the command it starts with in "- start: <command>".` |
+| E061 | `## Run` | `"## Run" was removed. Write the command's steps under "- steps:" as a numbered list.` |
+| E062 | `- args:` | `"args:" was renamed. Write: - in: path: text` |
+| E063 | `- effect:` (function, tool, Rust block) | `"effect:" was removed. Write: - touches: nothing` |
+| E064 | `set x = v` | `"set" was removed. Write: <value> into <name>` |
+| E065 | `... -> x` | `"->" was replaced by "into". Write: <step> into <name>` |
+| E066 | `append x to list` | `"append" was renamed. Write: add x to list` |
+| E067 | `- for:` in a rule | `"for:" was removed. Put the record last in the heading: # Rule: <name> Sale` |
+| E068 | `>` directly above a heading | `A description goes under its heading as a plain paragraph, not in a ">" line above it.` |
+| E069 | `# Import: <file>` | `File imports moved to a "# Uses" section.` |
+| E070 | a bullet where a step belongs | `Steps are a numbered list. Write: 1. print: "x"` |
+| E071 | a numbered item where a property belongs | `A property is a bullet, not a numbered step. Write: - model: claude` |
+| E072 | `# Program` not first | `"# Program" must be the first heading of the file.` |
+| E073 | `# Uses` misplaced or malformed | `"# Uses" goes at the top of the file, before the other parts (after "# Program").` |
+
+Each message quotes the line rewritten in the new form where it can. This v0.3 file shows the part-level ones:
+
+```text name=old.agent.md
+# Record: Sale
+- region: text
+- amount: money
+
+# Rule: big
+- for: Sale
+- when: amount >= 100 EUR
+
+# Function: total
+- in: sales: list of Sale
+- out: money
+- effect: pure
+  - return sum of amount in sales
+
+# Command: show
+- args: path: text
+
+## Run
+- file read path -> content
+- print: "{content}"
+
+# Run
+- show
+```
+
+```console stderr
+$ agentmark check old.agent.md
+old.agent.md:6
+  - for: Sale
+    ^^^
+  "for:" was removed. Put the record last in the heading: # Rule: <name> Sale
+  A rule reads like its use: "# Rule: overdue Invoice" is used as "for each overdue invoice in …".
+
+old.agent.md:12
+  - effect: pure
+    ^^^^^^
+  "effect:" was removed. Write: - touches: nothing
+  List what it touches: nothing, files, print, AI, or the tools it uses (crm, email). The line may also be left out: the checker works it out.
+
+old.agent.md:16
+  - args: path: text
+    ^^^^
+  "args:" was renamed. Write: - in: path: text
+  A command's inputs are written like a function's.
+
+old.agent.md:18
+  ## Run
+     ^^^
+  "## Run" was removed. Write the command's steps under "- steps:" as a numbered list.
+  Write:
+    - steps:
+      1. print: "hello"
+
+old.agent.md:22
+  # Run
+    ^^^
+  "# Run" was removed. Start the entry file with "# Program: <name>"; name the command it starts with in "- start: <command>".
+  Write:
+    # Program: my-program
+    What the program does, in one sentence.
+
+    - start: <command>
+```
+
+And these are the step-level ones:
+
+```text name=old2.agent.md
+# Program: demo
+Shows the old step forms.
+
+# Record: Sale
+- region: text
+- amount: money
+
+# Function: total
+Adds things up.
+
+- in: sales: list of Sale
+- out: money
+- steps:
+  1. set t = sum of amount in sales
+  2. append t to sales
+  3. file read "a.csv" -> content
+  - return t
+```
+
+```console stderr
+$ agentmark check old2.agent.md
+old2.agent.md:14
+    1. set t = sum of amount in sales
+       ^^^
+  "set" was removed. Write: sum of amount in sales into t
+  A step names its result with "into" at its end.
+
+old2.agent.md:15
+    2. append t to sales
+       ^^^^^^
+  "append" was renamed. Write: add t to sales
+
+old2.agent.md:16
+    3. file read "a.csv" -> content
+                         ^^
+  "->" was replaced by "into". Write: file read "a.csv" into content
+  A step names its result with "into" at its end.
+
+old2.agent.md:17
+    - return t
+      ^^^^^^^^
+  Steps are a numbered list. Write: 1. return t
+```
+
+### 23.14 Not changed
+
+- `group ... by ...`, `for each`, the collection words, `try` and `otherwise`, `stop`, `print`, `guard`, `match`, `respond`, `return`.
+- Agent trigger headings (`## Every day at 09:00`, `## When ...`), `## Do <name>` blocks, service routes and tool verb headings stay headings. Only their steps are numbered (Q434).
+- `# Import: crate <name>` for libraries, `# Binding` files and their `- effect:` line, `tools.toml`.
+- The hard limits of [18.3](#183-hard-limits): the nesting limit counts steps, from the first step under `- steps:` or a `##` heading. `- steps:` itself is not a level. At most 3 levels.
+
 ## Appendix A. Statement index
 
-Every statement form of the language, with where it is explained. The [cheat sheet](#cheat-sheet) lists the most common ones.
+Every step form of the language, with where it is explained. The [cheat sheet](#cheat-sheet) lists the most common ones. Each form is a numbered step.
 
 | form | section |
 |---|---|
 | `for each <var> in <source>:` | [4.1](#41-control) |
 | `for each <rule> <var> in <source>:` | [4.1](#41-control) |
-| `if <condition>:` / `else:` | [4.1](#41-control) |
-| `if <expr> is some <name>:` / `else:` | [14](#14-errors) |
+| `if <condition>:` with `else:` inside | [4.1](#41-control) |
+| `if <expr> is some <name>:` with `else:` inside | [14](#14-errors) |
 | `stop` | [4.1](#41-control) |
-| `do <name>` / `do <name>(args) -> var` | [4.1](#41-control), [13.1](#131-function) |
-| `ask model[ with <var>]: "<prompt>"[ as <Record>] -> var` | [4.2](#42-model) |
-| `<tool> <verb> [<target>]: <payload>[ -> var]` | [4.3](#43-tool-calls) |
-| `guard: <condition>[ else <statement>]` | [4.4](#44-guards) |
-| `set <var> = <expression>` | [4.5](#45-assignment) |
+| `do <name>` / `do <name>(args) into var` | [4.1](#41-control), [13.1](#131-function) |
+| `ask model[ with <var>]: "<prompt>"[ as <Record>] into var` | [4.2](#42-model) |
+| `<tool> <verb> [<target>]: <payload>[ into var]` | [4.3](#43-tool-calls) |
+| `guard: <condition>[ else <step>]` | [4.4](#44-guards) |
+| `<expression> into <var>` | [4.5](#45-naming-a-result-into) |
 | `return <expr>` | [13.1](#131-function) |
 | `respond <status>[ <expr>]` | [13.3](#133-service-and-command) |
-| `read body as <Type> -> var` | [13.3](#133-service-and-command) |
-| `read file <path> as <Type> -> var` | [13.3](#133-service-and-command) |
-| `read input -> var` | [22.3](#223-the-built-in-library) |
-| `file <verb> <path>[ to <new>\|: <text>][ -> var]` | [22.3](#223-the-built-in-library) |
-| `try [do] <call>(args)[ as <Type>] -> var` (a built-in or user function that returns `result of T`) | [14](#14-errors), [22.3](#223-the-built-in-library) |
+| `read body as <Type> into var` | [13.3](#133-service-and-command) |
+| `read file <path> as <Type> into var` | [13.3](#133-service-and-command) |
+| `file read <path> into <name>` (CSV for a list of a record) | [23.10](#2310-reading-a-file-into-records) |
+| `read input into var` | [22.3](#223-the-built-in-library) |
+| `file <verb> <path>[ to <new>\|: <text>][ into var]` | [22.3](#223-the-built-in-library) |
+| `try [do] <call>(args)[ as <Type>] into var` (a built-in or user function that returns `result of T`) | [14](#14-errors), [22.3](#223-the-built-in-library) |
 | `print: "<text>"` | [13.3](#133-service-and-command) |
-| `<binding> <item> <arguments>[ -> var]` (a library call) | [15](#15-library-access-automatic-bindings) |
-| `<handle> <method> [<arguments>][ -> var]` (a method on a library handle) | [15.4](#154-binding-file-format), [22.4](#224-opaque-library-types) |
-| `<tool> <verb> <arguments>[: <value>][ -> var]` (a user-defined tool) | [22.5](#225-user-defined-tools) |
-| `<tool>.<verb>(arguments)` (an expression, pure tools only) | [22.5](#225-user-defined-tools) |
+| `<binding> <item> <arguments>[ into var]` (a library call) | [15](#15-library-access-automatic-bindings) |
+| `<handle> <method> [<arguments>][ into var]` (a method on a library handle) | [15.4](#154-binding-file-format), [22.4](#224-opaque-library-types) |
+| `<tool> <verb> <arguments>[: <value>][ into var]` (a user-defined tool) | [22.5](#225-user-defined-tools) |
+| `<tool>.<verb>(arguments)` (an expression, tools that touch nothing only) | [22.5](#225-user-defined-tools) |
 | `put <value> at <key> in <map>` / `remove <key> from <map>` | [22.2](#222-collection-words) |
-| `append <value> to <list>` | [13.3](#133-service-and-command), [22.2](#222-collection-words) |
+| `add <value> to <list>` | [13.3](#133-service-and-command), [22.2](#222-collection-words) |
+| `add <Record> to <list>:` with `name: value` bullets | [23.11](#2311-adding-to-a-list-add) |
 | `for each <var> in <list> with index <i>:` / `for each <key>, <value> in <map>:` | [22.2](#222-collection-words) |
-| `try <statement>` + `otherwise:` | [14](#14-errors) |
+| `try <step>` with `otherwise:` inside | [14](#14-errors) |
 | `parallel:` | [16](#16-concurrency) |
-| `match <value>:` with `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | [22.1](#221-user-defined-types) |
+| `match <value>:` with bullet branches `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | [22.1](#221-user-defined-types) |
 | `## Rust: <name>[ -> <type>]` | [17](#17-escape-hatch--rust-blocks-layer-1) |
 
 ## Appendix B. Decisions the specification left open
@@ -3318,3 +3810,4 @@ These are the choices made while implementing, grouped by topic. Each one is wri
 | fixtures | Q150 to Q158 |
 | the built-in library and the `file` tool | Q340 to Q349 |
 | tools written in AgentMark and the default command | Q380 to Q389 |
+| v0.4 syntax: descriptions, steps, `touches`, `into`, `add`, typed file read | Q430 to Q457 |
