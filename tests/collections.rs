@@ -488,10 +488,10 @@ fn a_variable_may_not_hide_a_field_of_the_element() {
 
 #[test]
 fn append_put_and_remove_need_a_variable() {
-    let note = "Name the value first with \"set\", change that, and use it afterwards.";
+    let note = "Name the value first with \"<value> into <name>\", change that, and use it afterwards.";
     says("  1. put 1 at \"a\" in (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"put\" changes a variable, but this is not one.\n{note}"));
     says("  1. remove \"a\" from (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"remove\" changes a variable, but this is not one.\n{note}"));
-    says("  1. add 1 to (list of 2)\n", 1, "list of 2", &format!("\"append\" changes a variable, but this is not one.\n{note}"));
+    says("  1. add 1 to (list of 2)\n", 1, "list of 2", &format!("\"add … to\" changes a variable, but this is not one.\n{note}"));
     assert_eq!(explain("  1. list of 2 into xs\n  2. add 1 to xs\n"), vec![]);
 }
 

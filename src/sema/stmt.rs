@@ -392,14 +392,14 @@ impl Checker<'_> {
                             self.path(cx.file),
                             list.span,
                             format!(
-                                "\"append\" needs a list, but this is {}.",
+                                "\"add … to\" needs a list, but this is {}.",
                                 other.with_article()
                             ),
                         );
                         self.diags.push(d);
                     }
                 }
-                self.want_variable(cx, list, "append");
+                self.want_variable(cx, list, "add … to");
                 if let ExprKind::Path(segs) = &list.kind {
                     if segs[0].name == "state" {
                         cx.acc.add(Effect::Local, "state");
