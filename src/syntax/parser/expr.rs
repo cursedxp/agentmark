@@ -302,7 +302,7 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
         // `lst of int`, `mayb int`: a word that is nearly a type constructor, followed by more type
         let typo = name()
             .filter(|id: &Ident| did_you_mean(&id.name, ["maybe", "list", "result", "map"]).is_some())
-            .then_ignore(sp1().then(ident().rewind()))
+            .then_ignore(sp1().then(kw("into").not().ignore_then(ident()).rewind()))
             .map_with(|id, e| {
                 let dym = did_you_mean(&id.name, ["maybe", "list", "result", "map"]);
                 let r = e.span();
