@@ -1,7 +1,7 @@
 # Tool: ledger
 A plain text ledger in the working directory.
 
-- touches: local
+- touches: files
 
 ## add(entry: text)
 1. file append "ledger.txt": entry

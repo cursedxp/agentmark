@@ -10,12 +10,26 @@ use agentmark::sema::{self, BlockKind};
 
 const SLUGGER: &str = "# Tool: slugger\n- touches: nothing\n\n## slug(title: text) -> text\n1. text.lower(title) into lowered\n2. return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")\n";
 
-const LEDGER: &str = "# Tool: ledger\n- touches: local\n\n## add(entry: text)\n1. file append \"ledger.txt\": entry\n\n## size(entry: text) -> int\n1. return text.length(entry)\n";
+const LEDGER: &str = "# Tool: ledger\n- touches: files\n\n## add(entry: text)\n1. file append \"ledger.txt\": entry\n\n## size(entry: text) -> int\n1. return text.length(entry)\n";
 
-/// `SLUGGER` and `LEDGER` followed by a command whose `## Run` is `body`.
+/// Numbered steps: the top-level lines of `body` are numbered, indented lines are the steps under them.
+fn steps(body: &str) -> String {
+    let mut n = 0;
+    body.lines()
+        .map(|l| {
+            if l.starts_with(' ') {
+                format!("  {l}\n")
+            } else {
+                n += 1;
+                format!("  {n}. {l}\n")
+            }
+        })
+        .collect()
+}
+
+/// `SLUGGER` and `LEDGER` followed by a command whose steps are `body`.
 fn with_command(body: &str) -> String {
-    let lines: String = body.lines().map(|l| format!("{l}\n")).collect();
-    format!("{SLUGGER}\n{LEDGER}\n# Command: c\n- args: title: text\n\n## Run\n{lines}")
+    format!("{SLUGGER}\n{LEDGER}\n# Command: c\n- in: title: text\n- steps:\n{}", steps(body))
 }
 
 /// The error codes of `src`, in the order they are reported.
@@ -44,7 +58,7 @@ fn expect(src: &str, code: &str, pieces: &[&str]) {
 #[test]
 fn a_tool_is_called_as_a_statement_and_a_pure_one_as_an_expression() {
     let c = ok(&with_command(
-        "- set s = slugger.slug(title)\n- ledger add s\n- ledger size \"a b\" -> n\n- slugger slug title -> t\n- print: \"{n} {t}\"",
+        "slugger.slug(title) into s\nledger add s\nledger size \"a b\" into n\nslugger slug title into t\nprint: \"{n} {t}\"",
     ));
     // each verb is a block of its own, tagged as a tool verb
     let verbs: Vec<(&str, &str, String)> = c
@@ -66,8 +80,8 @@ fn a_tool_is_called_as_a_statement_and_a_pure_one_as_an_expression() {
 }
 
 #[test]
-fn a_tool_that_declares_more_than_its_body_does_still_has_its_declared_effect_at_the_call() {
-    let src = "# Tool: audit\n- touches: network\n\n## note(entry: text)\n1. print: entry\n\n# Command: c\n- in: title: text\n- steps:\n  1. audit note title\n";
+fn a_tool_that_lists_more_than_its_body_touches_still_touches_all_of_it_at_the_call() {
+    let src = "# Tool: audit\n- touches: email, print\n\n## note(entry: text)\n1. print: entry\n\n# Command: c\n- in: title: text\n- steps:\n  1. audit note title\n";
     let c = ok(src);
     assert_eq!(c.unit_effect("c").to_string(), "network(audit), local(print)");
 }
@@ -97,7 +111,7 @@ fn a_pure_tool_of_an_imported_folder_is_called_with_its_module_name() {
 
 #[test]
 fn an_agent_lists_a_user_tool_like_any_other() {
-    let src = "# Tool: ledger\n- touches: local\n\n## add(entry: text)\n1. file append \"ledger.txt\": entry\n\n# Agent: scribe\n- model: claude\n- tools: ledger\n\n## On start\n1. ledger add \"started\"\n";
+    let src = "# Tool: ledger\n- touches: files\n\n## add(entry: text)\n1. file append \"ledger.txt\": entry\n\n# Agent: scribe\n- model: claude\n- tools: ledger\n\n## On start\n1. ledger add \"started\"\n";
     ok(src);
     let unlisted = src.replace("- tools: ledger", "- tools: log");
     expect(&unlisted, "E208", &["The tool \"ledger\" is not listed in the tools of agent \"scribe\"."]);
@@ -122,30 +136,30 @@ fn e381_the_same_verb_twice() {
 #[test]
 fn e382_an_expression_needs_a_pure_tool() {
     expect(
-        &with_command("- print: \"{ledger.size(title)}\""),
+        &with_command("print: \"{ledger.size(title)}\""),
         "E382",
         &[
-            "The tool \"ledger\" has the effect local, so \"ledger.size(...)\" cannot be used inside an expression.",
-            "Call it as a statement: \"- ledger size ... -> value\".",
+            "The tool \"ledger\" touches files, so \"ledger.size(...)\" cannot be used inside an expression.",
+            "Call it as a step: \"ledger size ... into <name>\".",
         ],
     );
 }
 
 #[test]
 fn e383_an_unknown_or_missing_verb_with_a_suggestion() {
-    expect(&with_command("- slugger slog title -> t"), "E383", &["Unknown verb \"slog\" for tool slugger.", "Did you mean \"slug\"?"]);
-    expect(&with_command("- print: \"{slugger.slog(title)}\""), "E383", &["Unknown verb \"slog\" for tool slugger.", "Did you mean \"slug\"?"]);
-    expect(&with_command("- ledger"), "E383", &["The tool ledger needs a verb.", "Verbs of ledger: add, size."]);
+    expect(&with_command("slugger slog title into t"), "E383", &["Unknown verb \"slog\" for tool slugger.", "Did you mean \"slug\"?"]);
+    expect(&with_command("print: \"{slugger.slog(title)}\""), "E383", &["Unknown verb \"slog\" for tool slugger.", "Did you mean \"slug\"?"]);
+    expect(&with_command("ledger"), "E383", &["The tool ledger needs a verb.", "Verbs of ledger: add, size."]);
 }
 
 #[test]
 fn e384_a_tool_takes_values_not_assignments() {
-    expect(&with_command("- ledger add: entry = title"), "E384", &["The tool \"ledger\" takes values, not \"field = value\" assignments."]);
+    expect(&with_command("ledger add: entry = title"), "E384", &["The tool \"ledger\" takes values, not \"field = value\" assignments."]);
 }
 
 #[test]
 fn e385_a_verb_without_a_result_has_no_value() {
-    expect(&with_command("- ledger add title -> r"), "E385", &["The verb \"add\" of \"ledger\" returns nothing, so there is no result to store."]);
+    expect(&with_command("ledger add title into r"), "E385", &["The verb \"add\" of \"ledger\" returns nothing, so there is no result to store."]);
     let src = "# Tool: t\n- touches: nothing\n\n## x()\n1. stop\n\n# Command: c\n- steps:\n  1. print: \"{t.x()}\"\n";
     expect(src, "E385", &["The verb \"t.x\" returns nothing, so it cannot be used as a value."]);
 }
@@ -157,26 +171,39 @@ fn e386_a_verb_that_says_it_returns_a_value_must_return_one() {
 }
 
 #[test]
-fn a_verb_body_may_not_exceed_the_effect_of_its_tool() {
+fn a_verb_body_may_not_touch_more_than_its_tool_says() {
     let src = "# Tool: t\n- touches: nothing\n\n## write(entry: text)\n1. print: entry\n";
     expect(
         src,
         "E206",
         &[
-            "The tool \"t\" says \"- effect: pure\", but this line has the effect local (print).",
-            "Change the tool to \"- effect: local\", or move this line out of the tool.",
+            "The tool \"t\" says \"- touches: nothing\", but this step touches print.",
+            "Add print to the \"- touches:\" line, leave the line out to let the checker work it out, or move this step out of the tool.",
             "t.agent.md:5",
         ],
     );
     // a tool statement inside a verb counts like any other statement
     let src = format!("{LEDGER}# Tool: pure_one\n- touches: nothing\n\n## go(a: text)\n1. ledger add a\n");
-    expect(&src, "E206", &["has the effect local (file)"]);
+    expect(&src, "E206", &["this step touches files."]);
+}
+
+#[test]
+fn a_tool_without_a_touches_line_touches_what_its_verbs_touch() {
+    let src = "# Tool: t\n\n## write(entry: text)\n1. print: entry\n\n## size(entry: text) -> int\n1. return text.length(entry)\n\n# Command: c\n- in: title: text\n- steps:\n  1. t write title\n";
+    let c = ok(src);
+    let verbs: Vec<(&str, String)> = c
+        .blocks
+        .iter()
+        .filter(|b| b.kind == BlockKind::Tool)
+        .map(|b| (b.label.as_str(), b.effect.touches()))
+        .collect();
+    assert_eq!(verbs, [("write", "print".to_string()), ("size", "nothing".to_string())]);
 }
 
 #[test]
 fn values_are_checked_against_the_parameters_of_the_verb() {
-    expect(&with_command("- ledger add title title"), "E209", &["\"ledger add\" takes 1 value (entry), but 2 were given."]);
-    expect(&with_command("- set n = 3\n- ledger add n"), "E203", &["\"entry\" of \"ledger add\" must be text, but this is a number."]);
+    expect(&with_command("ledger add title title"), "E209", &["\"ledger add\" takes 1 value (entry), but 2 were given."]);
+    expect(&with_command("3 into n\nledger add n"), "E203", &["\"entry\" of \"ledger add\" must be text, but this is a number."]);
 }
 
 #[test]
@@ -192,14 +219,18 @@ fn a_verb_that_can_fail_needs_try_and_cannot_be_used_in_an_expression() {
 
 #[test]
 fn parse_errors_name_what_is_missing() {
-    let e = errors("# Tool: t\n\n## x()\n1. stop\n");
-    assert!(e.contains("The tool \"t\" does not say what effect it has."), "{e}");
+    // a tool whose verbs are written in AgentMark need not say what it touches; a Rust verb must
+    let e = errors("# Tool: t\n\n## x(a: text) -> text\n```rust\na\n```\n");
+    assert!(e.contains("The tool \"t\" has a verb written in Rust (\"x\"), so it must say what it touches."), "{e}");
+    assert!(e.contains("Add \"- touches: nothing\""), "{e}");
     let e = errors("# Tool: t\n- touches: nothing\n");
     assert!(e.contains("The tool \"t\" has no verbs."), "{e}");
-    let e = errors("# Tool: t\n- touches: nothing\n- model: claude\n\n## x()\n1. stop\n");
+    let e = errors("# Tool: t\n- touches: nothing\n- model: claude\n\n## x()\n1. return 1\n");
     assert!(e.contains("model"), "{e}");
-    let e = errors("# Tool: t\n- touches: nothing\n\n## x(a: text) -> text\n1. stop\n```rust\na\n```\n");
-    assert!(e.contains("A verb is either statements or one fenced rust block, not both."), "{e}");
+    let e = errors("# Tool: t\n- touches: nothing\n\n## x(a: text) -> text\n1. return a\n```rust\na\n```\n");
+    assert!(e.contains("A verb is either steps or one fenced rust block, not both."), "{e}");
+    let e = errors("# Tool: t\n- effect: pure\n\n## x()\n1. return 1\n");
+    assert!(e.contains("\"effect:\" was removed. Write: - touches: nothing"), "{e}");
 }
 
 #[test]
@@ -210,12 +241,12 @@ fn an_unused_tool_is_a_warning_like_an_unused_function() {
 
 // ------------------------------------------------------------------ formatting and linting
 
-const CANONICAL: &str = "# Tool: slugger\n- touches: nothing\n\n## slug(title: text) -> text\n1. Lower case, dashes between words.\n2. 1. text.lower(title) into lowered\n3. 2. return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\n- touches: local\n\n## add(entry: text, mark: text = \"-\")\n1. 1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
+const CANONICAL: &str = "# Tool: slugger\nWords for file names.\n\n- touches: nothing\n\n## slug(title: text) -> text\nLower case, dashes between words.\n\n1. text.lower(title) into lowered\n2. return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")\n\n## shout(word: text) -> text\nThe word in capitals.\n\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\nAdds a line.\n\n- touches: files\n\n## add(entry: text, mark: text = \"-\")\nWrites the entry with its mark.\n\n1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
 
 #[test]
 fn fmt_keeps_a_canonical_tool_and_makes_a_messy_one_canonical() {
     assert_eq!(format_source(CANONICAL, "t.agent.md").unwrap(), CANONICAL);
-    let messy = "#   Tool:   slugger\nWords for file names.\n\n-   effect:    pure\n\n##   slug( title: text )   ->   text\nLower case, dashes between words.\n\n1. text.lower( title ) into lowered\n2. return regex.replace( lowered,\"[^a-z0-9]+\",   \"-\" )\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\nAdds a line.\n\n- touches: local\n\n## add(entry: text, mark: text = \"-\")\n1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
+    let messy = "#   Tool:   slugger\nWords for file names.\n\n-   touches:    nothing\n\n##   slug( title: text )   ->   text\nLower case, dashes between words.\n\n1. text.lower( title ) into lowered\n2. return regex.replace( lowered,\"[^a-z0-9]+\",   \"-\" )\n\n## shout(word: text) -> text\nThe word in capitals.\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\nAdds a line.\n\n- touches:   files\n\n## add(entry: text, mark: text = \"-\")\nWrites the entry with its mark.\n1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
     let once = format_source(messy, "t.agent.md").unwrap();
     assert_eq!(format_source(&once, "t.agent.md").unwrap(), once, "fmt twice is fmt once");
     assert_eq!(once, CANONICAL);
@@ -232,7 +263,7 @@ fn lint_looks_inside_the_verbs_of_a_tool() {
 
 #[test]
 fn every_verb_is_a_function_of_the_ir_and_shows_in_the_effect_summary() {
-    let p = project(&with_command("- ledger add title\n- print: \"{slugger.slug(title)}\""));
+    let p = project(&with_command("ledger add title\nprint: \"{slugger.slug(title)}\""));
     let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
     let prog = agentmark::ir::lower(&p, &c);
     let names: Vec<&str> = prog.functions.iter().map(|f| f.name.as_str()).collect();
@@ -314,14 +345,14 @@ const MINI_HASH: &str = "# Binding: sha2\n- crate: sha2\n- effect: pure\n\n## sh
 #[test]
 fn a_verb_may_take_a_handle_it_uses_up_and_the_trace_leaves_it_out() {
     let tool = "# Import: crate sha2\n\n# Tool: hashing\n- touches: nothing\n\n## drain(hasher: handle of sha2.Sha256, label: text) -> bytes\n1. hasher finalize into digest\n2. return digest\n\n";
-    let cmd = |body: &str| format!("{tool}# Command: c\n- in: w: text\n- steps:\n  1. {body}");
+    let cmd = |body: &str| format!("{tool}# Command: c\n- in: w: text\n- steps:\n{}", steps(body));
     let load = |src: &str| {
         Project::from_memory(
             "app/main.agent.md",
             vec![("app/main.agent.md", src), ("app/bindings/sha2.agent.md", MINI_HASH), ("app/tools.toml", "")],
         )
     };
-    let good = cmd("- sha2 sha256_new -> h\n- hashing drain h w -> d\n- print: \"done\"\n");
+    let good = cmd("sha2 sha256_new into h\nhashing drain h w into d\nprint: \"done\"");
     let p = load(&good);
     let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
     let prog = agentmark::ir::lower(&p, &c);
@@ -333,16 +364,16 @@ fn a_verb_may_take_a_handle_it_uses_up_and_the_trace_leaves_it_out() {
         other => panic!("{other:?}"),
     }
     // a pure verb used as an expression takes the handle the same way
-    let expr = cmd("- sha2 sha256_new -> h\n- set d = hashing.drain(h, w)\n- print: \"done\"\n");
+    let expr = cmd("sha2 sha256_new into h\nhashing.drain(h, w) into d\nprint: \"done\"");
     let p = load(&expr);
     let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
     let _ = agentmark::ir::lower(&p, &c);
-    let again = cmd("- sha2 sha256_new -> h\n- set d = hashing.drain(h, w)\n- set e = hashing.drain(h, w)\n");
+    let again = cmd("sha2 sha256_new into h\nhashing.drain(h, w) into d\nhashing.drain(h, w) into e");
     let p = load(&again);
     let text = p.render(&sema::check(&p).unwrap_err());
     assert!(text.contains("\"h\" was used up on line"), "{text}");
     // passing the handle to the verb used it up
-    let bad = cmd("- sha2 sha256_new -> h\n- hashing drain h w -> d\n- hashing drain h w -> e\n");
+    let bad = cmd("sha2 sha256_new into h\nhashing drain h w into d\nhashing drain h w into e");
     let p = load(&bad);
     let d = sema::check(&p).unwrap_err();
     let text = p.render(&d);
