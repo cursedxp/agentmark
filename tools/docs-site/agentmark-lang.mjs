@@ -5,14 +5,15 @@ import hljs from 'highlight.js';
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const sp = (cls, s) => (s === '' ? '' : `<span class="${cls}">${esc(s)}</span>`);
 
-const DECL = 'Agent|Record|Enum|Type|Rule|Function|Service|Command|Constant|Binding|Tool|Import|Run';
-const STMT_KW = ['for each', 'if', 'else', 'otherwise', 'stop', 'do', 'set', 'return', 'respond', 'read', 'print',
-  'match', 'append', 'put', 'remove', 'guard', 'try', 'parallel', 'ask model', 'some', 'ok', 'error', 'none'];
-const WORD_KW = 'in|as|with|from|and|or|not|is|matches|else|index|handle|mut|consume|of';
+const DECL = 'Program|Agent|Record|Enum|Type|Rule|Function|Service|Command|Constant|Binding|Tool|Import';
+const STMT_KW = ['for each', 'if', 'else', 'otherwise', 'stop', 'do', 'return', 'respond', 'read', 'print',
+  'match', 'add', 'put', 'remove', 'guard', 'try', 'parallel', 'ask model', 'some', 'ok', 'error', 'none'];
+const WORD_KW = 'in|into|as|with|from|and|or|not|is|matches|else|index|handle|mut|consume|of';
 const COLL = 'sort|group|take|skip|unique|join|where|by|descending|at|to|sum of|count of|list of|map of|keys of|values of|min of|max of|first of|last of|empty list of|empty map of';
 const LIT = 'true|false|today|now|none';
 
 const TOKEN = new RegExp([
+  '(?<link>\\[[^\\]\\n]*\\]\\([^)\\n]*\\))',
   '(?<str>"(?:\\\\.|[^"\\\\])*")',
   '(?<date>\\b\\d{4}-\\d{2}-\\d{2}\\b)',
   '(?<time>\\b\\d{1,2}:\\d{2}\\b)',
@@ -43,7 +44,10 @@ function expr(s) {
     out += esc(s.slice(last, m.index));
     const [name, val] = Object.entries(m.groups).find(([, v]) => v !== undefined);
     last = m.index + m[0].length;
-    if (name === 'str') out += `<span class="tk-str">${interp(val)}</span>`;
+    if (name === 'link') {
+      const lm = val.match(/^\[([^\]]*)\]\((.*)\)$/);
+      out += sp('tk-punct', '[') + sp('tk-str', lm[1]) + sp('tk-punct', '](') + sp('tk-link', lm[2]) + sp('tk-punct', ')');
+    } else if (name === 'str') out += `<span class="tk-str">${interp(val)}</span>`;
     else if (name === 'date' || name === 'time' || name === 'money' || name === 'dur' || name === 'num') out += sp('tk-num', val);
     else if (name === 'coll') out += sp('tk-op2', val);
     else if (name === 'lit') out += sp('tk-lit', val);
@@ -56,7 +60,7 @@ function expr(s) {
   return out + esc(s.slice(last));
 }
 
-const PROPS = /^(\s*)(-)(\s+)(model|tools|memory|timeout|for|when|value|in|out|effect|listen|state|args|crate|doc|is)(:)(.*)$/;
+const PROPS = /^(\s*)([-*+])(\s+)(model|tools|memory|timeout|when|value|in|out|touches|steps|start|listen|state|effect|proposed-effect|crate|is)(:)(.*)$/;
 const KW_LINE = new RegExp(`^(${STMT_KW.map((k) => k.replace(' ', '\\s')).join('|')})\\b(.*)$`);
 
 function statement(rest) {
@@ -66,6 +70,8 @@ function statement(rest) {
     return sp('tk-kw', m[1]) + expr(m[2]);
   }
   // pattern or field line: "name: type" / "Name:" / tool call "file read path -> x"
+  m = rest.match(/^(some|ok|error)(?:(\s+)([A-Za-z_]\w*))?(:)\s*$/);
+  if (m) return sp('tk-kw', m[1]) + esc(m[2] || '') + esc(m[3] || '') + sp('tk-punct', m[4]);
   m = rest.match(/^([A-Za-z_][\w-]*)(:)(.*)$/);
   if (m) return sp('tk-field', m[1]) + sp('tk-punct', m[2]) + expr(m[3]);
   m = rest.match(/^((?:[a-z][\w-]*)(?:\.[a-z][\w-]*)*(?:\s+[a-z][\w-]*){0,2})(?=\s|$|:|")(.*)$/);
@@ -80,17 +86,21 @@ function statement(rest) {
 
 function line(l) {
   if (/^\s*>/.test(l)) return sp('tk-com', l);
-  let m = l.match(new RegExp(`^(#)(\\s+)(${DECL})(:)?(\\s*)(.*)$`));
+  let m = l.match(new RegExp(`^(#)(\\s+)(${DECL}|Uses(?=\\s*$))(:)?(\\s*)(.*)$`));
   if (m) {
     const [, h, s1, kind, colon, s2, name] = m;
     let tail;
-    if (kind === 'Import') {
+    if (kind === 'Uses') tail = '';
+    else if (kind === 'Import') {
       const im = name.match(/^(crate\s+)?(\S+)(?:(\s+)(as)(\s+)(\S+))?$/);
       tail = im ? `${im[1] ? sp('tk-kw2', im[1]) : ''}${sp('tk-str', im[2] || '')}${im[4] ? esc(im[3]) + sp('tk-kw2', im[4]) + esc(im[5]) + sp('tk-type', im[6]) : ''}` : esc(name);
-    } else tail = sp('tk-type', name);
+    } else {
+      const nm = name.match(/^([\w-]+(?:\.[\w-]+)*)(.*)$/);
+      tail = nm ? sp('tk-type', nm[1]) + expr(nm[2]) : esc(name);
+    }
     return sp('tk-hash', h) + esc(s1) + sp('tk-decl', kind) + (colon ? sp('tk-punct', colon) : '') + esc(s2) + tail;
   }
-  m = l.match(/^(##)(\s+)(Every|When|On start|Run|Do|Not bound|Rust|GET|POST|PUT|PATCH|DELETE)\b(.*)$/);
+  m = l.match(/^(##)(\s+)(Every|When|On start|Do|Handle|Rust|GET|POST|PUT|PATCH|DELETE)\b(.*)$/);
   if (m) {
     return sp('tk-hash', m[1]) + esc(m[2]) + sp('tk-trigger', m[3]) + expr(m[4]).replace(/^(:)/, '$1');
   }
@@ -100,9 +110,12 @@ function line(l) {
   if (m) return sp('tk-hash', m[1]) + esc(m[2]) + sp('tk-decl', m[3]);
   m = l.match(PROPS);
   if (m) return esc(m[1]) + sp('tk-punct', m[2]) + esc(m[3]) + sp('tk-prop', m[4]) + sp('tk-punct', m[5]) + expr(m[6]);
-  m = l.match(/^(\s*)(-)(\s+)(.*)$/);
+  m = l.match(/^(\s*)([-*+]|\d+\.)(\s+)(.*)$/);
   if (m) return esc(m[1]) + sp('tk-punct', m[2]) + esc(m[3]) + statement(m[4]);
-  return expr(l);
+  m = l.match(/^(\s*)(else|otherwise)(:)\s*$/);
+  if (m) return esc(m[1]) + sp('tk-kw', m[2]) + sp('tk-punct', m[3]);
+  if (/^\s*$/.test(l) || /^\s*`{3}/.test(l)) return esc(l);
+  return esc(l); // description paragraph: plain text
 }
 
 export function highlightAgentMark(code) {
