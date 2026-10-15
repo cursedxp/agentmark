@@ -1,9 +1,9 @@
-> Arguments named like the helpers of the generated program, a money and a date argument.
+# Program: odd
+A command with arguments named like the helpers of the generated program.
+
 # Command: odd
-- args: a: text, rest: text, price: money = 1.50 EUR, day: date = 2026-10-14
+Arguments named like the helpers of the generated program, a money and a date argument.
 
-## Run
-- print: "{a} {rest} {price} {day}"
-
-# Run
-- odd
+- in: a: text, rest: text, price: money = 1.50 EUR, day: date = 2026-10-14
+- steps:
+  1. print: "{a} {rest} {price} {day}"
