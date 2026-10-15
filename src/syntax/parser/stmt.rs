@@ -109,7 +109,15 @@ pub fn head<'a>() -> P<'a, Head> {
                 .map(|((name, args), into)| StmtKind::Do { name, args, into, bare: false });
             let do_tool = name()
                 .then_ignore(sp1())
-                .then(name())
+                // `into` is reserved: `do five into n` names the result of a function, it is not
+                // the verb `into` of a tool called `five`.
+                .then(name().try_map(|v: Ident, span| {
+                    if v.name == "into" {
+                        Err(Rich::custom(span, "`into` is not a verb"))
+                    } else {
+                        Ok(v)
+                    }
+                }))
                 .then(targets_payload_into(expr.clone()))
                 .map(
                     |((tool, verb), (target, payload, into))| StmtKind::ToolCall {

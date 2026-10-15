@@ -93,24 +93,24 @@ fn invoice_chaser_agent_file() {
 fn statement_spans_are_file_positions() {
     let f = read("examples/01-invoice-chaser/agents/invoice-chaser.agent.md");
     let a = agent(&f);
-    // line 11 is `- for each overdue invoice in crm.invoices:` (canonical form: text starts at column 3)
-    assert_eq!(a.blocks[0].body[0].span.line, 11);
-    assert_eq!(a.blocks[0].body[0].span.col, 3);
-    // `  - do remind` is on line 12, text starts at column 5
+    // line 15 is `1. for each overdue invoice in crm.invoices:` (the text starts at column 4)
+    assert_eq!(a.blocks[0].body[0].span.line, 15);
+    assert_eq!(a.blocks[0].body[0].span.col, 4);
+    // `   1. do remind` is on line 16, text starts at column 7
     let StmtKind::ForEach { body, .. } = &a.blocks[0].body[0].kind else {
         panic!()
     };
-    assert_eq!(body[0].span, Span::new(12, 5, 9));
+    assert_eq!(body[0].span, Span::new(16, 7, 9));
 }
 
 #[test]
 fn a_bare_for_each_control_line_keeps_its_file_position() {
-    // the canonical form writes `- for each …:`, but the bare control line of SPEC 4.1 must still parse
+    // the text of a numbered step starts after "1. "
     let f = parse("# Agent: a\n- model: claude\n\n## On start\n1. for each overdue invoice in crm.invoices:\n   1. stop\n");
     let a = agent(&f);
     let s = &a.blocks[0].body[0];
     assert!(matches!(s.kind, StmtKind::ForEach { .. }));
-    assert_eq!((s.span.line, s.span.col), (5, 1));
+    assert_eq!((s.span.line, s.span.col), (5, 4));
 }
 
 #[test]
@@ -291,7 +291,7 @@ fn invoice_service_layer_two_and_one() {
     assert_eq!(r.touches.words[0].name, "nothing");
     assert_eq!(r.params[0].name.name, "digest");
     assert_eq!(r.rust.code, "digest.iter().map(|b| format!(\"{:02x}\", b)).collect::<String>()");
-    assert_eq!(r.rust.line, 17);
+    assert_eq!(r.rust.line, 23);
 
     let f = read("examples/05-invoice-service/functions/net-amount.agent.md");
     let Decl::Function(func) = &f.decls[0] else {
@@ -356,20 +356,23 @@ fn invoice_service_layer_two_and_one() {
 #[test]
 fn imports_of_every_shape() {
     let f = parse(
-        "# Uses\n- [*](./rules/*.agent.md)\n- [billing](./billing/) as billing\n- [invoice](./records/invoice.agent.md)\n- [rules](./billing/rules.agent.md) as billing\n\n# Import: crate reqwest as http_client\n# Import: crate serde_json\n",
+        "# Uses\n- [invoice](./records/invoice.agent.md)\n- [rules](./billing/rules.agent.md) as billing\n- [every rule](./rules/*.agent.md)\n- [billing](./billing/) as billing\n\n# Import: crate reqwest as http_client\n# Import: crate serde_json\n",
     );
     let kinds: Vec<&ImportKind> = f.imports.iter().map(|i| &i.kind).collect();
-    assert!(matches!(kinds[0], ImportKind::File { alias: None, .. }));
+    assert!(matches!(kinds[0], ImportKind::File { path, alias: None } if path == "./records/invoice.agent.md"));
     assert!(matches!(kinds[1], ImportKind::File { alias: Some(a), .. } if a.name == "billing"));
     assert!(matches!(kinds[2], ImportKind::Glob { pattern } if pattern == "./rules/*.agent.md"));
     assert!(
         matches!(kinds[3], ImportKind::Folder { path, alias } if path == "./billing" && alias.name == "billing")
     );
+    // the link text is a label for people
+    let labels: Vec<Option<&str>> = f.imports.iter().map(|i| i.label.as_deref()).collect();
+    assert_eq!(labels, [Some("invoice"), Some("rules"), Some("every rule"), Some("billing"), None, None]);
     assert!(
-        matches!(kinds[4], ImportKind::Crate { name, alias: None } if name.name == "serde_json")
+        matches!(kinds[4], ImportKind::Crate { alias: Some(a), .. } if a.name == "http_client")
     );
     assert!(
-        matches!(kinds[5], ImportKind::Crate { alias: Some(a), .. } if a.name == "http_client")
+        matches!(kinds[5], ImportKind::Crate { name, alias: None } if name.name == "serde_json")
     );
 }
 
@@ -486,7 +489,7 @@ fn block_doc_comments() {
 
 #[test]
 fn headings_are_case_insensitive_identifiers_are_not() {
-    let f = parse("# agent: Mixed-Case\n- model: claude\n\n## EVERY day AT 09:00\n- stop\n");
+    let f = parse("# agent: Mixed-Case\n- model: claude\n\n## EVERY day AT 09:00\n1. stop\n");
     assert_eq!(agent(&f).name.name, "Mixed-Case");
 }
 
@@ -494,7 +497,7 @@ fn headings_are_case_insensitive_identifiers_are_not() {
 fn unicode_text_keeps_columns_in_characters() {
     let f = parse("# Agent: a\n- model: claude\n\n## On start\n1. log: \"Müller, grüß dich\"\n");
     let a = agent(&f);
-    assert_eq!(a.blocks[0].body[0].span.col, 3);
+    assert_eq!(a.blocks[0].body[0].span.col, 4);
     assert_eq!(
         a.blocks[0].body[0].span.len,
         "log: \"Müller, grüß dich\"".chars().count() as u32
@@ -505,9 +508,9 @@ fn unicode_text_keeps_columns_in_characters() {
 
 #[test]
 fn else_without_if_is_an_error() {
-    let out = errors("# Agent: a\n- model: claude\n\n## On start\n");
+    let out = errors("# Agent: a\n- model: claude\n\n## On start\n1. else:\n   1. stop\n");
     assert!(
-        out.contains("\"else:\" must come directly after an \"if\""),
+        out.contains("\"else:\" belongs inside an \"if\" step, after its steps."),
         "{out}"
     );
 }
@@ -525,7 +528,7 @@ fn unknown_property_suggests_the_right_one() {
 fn unknown_declaration_suggests_the_right_one() {
     let out = errors("# Agnet: a\n- model: claude\n");
     assert!(
-        out.contains("Unknown declaration \"Agnet\". Did you mean \"Agent\"?"),
+        out.contains("Unknown heading \"Agnet\". Did you mean \"Agent\"?"),
         "{out}"
     );
 }
@@ -555,7 +558,7 @@ fn bad_statement_points_at_the_problem() {
 fn statements_too_deeply_indented() {
     let out = errors("# Agent: a\n- model: claude\n\n## On start\n1. stop\n   1. stop\n");
     assert!(
-        out.contains("indented 4 spaces, but only 2 are possible here"),
+        out.contains("Nothing can be indented under this step."),
         "{out}"
     );
 }
@@ -563,13 +566,14 @@ fn statements_too_deeply_indented() {
 #[test]
 fn unclosed_fence_and_prose_are_reported() {
     assert!(errors("# Binding: b\n```rust\nfn x() {}\n").contains("never closed"));
-    assert!(errors("# Agent: a\nsome prose\n").contains("not part of the language"));
+    // a paragraph right under a heading is its description; prose after the lists is not allowed
+    assert!(errors("# Record: R\n- x\nsome prose\n").contains("not part of the language"));
 }
 
 #[test]
 fn rust_block_without_effect_or_code() {
     let out = errors("# Agent: a\n- model: claude\n\n## Rust: f -> text\n\n```rust\nx\n```\n");
-    assert!(out.contains("does not declare its effect"), "{out}");
+    assert!(out.contains("does not say what it touches"), "{out}");
     let out = errors("# Agent: a\n- model: claude\n\n## Rust: f -> text\n- touches: nothing\n");
     assert!(
         out.contains("needs its Rust code in a fenced block"),
@@ -580,7 +584,7 @@ fn rust_block_without_effect_or_code() {
 #[test]
 fn folder_import_needs_a_name() {
     let out = errors("# Uses\n- [billing](./billing/)\n");
-    assert!(out.contains("To import a folder, give it a name"), "{out}");
+    assert!(out.contains("To use a folder, give it a name"), "{out}");
 }
 
 #[test]
