@@ -1,5 +1,5 @@
-# Import: ./agents/lead-qualifier.agent.md
+# Program: lead-qualifier
+Scores every new lead as it comes in and tells sales about the hot ones.
 
-> Entry point. Lists what runs in this binary.
-# Run
-- lead-qualifier
+# Uses
+- [lead-qualifier agent](./agents/lead-qualifier.agent.md)

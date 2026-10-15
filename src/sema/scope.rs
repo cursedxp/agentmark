@@ -87,7 +87,7 @@ pub fn decl_header(d: &Decl) -> Option<(Kind, &str, Span)> {
         Decl::Tool(x) => (Kind::Tool, &x.name.name, x.name.span),
         Decl::Constant(x) => (Kind::Constant, &x.name.name, x.name.span),
         Decl::RustBlock(x) => (Kind::RustBlock, &x.name.name, x.name.span),
-        Decl::Run(_) | Decl::Entry(_) => return None,
+        Decl::Program(_) | Decl::Entry(_) => return None,
     })
 }
 

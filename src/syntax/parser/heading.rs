@@ -43,9 +43,12 @@ impl DeclKind {
 
 /// Every word that may follow `# `.
 pub const HEADING_WORDS: &[&str] = &[
-    "Agent", "Record", "Enum", "Type", "Rule", "Function", "Service", "Command", "Binding", "Tool",
-    "Constant", "Run", "Import",
+    "Program", "Uses", "Agent", "Record", "Enum", "Type", "Rule", "Function", "Service", "Command",
+    "Binding", "Tool", "Constant", "Import",
 ];
+
+/// Headings that were removed in v0.4 (SPEC 23.13); they get a message of their own.
+pub const REMOVED_HEADINGS: &[&str] = &["Run", "Start"];
 
 /// The first word of a level-1 heading (checked first so an unknown word gets "did you mean").
 pub fn h1_word<'a>() -> P<'a, Ident> {
@@ -63,7 +66,14 @@ pub struct ImportTarget {
 #[derive(Debug, Clone)]
 pub enum H1 {
     Decl(DeclKind, Ident),
-    Run,
+    /// `# Rule: big Sale`: every word of the heading (the last is the record, SPEC 23.8).
+    Rule(Vec<Ident>),
+    /// `# Program: sales`
+    Program(Ident),
+    /// `# Uses`
+    Uses,
+    /// `# Run` / `# Start` (removed, SPEC 23.13): the word as written.
+    Removed(Ident),
     Import(ImportTarget),
 }
 
@@ -77,7 +87,25 @@ pub fn h1<'a>() -> P<'a, H1> {
             .then_ignore(sp())
             .map(move |n| H1::Decl(kind, n))
     };
-    let run = ikw("run").then_ignore(sp()).to(H1::Run);
+    let removed = choice((ikw("run"), ikw("start")))
+        .to_slice()
+        .map_with(|w: &str, e| H1::Removed(Ident { name: w.to_string(), span: at(e) }))
+        .then_ignore(any().repeated());
+    let program = ikw("program")
+        .ignore_then(sp())
+        .ignore_then(just(':').labelled("\":\""))
+        .ignore_then(sp())
+        .ignore_then(name())
+        .then_ignore(sp())
+        .map(H1::Program);
+    let uses = ikw("uses").then_ignore(sp()).to(H1::Uses);
+    let rule = ikw("rule")
+        .ignore_then(sp())
+        .ignore_then(just(':').labelled("\":\""))
+        .ignore_then(sp())
+        .ignore_then(name().separated_by(sp1()).at_least(1).collect::<Vec<_>>())
+        .then_ignore(sp())
+        .map(H1::Rule);
 
     let path = none_of(" \t")
         .repeated()
@@ -124,14 +152,16 @@ pub fn h1<'a>() -> P<'a, H1> {
         decl("record", DeclKind::Record),
         decl("enum", DeclKind::Enum),
         decl("type", DeclKind::TypeAlias),
-        decl("rule", DeclKind::Rule),
+        rule,
         decl("function", DeclKind::Function),
         decl("service", DeclKind::Service),
         decl("command", DeclKind::Command),
         decl("binding", DeclKind::Binding),
         decl("tool", DeclKind::Tool),
         decl("constant", DeclKind::Constant),
-        run,
+        program,
+        uses,
+        removed,
         import,
     ))
     .boxed()
@@ -384,6 +414,109 @@ pub fn params<'a>() -> P<'a, Vec<Param>> {
     params_inner().then_ignore(sp()).boxed()
 }
 
+/// The built-in type words; any other lower-case word after `- out:` is a name (SPEC 23.6).
+const BUILTIN_TYPES: [&str; 8] = ["text", "int", "money", "date", "datetime", "duration", "bool", "bytes"];
+
+/// A name written where a type belongs, `sales` or `region totals` (SPEC 23.6).
+fn infer_words<'a>() -> P<'a, TypeExpr> {
+    ident()
+        .separated_by(sp1())
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .map_with(|ws: Vec<Ident>, e| TypeExpr {
+            kind: TypeKind::Infer(ws.into_iter().map(|w| w.name).collect()),
+            span: at(e),
+        })
+        .boxed()
+}
+
+/// A lower-case word that is not a built-in type is a name to infer from, not a type.
+fn named_to_infer(t: TypeExpr) -> TypeExpr {
+    match &t.kind {
+        TypeKind::Named(n)
+            if n.starts_with(|c: char| c.is_ascii_lowercase()) && !BUILTIN_TYPES.contains(&n.as_str()) =>
+        {
+            TypeExpr { kind: TypeKind::Infer(vec![n.clone()]), span: t.span }
+        }
+        _ => t,
+    }
+}
+
+/// `- in:` of a function or command: `sales`, `old sales, new sales`, `path: text`,
+/// `dry_run: bool = false` (SPEC 23.5, 23.6).
+pub fn in_params<'a>() -> P<'a, Vec<Param>> {
+    let default = sp()
+        .ignore_then(just('='))
+        .ignore_then(sp())
+        .ignore_then(expr());
+    let written = ident()
+        .then_ignore(sp())
+        .then_ignore(just(':').labelled("\":\""))
+        .then_ignore(sp())
+        .then(type_expr())
+        .then(default.clone().or_not())
+        .map(|((name, ty), default)| Param { name, ty, default });
+    let inferred = ident()
+        .separated_by(sp1())
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .then(default.or_not())
+        .map_with(|(ws, default): (Vec<Ident>, Option<Expr>), e| {
+            let span = ws[0].span.to(ws[ws.len() - 1].span);
+            let name = Ident { name: ws.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join("_"), span };
+            let _ = e;
+            Param {
+                name,
+                ty: TypeExpr { kind: TypeKind::Infer(ws.into_iter().map(|w| w.name).collect()), span },
+                default,
+            }
+        });
+    choice((written, inferred))
+        .separated_by(sp().then(just(',')).then(sp()))
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .then_ignore(sp())
+        .boxed()
+}
+
+/// `- out:` of a function: a type, or a name to infer the type from (`region totals`).
+pub fn out_type<'a>() -> P<'a, TypeExpr> {
+    choice((type_expr().then_ignore(sp()).then_ignore(end()).map(named_to_infer), infer_words().then_ignore(sp())))
+        .boxed()
+}
+
+/// A link: `[label](target)` -> (label, target, span of the target).
+pub fn link<'a>() -> P<'a, (String, Spanned<String>)> {
+    let label = none_of("]").repeated().to_slice().map(|s: &str| s.trim().to_string());
+    let target = none_of(") \t")
+        .repeated()
+        .at_least(1)
+        .to_slice()
+        .map_with(|s: &str, e| Spanned { value: s.to_string(), span: at(e) })
+        .labelled("a link target");
+    label
+        .delimited_by(just('['), just(']'))
+        .then(target.delimited_by(just('('), just(')')))
+        .boxed()
+}
+
+/// An entry of `# Uses`: `[label](path)` or `[label](path) as name` (SPEC 23.4).
+pub fn uses_item<'a>() -> P<'a, (String, Spanned<String>, Option<Ident>)> {
+    link()
+        .then(sp1().ignore_then(kw("as")).ignore_then(sp1()).ignore_then(name()).or_not())
+        .then_ignore(sp())
+        .map(|((label, target), alias)| (label, target, alias))
+        .boxed()
+}
+
+/// `- start:`: a link or a plain command name.
+pub fn start_value<'a>() -> P<'a, (Option<String>, Spanned<String>)> {
+    let plain = name().map(|id| (None, Spanned { value: id.name, span: id.span }));
+    choice((link().map(|(l, t)| (Some(l), t)), plain))
+        .then_ignore(sp())
+        .boxed()
+}
+
 /// `email, crm, log`
 pub fn name_list<'a>() -> P<'a, Vec<Ident>> {
     name()
@@ -417,6 +550,7 @@ pub fn memory<'a>() -> P<'a, Memory> {
         .boxed()
 }
 
+/// `- effect:` of a binding (`unverified` until a human approves it, SPEC 15.3).
 pub fn effect<'a>() -> P<'a, Effect> {
     choice((
         kw("pure").to(Effect::Pure),
@@ -444,20 +578,6 @@ pub fn rest_of_line<'a>() -> P<'a, Spanned<String>> {
             value: s.trim().to_string(),
             span: at(e),
         })
-        .boxed()
-}
-
-/// `# Run` item: `invoice-chaser` or `billing.api`.
-pub fn run_item<'a>() -> P<'a, Ident> {
-    name()
-        .separated_by(just('.'))
-        .at_least(1)
-        .to_slice()
-        .map_with(|s: &str, e| Ident {
-            name: s.to_string(),
-            span: at(e),
-        })
-        .then_ignore(sp())
         .boxed()
 }
 
@@ -566,27 +686,34 @@ mod tests {
             panic!()
         };
         assert_eq!(n.name, "invoice-chaser");
-        assert!(matches!(ok(&p, "run"), H1::Run));
-        assert!(matches!(ok(&p, "Run"), H1::Run));
-        let H1::Import(t) = ok(&p, "Import: ./records/invoice.agent.md") else {
-            panic!()
-        };
-        assert!(!t.is_crate && t.alias.is_none());
-        let H1::Import(t) = ok(&p, "Import: ./billing as billing") else {
-            panic!()
-        };
-        assert_eq!(t.alias.unwrap().name, "billing");
+        assert!(matches!(ok(&p, "run"), H1::Removed(_)));
+        assert!(matches!(ok(&p, "Start"), H1::Removed(_)));
+        assert!(matches!(ok(&p, "Uses"), H1::Uses));
+        assert!(matches!(ok(&p, "Program: sales"), H1::Program(n) if n.name == "sales"));
+        let H1::Rule(words) = ok(&p, "Rule: big Sale") else { panic!() };
+        assert_eq!(words.len(), 2);
         let H1::Import(t) = ok(&p, "Import: crate reqwest as http_client") else {
             panic!()
         };
         assert!(t.is_crate);
-        let H1::Import(t) = ok(
-            &p,
-            "Import: ./rules/*.agent.md                > glob, imports every rule",
-        ) else {
-            panic!()
-        };
-        assert_eq!(t.target.name, "./rules/*.agent.md");
+    }
+
+    #[test]
+    fn links_and_inputs() {
+        let (label, target, alias) = ok(&uses_item(), "[billing rules](./billing/) as billing");
+        assert_eq!((label.as_str(), target.value.as_str()), ("billing rules", "./billing/"));
+        assert_eq!(alias.unwrap().name, "billing");
+        let (label, target) = ok(&start_value(), "[sales-report](#command-sales-report)");
+        assert_eq!((label.as_deref(), target.value.as_str()), (Some("sales-report"), "#command-sales-report"));
+        assert_eq!(ok(&start_value(), "sales-report").1.value, "sales-report");
+        let v = ok(&in_params(), "old sales, new sales, path: text, dry_run: bool = false");
+        assert_eq!(v.len(), 4);
+        assert_eq!(v[0].name.name, "old_sales");
+        assert!(matches!(&v[0].ty.kind, TypeKind::Infer(w) if w == &["old", "sales"]));
+        assert!(matches!(ok(&out_type(), "region totals").kind, TypeKind::Infer(_)));
+        assert!(matches!(ok(&out_type(), "invoice").kind, TypeKind::Infer(_)));
+        assert!(matches!(ok(&out_type(), "list of Sale").kind, TypeKind::List(_)));
+        assert!(matches!(ok(&out_type(), "text").kind, TypeKind::Named(_)));
     }
 
     #[test]

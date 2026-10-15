@@ -1,14 +1,19 @@
-//! Formatter (SPEC 18.6): one canonical style, no options.
+//! Formatter (SPEC 18.6, 23): one canonical style, no options.
 //!
 //! The file is parsed, then printed again from the AST, so the style is the printer's and not a
 //! patched-up version of what the author typed:
 //!
-//! - 2 spaces per indentation level, no trailing whitespace, one trailing newline;
-//! - one blank line between declarations (and before every `##` block);
-//! - properties before blocks, in the order the language documents them;
-//! - imports first, sorted: local files (and globs), then folders, then crates;
-//! - every statement is a list item (`- for each ...:`, `- if ...:`, `- else:`); `otherwise:` is
-//!   the one bare control line, as in SPEC 14;
+//! - no trailing whitespace, one trailing newline;
+//! - `# Program` first, then `# Uses` (sorted: files and globs, then folders), then
+//!   `# Import: crate …`, then the other parts; one blank line between parts (and before every
+//!   `##` block);
+//! - a description is the paragraph right under its heading, followed by a blank line;
+//! - properties are `-` bullets, in the order the language documents them;
+//! - steps are numbered 1, 2, 3, … at every level; the steps under a step start where its text
+//!   starts (3 spaces under `1.`, 4 under `10.`), bullets under a bullet 2 spaces deeper;
+//!   `else:` and `otherwise:` are plain lines at the indentation of those steps (SPEC 23.3);
+//! - `add X { … } to list` is written with one bullet per field (SPEC 23.11);
+//! - `- start:` is written as a link (SPEC 23.4);
 //! - expressions are re-printed with single spaces and only the parentheses precedence needs.
 //!
 //! Comments and fenced Rust code are preserved. The AST keeps documentation comments and the
@@ -31,7 +36,36 @@ use crate::syntax::parser::parse_file;
 pub fn format_source(src: &str, path: &str) -> Result<String, Vec<Diagnostic>> {
     let file = parse_file(path, src)?;
     let (lines, _) = lex(path, src);
-    Ok(format_file(&file, &lines))
+    let links = start_links(&file, path);
+    Ok(format_file(&file, &lines, links))
+}
+
+/// Where a `- start:` written as a plain name links to (SPEC 23.4): the command's heading when
+/// it is in the same file, else the used file that declares it (read from disk next to `path`).
+fn start_links(file: &File, path: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let Some(start) = file.decls.iter().find_map(|d| match d {
+        Decl::Program(p) => p.start.as_ref().filter(|s| s.label.is_none()),
+        _ => None,
+    }) else {
+        return out;
+    };
+    let declares = |f: &File| f.decls.iter().any(|d| matches!(d, Decl::Command(c) if c.name.name == start.target));
+    if declares(file) {
+        let anchor = crate::sema::github_anchor(&format!("Command: {}", start.target));
+        out.insert(start.target.clone(), format!("#{anchor}"));
+        return out;
+    }
+    let dir = std::path::Path::new(path).parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    for imp in &file.imports {
+        let ImportKind::File { path: rel, .. } = &imp.kind else { continue };
+        let Ok(text) = std::fs::read_to_string(dir.join(rel)) else { continue };
+        if parse_file(rel, &text).is_ok_and(|f| declares(&f)) {
+            out.insert(start.target.clone(), rel.clone());
+            return out;
+        }
+    }
+    out
 }
 
 /// `fmt --check`: is `src` already in canonical form?
@@ -43,8 +77,9 @@ pub fn is_canonical(src: &str, path: &str) -> Result<bool, Vec<Diagnostic>> {
 /// AST does not hold).
 mod collections;
 
-fn format_file(file: &File, lines: &[Line]) -> String {
+fn format_file(file: &File, lines: &[Line], start_links: HashMap<String, String>) -> String {
     let mut p = Printer {
+        start_links,
         src_lines: lines
             .iter()
             .filter(|l| l.kind != LineKind::Blank)
@@ -84,6 +119,8 @@ struct Printer {
     /// Every non-blank source line: (line number, kind, text). Used to find the real line of
     /// headings and control lines the AST does not record, and the inline comment of an import.
     src_lines: Vec<(u32, LineKind, String)>,
+    /// `- start:` names written plainly, and the link `fmt` writes for them.
+    start_links: HashMap<String, String>,
 }
 
 fn comment_text(t: &str) -> String {
@@ -117,11 +154,17 @@ impl Printer {
         }
     }
 
-    fn doc(&mut self, doc: &Option<String>, heading_line: u32) {
+    /// The description: the paragraph under a heading (SPEC 23.2), then a blank line.
+    fn description(&mut self, doc: &Option<String>, heading_line: u32) {
         if let Some(d) = doc {
             for l in d.split('\n') {
-                self.push(0, 0, comment_text(l));
+                if l.trim().is_empty() {
+                    self.blank();
+                } else {
+                    self.push(0, 0, l.trim_end());
+                }
             }
+            self.blank();
             self.docs.insert(heading_line);
         }
     }
@@ -137,33 +180,65 @@ impl Printer {
         }
         self.after_file_doc = self.out.len();
 
-        let mut imports: Vec<&Import> = f.imports.iter().collect();
-        imports.sort_by_key(|i| import_key(i));
-        if !imports.is_empty() {
+        // `# Program` first, then `# Uses`, then the libraries, then everything else (SPEC 23.4)
+        for d in &f.decls {
+            if matches!(d, Decl::Program(_)) {
+                self.blank();
+                self.decl(d);
+            }
+        }
+        let mut uses: Vec<&Import> = f.imports.iter().filter(|i| !matches!(i.kind, ImportKind::Crate { .. })).collect();
+        uses.sort_by_key(|i| import_key(i));
+        if !uses.is_empty() {
             self.blank();
-            for imp in imports {
+            let first = uses.iter().map(|i| i.span.line).min().unwrap_or(0);
+            let at = self.find_line(first, |k, t| *k == LineKind::Heading1 && t.trim().eq_ignore_ascii_case("uses"));
+            self.push(at, 0, "# Uses");
+            for imp in uses {
+                self.uses_item(imp);
+            }
+        }
+        let mut crates: Vec<&Import> = f.imports.iter().filter(|i| matches!(i.kind, ImportKind::Crate { .. })).collect();
+        crates.sort_by_key(|i| import_key(i));
+        if !crates.is_empty() {
+            self.blank();
+            for imp in crates {
                 self.import(imp);
             }
         }
         for d in &f.decls {
+            if matches!(d, Decl::Program(_)) {
+                continue;
+            }
             self.blank();
             self.decl(d);
         }
     }
 
+    /// `- [label](path)` under `# Uses`.
+    fn uses_item(&mut self, imp: &Import) {
+        let (path, alias) = match &imp.kind {
+            ImportKind::File { path, alias } => (path.clone(), alias.as_ref()),
+            ImportKind::Glob { pattern } => (pattern.clone(), None),
+            ImportKind::Folder { path, alias } => (format!("{path}/"), Some(alias)),
+            ImportKind::Crate { .. } => return,
+        };
+        let label = imp.label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| default_label(&path));
+        let mut text = format!("- [{label}]({path})");
+        if let Some(a) = alias {
+            text.push_str(&format!(" as {}", a.name));
+        }
+        self.push(imp.span.line, 0, text);
+        self.attached.insert(imp.span.line);
+    }
+
     fn import(&mut self, imp: &Import) {
-        self.doc(&imp.doc, imp.span.line);
         let mut text = match &imp.kind {
-            ImportKind::File { path, alias } => match alias {
-                Some(a) => format!("# Import: {path} as {}", a.name),
-                None => format!("# Import: {path}"),
-            },
-            ImportKind::Glob { pattern } => format!("# Import: {pattern}"),
-            ImportKind::Folder { path, alias } => format!("# Import: {path} as {}", alias.name),
             ImportKind::Crate { name, alias } => match alias {
                 Some(a) => format!("# Import: crate {} as {}", name.name, a.name),
                 None => format!("# Import: crate {}", name.name),
             },
+            _ => return,
         };
         if let Some(c) = self
             .src_lines
@@ -190,7 +265,7 @@ impl Printer {
             Decl::Binding(b) => self.binding(b),
             Decl::Tool(t) => self.tool(t),
             Decl::Constant(c) => self.constant(c),
-            Decl::Run(r) => self.run(r),
+            Decl::Program(p) => self.program(p),
             Decl::RustBlock(r) => self.rust_block(r),
             Decl::Entry(_) => unreachable!("L2-only node in fmt"),
         }
@@ -233,8 +308,8 @@ impl Printer {
     }
 
     fn heading(&mut self, doc: &Option<String>, line: u32, text: String) {
-        self.doc(doc, line);
         self.push(line, 0, text);
+        self.description(doc, line);
     }
 
     fn record(&mut self, r: &Record) {
@@ -278,12 +353,8 @@ impl Printer {
     }
 
     fn rule(&mut self, r: &Rule) {
-        self.heading(&r.doc, r.span.line, format!("# Rule: {}", r.name.name));
-        let pcs = &r.prop_comments;
-        let from = self.out.len();
-        self.prop(pcs, "for", &r.for_record.name, r.for_record.span.line);
-        self.prop(pcs, "when", &expr_text(&r.when), r.when.span.line);
-        self.group(from);
+        self.heading(&r.doc, r.span.line, format!("# Rule: {} {}", r.name.name, r.for_record.name));
+        self.prop(&r.prop_comments, "when", &expr_text(&r.when), r.when.span.line);
     }
 
     fn constant(&mut self, c: &Constant) {
@@ -291,10 +362,17 @@ impl Printer {
         self.prop(&c.prop_comments, "value", &expr_text(&c.value), c.value.span.line);
     }
 
-    fn run(&mut self, r: &Run) {
-        self.heading(&r.doc, r.span.line, "# Run".to_string());
-        for i in &r.items {
-            self.push(i.span.line, 0, format!("- {}", i.name));
+    fn program(&mut self, p: &Program) {
+        self.heading(&p.doc, p.span.line, format!("# Program: {}", p.name.name));
+        if let Some(s) = &p.start {
+            let value = match &s.label {
+                Some(label) => format!("[{label}]({})", s.target),
+                None => match self.start_links.get(&s.target) {
+                    Some(target) => format!("[{}]({target})", s.target),
+                    None => s.target.clone(),
+                },
+            };
+            self.prop(&[], "start", &value, s.span.line);
         }
     }
 
@@ -325,6 +403,15 @@ impl Printer {
         }
     }
 
+    /// `- steps:` with the numbered steps under it.
+    fn steps_prop(&mut self, body: &[Stmt]) {
+        let before = body.first().map_or(u32::MAX, |s| s.span.line);
+        let at = self.find_line(before, |k, t| *k == LineKind::Item && t.trim_end() == "steps:");
+        self.push(at, 0, "- steps:");
+        self.attached.insert(at);
+        self.stmts(body, 2);
+    }
+
     fn function(&mut self, f: &Function) {
         self.heading(&f.doc, f.span.line, format!("# Function: {}", f.name.name));
         let pcs = &f.prop_comments;
@@ -335,9 +422,14 @@ impl Printer {
         if let Some(o) = &f.out {
             self.prop(pcs, "out", &type_text(o), o.span.line);
         }
-        self.prop(pcs, "effect", effect_word(f.effect.value), f.effect.span.line);
+        if let Some(t) = &f.touches {
+            self.prop(pcs, "touches", &touches_text(t), t.span.line);
+        }
         self.group(from);
-        self.stmts(&f.body, 1);
+        if let Some(pc) = pcs.iter().find(|p| p.key == "steps") {
+            self.comments(0, &pc.comments);
+        }
+        self.steps_prop(&f.body);
     }
 
     fn service(&mut self, s: &Service) {
@@ -361,15 +453,12 @@ impl Printer {
     fn command(&mut self, c: &Command) {
         self.heading(&c.doc, c.span.line, format!("# Command: {}", c.name.name));
         if let Some(first) = c.args.first() {
-            self.prop(&c.prop_comments, "args", &params_text(&c.args), first.name.span.line);
+            self.prop(&c.prop_comments, "in", &params_text(&c.args), first.name.span.line);
         }
-        self.blank();
-        let before = c.body.first().map_or(u32::MAX, |s| s.span.line);
-        let run = self.find_line(before, |k, t| {
-            *k == LineKind::Heading2 && t.trim().eq_ignore_ascii_case("run")
-        });
-        self.push(run, 0, "## Run");
-        self.stmts(&c.body, 0);
+        if let Some(pc) = c.prop_comments.iter().find(|p| p.key == "steps") {
+            self.comments(0, &pc.comments);
+        }
+        self.steps_prop(&c.body);
     }
 
     fn binding(&mut self, b: &Binding) {
@@ -399,12 +488,12 @@ impl Printer {
             for l in lines {
                 self.push(0, 0, l);
             }
-            self.fence(1, &item.rust);
+            self.fence(2, &item.rust);
         }
         for h in &b.handles {
             self.blank();
             self.heading(&None, h.span.line, format!("## Handle: {}", h.name));
-            self.fence(1, &h.rust);
+            self.fence(2, &h.rust);
         }
         if !b.not_bound.is_empty() {
             self.blank();
@@ -424,7 +513,7 @@ impl Printer {
                 let entry = crate::binder::core::writer::not_bound_entry(&n.item, r);
                 for (i, l) in entry.lines().enumerate() {
                     match l.strip_prefix("  > ").or_else(|| l.strip_prefix("  >")) {
-                        Some(c) if i > 0 => self.push(0, 1, comment_text(c.trim_start())),
+                        Some(c) if i > 0 => self.push(0, 2, comment_text(c.trim_start())),
                         _ => self.push(if i == 0 { n.span.line } else { 0 }, 0, l.to_string()),
                     }
                 }
@@ -434,9 +523,9 @@ impl Printer {
 
     fn tool(&mut self, t: &Tool) {
         self.heading(&t.doc, t.span.line, format!("# Tool: {}", t.name.name));
-        let from = self.out.len();
-        self.prop(&t.prop_comments, "effect", effect_word(t.effect.value), t.effect.span.line);
-        self.group(from);
+        if let Some(x) = &t.touches {
+            self.prop(&t.prop_comments, "touches", &touches_text(x), x.span.line);
+        }
         for v in &t.verbs {
             self.blank();
             let mut h = format!("## {}({})", v.name.name, params_text(&v.params));
@@ -447,7 +536,7 @@ impl Printer {
             self.heading(&v.doc, v.span.line, h);
             match &v.body {
                 ToolBody::Stmts(body) => self.stmts(body, 0),
-                ToolBody::Rust(rust) => self.fence(1, rust),
+                ToolBody::Rust(rust) => self.fence(0, rust),
             }
         }
     }
@@ -466,9 +555,10 @@ impl Printer {
         if let Some(first) = r.params.first() {
             self.prop(pcs, "in", &params_text(&r.params), first.name.span.line);
         }
-        self.prop(pcs, "effect", effect_word(r.effect.value), r.effect.span.line);
+        self.prop(pcs, "touches", &touches_text(&r.touches), r.touches.span.line);
         self.group(from);
-        self.fence(1, &r.rust);
+        self.blank();
+        self.fence(0, &r.rust);
     }
 
     fn fence(&mut self, indent: usize, rust: &RustCode) {
@@ -486,18 +576,21 @@ impl Printer {
         self.push(rust.line + n, indent, "```");
     }
 
-    // ------------------------------------------------------------------ statements
+    // ------------------------------------------------------------------ steps
 
+    /// Numbered steps at `indent` spaces (SPEC 23.3): 1, 2, 3, ….
     fn stmts(&mut self, body: &[Stmt], indent: usize) {
-        for s in body {
-            self.stmt(s, indent);
+        for (i, s) in body.iter().enumerate() {
+            self.stmt(s, indent, &format!("{}. ", i + 1));
         }
     }
 
-    fn stmt(&mut self, s: &Stmt, indent: usize) {
+    /// One step. `marker` is its number (`3. `); the steps under it start where its text does.
+    fn stmt(&mut self, s: &Stmt, indent: usize, marker: &str) {
         self.comments(indent, &s.comments);
         let line = s.span.line;
         self.attached.insert(line);
+        let inner = indent + marker.len();
         match &s.kind {
             StmtKind::ForEach {
                 filter_rule,
@@ -512,14 +605,14 @@ impl Printer {
                 self.push(
                     line,
                     indent,
-                    format!("- for each {rule}{} in {}:", var.name, expr_text(source)),
+                    format!("{marker}for each {rule}{} in {}:", var.name, expr_text(source)),
                 );
-                self.stmts(body, indent + 1);
+                self.stmts(body, inner);
             }
             StmtKind::If { cond, then, else_ } => {
-                self.push(line, indent, format!("- if {}:", expr_text(cond)));
-                self.stmts(then, indent + 1);
-                self.else_branch(else_, indent);
+                self.push(line, indent, format!("{marker}if {}:", expr_text(cond)));
+                self.stmts(then, inner);
+                self.else_branch(else_, inner);
             }
             StmtKind::IfSome {
                 expr,
@@ -530,23 +623,23 @@ impl Printer {
                 self.push(
                     line,
                     indent,
-                    format!("- if {} is some {}:", expr_text(expr), bind.name),
+                    format!("{marker}if {} is some {}:", expr_text(expr), bind.name),
                 );
-                self.stmts(then, indent + 1);
-                self.else_branch(else_, indent);
+                self.stmts(then, inner);
+                self.else_branch(else_, inner);
             }
             StmtKind::Parallel(body) => {
-                self.push(line, indent, "- parallel:");
-                self.stmts(body, indent + 1);
+                self.push(line, indent, format!("{marker}parallel:"));
+                self.stmts(body, inner);
             }
             StmtKind::Match {
                 scrutinee,
                 arms,
                 otherwise,
             } => {
-                self.push(line, indent, format!("- match {}:", expr_text(scrutinee)));
+                self.push(line, indent, format!("{marker}match {}:", expr_text(scrutinee)));
                 for a in arms {
-                    self.comments(indent + 1, &a.comments);
+                    self.comments(inner, &a.comments);
                     let mut head = String::new();
                     if let Some(q) = &a.qualifier {
                         head.push_str(&q.name);
@@ -557,38 +650,58 @@ impl Printer {
                         head.push(' ');
                         head.push_str(&b.name);
                     }
-                    self.push(a.span.line, indent + 1, format!("- {head}:"));
+                    self.push(a.span.line, inner, format!("- {head}:"));
                     self.attached.insert(a.span.line);
-                    self.stmts(&a.body, indent + 2);
+                    self.stmts(&a.body, inner + 2);
                 }
                 if let Some(o) = otherwise {
-                    self.comments(indent + 1, &o.comments);
-                    self.push(o.span.line, indent + 1, "- otherwise:");
+                    self.comments(inner, &o.comments);
+                    self.push(o.span.line, inner, "- otherwise:");
                     self.attached.insert(o.span.line);
-                    self.stmts(&o.body, indent + 2);
+                    self.stmts(&o.body, inner + 2);
                 }
             }
             StmtKind::Try { stmt, otherwise } => {
-                self.push(line, indent, format!("- try {}", simple_text(stmt)));
+                self.push(line, indent, format!("{marker}try {}", simple_text(stmt)));
                 if let Some(o) = otherwise {
                     let before = o.first().map_or(u32::MAX, |s| s.span.line);
                     let at = self.find_line(before, |_, t| t.trim() == "otherwise:");
-                    self.push(at, indent + 1, "otherwise:");
-                    self.stmts(o, indent + 2);
+                    self.push(at, inner, "otherwise:");
+                    self.stmts(o, inner);
                 }
             }
-            StmtKind::Coll(c) => self.coll_stmt(c, line, indent),
-            _ => self.push(line, indent, format!("- {}", simple_text(s))),
+            StmtKind::Append { value, list } => match &value.kind {
+                // `add RegionTotal to totals:` with one bullet per field (SPEC 23.11)
+                ExprKind::Variant { qualifier, name, fields } if !fields.is_empty() => {
+                    let head = match qualifier {
+                        Some(q) => format!("{}.{}", q.name, name.name),
+                        None => name.name.clone(),
+                    };
+                    self.push(line, indent, format!("{marker}add {head} to {}:", expr_text(list)));
+                    for f in fields {
+                        let same = matches!(&f.value.kind, ExprKind::Path(p) if p.len() == 1 && p[0].name == f.name.name);
+                        let text = if same {
+                            format!("- {}", f.name.name)
+                        } else {
+                            format!("- {}: {}", f.name.name, expr_text(&f.value))
+                        };
+                        self.push(f.name.span.line, inner, text);
+                        self.attached.insert(f.name.span.line);
+                    }
+                }
+                _ => self.push(line, indent, format!("{marker}{}", simple_text(s))),
+            },
+            StmtKind::Coll(c) => self.coll_stmt(c, line, indent, marker),
+            _ => self.push(line, indent, format!("{marker}{}", simple_text(s))),
         }
     }
 
+    /// `else:` inside the `if` step, at the indentation of its steps, then the steps it runs.
     fn else_branch(&mut self, else_: &[Stmt], indent: usize) {
         if !else_.is_empty() {
-            let at = self.find_line(else_[0].span.line, |_, t| {
-                matches!(t.trim(), "else:" | "- else:")
-            });
-            self.push(at, indent, "- else:");
-            self.stmts(else_, indent + 1);
+            let at = self.find_line(else_[0].span.line, |_, t| t.trim() == "else:");
+            self.push(at, indent, "else:");
+            self.stmts(else_, indent);
         }
     }
 
@@ -609,7 +722,7 @@ impl Printer {
                 Some((_, i)) => {
                     // Above `else:` / `otherwise:` the comment lines up with that line.
                     let indent = match self.out.get(i + 1) {
-                        Some(n) if n.text == "otherwise:" || n.text == "- else:" => {
+                        Some(n) if n.text == "otherwise:" || n.text == "else:" => {
                             // never shallower than that line, but a comment that trails the
                             // body stays in it
                             o.indent.min(self.out[i].indent).max(n.indent)
@@ -652,7 +765,7 @@ impl Printer {
         for l in &all {
             if l.raw {
                 if !l.text.is_empty() {
-                    text.push_str(&"  ".repeat(l.indent));
+                    text.push_str(&" ".repeat(l.indent));
                 }
                 text.push_str(&l.text);
                 text.push('\n');
@@ -666,9 +779,7 @@ impl Printer {
                 prev_blank = true;
                 continue;
             }
-            for _ in 0..l.indent {
-                text.push_str("  ");
-            }
+            text.push_str(&" ".repeat(l.indent));
             text.push_str(&l.text);
             text.push('\n');
             prev_blank = false;
@@ -744,7 +855,7 @@ fn find_orphans(lines: &[Line], p: &Printer) -> Vec<Orphan> {
                 _ => lines[i..]
                     .iter()
                     .take_while(|l| !matches!(l.kind, LineKind::Heading1 | LineKind::Heading2))
-                    .find(|l| matches!(l.kind, LineKind::Item | LineKind::Control))
+                    .find(|l| l.kind.is_item() || l.kind == LineKind::Control)
                     .is_some_and(|o| p.attached.contains(&o.line_no)),
             };
             if !accounted {
@@ -849,13 +960,29 @@ pub(crate) fn type_text(t: &TypeExpr) -> String {
             Some(w) => format!("{w} handle of {name}"),
             None => format!("handle of {name}"),
         },
+        TypeKind::Infer(words) => words.join(" "),
     }
+}
+
+/// The words of `- touches:`.
+fn touches_text(t: &Touches) -> String {
+    t.words.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", ")
+}
+
+/// The link text of a used file nobody labelled: its name without `.agent.md`.
+fn default_label(path: &str) -> String {
+    let name = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+    name.strip_suffix(".agent.md").unwrap_or(name).to_string()
 }
 
 fn params_text(ps: &[Param]) -> String {
     ps.iter()
         .map(|p| {
-            let mut s = format!("{}: {}", p.name.name, type_text(&p.ty));
+            // a name whose type is found from it is written alone (SPEC 23.6)
+            let mut s = match &p.ty.kind {
+                TypeKind::Infer(words) => words.join(" "),
+                _ => format!("{}: {}", p.name.name, type_text(&p.ty)),
+            };
             if let Some(d) = &p.default {
                 s.push_str(" = ");
                 s.push_str(&at_least(d, 1));
@@ -878,7 +1005,7 @@ fn simple_text(s: &Stmt) -> String {
                 t.push(')');
             }
             if let Some(i) = into {
-                t.push_str(&format!(" -> {}", i.name));
+                t.push_str(&format!(" into {}", i.name));
             }
             t
         }
@@ -896,7 +1023,7 @@ fn simple_text(s: &Stmt) -> String {
             if let Some(r) = as_record {
                 t.push_str(&format!(" as {}", r.name));
             }
-            t.push_str(&format!(" -> {}", into.name));
+            t.push_str(&format!(" into {}", into.name));
             t
         }
         StmtKind::ToolCall {
@@ -939,7 +1066,7 @@ fn simple_text(s: &Stmt) -> String {
                 None => {}
             }
             if let Some(i) = into {
-                t.push_str(&format!(" -> {}", i.name));
+                t.push_str(&format!(" into {}", i.name));
             }
             t
         }
@@ -951,26 +1078,26 @@ fn simple_text(s: &Stmt) -> String {
             }
             t
         }
-        StmtKind::Set { var, expr } => format!("set {} = {}", var.name, expr_text(expr)),
+        StmtKind::Set { var, expr } => format!("{} into {}", expr_text(expr), var.name),
         StmtKind::Return(e) => format!("return {}", expr_text(e)),
         StmtKind::Respond { status, body } => match body {
             Some(b) => format!("respond {status} {}", expr_text(b)),
             None => format!("respond {status}"),
         },
         StmtKind::ReadBody { ty, into } => {
-            format!("read body as {} -> {}", type_text(ty), into.name)
+            format!("read body as {} into {}", type_text(ty), into.name)
         }
         StmtKind::ReadFile { path, ty, into } => format!(
-            "read file {} as {} -> {}",
+            "read file {} as {} into {}",
             expr_text(path),
             type_text(ty),
             into.name
         ),
         StmtKind::Append { value, list } => {
-            format!("append {} to {}", expr_text(value), expr_text(list))
+            format!("add {} to {}", expr_text(value), expr_text(list))
         }
-        StmtKind::ReadInput { into } => format!("read input -> {}", into.name),
-        StmtKind::File { verb, path, arg, into } => {
+        StmtKind::ReadInput { into } => format!("read input into {}", into.name),
+        StmtKind::File { verb, path, arg, into, into_ty } => {
             let mut t = format!("file {} {}", verb.name, expr_text(path));
             match arg {
                 Some(FileArg::To(e)) => t.push_str(&format!(" to {}", expr_text(e))),
@@ -978,12 +1105,15 @@ fn simple_text(s: &Stmt) -> String {
                 None => {}
             }
             if let Some(i) = into {
-                t.push_str(&format!(" -> {}", i.name));
+                t.push_str(&format!(" into {}", i.name));
+            }
+            if let Some(ty) = into_ty {
+                t.push_str(&format!(": {}", type_text(ty)));
             }
             t
         }
         StmtKind::CallInto { call, into, via_do } => {
-            format!("{}{} -> {}", if *via_do { "do " } else { "" }, expr_text(call), into.name)
+            format!("{}{} into {}", if *via_do { "do " } else { "" }, expr_text(call), into.name)
         }
         StmtKind::Print(e) => format!("print: {}", expr_text(e)),
         StmtKind::Coll(c) => collections::simple(c).unwrap_or_else(|| "stop".to_string()),

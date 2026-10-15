@@ -1,7 +1,6 @@
-# Import: ./commands/import-csv.agent.md
-# Import: ./services/api.agent.md
+# Program: invoice-service
+Serves invoices over HTTP and imports new ones from a CSV file.
 
-> Entry point. The API runs as a service; the CSV import is a subcommand.
-# Run
-- api
-- import-csv
+# Uses
+- [import-csv command](./commands/import-csv.agent.md)
+- [api service](./services/api.agent.md)

@@ -39,7 +39,7 @@ fn handles_in(te: &TypeExpr, out: &mut Vec<String>) {
             handles_in(k, out);
             handles_in(v, out);
         }
-        TypeKind::Named(_) => {}
+        TypeKind::Named(_) | TypeKind::Infer(_) => {}
     }
 }
 

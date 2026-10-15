@@ -1,5 +1,6 @@
-//! `# Tool: name` (SPEC 22.5): a tool written in AgentMark. One `- effect:` property and one
-//! `## verb(params) -> type` block per verb; the block holds statements or a fenced `rust` block.
+//! `# Tool: name` (SPEC 22.5): a tool written in AgentMark. An optional `- touches:` property
+//! (SPEC 23.7) and one `## verb(params) -> type` block per verb; the block holds numbered steps or
+//! a fenced `rust` block.
 
 use super::*;
 
@@ -12,30 +13,14 @@ impl<'l> Builder<'l> {
         nodes: &[Node<'l>],
         blocks: Vec<(&'l Line, Vec<&'l Line>)>,
     ) -> Option<Decl> {
-        let props = self.props(nodes, &["effect"], "a Tool");
+        let props = self.props(nodes, &["touches"], "a Tool");
         for p in &props {
             self.no_kids(p);
         }
-        let effect_p = props.iter().find(|p| p.key.name == "effect");
-        let effect = effect_p.and_then(|p| {
-            self.word_value(|g| &g.effect, p, &EFFECT_WORDS, "effect")
-                .map(|value| Spanned {
-                    value,
-                    span: Span::new(p.line, p.col, p.value.chars().count() as u32),
-                })
-        });
-        if effect_p.is_none() && !self.rejected_prop {
-            let d = Diagnostic::error(
-                E_MISSING_PROP,
-                self.file,
-                name.span,
-                format!("The tool \"{}\" does not say what effect it has.", name.name),
-            )
-            .with_help(
-                "Add \"- effect: pure\" (or local, network, model) under the heading; the compiler checks every verb against it.",
-            );
-            self.diags.push(d);
-        }
+        let touches = props
+            .iter()
+            .find(|p| p.key.name == "touches")
+            .and_then(|p| self.touches(p));
 
         if blocks.is_empty() {
             let d = Diagnostic::error(
@@ -45,7 +30,7 @@ impl<'l> Builder<'l> {
                 format!("The tool \"{}\" has no verbs.", name.name),
             )
             .with_help(
-                "Add a block such as \"## slug(title: text) -> text\" with the statements of the verb under it.",
+                "Add a block such as \"## slug(title: text) -> text\" with the steps of the verb under it.",
             );
             self.diags.push(d);
         }
@@ -63,7 +48,7 @@ impl<'l> Builder<'l> {
                 if let Some(extra) = kids.iter().find(|n| n.fence.is_none()) {
                     self.kid_error(
                         extra.line,
-                        "A verb is either statements or one fenced rust block, not both.",
+                        "A verb is either steps or one fenced rust block, not both.",
                     );
                 }
                 match self.fence_in(&kids, h2, &vname.name) {
@@ -87,7 +72,7 @@ impl<'l> Builder<'l> {
             doc,
             prop_comments: prop_comments(&props),
             name,
-            effect: effect?,
+            touches,
             verbs,
         }))
     }

@@ -1,5 +1,7 @@
-# Import: ./invoice.agent.md
+# Uses
+- [Invoice](./invoice.agent.md)
 
-> The shared state of the application: every invoice it knows about.
 # Record: AppState
+The shared state of the application: every invoice it knows about.
+
 - invoices: list of Invoice

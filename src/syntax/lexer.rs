@@ -13,12 +13,16 @@ pub enum LineKind {
     Heading1,
     /// `## Every day at 09:00`
     Heading2,
-    /// `> a comment`
+    /// `> a note`
     Comment,
-    /// `- a statement or property`
+    /// `- a property or field` (a `*` or `+` bullet is read the same way, SPEC 23.1)
     Item,
-    /// A bare line ending in `:` (or a bare `stop`), e.g. `for each x in y:`
+    /// `1. a step`: the number as written (SPEC 23.3)
+    Numbered(u32),
+    /// A bare line ending in `:` inside a step (`otherwise:`, `else:`), or a bare `stop`
     Control,
+    /// A line of the description paragraph directly under a heading (SPEC 23.2)
+    Paragraph,
     /// The opening ```` ```rust ```` line; carries the language tag.
     FenceOpen(String),
     /// A line inside a fence, kept verbatim (minus the fence's own indentation).
@@ -27,17 +31,26 @@ pub enum LineKind {
     Blank,
 }
 
+impl LineKind {
+    /// A list item, bulleted or numbered.
+    pub fn is_item(&self) -> bool {
+        matches!(self, LineKind::Item | LineKind::Numbered(_))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Line {
     /// 1-based line number.
     pub line_no: u32,
-    /// Indentation in 2-space levels.
+    /// Indentation in spaces (a step under `1.` is indented 3, a property under `- ` 2).
     pub indent: u32,
     pub kind: LineKind,
     /// Content with the marker removed: heading text after `# `, comment text after `>`, item text
-    /// after `- `, the trimmed text of a control line, the raw text of a fence body line.
+    /// after `- ` or `1. `, the trimmed text of a control or paragraph line, the raw text of a
+    /// fence body line.
     pub text: String,
-    /// 1-based character column where `text` starts on the source line.
+    /// 1-based character column where `text` starts on the source line. For an item this is one
+    /// past the column its children start at.
     pub col: u32,
     /// Byte offset of the start of this source line in the file.
     pub byte_start: usize,
@@ -48,14 +61,34 @@ pub const E_INDENT: &str = "E002";
 pub const E_FENCE: &str = "E003";
 pub const E_LINE: &str = "E004";
 
-/// Classify every line of `src`. Problems (tabs, odd indentation, unclosed fences, lines that are
-/// not part of the language) are collected, not fatal, so one run reports them all.
+/// `1. text` -> (number, byte length of the marker including the space).
+fn numbered(rest: &str) -> Option<(u32, usize)> {
+    let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    if digits == 0 || digits > 9 {
+        return None;
+    }
+    let after = &rest[digits..];
+    if after == "." {
+        return Some((rest[..digits].parse().ok()?, digits + 1));
+    }
+    let tail = after.strip_prefix(". ")?;
+    let pad = tail.len() - tail.trim_start().len();
+    Some((rest[..digits].parse().ok()?, digits + 2 + pad))
+}
+
+/// Classify every line of `src`. Problems (tabs, unclosed fences, lines that are not part of the
+/// language) are collected, not fatal, so one run reports them all.
+///
+/// Prose is the description of the heading above it (SPEC 23.2): it may only follow a heading,
+/// with blank lines and further paragraphs in between, and before anything else.
 pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
     let mut lines = Vec::new();
     let mut diags = Vec::new();
     // Inside a fence: (indent in spaces of the opening line, line number of the opening line).
     let mut fence: Option<(usize, u32)> = None;
     let mut byte_start = 0usize;
+    // Directly under a heading, where a description paragraph may stand.
+    let mut in_description = false;
 
     for (i, raw) in src.split('\n').enumerate() {
         let line_no = i as u32 + 1;
@@ -69,7 +102,7 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
             if rest.trim_end() == "```" {
                 lines.push(Line {
                     line_no,
-                    indent: (spaces / 2) as u32,
+                    indent: spaces as u32,
                     kind: LineKind::FenceClose,
                     text: String::new(),
                     col: spaces as u32 + 1,
@@ -92,7 +125,7 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
 
         let mk = |kind: LineKind, indent_spaces: usize, text: &str, text_col: usize| Line {
             line_no,
-            indent: (indent_spaces / 2) as u32,
+            indent: indent_spaces as u32,
             kind,
             text: text.to_string(),
             col: text_col as u32 + 1,
@@ -100,12 +133,13 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
         };
         let char_col = |byte: usize| raw[..byte].chars().count();
 
+        // a blank line keeps a description open (a second paragraph may follow)
         if rest.trim().is_empty() {
             lines.push(mk(LineKind::Blank, 0, "", 0));
             continue;
         }
 
-        // Comments are free text: tabs and odd indentation inside them do not matter.
+        // Notes are free text: tabs and odd indentation inside them do not matter.
         if let Some(body) = rest.strip_prefix('>') {
             let body = body.strip_prefix(' ').unwrap_or(body);
             let off = rest.len() - body.len();
@@ -127,35 +161,18 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
                     Span::new(line_no, char_col(tab) as u32 + 1, len as u32),
                     "Tabs are not allowed in AgentMark files.",
                 )
-                .with_help("Use 2 spaces for each indentation level."),
+                .with_help("Indent with spaces: 3 under a numbered step, 2 under a \"- \" line."),
             );
+            in_description = false;
             continue;
         }
 
         let rest_t = rest.trim_end();
+        let was_description = std::mem::replace(&mut in_description, false);
         if rest_t.starts_with("```") {
             let lang = rest_t.trim_start_matches('`').trim().to_string();
             lines.push(mk(LineKind::FenceOpen(lang), spaces, rest_t, spaces));
             fence = Some((spaces, line_no));
-            continue;
-        }
-
-        if spaces % 2 != 0 {
-            diags.push(
-                Diagnostic::error(
-                    E_INDENT,
-                    file,
-                    Span::new(line_no, 1, spaces as u32),
-                    format!(
-                        "Indentation must be 2 spaces per level, but this line is indented {spaces} spaces."
-                    ),
-                )
-                .with_help(format!(
-                    "Use {} or {} spaces.",
-                    spaces - 1,
-                    spaces + 1
-                )),
-            );
             continue;
         }
 
@@ -165,16 +182,29 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
                 continue;
             }
             lines.push(mk(LineKind::Heading2, 0, h.trim(), 3));
+            in_description = true;
         } else if let Some(h) = rest_t.strip_prefix("# ") {
             if spaces > 0 {
                 diags.push(heading_indented(file, line_no, spaces));
                 continue;
             }
             lines.push(mk(LineKind::Heading1, 0, h.trim(), 2));
-        } else if rest_t == "-" || rest_t.starts_with("- ") {
-            let body = rest_t.strip_prefix('-').unwrap_or("").trim_start();
+            in_description = true;
+        } else if rest_t == "-"
+            || rest_t.starts_with("- ")
+            || rest_t.starts_with("* ")
+            || rest_t.starts_with("+ ")
+        {
+            let body = rest_t[1..].trim_start();
             let off = rest_t.len() - body.len();
             lines.push(mk(LineKind::Item, spaces, body, spaces + off));
+        } else if let Some((n, width)) = numbered(rest_t) {
+            let body = rest_t[width.min(rest_t.len())..].trim_start();
+            let off = rest_t.len() - body.len();
+            lines.push(mk(LineKind::Numbered(n), spaces, body, spaces + off));
+        } else if was_description && spaces == 0 {
+            lines.push(mk(LineKind::Paragraph, 0, rest_t, 0));
+            in_description = true;
         } else if rest_t.ends_with(':') || rest_t == "stop" {
             lines.push(mk(LineKind::Control, spaces, rest_t, spaces));
         } else if rest_t.starts_with("for each ")
@@ -190,7 +220,7 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
                     "This line is missing the \":\" at its end.",
                 )
                 .with_help(
-                    "A line that has statements under it ends with a colon, like \"for each row in rows:\".",
+                    "A line that has steps under it ends with a colon, like \"for each row in rows:\".",
                 ),
             );
         } else {
@@ -199,9 +229,9 @@ pub fn lex(file: &str, src: &str) -> (Vec<Line>, Vec<Diagnostic>) {
                     E_LINE,
                     file,
                     Span::new(line_no, spaces as u32 + 1, rest_t.chars().count() as u32),
-                    "This line is not part of the language: statements start with \"- \" and headings with \"# \" or \"## \".",
+                    "This line is not part of the language: steps start with a number (\"1. \"), properties with \"- \" and headings with \"# \" or \"## \".",
                 )
-                .with_help("Put explanations in a \"> comment\" line."),
+                .with_help("A description is the paragraph directly under a heading; a note for people starts with \">\"."),
             );
         }
     }
@@ -238,21 +268,43 @@ mod tests {
 
     #[test]
     fn classifies_every_kind() {
-        let src =
-            "> doc\n# Agent: a\n- model: claude\n\n## Do x\nfor each y in z:\n  - stop\nstop\n";
+        let src = "# Agent: a\nChases invoices.\n\n- model: claude\n\n## Do x\n1. for each y in z:\n   1. stop\n   otherwise:\n> note\n";
         use LineKind::*;
         assert_eq!(
             kinds(src),
-            vec![Comment, Heading1, Item, Blank, Heading2, Control, Item, Control, Blank]
+            vec![
+                Heading1, Paragraph, Blank, Item, Blank, Heading2, Numbered(1), Numbered(1), Control,
+                Comment, Blank
+            ]
         );
     }
 
     #[test]
-    fn measures_indent_in_levels_and_text_columns() {
-        let (lines, _) = lex("t", "  - set x = 1\n");
-        assert_eq!(lines[0].indent, 1);
-        assert_eq!(lines[0].text, "set x = 1");
-        assert_eq!(lines[0].col, 5);
+    fn a_description_may_have_several_paragraphs() {
+        use LineKind::*;
+        assert_eq!(
+            kinds("# Record: A\nFirst line\nsecond line:\n\nSecond paragraph.\n- x: text\n"),
+            vec![Heading1, Paragraph, Paragraph, Blank, Paragraph, Item, Blank]
+        );
+    }
+
+    #[test]
+    fn prose_after_a_list_is_e004() {
+        let (_, diags) = lex("t", "# Record: A\n- x: text\nThis is a paragraph.\n");
+        assert_eq!(diags[0].code, E_LINE);
+    }
+
+    #[test]
+    fn measures_indent_in_spaces_and_text_columns() {
+        let (lines, _) = lex("t", "   1. add x to y\n12. stop\n  * z\n");
+        assert_eq!(lines[0].indent, 3);
+        assert_eq!(lines[0].kind, LineKind::Numbered(1));
+        assert_eq!(lines[0].text, "add x to y");
+        assert_eq!(lines[0].col, 7);
+        assert_eq!(lines[1].kind, LineKind::Numbered(12));
+        assert_eq!(lines[1].col, 5);
+        assert_eq!(lines[2].kind, LineKind::Item);
+        assert_eq!(lines[2].text, "z");
     }
 
     #[test]
@@ -282,11 +334,10 @@ mod tests {
     }
 
     #[test]
-    fn odd_indentation_is_e002() {
-        let (_, diags) = lex("t", "# Agent: a\n   - log: \"x\"\n");
+    fn indented_heading_is_e002() {
+        let (_, diags) = lex("t", "# Agent: a\n  ## Do x\n");
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, E_INDENT);
-        assert_eq!(diags[0].span, Span::new(2, 1, 3));
     }
 
     #[test]
@@ -294,12 +345,6 @@ mod tests {
         let (_, diags) = lex("t", "```rust\nfn x() {}\n");
         assert_eq!(diags[0].code, E_FENCE);
         assert_eq!(diags[0].span.line, 1);
-    }
-
-    #[test]
-    fn prose_is_e004() {
-        let (_, diags) = lex("t", "# Agent: a\nThis is a paragraph.\n");
-        assert_eq!(diags[0].code, E_LINE);
     }
 
     #[test]

@@ -171,6 +171,20 @@ pub struct ToolResolution {
     pub result: Option<Type>,
 }
 
+/// `# Program` (SPEC 23.4): the program the entry file describes and what it runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProgramInfo {
+    pub name: String,
+    pub file: usize,
+    pub span: Span,
+    /// The description under the heading.
+    pub doc: Option<String>,
+    /// The command it starts with: `- start:`, or the only command.
+    pub start: Option<String>,
+    /// Every agent, service and command of the entry file and the files its `# Uses` lists.
+    pub units: Vec<String>,
+}
+
 /// A named declaration and where its name is written (go-to-definition, hover).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeclInfo {
@@ -392,6 +406,15 @@ pub struct Checked {
     pub rust_blocks: Vec<RustInfo>,
     /// Every binding, approved or not.
     pub bindings: Vec<BindingInfo>,
+    /// The `# Program` of the entry file, if it has one (a project without one is a library).
+    pub program: Option<ProgramInfo>,
+    /// What each function, Rust block and tool says it touches (`- touches:`), as an effect set.
+    /// Key: kind and declared name (a tool by its own name).
+    #[serde(skip)]
+    pub touches: HashMap<Key, EffectSet>,
+    /// `file read … into <name>` statements that read a CSV file into a list of records (SPEC
+    /// 23.10), keyed by the statement, with that list type.
+    pub file_reads: HashMap<NodeKey, Type>,
 }
 
 impl Checked {
@@ -416,6 +439,21 @@ impl Checked {
     pub fn unverified_bindings(&self) -> impl Iterator<Item = &BindingInfo> {
         self.bindings.iter().filter(|b| b.is_unverified())
     }
+}
+
+/// GitHub's anchor for a heading: lower case, spaces become `-`, punctuation other than `-` and
+/// `_` is dropped (`Command: sales-report` -> `command-sales-report`).
+pub fn github_anchor(heading: &str) -> String {
+    heading
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter_map(|c| match c {
+            ' ' => Some('-'),
+            c if c.is_alphanumeric() || c == '-' || c == '_' => Some(c),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Check a loaded project. `Ok` carries everything later passes need; `Err` carries every
@@ -483,6 +521,13 @@ pub(crate) struct Checker<'a> {
     pub do_ctx: HashMap<BodyKey, Option<Implicit>>,
     /// `do` blocks that something calls: `(file, agent decl, block)`.
     pub called_blocks: HashSet<(usize, usize, usize)>,
+    /// What each function, Rust block and tool says it touches (SPEC 23.7).
+    pub touches_decl: HashMap<Key, EffectSet>,
+    /// `file read … into <records>` statements (SPEC 23.10) and the list type they read.
+    pub file_reads: HashMap<NodeKey, Type>,
+    /// The type being resolved is a function's `- out:` (for the wording of E230).
+    pub resolving_out: bool,
+    pub program: Option<ProgramInfo>,
 }
 
 impl<'a> Checker<'a> {
@@ -522,6 +567,10 @@ impl<'a> Checker<'a> {
             memo: HashMap::new(),
             do_ctx: HashMap::new(),
             called_blocks: HashSet::new(),
+            touches_decl: HashMap::new(),
+            file_reads: HashMap::new(),
+            resolving_out: false,
+            program: None,
         }
     }
 
@@ -579,11 +628,12 @@ impl<'a> Checker<'a> {
         self.check_recursive_types();
         self.declare_signatures();
         self.declare_tools();
+        self.declare_touches();
         self.check_agent_headers();
         self.check_service_states();
         self.check_constants();
         self.check_all_bodies();
-        self.check_runs();
+        self.check_program();
         self.check_default_command();
         limits::check(self);
         unused::check(self);
@@ -649,6 +699,9 @@ impl<'a> Checker<'a> {
             functions,
             rust_blocks: self.rust_blocks,
             bindings: self.bindings.into_values().collect(),
+            program: self.program,
+            touches: self.touches_decl,
+            file_reads: self.file_reads,
         })
     }
 
@@ -687,27 +740,144 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// `# Run` items must name an agent, service or command in scope.
-    fn check_runs(&mut self) {
-        for (fi, f) in self.p.files.iter().enumerate() {
+    /// `# Program` (SPEC 23.4): only in the entry file; `- start:` names one of its commands.
+    fn check_program(&mut self) {
+        let p = self.p;
+        let entry = match p.kind {
+            crate::project::ProjectKind::SingleFile => p.entry_files.first().copied(),
+            crate::project::ProjectKind::Folder => p
+                .files
+                .iter()
+                .position(|f| f.rel_dir.is_empty() && f.path.rsplit('/').next() == Some("main.agent.md")),
+        };
+        for (fi, f) in p.files.iter().enumerate() {
             for d in &f.ast.decls {
-                let Decl::Run(run) = d else { continue };
-                for item in &run.items {
-                    let kinds = [Kind::Agent, Kind::Service, Kind::Command];
-                    if self.lookup(fi, &item.name, &kinds).is_none() {
-                        let cands = self.scopes[fi].names_of(&kinds);
-                        let d = Diagnostic::error(
-                            "E214",
-                            self.path(fi),
-                            item.span,
-                            format!("Unknown agent, service or command \"{}\".", item.name),
-                        )
-                        .with_did_you_mean(scope::suggest(&item.name, &cands))
-                        .with_help("Each item of \"# Run\" must be imported into this file first.");
-                        self.diags.push(d);
+                let Decl::Program(prog) = d else { continue };
+                if Some(fi) != entry {
+                    let where_ = match p.kind {
+                        crate::project::ProjectKind::Folder => "main.agent.md",
+                        crate::project::ProjectKind::SingleFile => "the file the program starts from",
+                    };
+                    let d = Diagnostic::error(
+                        "E072",
+                        self.path(fi),
+                        prog.span,
+                        format!("Only the entry file has a \"# Program\" heading, and this is not it: the entry file is {where_}."),
+                    )
+                    .with_help("Move the heading, its description and \"- start:\" to the top of the entry file.");
+                    self.diags.push(d);
+                    continue;
+                }
+                if self.program.is_some() {
+                    continue;
+                }
+                let mut units: Vec<(String, Kind, usize)> = Vec::new();
+                let add_units = |file: usize, units: &mut Vec<(String, Kind, usize)>| {
+                    for d in &p.files[file].ast.decls {
+                        let (name, kind) = match d {
+                            Decl::Agent(a) => (&a.name.name, Kind::Agent),
+                            Decl::Service(s) => (&s.name.name, Kind::Service),
+                            Decl::Command(c) => (&c.name.name, Kind::Command),
+                            _ => continue,
+                        };
+                        if !units.iter().any(|(n, _, _)| n == name) {
+                            units.push((name.clone(), kind, file));
+                        }
+                    }
+                };
+                add_units(fi, &mut units);
+                for (ii, imp) in f.imports.iter().enumerate() {
+                    if let crate::project::ResolvedImport::Files(list) = imp {
+                        let before = units.len();
+                        for i in list {
+                            add_units(i.file, &mut units);
+                        }
+                        // a used file that brings in a part of the program is used by `# Program`
+                        if units.len() > before {
+                            self.used_imports.insert((fi, ii));
+                        }
+                    }
+                }
+                let commands: Vec<&(String, Kind, usize)> = units.iter().filter(|(_, k, _)| *k == Kind::Command).collect();
+                let start = match &prog.start {
+                    None => match commands.as_slice() {
+                        [only] => Some(only.0.clone()),
+                        _ => None,
+                    },
+                    Some(s) => {
+                        let found = self.start_command(fi, &s.target, &commands);
+                        if found.is_none() {
+                            let names: Vec<String> = commands.iter().map(|c| c.0.clone()).collect();
+                            let shown = s.label.clone().unwrap_or_else(|| s.target.clone());
+                            let mut d = Diagnostic::error(
+                                "E214",
+                                self.path(fi),
+                                s.span,
+                                format!("\"- start:\" names \"{shown}\", which is not a command of this program."),
+                            )
+                            .with_did_you_mean(scope::suggest(&shown, &names));
+                            d.help = Some(if names.is_empty() {
+                                "The program has no command: leave \"- start:\" out (its agents and services all run).".to_string()
+                            } else {
+                                format!("Its commands are: {}. A command of another file must be listed under \"# Uses\".", names.join(", "))
+                            });
+                            self.diags.push(d);
+                        }
+                        found
+                    }
+                };
+                for (name, kind, _) in &units {
+                    self.used.insert((*kind, name.clone()));
+                }
+                self.program = Some(ProgramInfo {
+                    name: prog.name.name.clone(),
+                    file: fi,
+                    span: prog.span,
+                    doc: prog.doc.clone(),
+                    start,
+                    units: units.into_iter().map(|(n, _, _)| n).collect(),
+                });
+            }
+        }
+    }
+
+    /// The command a `- start:` target names: `#command-<name>` (GitHub's anchor of the heading),
+    /// a file of `# Uses` that declares one command (optionally `file#anchor`), or the name.
+    fn start_command(&self, file: usize, target: &str, commands: &[&(String, Kind, usize)]) -> Option<String> {
+        let by_anchor = |anchor: &str, among: &[&(String, Kind, usize)]| {
+            among
+                .iter()
+                .find(|c| github_anchor(&format!("Command: {}", c.0)) == anchor.to_lowercase())
+                .map(|c| c.0.clone())
+        };
+        if let Some(anchor) = target.strip_prefix('#') {
+            return by_anchor(anchor, commands);
+        }
+        let (path, anchor) = match target.split_once('#') {
+            Some((p, a)) => (p, Some(a)),
+            None => (target, None),
+        };
+        if path.ends_with(".agent.md") {
+            let f = &self.p.files[file];
+            let wanted = crate::project::normalize(path);
+            let mut in_file: Vec<&(String, Kind, usize)> = Vec::new();
+            for (imp, res) in f.ast.imports.iter().zip(&f.imports) {
+                let crate::syntax::ast::ImportKind::File { path: written, .. } = &imp.kind else { continue };
+                if crate::project::normalize(written) != wanted {
+                    continue;
+                }
+                if let crate::project::ResolvedImport::Files(list) = res {
+                    for i in list {
+                        in_file.extend(commands.iter().filter(|c| c.2 == i.file));
                     }
                 }
             }
+            return match (anchor, in_file.as_slice()) {
+                (Some(a), _) => by_anchor(a, &in_file),
+                (None, [only]) => Some(only.0.clone()),
+                _ => None,
+            };
         }
+        commands.iter().find(|c| c.0 == target).map(|c| c.0.clone())
     }
 }

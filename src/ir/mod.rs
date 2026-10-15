@@ -46,7 +46,7 @@ pub struct Program {
     pub handle_rust: std::collections::BTreeMap<String, String>,
     /// The tool manifest (`tools.toml`), so codegen can write one trait per tool.
     pub tools: Vec<ToolDef>,
-    /// Names listed under `# Run`, in order (agents, services, commands).
+    /// What the program runs (SPEC 23.4): its agents, services and commands, in order.
     pub run: Vec<String>,
 }
 
@@ -203,7 +203,7 @@ pub struct Command {
     pub body: Vec<Stmt>,
     pub effect: EffectSet,
     pub source: SourceRef,
-    /// The `## Run` heading (the block the statements belong to).
+    /// The `- steps:` line (the steps belong to it).
     pub run: SourceRef,
 }
 
@@ -361,6 +361,8 @@ pub struct FileCall {
     pub path: Expr,
     /// The new path of `rename`, the content of `write` / `append`.
     pub arg: Option<Expr>,
+    /// `read` into a list of this record: the file is CSV (SPEC 23.10).
+    pub records: Option<Type>,
 }
 
 /// A call of a manifest tool, with everything resolved (codegen never looks names up).

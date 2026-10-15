@@ -341,16 +341,22 @@ fn each_stmt<'a>(body: &'a [Stmt], f: &mut dyn FnMut(&'a Stmt)) {
 
 /// The statement lists of a declaration (blocks, routes, function and command bodies).
 fn decl_bodies(d: &Decl) -> Vec<&[Stmt]> {
+    described_bodies(d).into_iter().map(|(b, _)| b).collect()
+}
+
+/// The statement lists of a declaration, each with whether a description explains it: the
+/// paragraph under its `##` heading, or under the part's heading.
+fn described_bodies(d: &Decl) -> Vec<(&[Stmt], bool)> {
     match d {
-        Decl::Agent(a) => a.blocks.iter().map(|b| b.body.as_slice()).collect(),
-        Decl::Function(f) => vec![&f.body],
-        Decl::Service(s) => s.routes.iter().map(|r| r.body.as_slice()).collect(),
-        Decl::Command(c) => vec![&c.body],
+        Decl::Agent(a) => a.blocks.iter().map(|b| (b.body.as_slice(), b.doc.is_some())).collect(),
+        Decl::Function(f) => vec![(&f.body, f.doc.is_some())],
+        Decl::Service(s) => s.routes.iter().map(|r| (r.body.as_slice(), r.doc.is_some())).collect(),
+        Decl::Command(c) => vec![(&c.body, c.doc.is_some())],
         Decl::Tool(t) => t
             .verbs
             .iter()
             .filter_map(|v| match &v.body {
-                ToolBody::Stmts(b) => Some(b.as_slice()),
+                ToolBody::Stmts(b) => Some((b.as_slice(), v.doc.is_some())),
                 ToolBody::Rust(_) => None,
             })
             .collect(),
@@ -389,15 +395,17 @@ fn body_lines(file: &File) -> u32 {
             Decl::Entry(e) => see(e.span.line),
             Decl::Rule(r) => see(r.when.span.line.max(r.span.line)),
             Decl::Constant(c) => see(c.value.span.line.max(c.span.line)),
-            Decl::Run(r) => {
-                see(r.span.line);
-                r.items.iter().for_each(|i| see(i.span.line));
+            Decl::Program(p) => {
+                see(p.span.line);
+                if let Some(s) = &p.start {
+                    see(s.span.line);
+                }
             }
             Decl::Agent(a) => {
                 see(a.span.line);
                 a.blocks.iter().for_each(|b| see(b.span.line));
             }
-            Decl::Function(f) => see(f.span.line.max(f.effect.span.line)),
+            Decl::Function(f) => see(f.span.line.max(f.touches.as_ref().map_or(0, |t| t.span.line))),
             Decl::Service(s) => {
                 see(s.span.line);
                 s.routes.iter().for_each(|r| see(r.span.line));
@@ -413,7 +421,7 @@ fn body_lines(file: &File) -> u32 {
             }
             Decl::RustBlock(r) => see(r.rust.line + r.rust.code.lines().count() as u32),
             Decl::Tool(t) => {
-                see(t.span.line.max(t.effect.span.line));
+                see(t.span.line.max(t.touches.as_ref().map_or(0, |x| x.span.line)));
                 for v in &t.verbs {
                     see(v.span.line);
                     if let ToolBody::Rust(r) = &v.body {
@@ -528,7 +536,7 @@ fn unnamed_guard(ctx: &mut Ctx, file: &File) {
     // Guards written as `try guard: ...`, already looked at through their `try` line.
     let mut inner_of_try: Vec<*const Stmt> = Vec::new();
     for d in &file.decls {
-        for body in decl_bodies(d) {
+        for (body, described) in described_bodies(d) {
             each_stmt(body, &mut |s| {
                 // `try guard: ...` keeps its comments on the `try` line.
                 let (guard, comments) = match &s.kind {
@@ -544,12 +552,12 @@ fn unnamed_guard(ctx: &mut Ctx, file: &File) {
                     return;
                 };
                 let n = expr_text(cond).chars().count();
-                if n > MAX_GUARD_CHARS && comments.is_empty() {
+                if n > MAX_GUARD_CHARS && comments.is_empty() && !described {
                     ctx.report(
                         "unnamed-guard",
                         cond.span,
-                        format!("This guard's condition is {n} characters long and has no comment above it."),
-                        "Add a \"> comment\" line above the guard that says what it protects against.".to_string(),
+                        format!("This guard's condition is {n} characters long and nothing says what it protects against."),
+                        "Say it in the description under the block's heading (or in a \"> note\" line above the guard).".to_string(),
                     );
                 }
             });
@@ -677,7 +685,7 @@ fn missing_doc(ctx: &mut Ctx, file: &File) {
                 "missing-doc",
                 span,
                 format!("The {kind} \"{}\" has no description.", name.name),
-                "Put a \"> description\" comment on the line directly above its heading.".to_string(),
+                "Write what it does as a plain paragraph directly under its heading.".to_string(),
                 serde_json::json!({ "rule": "missing-doc", "kind": kind }));
         }
     }
@@ -724,7 +732,7 @@ fn vague_name(ctx: &mut Ctx, file: &File) {
                     add(&mut names, &v.name);
                 }
             }
-            Decl::Run(_) | Decl::Entry(_) => {}
+            Decl::Program(_) | Decl::Entry(_) => {}
         }
         for p in decl_params(d) {
             add(&mut names, &p.name);

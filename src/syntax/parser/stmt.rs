@@ -30,8 +30,14 @@ pub enum Head {
     },
     /// A statement that has no body of its own.
     Simple(Stmt),
-    /// `try <statement>`; an `otherwise:` child line may follow.
+    /// `try <statement>`; an `otherwise:` line inside it may follow.
     Try(Stmt),
+    /// `add RegionTotal to totals:`: the record's fields are the bullets under it (SPEC 23.11).
+    AddFields {
+        qualifier: Option<Ident>,
+        name: Ident,
+        list: Expr,
+    },
     /// `for each row in rows with index i:` / `for each k, v in map:` (SPEC 22.2).
     Loop(super::collections::LoopHead),
 }
@@ -45,13 +51,12 @@ const STATEMENT_WORDS: &[&str] = &[
     "do",
     "ask",
     "guard",
-    "set",
     "return",
     "respond",
     "read",
     "try",
     "parallel",
-    "append",
+    "add",
     "put",
     "remove",
     "print",
@@ -68,10 +73,11 @@ fn stmt_at<'a>(kind: StmtKind, e: &mut chumsky::input::MapExtra<'a, '_, &'a str,
     }
 }
 
-fn arrow<'a>() -> impl Parser<'a, &'a str, (), Ex<'a>> + Clone {
-    sp().ignore_then(just("->"))
-        .ignore_then(sp())
-        .labelled("\"->\"")
+/// ` into ` before the name a step gives its result (SPEC 23.9).
+fn into_kw<'a>() -> impl Parser<'a, &'a str, (), Ex<'a>> + Clone {
+    sp1().ignore_then(kw("into"))
+        .ignore_then(sp1())
+        .labelled("\"into\"")
 }
 
 fn colon<'a>() -> impl Parser<'a, &'a str, (), Ex<'a>> + Clone {
@@ -86,7 +92,7 @@ pub fn head<'a>() -> P<'a, Head> {
     // ------------------------------------------------------------ simple statements
     let simple = recursive(
         |simple: Recursive<chumsky::recursive::Direct<'a, 'a, &'a str, Stmt, Ex<'a>>>| {
-            let into = arrow().ignore_then(ident());
+            let into = into_kw().ignore_then(ident());
 
             // do name | do name(args) -> x | do tool verb target: payload -> x
             let tool_call_tail = tool_call_tail(expr.clone());
@@ -184,14 +190,11 @@ pub fn head<'a>() -> P<'a, Head> {
                     )
                 });
 
-            let set = kw("set")
-                .ignore_then(sp1())
-                .ignore_then(ident())
-                .then_ignore(sp())
-                .then_ignore(just('='))
-                .then_ignore(sp())
-                .then(expr.clone())
-                .map_with(|(var, expr), e| stmt_at(StmtKind::Set { var, expr }, e));
+            // <value> into <name>
+            let set = expr
+                .clone()
+                .then(into.clone())
+                .map_with(|(expr, var), e| stmt_at(StmtKind::Set { var, expr }, e));
             let ret = kw("return")
                 .ignore_then(sp1())
                 .ignore_then(expr.clone())
@@ -248,20 +251,27 @@ pub fn head<'a>() -> P<'a, Head> {
                     .ignore_then(expr.clone())
                     .map(FileArg::Content),
             ));
+            let typed_into = into
+                .clone()
+                .then(sp().ignore_then(just(':')).ignore_then(sp()).ignore_then(ty.clone()).or_not());
             let file = kw("file")
                 .ignore_then(sp1())
                 .ignore_then(ident())
                 .then_ignore(sp1())
                 .then(expr.clone())
                 .then(file_arg.or_not())
-                .then(into.clone().or_not())
+                .then(typed_into.or_not())
                 .map_with(|(((verb, path), arg), into), e| {
-                    stmt_at(StmtKind::File { verb, path, arg, into }, e)
+                    let (into, into_ty) = match into {
+                        Some((i, t)) => (Some(i), t),
+                        None => (None, None),
+                    };
+                    stmt_at(StmtKind::File { verb, path, arg, into, into_ty }, e)
                 });
-            // [do] <library call> -> var
+            // do <library call> into var
             let call_into = kw("do")
                 .ignore_then(sp1())
-                .or_not()
+                .map(Some)
                 .then(expr.clone().try_map(|x: Expr, span| {
                     let call = match &x.kind {
                         ExprKind::Decode { call, .. } => &**call,
@@ -283,7 +293,7 @@ pub fn head<'a>() -> P<'a, Head> {
                         e,
                     )
                 });
-            let append = kw("append")
+            let append = kw("add")
                 .ignore_then(sp1())
                 .ignore_then(expr.clone())
                 .then_ignore(sp1())
@@ -328,8 +338,8 @@ pub fn head<'a>() -> P<'a, Head> {
             let coll = super::collections::statements(expr.clone());
 
             choice((
-                stop, call_into, do_stmt, ask, guard, set, ret, respond, read_input, read_body,
-                read_file, file, append, coll, print, tool_call,
+                stop, call_into, do_stmt, ask, guard, ret, respond, read_input, read_body,
+                read_file, file, append, coll, print, set, tool_call,
             ))
             .labelled("a statement")
         },
@@ -411,7 +421,7 @@ pub fn head<'a>() -> P<'a, Head> {
                 .collect::<Vec<_>>()
                 .delimited_by(just('('), just(')')),
         )
-        .then(arrow().ignore_then(ident()).or_not())
+        .then(into_kw().ignore_then(ident()).or_not())
         .map_with(|((path, args), into), e| {
             let name = Ident {
                 name: path.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join("."),
@@ -419,10 +429,38 @@ pub fn head<'a>() -> P<'a, Head> {
             };
             stmt_at(StmtKind::Do { name, args, into, bare: true }, e)
         });
+    // `try csv.parse(t) as list of Sale into sales`: a library call that can fail (SPEC 22.3)
+    let try_lib = expr
+        .clone()
+        .try_map(|x: Expr, span| {
+            let call = match &x.kind {
+                ExprKind::Decode { call, .. } => &**call,
+                _ => &x,
+            };
+            match &call.kind {
+                ExprKind::Call { func, .. } if func.len() == 2 && crate::stdlib::is_module(&func[0].name) => Ok(x),
+                _ => Err(Rich::custom(span, "not a call of the built-in library")),
+            }
+        })
+        .then(into_kw().ignore_then(ident()))
+        .map_with(|(call, into), e| stmt_at(StmtKind::CallInto { call, into, via_do: false }, e));
     let try_head = kw("try")
         .ignore_then(sp1())
-        .ignore_then(choice((bare_call, simple.clone())))
+        .ignore_then(choice((bare_call, try_lib, simple.clone())))
         .map(Head::Try);
+    // `add RegionTotal to totals:` with the fields as bullets under it
+    let add_fields = kw("add")
+        .ignore_then(sp1())
+        .ignore_then(ident().separated_by(just('.')).at_least(1).at_most(2).collect::<Vec<_>>())
+        .then_ignore(sp1())
+        .then_ignore(kw("to"))
+        .then_ignore(sp1())
+        .then(expr.clone())
+        .then_ignore(colon())
+        .map(|(mut path, list)| {
+            let name = path.pop().expect("a path has a segment");
+            Head::AddFields { qualifier: path.pop(), name, list }
+        });
 
     choice((
         loops,
@@ -433,9 +471,18 @@ pub fn head<'a>() -> P<'a, Head> {
         otherwise,
         parallel,
         try_head,
+        add_fields,
         simple.map(Head::Simple),
     ))
     .boxed()
+}
+
+/// A bullet under `add <Record> to <list>:`: `region` or `orders: count of rows` (SPEC 23.11).
+pub fn add_field<'a>() -> P<'a, (Ident, Option<Expr>)> {
+    ident()
+        .then(sp().ignore_then(just(':')).ignore_then(sp()).ignore_then(expr()).or_not())
+        .then_ignore(sp())
+        .boxed()
 }
 
 /// A branch line of a `match`.
@@ -502,7 +549,7 @@ fn targets_payload_into<'a>(expr: P<'a, Expr>) -> P<'a, TargetsPayloadInto> {
     let part = choice((
         expr_string().map(TargetPart::Value),
         field_path,
-        name().map(TargetPart::Word),
+        name().filter(|id: &Ident| id.name != "into").map(TargetPart::Word),
     ));
     let targets = sp1().ignore_then(part).repeated().collect::<Vec<_>>();
     let assign = ident()
@@ -519,7 +566,7 @@ fn targets_payload_into<'a>(expr: P<'a, Expr>) -> P<'a, TargetsPayloadInto> {
             .map(Payload::Assign),
         expr.map(Payload::Value),
     )));
-    let into = arrow().ignore_then(ident());
+    let into = into_kw().ignore_then(ident());
     targets
         .then(payload.or_not())
         .then(into.or_not())

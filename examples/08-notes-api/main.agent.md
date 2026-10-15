@@ -1,5 +1,5 @@
-# Import: ./services/notes.agent.md
+# Program: notes-api
+A small notes API: create, list, read and delete notes, kept in SQLite.
 
-> Entry point. The notes API runs as a service.
-# Run
-- notes
+# Uses
+- [notes service](./services/notes.agent.md)

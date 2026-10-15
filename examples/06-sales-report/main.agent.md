@@ -1,5 +1,5 @@
-# Import: ./commands/sales-report.agent.md
+# Program: sales-report
+Reads a sales file and writes a revenue report, region by region.
 
-> Entry point. The program is one command, so `sales-report <path> <out>` runs it directly.
-# Run
-- sales-report
+# Uses
+- [sales-report command](./commands/sales-report.agent.md)

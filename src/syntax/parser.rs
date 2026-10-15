@@ -27,9 +27,6 @@ use stmt::Head;
 /// First words of the blocks an agent may have.
 const BLOCK_WORDS: &[&str] = &["Every", "When", "On", "Do", "Rust"];
 
-/// The effect classes a declaration may state.
-const EFFECT_WORDS: [&str; 5] = ["pure", "local", "network", "model", "unverified"];
-
 /// Words that start a statement (a near miss gets a suggestion).
 const STATEMENT_WORDS: &[&str] = &[
     "for",
@@ -39,13 +36,12 @@ const STATEMENT_WORDS: &[&str] = &[
     "do",
     "ask",
     "guard",
-    "set",
     "return",
     "respond",
     "read",
     "try",
     "parallel",
-    "append",
+    "add",
     "put",
     "remove",
     "print",
@@ -64,6 +60,21 @@ const E_INDENT_DEEP: &str = "E031";
 const E_STRUCTURE: &str = "E032";
 const E_SYNTAX: &str = "E040";
 const E_IMPORT: &str = "E050";
+// Removed syntax (SPEC 23.13) and the v0.4 structure.
+const E_RUN_REMOVED: &str = "E060";
+const E_RUN_BLOCK: &str = "E061";
+const E_ARGS: &str = "E062";
+const E_EFFECT: &str = "E063";
+const E_SET: &str = "E064";
+const E_ARROW: &str = "E065";
+const E_APPEND: &str = "E066";
+const E_RULE_FOR: &str = "E067";
+const E_DOC_ABOVE: &str = "E068";
+const E_IMPORT_FILE: &str = "E069";
+const E_STEP_BULLET: &str = "E070";
+const E_PROP_NUMBER: &str = "E071";
+const E_PROGRAM: &str = "E072";
+const E_USES: &str = "E073";
 
 /// Stack of the thread that parses (virtual memory: only what the parser touches is committed).
 /// The grammar is recursive and its frames are large in a debug build: nested collection words
@@ -111,7 +122,7 @@ fn too_deep(path: &str, lines: &[Line]) -> Vec<Diagnostic> {
                         Span::new(l.line_no, l.col + chars - 1, 1),
                         format!("This line nests more than {MAX_NESTING} levels of parentheses or braces."),
                     )
-                    .with_help("Name the inner part with \"set\" on a line of its own."),
+                    .with_help("Name the inner part on a step of its own: \"<value> into <name>\"."),
                 );
                 break;
             }
@@ -151,7 +162,6 @@ struct Grammar<'l> {
     trigger: P<'l, Trigger>,
     route: P<'l, (String, String, Vec<String>)>,
     rust_heading: P<'l, (Ident, Option<TypeExpr>)>,
-    run_heading: P<'l, ()>,
     not_bound: P<'l, ()>,
     binding_item: P<'l, (Ident, Vec<Param>, Option<TypeExpr>)>,
     prop_head: P<'l, (Ident, &'l str, chumsky::span::SimpleSpan)>,
@@ -159,13 +169,17 @@ struct Grammar<'l> {
     variant: P<'l, (Ident, Vec<(Ident, TypeExpr)>)>,
     arm: P<'l, stmt::Arm>,
     params: P<'l, Vec<Param>>,
+    in_params: P<'l, Vec<Param>>,
+    out_type: P<'l, TypeExpr>,
     name_list: P<'l, Vec<Ident>>,
     model: P<'l, Spanned<String>>,
     memory: P<'l, Memory>,
     effect: P<'l, Effect>,
     single_name: P<'l, Ident>,
     rest: P<'l, Spanned<String>>,
-    run_item: P<'l, Ident>,
+    uses_item: P<'l, (String, Spanned<String>, Option<Ident>)>,
+    start: P<'l, (Option<String>, Spanned<String>)>,
+    add_field: P<'l, (Ident, Option<Expr>)>,
     not_bound_item: P<'l, (String, Option<String>)>,
     expr: P<'l, Expr>,
     ty: P<'l, TypeExpr>,
@@ -181,7 +195,6 @@ impl<'l> Grammar<'l> {
             trigger: trigger(),
             route: route(),
             rust_heading: rust_heading(),
-            run_heading: run_heading(),
             not_bound: not_bound_heading(),
             binding_item: binding_item_heading(),
             prop_head: property_head(),
@@ -189,13 +202,17 @@ impl<'l> Grammar<'l> {
             variant: variant(),
             arm: stmt::arm(),
             params: params(),
+            in_params: in_params(),
+            out_type: out_type(),
             name_list: name_list(),
             model: model_string(),
             memory: memory(),
             effect: effect(),
             single_name: single_name(),
             rest: rest_of_line(),
-            run_item: run_item(),
+            uses_item: uses_item(),
+            start: start_value(),
+            add_field: stmt::add_field(),
             not_bound_item: not_bound_item(),
             expr: expr::expr(),
             ty: expr::type_expr(),
@@ -364,8 +381,9 @@ impl<'l> Builder<'l> {
     // ------------------------------------------------------------------ file level
 
     fn file(&mut self, lines: &'l [Line]) -> File {
-        let (docs, file_doc, doc_lines) = collect_docs(lines);
+        let (docs, file_doc, doc_lines, doc_errors) = collect_docs(self.file, lines);
         self.docs = docs;
+        self.diags.extend(doc_errors);
         let mut file = File {
             path: self.file.to_string(),
             doc: file_doc,
@@ -376,7 +394,7 @@ impl<'l> Builder<'l> {
         let live: Vec<&'l Line> = lines
             .iter()
             .filter(|l| match l.kind {
-                LineKind::Blank => false,
+                LineKind::Blank | LineKind::Paragraph => false,
                 LineKind::Comment => !doc_lines.contains(&l.line_no),
                 _ => true,
             })
@@ -391,44 +409,43 @@ impl<'l> Builder<'l> {
             } else if let Some((_, body)) = chunks.last_mut() {
                 body.push(l);
             } else if l.kind == LineKind::Comment {
-                // a comment before the first heading that documents nothing
+                // a note before the first heading
             } else if !stray_reported {
                 stray_reported = true;
                 self.error(
                     E_OUTSIDE,
                     line_span(l),
-                    "This line is not inside a declaration. Start with a heading such as \"# Agent: name\".",
+                    "This line is not inside a part. Start with a heading such as \"# Program: name\" or \"# Record: Name\".",
                 );
             }
         }
 
-        for (h, body) in chunks {
-            self.chunk(h, &body, &mut file);
+        let mut seen_decl = false;
+        for (i, (h, body)) in chunks.into_iter().enumerate() {
+            self.chunk(i, h, &body, &mut file, &mut seen_decl);
         }
         file
     }
 
-    fn chunk(&mut self, h: &'l Line, body: &[&'l Line], file: &mut File) {
+    fn chunk(&mut self, index: usize, h: &'l Line, body: &[&'l Line], file: &mut File, seen_decl: &mut bool) {
         let doc = self.docs.get(&h.line_no).cloned();
 
-        // The first word decides whether this is a known kind of declaration.
+        // The first word decides whether this is a known kind of part.
         let word = match self.parse(|g| &g.h1_word, &h.text, h.line_no, h.col) {
             Some(w) => w,
             None => return,
         };
-        if !HEADING_WORDS
-            .iter()
-            .any(|k| k.eq_ignore_ascii_case(&word.name))
-        {
+        let removed = REMOVED_HEADINGS.iter().any(|k| k.eq_ignore_ascii_case(&word.name));
+        if !removed && !HEADING_WORDS.iter().any(|k| k.eq_ignore_ascii_case(&word.name)) {
             let d = Diagnostic::error(
                 E_UNKNOWN_DECL,
                 self.file,
                 word.span,
-                format!("Unknown declaration \"{}\".", word.name),
+                format!("Unknown heading \"{}\".", word.name),
             )
             .suggesting(&word.name, HEADING_WORDS.iter().copied())
             .with_help(format!(
-                "A declaration starts with one of: {}.",
+                "A part starts with one of: {}.",
                 HEADING_WORDS.join(", ")
             ));
             self.diags.push(d);
@@ -440,14 +457,77 @@ impl<'l> Builder<'l> {
 
         let span = line_span(h);
         match parsed {
-            H1::Import(t) => self.import(h, body, doc, t, file),
-            H1::Run => {
+            H1::Removed(w) => {
+                let d = Diagnostic::error(
+                    E_RUN_REMOVED,
+                    self.file,
+                    w.span,
+                    format!(
+                        "\"# {}\" was removed. Start the entry file with \"# Program: <name>\"; name the command it starts with in \"- start: <command>\".",
+                        w.name
+                    ),
+                )
+                .with_help("Write:\n# Program: my-program\nWhat the program does, in one sentence.\n\n- start: <command>");
+                self.diags.push(d);
+            }
+            H1::Import(t) => {
+                if !t.is_crate {
+                    let path = t.target.name.clone();
+                    let label = path
+                        .rsplit('/')
+                        .find(|s| !s.is_empty() && *s != "*.agent.md")
+                        .map(|s| s.strip_suffix(".agent.md").unwrap_or(s).to_string())
+                        .unwrap_or_else(|| path.clone());
+                    let alias = t.alias.as_ref().map(|a| format!(" as {}", a.name)).unwrap_or_default();
+                    let d = Diagnostic::error(
+                        E_IMPORT_FILE,
+                        self.file,
+                        span,
+                        "File imports moved to a \"# Uses\" section.",
+                    )
+                    .with_help(format!("Write:\n# Uses\n- [{label}]({path}){alias}"));
+                    self.diags.push(d);
+                    return;
+                }
+                if *seen_decl {
+                    // crate imports keep their heading; they belong with the other uses, at the top
+                }
+                self.import(h, body, doc, t, file);
+            }
+            H1::Uses => {
+                if *seen_decl {
+                    self.error(
+                        E_USES,
+                        span,
+                        "\"# Uses\" goes at the top of the file, before the other parts (after \"# Program\").",
+                    );
+                }
+                self.uses(h, body, file);
+            }
+            H1::Program(name) => {
+                if index > 0 {
+                    self.error(
+                        E_PROGRAM,
+                        span,
+                        "\"# Program\" must be the first heading of the file.",
+                    );
+                }
                 let mut pos = 0;
                 let nodes = self.build(body, &mut pos, 0);
-                let items = self.run_items(&nodes);
-                file.decls.push(Decl::Run(Run { span, doc, items }));
+                if let Some(p) = self.program(span, doc, name, &nodes) {
+                    file.decls.push(p);
+                }
+            }
+            H1::Rule(words) => {
+                *seen_decl = true;
+                self.hoisted.clear();
+                self.rejected_prop = false;
+                if let Some(d) = self.rule(span, doc, words, body) {
+                    file.decls.push(d);
+                }
             }
             H1::Decl(kind, name) => {
+                *seen_decl = true;
                 self.hoisted.clear();
                 self.rejected_prop = false;
                 let decl = self.declaration(kind, span, doc, name, body);
@@ -472,56 +552,109 @@ impl<'l> Builder<'l> {
             self.error(
                 E_STRUCTURE,
                 line_span(extra),
-                "An import is a single line and has nothing under it.",
+                "A library import is a single line and has nothing under it.",
             );
         }
-        let path = t.target.name.clone();
-        let kind = if t.is_crate {
-            ImportKind::Crate {
+        file.imports.push(Import {
+            span,
+            doc,
+            kind: ImportKind::Crate {
                 name: t.target,
                 alias: t.alias,
-            }
-        } else if path.contains('*') {
-            if let Some(a) = t.alias {
+            },
+            label: None,
+        });
+    }
+
+    /// `# Uses` with one `- [label](path)` line per file, folder or glob (SPEC 23.4).
+    fn uses(&mut self, h: &'l Line, body: &[&'l Line], file: &mut File) {
+        let mut pos = 0;
+        let nodes = self.build(body, &mut pos, 0);
+        if nodes.is_empty() {
+            self.error(
+                E_USES,
+                line_span(h),
+                "\"# Uses\" lists the files this one uses, one link per line: \"- [constants](./constants.agent.md)\".",
+            );
+        }
+        for n in &nodes {
+            if n.line.kind != LineKind::Item {
                 self.error(
-                    E_IMPORT,
-                    a.span,
-                    "A glob import cannot be renamed with \"as\".",
+                    E_USES,
+                    line_span(n.line),
+                    "A used file is a \"- \" line with a link: \"- [constants](./constants.agent.md)\".",
                 );
-                return;
+                continue;
             }
-            ImportKind::Glob { pattern: path }
-        } else if path.ends_with(".agent.md") {
-            ImportKind::File {
-                path,
-                alias: t.alias,
+            if let Some(k) = n.kids.first() {
+                self.kid_error(k.line, "Nothing can be indented under a used file.");
             }
-        } else {
-            match t.alias {
-                Some(alias) => ImportKind::Folder { path, alias },
-                None => {
-                    self.error(
-                        E_IMPORT,
-                        t.target.span,
-                        format!(
-                            "\"{path}\" is not a .agent.md file. To import a folder, give it a name: \"# Import: {path} as <name>\"."
-                        ),
-                    );
-                    return;
+            let Some((label, target, alias)) =
+                self.parse(|g| &g.uses_item, &n.line.text, n.line.line_no, n.line.col)
+            else {
+                continue;
+            };
+            let path = target.value.clone();
+            let kind = if path.contains('*') {
+                if let Some(a) = alias {
+                    self.error(E_IMPORT, a.span, "A glob cannot be given a name with \"as\".");
+                    continue;
                 }
-            }
-        };
-        file.imports.push(Import { span, doc, kind });
+                ImportKind::Glob { pattern: path }
+            } else if path.ends_with(".agent.md") {
+                ImportKind::File { path, alias }
+            } else {
+                let folder = path.trim_end_matches('/').to_string();
+                match alias {
+                    Some(alias) => ImportKind::Folder { path: folder, alias },
+                    None => {
+                        self.error(
+                            E_IMPORT,
+                            target.span,
+                            format!(
+                                "\"{path}\" is not a .agent.md file. To use a folder, give it a name: \"- [{label}]({path}) as <name>\"."
+                            ),
+                        );
+                        continue;
+                    }
+                }
+            };
+            file.imports.push(Import {
+                span: line_span(n.line),
+                doc: None,
+                kind,
+                label: Some(label),
+            });
+        }
+    }
+
+    /// `# Program: name` with its description and `- start:` (SPEC 23.4).
+    fn program(&mut self, span: Span, doc: Option<String>, name: Ident, nodes: &[Node<'l>]) -> Option<Decl> {
+        let props = self.props(nodes, &["start"], "a Program");
+        for p in &props {
+            self.no_kids(p);
+        }
+        let start = props.iter().find(|p| p.key.name == "start").and_then(|p| {
+            self.value(|g| &g.start, p).map(|(label, target)| Start {
+                span: Span::new(p.line, p.col, p.value.chars().count() as u32),
+                label,
+                target: target.value,
+            })
+        });
+        Some(Decl::Program(Program { span, doc, name, start }))
     }
 
     // ------------------------------------------------------------------ indentation tree
 
-    /// Build the statement/property tree for `lines` starting at `pos` with the given indent.
-    fn build(&mut self, lines: &[&'l Line], pos: &mut usize, level: u32) -> Vec<Node<'l>> {
+    /// Build the tree of list items for `lines` starting at `pos`. Every line indented at least
+    /// `min` spaces belongs to this level or below it: the first one sets the level, a deeper line
+    /// belongs to the item above it (SPEC 23.3).
+    fn build(&mut self, lines: &[&'l Line], pos: &mut usize, min: u32) -> Vec<Node<'l>> {
         let mut out = Vec::new();
-        if level == 0 {
+        if min == 0 {
             self.pending.clear();
         }
+        let mut level: Option<u32> = None;
         while *pos < lines.len() {
             let l = lines[*pos];
             if l.kind == LineKind::Comment {
@@ -529,21 +662,33 @@ impl<'l> Builder<'l> {
                 *pos += 1;
                 continue;
             }
-            if l.indent < level && !matches!(l.kind, LineKind::FenceBody | LineKind::FenceClose) {
+            if matches!(l.kind, LineKind::FenceBody | LineKind::FenceClose) {
+                *pos += 1;
+                continue;
+            }
+            if l.indent < min {
                 break;
             }
             let is_fence = matches!(l.kind, LineKind::FenceOpen(_));
-            if l.indent > level && !is_fence {
+            let lv = *level.get_or_insert(l.indent);
+            if l.indent != lv && !is_fence && !self.bad_lines.contains(&l.line_no) {
                 self.bad_lines.insert(l.line_no);
+                let (what, help) = if l.indent > lv {
+                    ("deeper than", "Indent a line under the step or property it belongs to, by as many spaces as that line's text is indented.")
+                } else {
+                    ("less than", "Lines of one list start at the same column.")
+                };
                 self.error(
                     E_INDENT_DEEP,
-                    Span::new(l.line_no, 1, l.indent * 2),
+                    Span::new(l.line_no, 1, l.indent.max(1)),
                     format!(
-                        "This line is indented {} spaces, but only {} are possible here. Indent by one level (2 spaces) at a time.",
-                        l.indent * 2,
-                        level * 2
+                        "This line is indented {} spaces, {what} the {} of the lines above it at this level.",
+                        l.indent, lv
                     ),
                 );
+                if let Some(d) = self.diags.last_mut() {
+                    d.help = Some(help.into());
+                }
             }
             *pos += 1;
             if let LineKind::FenceOpen(lang) = &l.kind {
@@ -568,7 +713,7 @@ impl<'l> Builder<'l> {
                 continue;
             }
             let comments = std::mem::take(&mut self.pending);
-            let kids = self.build(lines, pos, l.indent.max(level) + 1);
+            let kids = self.build(lines, pos, l.indent + 1);
             out.push(Node {
                 line: l,
                 comments,
@@ -576,7 +721,7 @@ impl<'l> Builder<'l> {
                 fence: None,
             });
         }
-        if level == 0 {
+        if min == 0 {
             self.pending.clear();
         }
         out
@@ -623,10 +768,7 @@ impl<'l> Builder<'l> {
                 self.no_blocks(kind, &blocks);
                 self.type_alias(span, doc, name, &prop_nodes)
             }
-            DeclKind::Rule => {
-                self.no_blocks(kind, &blocks);
-                self.rule(span, doc, name, &prop_nodes)
-            }
+            DeclKind::Rule => unreachable!("rules are parsed from their heading words"),
             DeclKind::Constant => {
                 self.no_blocks(kind, &blocks);
                 self.constant(span, doc, name, &prop_nodes)
@@ -678,10 +820,15 @@ impl<'l> Builder<'l> {
                 continue;
             }
             if n.line.kind != LineKind::Item {
+                let numbered = matches!(n.line.kind, LineKind::Numbered(_));
                 self.error(
-                    E_STRUCTURE,
+                    if numbered { E_PROP_NUMBER } else { E_STRUCTURE },
                     line_span(n.line),
-                    "A property starts with \"- \", like \"- model: claude\".",
+                    if numbered {
+                        format!("A property is a bullet, not a numbered step. Write: - {}", n.line.text)
+                    } else {
+                        "A property starts with \"- \", like \"- model: claude\".".to_string()
+                    },
                 );
                 continue;
             }
@@ -690,6 +837,11 @@ impl<'l> Builder<'l> {
             else {
                 continue;
             };
+            if let Some(d) = removed_property(self.file, what, &key, value) {
+                self.diags.push(d);
+                self.rejected_prop = true;
+                continue;
+            }
             if !allowed.contains(&key.name.as_str()) {
                 let d = Diagnostic::error(
                     E_UNKNOWN_PROP,
@@ -801,9 +953,9 @@ impl<'l> Builder<'l> {
         for n in nodes {
             if n.line.kind != LineKind::Item {
                 self.error(
-                    E_STRUCTURE,
+                    if matches!(n.line.kind, LineKind::Numbered(_)) { E_PROP_NUMBER } else { E_STRUCTURE },
                     line_span(n.line),
-                    "A field starts with \"- \", like \"- amount: money\".",
+                    "A field is a bullet: \"- amount: money\".",
                 );
                 continue;
             }
@@ -841,9 +993,9 @@ impl<'l> Builder<'l> {
         for n in nodes {
             if n.line.kind != LineKind::Item {
                 self.error(
-                    E_STRUCTURE,
+                    if matches!(n.line.kind, LineKind::Numbered(_)) { E_PROP_NUMBER } else { E_STRUCTURE },
                     line_span(n.line),
-                    "A variant starts with \"- \", like \"- Circle: radius: int\" or \"- Empty\".",
+                    "A variant is a bullet: \"- Circle: radius: int\" or \"- Empty\".",
                 );
                 continue;
             }
@@ -904,26 +1056,42 @@ impl<'l> Builder<'l> {
         }))
     }
 
-    fn rule(
-        &mut self,
-        span: Span,
-        doc: Option<String>,
-        name: Ident,
-        nodes: &[Node<'l>],
-    ) -> Option<Decl> {
-        let props = self.props(nodes, &["for", "when"], "a Rule");
-        let for_p = props.iter().find(|p| p.key.name == "for");
+    /// `# Rule: big Sale`: the last word is the record, the words before it the name (SPEC 23.8).
+    fn rule(&mut self, span: Span, doc: Option<String>, words: Vec<Ident>, body: &[&'l Line]) -> Option<Decl> {
+        let first_h2 = body.iter().position(|l| l.kind == LineKind::Heading2).unwrap_or(body.len());
+        let (prop_lines, block_lines) = body.split_at(first_h2);
+        if let Some(l) = block_lines.first() {
+            self.error(E_STRUCTURE, line_span(l), "A Rule has no \"##\" blocks.");
+        }
+        let mut pos = 0;
+        let nodes = self.build(prop_lines, &mut pos, 0);
+        let (name, for_record) = match words.as_slice() {
+            [] => return None,
+            [only] => (only.clone(), None),
+            [names @ .., record] => {
+                let span = names[0].span.to(names[names.len() - 1].span);
+                let name = names.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join("_");
+                (Ident { name, span }, Some(record.clone()))
+            }
+        };
+        let props = self.props(&nodes, &["when"], "a Rule");
         let when_p = props.iter().find(|p| p.key.name == "when");
         let mut ok = true;
-        if for_p.is_none() {
-            self.missing("rule", &name, "for", "Invoice");
+        if for_record.is_none() && !self.rejected_prop {
+            let d = Diagnostic::error(
+                E_RULE_FOR,
+                self.file,
+                name.span,
+                format!("The rule \"{}\" does not say which record it is about.", name.name),
+            )
+            .with_help(format!("Put the record last in the heading: \"# Rule: {} Invoice\".", name.name));
+            self.diags.push(d);
             ok = false;
         }
         if when_p.is_none() {
             self.missing("rule", &name, "when", "status != \"paid\"");
             ok = false;
         }
-        let for_record = for_p.and_then(|p| self.value(|g| &g.single_name, p));
         let when = when_p.and_then(|p| self.value(|g| &g.expr, p));
         for p in &props {
             self.no_kids(p);
@@ -962,24 +1130,6 @@ impl<'l> Builder<'l> {
             name,
             value,
         }))
-    }
-
-    fn run_items(&mut self, nodes: &[Node<'l>]) -> Vec<Ident> {
-        let mut items = Vec::new();
-        for n in nodes {
-            if n.line.kind != LineKind::Item {
-                self.error(
-                    E_STRUCTURE,
-                    line_span(n.line),
-                    "A \"# Run\" entry starts with \"- \" and names an agent, service or command.",
-                );
-                continue;
-            }
-            if let Some(i) = self.parse(|g| &g.run_item, &n.line.text, n.line.line_no, n.line.col) {
-                items.push(i);
-            }
-        }
-        items
     }
 
     fn agent(
@@ -1078,6 +1228,44 @@ impl<'l> Builder<'l> {
         }))
     }
 
+    /// `- touches:` as written (SPEC 23.7).
+    fn touches(&mut self, p: &Prop<'_, 'l>) -> Option<Touches> {
+        let words = self.value(|g| &g.name_list, p)?;
+        Some(Touches {
+            span: Span::new(p.line, p.col, p.value.trim_end().chars().count() as u32),
+            words,
+        })
+    }
+
+    /// The numbered steps under `- steps:` (SPEC 23.3, 23.5).
+    fn steps_of(&mut self, p: &Prop<'_, 'l>) -> Vec<Stmt> {
+        if !p.value.trim().is_empty() {
+            self.error(
+                E_STRUCTURE,
+                Span::new(p.line, p.col, p.value.chars().count() as u32),
+                "The steps go on the lines under \"- steps:\", as a numbered list.",
+            );
+        }
+        if p.node.kids.is_empty() {
+            self.error(
+                E_STRUCTURE,
+                Span::new(p.line, p.col.saturating_sub(7).max(1), 6),
+                "\"- steps:\" has no steps under it. Write them as a numbered list: \"  1. print: \\\"hello\\\"\".",
+            );
+        }
+        self.stmts(&p.node.kids)
+    }
+
+    /// A property other than `- steps:` with lines indented under it.
+    fn no_steps_here(&mut self, p: &Prop<'_, 'l>) {
+        if let Some(k) = p.node.kids.first() {
+            self.kid_error(
+                k.line,
+                format!("Steps go under \"- steps:\", not under \"{}:\".", p.key.name),
+            );
+        }
+    }
+
     fn function(
         &mut self,
         span: Span,
@@ -1086,36 +1274,25 @@ impl<'l> Builder<'l> {
         nodes: &[Node<'l>],
         blocks: Vec<(&'l Line, Vec<&'l Line>)>,
     ) -> Option<Decl> {
-        let props = self.props(nodes, &["in", "out", "effect"], "a Function");
+        let props = self.props(nodes, &["in", "out", "touches", "steps"], "a Function");
         let params = match props.iter().find(|p| p.key.name == "in") {
-            Some(p) => self.value(|g| &g.params, p).unwrap_or_default(),
+            Some(p) => self.value(|g| &g.in_params, p).unwrap_or_default(),
             None => Vec::new(),
         };
         let out = props
             .iter()
             .find(|p| p.key.name == "out")
-            .and_then(|p| self.value(|g| &g.ty, p));
-        let effect_p = props.iter().find(|p| p.key.name == "effect");
-        let effect = effect_p.and_then(|p| {
-            self.word_value(|g| &g.effect, p, &EFFECT_WORDS, "effect")
-                .map(|value| Spanned {
-                    value,
-                    span: Span::new(p.line, p.col, p.value.chars().count() as u32),
-                })
-        });
-        let mut body = Vec::new();
+            .and_then(|p| self.value(|g| &g.out_type, p));
+        let touches = props
+            .iter()
+            .find(|p| p.key.name == "touches")
+            .and_then(|p| self.touches(p));
+        let mut body = None;
         for p in &props {
-            if p.key.name == "effect" {
-                body = self.stmts(&p.node.kids);
-            } else if let Some(k) = p.node.kids.first() {
-                self.error(
-                    E_STRUCTURE,
-                    line_span(k.line),
-                    format!(
-                        "Statements go under the \"effect\" line, not under \"{}\".",
-                        p.key.name
-                    ),
-                );
+            if p.key.name == "steps" {
+                body = Some(self.steps_of(p));
+            } else {
+                self.no_steps_here(p);
             }
         }
         for (h2, lines) in blocks {
@@ -1129,20 +1306,18 @@ impl<'l> Builder<'l> {
                 self.error(
                     E_STRUCTURE,
                     line_span(h2),
-                    "A Function has no blocks except \"## Rust: name\".",
+                    "A Function has no blocks except \"## Rust: name\"; its steps go under \"- steps:\".",
                 );
             }
         }
-        if effect_p.is_none() && !self.rejected_prop {
+        if body.is_none() && !self.rejected_prop {
             let d = Diagnostic::error(
                 E_MISSING_PROP,
                 self.file,
                 name.span,
-                format!("The function \"{}\" does not say what effect it has.", name.name),
+                format!("The function \"{}\" has no steps.", name.name),
             )
-            .with_help(
-                "Add \"- effect: pure\" (or local, network, model) under the heading; the compiler checks the body against it.",
-            );
+            .with_help("Add \"- steps:\" with the steps under it as a numbered list.");
             self.diags.push(d);
         }
         Some(Decl::Function(Function {
@@ -1152,8 +1327,8 @@ impl<'l> Builder<'l> {
             name,
             params,
             out,
-            effect: effect?,
-            body,
+            touches,
+            body: body.unwrap_or_default(),
         }))
     }
 
@@ -1223,15 +1398,20 @@ impl<'l> Builder<'l> {
         nodes: &[Node<'l>],
         blocks: Vec<(&'l Line, Vec<&'l Line>)>,
     ) -> Option<Decl> {
-        let props = self.props(nodes, &["args"], "a Command");
-        for p in &props {
-            self.no_kids(p);
-        }
-        let args = match props.iter().find(|p| p.key.name == "args") {
-            Some(p) => self.value(|g| &g.params, p).unwrap_or_default(),
+        let props = self.props(nodes, &["in", "steps"], "a Command");
+        let args = match props.iter().find(|p| p.key.name == "in") {
+            Some(p) => self.value(|g| &g.in_params, p).unwrap_or_default(),
             None => Vec::new(),
         };
         let mut body = None;
+        for p in &props {
+            if p.key.name == "steps" {
+                body = Some(self.steps_of(p));
+            } else {
+                self.no_steps_here(p);
+            }
+        }
+        let mut old_run = false;
         for (h2, lines) in blocks {
             let word = self.first_word(h2);
             if word
@@ -1243,37 +1423,32 @@ impl<'l> Builder<'l> {
                 .as_deref()
                 .is_some_and(|w| w.eq_ignore_ascii_case("run"))
             {
-                if self
-                    .parse(|g| &g.run_heading, &h2.text, h2.line_no, h2.col)
-                    .is_none()
-                {
-                    continue;
-                }
-                if body.is_some() {
-                    self.error(
-                        E_STRUCTURE,
-                        line_span(h2),
-                        "A Command has only one \"## Run\" block.",
-                    );
-                    continue;
-                }
-                let mut pos = 0;
-                let nodes = self.build(&lines, &mut pos, 0);
-                body = Some(self.stmts(&nodes));
+                old_run = true;
+                let d = Diagnostic::error(
+                    E_RUN_BLOCK,
+                    self.file,
+                    line_span(h2),
+                    "\"## Run\" was removed. Write the command's steps under \"- steps:\" as a numbered list.",
+                )
+                .with_help("Write:\n- steps:\n  1. print: \"hello\"");
+                self.diags.push(d);
             } else {
                 self.error(
                     E_STRUCTURE,
                     line_span(h2),
-                    "A Command has one block, \"## Run\" (plus optional \"## Rust: name\" blocks).",
+                    "A Command has no blocks except \"## Rust: name\"; its steps go under \"- steps:\".",
                 );
             }
         }
-        if body.is_none() {
-            self.error(
+        if body.is_none() && !old_run && !self.rejected_prop {
+            let d = Diagnostic::error(
                 E_MISSING_PROP,
+                self.file,
                 name.span,
-                format!("The command \"{}\" has no \"## Run\" block.", name.name),
-            );
+                format!("The command \"{}\" has no steps.", name.name),
+            )
+            .with_help("Add \"- steps:\" with the steps under it as a numbered list.");
+            self.diags.push(d);
         }
         Some(Decl::Command(Command {
             span,
@@ -1489,32 +1664,30 @@ impl<'l> Builder<'l> {
         };
         let mut pos = 0;
         let nodes = self.build(lines, &mut pos, 0);
-        let props = self.props(&nodes, &["in", "effect"], "a Rust block");
+        self.rejected_prop = false;
+        let props = self.props(&nodes, &["in", "touches"], "a Rust block");
         let params = match props.iter().find(|p| p.key.name == "in") {
             Some(p) => self.value(|g| &g.params, p).unwrap_or_default(),
             None => Vec::new(),
         };
-        let effect = match props.iter().find(|p| p.key.name == "effect") {
-            Some(p) => self
-                .word_value(|g| &g.effect, p, &EFFECT_WORDS, "effect")
-                .map(|value| Spanned {
-                    value,
-                    span: Span::new(p.line, p.col, p.value.chars().count() as u32),
-                }),
+        let touches = match props.iter().find(|p| p.key.name == "touches") {
+            Some(p) => self.touches(p),
             None => {
-                let d = Diagnostic::error(
-                    E_MISSING_PROP,
-                    self.file,
-                    name.span,
-                    format!("The Rust block \"{}\" does not declare its effect.", name.name),
-                )
-                .with_help("Add \"- effect: pure\" (or local, network, model). The compiler cannot check Rust, so it trusts this line.");
-                self.diags.push(d);
+                if !self.rejected_prop {
+                    let d = Diagnostic::error(
+                        E_MISSING_PROP,
+                        self.file,
+                        name.span,
+                        format!("The Rust block \"{}\" does not say what it touches.", name.name),
+                    )
+                    .with_help("Add \"- touches: nothing\" (or files, print, AI, or the tools it uses). AgentMark cannot read Rust, so it trusts this line.");
+                    self.diags.push(d);
+                }
                 None
             }
         };
         let rust = self.fence_in(&nodes, h2, &name.name);
-        if let (Some(effect), Some(rust)) = (effect, rust) {
+        if let (Some(touches), Some(rust)) = (touches, rust) {
             self.hoisted.push(Decl::RustBlock(RustBlock {
                 span: line_span(h2),
                 doc: self.docs.get(&h2.line_no).cloned(),
@@ -1523,7 +1696,7 @@ impl<'l> Builder<'l> {
                 parent,
                 params,
                 out,
-                effect,
+                touches,
                 rust,
             }));
         }
@@ -1531,24 +1704,50 @@ impl<'l> Builder<'l> {
 
     // ------------------------------------------------------------------ statements
 
+    /// The statement each step line holds. A step is a numbered item; `else:` and `otherwise:`
+    /// are plain lines inside a step (SPEC 23.3).
     fn heads(&mut self, nodes: &[Node<'l>]) -> Vec<Option<Head>> {
         let mut out = Vec::new();
         for n in nodes {
-            let head = match n.line.kind {
-                LineKind::Item | LineKind::Control => {
-                    match run(&self.g.head, &n.line.text, n.line.line_no, n.line.col) {
-                        Ok(h) => Some(h),
-                        Err((ctx, errs)) => {
-                            self.statement_error(&ctx, &errs);
-                            None
+            let head = match &n.line.kind {
+                LineKind::Numbered(_) | LineKind::Control | LineKind::Item => {
+                    if let Some(d) = removed_statement(self.file, n.line) {
+                        self.diags.push(d);
+                        None
+                    } else {
+                        match run(&self.g.head, &n.line.text, n.line.line_no, n.line.col) {
+                            Ok(h) => {
+                                let bare = matches!(h, Head::Else | Head::Otherwise);
+                                if n.line.kind == LineKind::Item && !bare {
+                                    self.error(
+                                        E_STEP_BULLET,
+                                        line_span(n.line),
+                                        format!("Steps are a numbered list. Write: 1. {}", n.line.text),
+                                    );
+                                    None
+                                } else if n.line.kind == LineKind::Control && !bare {
+                                    self.error(
+                                        E_STEP_BULLET,
+                                        line_span(n.line),
+                                        format!("Steps are a numbered list. Write: 1. {}", n.line.text),
+                                    );
+                                    None
+                                } else {
+                                    Some(h)
+                                }
+                            }
+                            Err((ctx, errs)) => {
+                                self.statement_error(&ctx, &errs);
+                                None
+                            }
                         }
                     }
                 }
                 _ => {
                     let msg = if n.fence.is_some() {
-                        "Code fences belong in a \"## Rust: name\" block, not among statements."
+                        "Code fences belong in a \"## Rust: name\" block, not among steps."
                     } else {
-                        "This is not a statement."
+                        "This is not a step."
                     };
                     self.error(E_STRUCTURE, line_span(n.line), msg);
                     None
@@ -1559,8 +1758,8 @@ impl<'l> Builder<'l> {
         out
     }
 
-    /// The branches of a `match`: `Circle c:` lines with statements under them, and at most one
-    /// `otherwise:` at the end.
+    /// The branches of a `match`: `- Circle c:` bullets with numbered steps under them, and at
+    /// most one `- otherwise:` at the end.
     fn match_arms(&mut self, nodes: &[Node<'l>], at: Span) -> (Vec<MatchArm>, Option<Otherwise>) {
         use stmt::Arm;
         let mut arms: Vec<MatchArm> = Vec::new();
@@ -1573,7 +1772,7 @@ impl<'l> Builder<'l> {
             );
         }
         for n in nodes {
-            if !matches!(n.line.kind, LineKind::Item | LineKind::Control) {
+            if !matches!(n.line.kind, LineKind::Item | LineKind::Numbered(_) | LineKind::Control) {
                 self.error(
                     E_STRUCTURE,
                     line_span(n.line),
@@ -1592,6 +1791,13 @@ impl<'l> Builder<'l> {
                     continue;
                 }
             };
+            if n.line.kind != LineKind::Item {
+                self.error(
+                    E_STRUCTURE,
+                    line_span(n.line),
+                    format!("The branches of a \"match\" are bullets (their order does not matter). Write: - {}", n.line.text),
+                );
+            }
             let span = line_span(n.line);
             match parsed {
                 Arm::Otherwise => {
@@ -1633,8 +1839,30 @@ impl<'l> Builder<'l> {
         (arms, otherwise)
     }
 
+    /// The steps under a step that has an `else:` or `otherwise:` line among them: the steps
+    /// before that line and the steps after it (SPEC 23.3). `word` is `else` or `otherwise`.
+    fn split_at_word(&mut self, kids: &[Node<'l>], heads: &[Option<Head>], word: &str) -> (Vec<Stmt>, Option<Vec<Stmt>>) {
+        let at = heads.iter().position(|h| match h {
+            Some(Head::Else) => word == "else",
+            Some(Head::Otherwise) => word == "otherwise",
+            _ => false,
+        });
+        let Some(k) = at else {
+            return (self.stmts_with(kids, heads), None);
+        };
+        let before = self.stmts_with(&kids[..k], &heads[..k]);
+        // the old shape, steps indented under the word itself, is read too (`fmt` rewrites it)
+        let mut after = self.stmts(&kids[k].kids);
+        after.extend(self.stmts_with(&kids[k + 1..], &heads[k + 1..]));
+        (before, Some(after))
+    }
+
     fn stmts(&mut self, nodes: &[Node<'l>]) -> Vec<Stmt> {
         let heads = self.heads(nodes);
+        self.stmts_with(nodes, &heads)
+    }
+
+    fn stmts_with(&mut self, nodes: &[Node<'l>], heads: &[Option<Head>]) -> Vec<Stmt> {
         let mut out = Vec::new();
         let mut i = 0;
         while i < nodes.len() {
@@ -1664,10 +1892,12 @@ impl<'l> Builder<'l> {
                     });
                 }
                 Head::If { .. } | Head::IfSome { .. } => {
-                    let then = self.stmts(&node.kids);
-                    let mut else_ = Vec::new();
+                    let kid_heads = self.heads(&node.kids);
+                    let (then, inner_else) = self.split_at_word(&node.kids, &kid_heads, "else");
+                    let mut else_ = inner_else.unwrap_or_default();
+                    // an `else:` step right after the `if` step
                     if matches!(heads.get(i + 1), Some(Some(Head::Else))) {
-                        else_ = self.stmts(&nodes[i + 1].kids);
+                        else_.extend(self.stmts(&nodes[i + 1].kids));
                         i += 1;
                     }
                     let kind = match head {
@@ -1693,12 +1923,12 @@ impl<'l> Builder<'l> {
                 Head::Else => self.error(
                     E_STRUCTURE,
                     span,
-                    "\"else:\" must come directly after an \"if\" at the same indentation.",
+                    "\"else:\" belongs inside an \"if\" step, after its steps.",
                 ),
                 Head::Otherwise => self.error(
                     E_STRUCTURE,
                     span,
-                    "\"otherwise:\" must be indented under a \"try\" line.",
+                    "\"otherwise:\" belongs inside a \"try\" step.",
                 ),
                 Head::Match { scrutinee } => {
                     let (arms, otherwise) = self.match_arms(&node.kids, span);
@@ -1737,26 +1967,37 @@ impl<'l> Builder<'l> {
                         kind: StmtKind::Coll(kind),
                     });
                 }
+                Head::AddFields { qualifier, name, list } => {
+                    let fields = self.add_fields(node, name);
+                    let value = Expr {
+                        span: name.span,
+                        kind: ExprKind::Variant {
+                            qualifier: qualifier.clone(),
+                            name: name.clone(),
+                            fields,
+                        },
+                    };
+                    out.push(Stmt {
+                        span,
+                        comments: Vec::new(),
+                        kind: StmtKind::Append { value, list: list.clone() },
+                    });
+                }
                 Head::Simple(s) => {
                     if let Some(k) = node.kids.first() {
-                        self.kid_error(k.line, "Nothing can be indented under this statement.");
+                        self.kid_error(k.line, "Nothing can be indented under this step.");
                     }
                     out.push(s.clone());
                 }
                 Head::Try(inner) => {
                     let kid_heads = self.heads(&node.kids);
-                    let mut otherwise = None;
-                    for (k, h) in node.kids.iter().zip(kid_heads) {
-                        match h {
-                            Some(Head::Otherwise) if otherwise.is_none() => {
-                                otherwise = Some(self.stmts(&k.kids));
-                            }
-                            Some(_) => self.kid_error(
-                                k.line,
-                                "Only \"otherwise:\" can be indented under a \"try\" line.",
-                            ),
-                            None => {}
-                        }
+                    let (before, otherwise) = self.split_at_word(&node.kids, &kid_heads, "otherwise");
+                    if let Some(first) = before.first() {
+                        self.error(
+                            E_STRUCTURE,
+                            first.span,
+                            "Only \"otherwise:\" and its steps can be under a \"try\" step.",
+                        );
                     }
                     out.push(Stmt {
                         span,
@@ -1775,6 +2016,132 @@ impl<'l> Builder<'l> {
         }
         out
     }
+
+    /// The bullets under `add <Record> to <list>:`: `- region`, `- orders: count of rows`.
+    fn add_fields(&mut self, node: &Node<'l>, name: &Ident) -> Vec<RecordField> {
+        let mut fields = Vec::new();
+        if node.kids.is_empty() {
+            self.error(
+                E_STRUCTURE,
+                line_span(node.line),
+                format!("\"add {} to …:\" needs the fields as bullets under it, like \"- region\" or \"- orders: count of rows\".", name.name),
+            );
+        }
+        for k in &node.kids {
+            if k.line.kind != LineKind::Item {
+                self.error(
+                    E_STRUCTURE,
+                    line_span(k.line),
+                    format!("A field of the new {} is a bullet: \"- name: value\" or \"- name\".", name.name),
+                );
+                continue;
+            }
+            if let Some(g) = k.kids.first() {
+                self.kid_error(g.line, "Nothing can be indented under a field.");
+            }
+            let Some((fname, value)) = self.parse(|g| &g.add_field, &k.line.text, k.line.line_no, k.line.col) else {
+                continue;
+            };
+            let value = value.unwrap_or_else(|| Expr {
+                span: fname.span,
+                kind: ExprKind::Path(vec![fname.clone()]),
+            });
+            fields.push(RecordField { name: fname, value });
+        }
+        fields
+    }
+}
+
+/// A property that v0.4 removed (SPEC 23.13), with the line to write instead.
+fn removed_property(file: &str, what: &str, key: &Ident, value: &str) -> Option<Diagnostic> {
+    let value = value.trim();
+    let (code, msg, help) = match (what, key.name.as_str()) {
+        ("a Command", "args") => (
+            E_ARGS,
+            format!("\"args:\" was renamed. Write: - in: {value}"),
+            "A command's inputs are written like a function's.".to_string(),
+        ),
+        ("a Function" | "a Tool" | "a Rust block", "effect") => {
+            let write = if value == "pure" { "nothing" } else { "<what it touches>" };
+            (
+                E_EFFECT,
+                format!("\"effect:\" was removed. Write: - touches: {write}"),
+                if what == "a Rust block" {
+                    "List what the code touches: nothing, files, print, AI, or the tools it uses (crm, email).".to_string()
+                } else {
+                    "List what it touches: nothing, files, print, AI, or the tools it uses (crm, email). The line may also be left out: the checker works it out.".to_string()
+                },
+            )
+        }
+        ("a Rule", "for") => (
+            E_RULE_FOR,
+            format!("\"for:\" was removed. Put the record last in the heading: # Rule: <name> {value}"),
+            "A rule reads like its use: \"# Rule: overdue Invoice\" is used as \"for each overdue invoice in …\".".to_string(),
+        ),
+        _ => return None,
+    };
+    Some(Diagnostic::error(code, file, key.span, msg).with_help(help))
+}
+
+/// A step written in a form v0.4 removed (SPEC 23.13): `set`, `->`, `append`.
+fn removed_statement(file: &str, l: &Line) -> Option<Diagnostic> {
+    let text = l.text.as_str();
+    let word_span = |w: &str| Span::new(l.line_no, l.col, w.chars().count() as u32);
+    if let Some(rest) = text.strip_prefix("set ") {
+        let write = match rest.split_once('=') {
+            Some((name, value)) if !name.trim().is_empty() && !value.trim().is_empty() => {
+                format!("{} into {}", value.trim(), name.trim())
+            }
+            _ => "<value> into <name>".to_string(),
+        };
+        return Some(
+            Diagnostic::error(E_SET, file, word_span("set"), format!("\"set\" was removed. Write: {write}"))
+                .with_help("A step names its result with \"into\" at its end."),
+        );
+    }
+    if let Some(rest) = text.strip_prefix("append ") {
+        let write = match rest.rsplit_once(" to ") {
+            Some((value, list)) if value.contains('{') => {
+                let name = value.split('{').next().unwrap_or("").trim();
+                format!("add {name} to {}: with one bullet per field under it", list.trim())
+            }
+            _ => format!("add {rest}"),
+        };
+        return Some(
+            Diagnostic::error(E_APPEND, file, word_span("append"), format!("\"append\" was renamed. Write: {write}")),
+        );
+    }
+    if let Some(at) = arrow_outside_quotes(text) {
+        let before = text[..at].trim_end();
+        let after = text[at + 2..].trim_start();
+        let col = l.col + text[..at].chars().count() as u32;
+        return Some(
+            Diagnostic::error(
+                E_ARROW,
+                file,
+                Span::new(l.line_no, col, 2),
+                format!("\"->\" was replaced by \"into\". Write: {before} into {after}"),
+            )
+            .with_help("A step names its result with \"into\" at its end."),
+        );
+    }
+    None
+}
+
+/// Byte offset of a `->` that is not inside a quoted text.
+fn arrow_outside_quotes(text: &str) -> Option<usize> {
+    let mut in_str = false;
+    let mut escaped = false;
+    for (i, c) in text.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' if in_str => escaped = true,
+            '"' => in_str = !in_str,
+            '-' if !in_str && text[i..].starts_with("->") => return Some(i),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The reverse of the line wrapping of `binder::core::writer::not_bound_entry` (Q202): the first
@@ -1803,47 +2170,79 @@ pub fn join_wrapped(first: &str, rest: &[&str]) -> String {
 
 // ---------------------------------------------------------------------------------- docs
 
-/// Doc comments: a run of `>` lines directly above a heading documents it. A run at the top of
-/// the file that is separated from what follows by a blank line documents the file.
-fn collect_docs(lines: &[Line]) -> (HashMap<u32, String>, Option<String>, HashSet<u32>) {
+/// Descriptions (SPEC 23.2): the paragraph lines directly under a heading describe it; a blank
+/// line between them starts a new paragraph. A run of `>` lines directly above a heading is the
+/// v0.3 way and an error now (E068). A `>` run at the top of the file that is separated from what
+/// follows by a blank line is the file's note.
+fn collect_docs(
+    file: &str,
+    lines: &[Line],
+) -> (HashMap<u32, String>, Option<String>, HashSet<u32>, Vec<Diagnostic>) {
     let mut docs = HashMap::new();
     let mut used = HashSet::new();
+    let mut errors = Vec::new();
     let mut file_doc = None;
     let mut seen_heading = false;
     let mut i = 0;
     while i < lines.len() {
-        if lines[i].kind == LineKind::Comment {
+        let l = &lines[i];
+        if l.kind == LineKind::Comment && l.indent == 0 {
             let start = i;
             while i < lines.len() && lines[i].kind == LineKind::Comment {
                 i += 1;
             }
-            let text = lines[start..i]
-                .iter()
-                .map(|l| l.text.as_str())
-                .collect::<Vec<_>>()
-                .join("\n");
-            let is_doc = match lines.get(i).map(|l| &l.kind) {
+            match lines.get(i).map(|l| &l.kind) {
                 Some(LineKind::Heading1 | LineKind::Heading2) => {
-                    docs.insert(lines[i].line_no, text);
-                    true
+                    let first = &lines[start];
+                    let text: Vec<&str> = lines[start..i].iter().map(|l| l.text.as_str()).collect();
+                    errors.push(
+                        Diagnostic::error(
+                            E_DOC_ABOVE,
+                            file,
+                            Span::new(first.line_no, 1, first.text.chars().count() as u32 + 2),
+                            "A description goes under its heading as a plain paragraph, not in a \">\" line above it.",
+                        )
+                        .with_help(format!("Write:\n{} {}\n{}", if lines[i].kind == LineKind::Heading1 { "#" } else { "##" }, lines[i].text, text.join("\n"))),
+                    );
+                    used.extend(lines[start..i].iter().map(|l| l.line_no));
                 }
                 _ if !seen_heading && file_doc.is_none() => {
+                    let text = lines[start..i].iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
                     file_doc = Some(text);
-                    true
+                    used.extend(lines[start..i].iter().map(|l| l.line_no));
                 }
-                _ => false,
-            };
-            if is_doc {
-                used.extend(lines[start..i].iter().map(|l| l.line_no));
+                _ => {}
             }
             continue;
         }
-        if matches!(lines[i].kind, LineKind::Heading1 | LineKind::Heading2) {
+        if matches!(l.kind, LineKind::Heading1 | LineKind::Heading2) {
             seen_heading = true;
+            let mut paragraphs: Vec<String> = Vec::new();
+            let mut current: Vec<&str> = Vec::new();
+            let mut j = i + 1;
+            while j < lines.len() {
+                match lines[j].kind {
+                    LineKind::Paragraph => current.push(&lines[j].text),
+                    LineKind::Blank | LineKind::Comment => {
+                        if !current.is_empty() {
+                            paragraphs.push(current.join("\n"));
+                            current.clear();
+                        }
+                    }
+                    _ => break,
+                }
+                j += 1;
+            }
+            if !current.is_empty() {
+                paragraphs.push(current.join("\n"));
+            }
+            if !paragraphs.is_empty() {
+                docs.insert(l.line_no, paragraphs.join("\n\n"));
+            }
         }
         i += 1;
     }
-    (docs, file_doc, used)
+    (docs, file_doc, used, errors)
 }
 
 // ---------------------------------------------------------------------------------- errors

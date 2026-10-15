@@ -1,5 +1,5 @@
-# Import: ./commands/analyze-log.agent.md
+# Program: log-analyzer
+Reads an application log and reports how many errors, warnings and infos it holds.
 
-> Entry point. The program is one command, so `analyze-log <path> [--top N]` runs it directly.
-# Run
-- analyze-log
+# Uses
+- [analyze-log command](./commands/analyze-log.agent.md)

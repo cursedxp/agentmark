@@ -3,6 +3,9 @@
 //! The lattice is `pure < local < network < model`. Calls into bindings that nobody approved yet
 //! are tracked separately as `unverified` (SPEC 15.3); for the "does the body exceed its
 //! declared effect" test an unverified item counts like `network`.
+//!
+//! People read a set as the list of things it touches (SPEC 23.7): `touches nothing`,
+//! `touches AI, crm, email, log`. The class words stay inside the compiler and `check --json`.
 
 use std::fmt;
 
@@ -126,6 +129,80 @@ impl EffectSet {
     }
 }
 
+/// The word a person reads for an internal source name: the model is `AI`, the `file` tool
+/// `files` (SPEC 23.7).
+pub fn touch_word(source: &str) -> String {
+    match source {
+        "model" => "AI".to_string(),
+        "file" => "files".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// The internal source name of a word written after `touches:`; `None` for a word that names no
+/// built-in (a tool, a library).
+pub fn builtin_touch(word: &str) -> Option<(Effect, &'static str)> {
+    match word.to_ascii_lowercase().as_str() {
+        "ai" => Some((Effect::Model, "model")),
+        "files" | "file" => Some((Effect::Local, "file")),
+        "print" => Some((Effect::Local, "print")),
+        "input" => Some((Effect::Local, "input")),
+        "state" => Some((Effect::Local, "state")),
+        _ => None,
+    }
+}
+
+impl EffectSet {
+    /// Every source in the set (`model` included), internal names.
+    pub fn sources(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.model {
+            out.push("model".to_string());
+        }
+        for n in self.network.iter().chain(&self.local).chain(&self.unverified) {
+            if !out.contains(n) {
+                out.push(n.clone());
+            }
+        }
+        out
+    }
+
+    /// The things the set touches, as people read them: `AI` first, then alphabetical; a library
+    /// nobody approved yet says so.
+    pub fn touch_words(&self) -> Vec<String> {
+        let mut words: Vec<String> = self
+            .network
+            .iter()
+            .chain(&self.local)
+            .map(|n| touch_word(n))
+            .chain(self.unverified.iter().map(|n| format!("{n} (not approved yet)")))
+            .collect();
+        words.sort_by_key(|w| w.to_lowercase());
+        words.dedup();
+        if self.model {
+            words.insert(0, "AI".to_string());
+        }
+        words
+    }
+
+    /// `nothing`, or `AI, crm, email, log` (SPEC 23.7).
+    pub fn touches(&self) -> String {
+        if self.is_pure() {
+            "nothing".to_string()
+        } else {
+            self.touch_words().join(", ")
+        }
+    }
+
+    /// Does the set contain the source `name` (internal name)?
+    pub fn has(&self, name: &str) -> bool {
+        if name == "model" {
+            return self.model;
+        }
+        self.network.iter().chain(&self.local).chain(&self.unverified).any(|n| n == name)
+    }
+}
+
 impl fmt::Display for EffectSet {
     /// `pure`, or e.g. `model, network(email, crm), local(log)` (SPEC 8).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -185,6 +262,20 @@ mod tests {
         assert!(e.exceeds(Effect::Local));
         assert!(!e.exceeds(Effect::Network));
         assert_eq!(e.to_string(), "unverified(pdf)");
+    }
+
+    #[test]
+    fn touches_reads_as_words() {
+        let mut e = EffectSet::pure();
+        assert_eq!(e.touches(), "nothing");
+        e.add(Effect::Network, "email");
+        e.add(Effect::Network, "crm");
+        e.add(Effect::Local, "log");
+        e.add(Effect::Model, "model");
+        assert_eq!(e.touches(), "AI, crm, email, log");
+        let mut f = EffectSet::of(Effect::Local, "print");
+        f.add(Effect::Local, "file");
+        assert_eq!(f.touches(), "files, print");
     }
 
     #[test]

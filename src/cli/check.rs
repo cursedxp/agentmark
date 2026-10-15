@@ -9,13 +9,15 @@ use crate::sema::effects::effect_name;
 use crate::sema::{self, BlockInfo, BlockKind, Checked, EffectSet, Kind};
 use crate::syntax::ast::Decl;
 
-/// One line of the effect summary, SPEC 8 style: `invoice-chaser / Every day at 09:00: model, ...`.
-/// Functions and rules have no trigger heading, so they read `function net_amount: pure`.
+/// One line of what each part touches (SPEC 23.7): `invoice-chaser / Every day at 09:00:
+/// touches AI, crm, email, log`. Functions, rules and commands have no `##` heading of their own,
+/// so they read `region_totals: touches nothing`.
 pub(crate) fn summary_line(b: &BlockInfo) -> String {
     match b.kind {
-        BlockKind::Function => format!("function {}: {}", b.unit, b.effect),
-        BlockKind::Rule => format!("rule {}: {}", b.unit, b.effect),
-        _ => format!("{} / {}: {}", b.unit, b.label, b.effect),
+        BlockKind::Function | BlockKind::Rule | BlockKind::Command => {
+            format!("{}: touches {}", b.unit, b.effect.touches())
+        }
+        _ => format!("{} / {}: touches {}", b.unit, b.label, b.effect.touches()),
     }
 }
 
@@ -150,8 +152,15 @@ fn report(project: &Project, c: &Checked) -> Report {
             "name": r.name, "file": file, "line": r.span.line,
             "parent": r.parent, "effect": eff,
         }));
+        // a block's own `- touches:`, or the line of the tool a Rust verb belongs to
+        let said = c
+            .touches
+            .get(&(Kind::RustBlock, r.name.clone()))
+            .or_else(|| r.parent.as_ref().and_then(|p| c.touches.get(&(Kind::Tool, p.clone()))))
+            .map(|s| s.touches())
+            .unwrap_or_else(|| "nothing".to_string());
         let under = r.parent.as_ref().map(|p| format!(" in {p}")).unwrap_or_default();
-        rust_lines.push(format!("{}{under}: declared {eff} ({file}:{})", r.name, r.span.line));
+        rust_lines.push(format!("{}{under}: says it touches {said} ({file}:{})", r.name, r.span.line));
     }
     Report { units, lines, inferred, inferred_lines, unverified, unverified_lines, rust, rust_lines }
 }
@@ -233,7 +242,7 @@ pub(crate) fn run(path: &str, json_out: bool, allow_unverified: bool) -> u8 {
         eprintln!("{}\n", project.render(&shown));
     }
     if let Some(r) = &rep {
-        section("Effects (what each block can touch)", &r.lines, "  ");
+        section("What each part touches", &r.lines, "  ");
         section("Field types guessed from names", &r.inferred_lines, "  ");
         section("Libraries nobody approved yet (one line each to approve)", &r.unverified_lines, "  ");
         section("Rust blocks (trusted, not checked by AgentMark)", &r.rust_lines, "  ");

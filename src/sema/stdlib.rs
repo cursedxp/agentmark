@@ -40,6 +40,7 @@ pub(super) struct FileStmt<'a> {
     pub path: &'a Expr,
     pub arg: &'a Option<FileArg>,
     pub into: &'a Option<Ident>,
+    pub into_ty: &'a Option<crate::syntax::ast::TypeExpr>,
 }
 
 impl Checker<'_> {
@@ -334,7 +335,7 @@ impl Checker<'_> {
 
     /// `file <verb> <path> [to <new> | : <text>] [-> name]`.
     pub(super) fn file_stmt(&mut self, cx: &mut Cx, f: &FileStmt, in_try: bool) {
-        let FileStmt { s, verb, path, arg, into } = *f;
+        let FileStmt { s, verb, path, arg, into, into_ty } = *f;
         let pt = self.expr(cx, path);
         let want_text = |this: &mut Self, cx: &Cx, e: &Expr, t: &Type, what: &str| {
             if !matches!(t, Type::Text | Type::Unknown) {
@@ -394,9 +395,19 @@ impl Checker<'_> {
             (Extra::To, None) => shape_err(self, cx, s.span, format!("\"file {}\" needs the new path: \"to <new>\".", v.verb)),
             (Extra::Content, None) => shape_err(self, cx, s.span, format!("\"file {}\" needs the text after a colon.", v.verb)),
         }
+        if let (Some(t), false) = (into_ty, v.verb == "read") {
+            shape_err(self, cx, t.span, format!("Only \"file read\" takes a type after the name; \"file {}\" gives {}.", v.verb, v.result.map(|ty| self.lib_type(ty, None).with_article()).unwrap_or_else(|| "nothing back".into())));
+        }
         match (v.result, into) {
+            (Some(_), Some(i)) if v.verb == "read" => {
+                let ty = self.file_read_type(cx, i, into_ty.as_ref());
+                if let Type::List(_) = &ty {
+                    self.file_reads.insert(super::NodeKey::new(cx.file, s.span), ty.clone());
+                }
+                cx.define(&i.name, ty, i.span);
+            }
             (Some(ty), Some(i)) => cx.define(&i.name, self.lib_type(ty, None), i.span),
-            (Some(_), None) => shape_err(self, cx, s.span, format!("\"file {}\" gives something back: name it with \"-> name\".", v.verb)),
+            (Some(_), None) => shape_err(self, cx, s.span, format!("\"file {}\" gives something back: name it with \"into <name>\".", v.verb)),
             (None, Some(i)) => {
                 shape_err(self, cx, i.span, format!("\"file {}\" gives nothing back, so there is nothing to name.", v.verb));
                 cx.define(&i.name, Type::Unknown, i.span);
@@ -410,8 +421,39 @@ impl Checker<'_> {
                 s.span,
                 format!("\"file {}\" can fail (the file may not exist), so it has to be written with \"try\".", v.verb),
             )
-            .with_help("Write \"- try file read path -> content\", optionally with an \"otherwise:\" branch.");
+            .with_help("Write \"try file read path into content\", optionally with an \"otherwise:\" line and steps under it.");
             self.diags.push(d);
+        }
+    }
+}
+
+impl Checker<'_> {
+    /// SPEC 23.10: what `file read path into <name>` reads. A written type (`into content: text`)
+    /// must be text or a list of records; otherwise a name that is the plural of a record reads
+    /// the file as CSV into that list, and anything else is the raw text.
+    fn file_read_type(&mut self, cx: &Cx, into: &Ident, written: Option<&crate::syntax::ast::TypeExpr>) -> Type {
+        if let Some(te) = written {
+            let t = self.resolve_type(cx.file, te);
+            return match &t {
+                Type::Text | Type::Unknown => t,
+                Type::List(inner) if matches!(**inner, Type::Record(_)) => t,
+                _ => {
+                    let d = Diagnostic::error(
+                        E_TYPE,
+                        self.path(cx.file),
+                        te.span,
+                        format!("A file is read as text or as a list of records, not as {}.", t.with_article()),
+                    )
+                    .with_help("Write \"into content: text\", or \"into sales: list of Sale\" for a CSV file.");
+                    self.diags.push(d);
+                    Type::Unknown
+                }
+            };
+        }
+        let words: Vec<String> = into.name.split('_').filter(|w| !w.is_empty()).map(str::to_string).collect();
+        match self.match_user_type(cx.file, &words, &[super::scope::Kind::Record]) {
+            Some(t @ Type::List(_)) => t,
+            _ => Type::Text,
         }
     }
 }

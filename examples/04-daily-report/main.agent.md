@@ -1,5 +1,5 @@
-# Import: ./agents/daily-report.agent.md
+# Program: daily-report
+Sends a short summary of open and overdue invoices every Monday morning.
 
-> Entry point. Lists what runs in this binary.
-# Run
-- daily-report
+# Uses
+- [daily-report agent](./agents/daily-report.agent.md)

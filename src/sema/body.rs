@@ -52,7 +52,9 @@ pub struct AgentCx {
 pub struct FnCx {
     pub name: String,
     pub out: Option<Type>,
-    pub declared: Effect,
+    /// What `- touches:` promises, and its words as written; `None` when the line is left out
+    /// (then nothing is checked, SPEC 23.7).
+    pub declared: Option<(EffectSet, String)>,
     /// An "exceeds its effect" error was already reported for this function.
     pub reported: bool,
     /// What messages call it: `function`, or `tool` for a verb of a user tool.
@@ -391,12 +393,11 @@ impl Checker<'_> {
     }
 
     /// Effect of calling the function or Rust block `name` (SPEC 8): what its body does, and at
-    /// least what its declared effect says.
+    /// least what its `- touches:` says (SPEC 23.7).
     pub fn callee_effect(&mut self, kind: Kind, name: &str) -> EffectSet {
-        let Some(sig) = self.sigs.get(&(kind, name.to_string())) else {
+        if !self.sigs.contains_key(&(kind, name.to_string())) {
             return EffectSet::pure();
-        };
-        let declared = sig.effect;
+        }
         if kind == Kind::Tool {
             return self.tool_verb_effect(name);
         }
@@ -407,8 +408,8 @@ impl Checker<'_> {
             }),
             _ => EffectSet::pure(),
         };
-        if super::effects::rank(declared) > super::effects::rank(set.class()) {
-            set.add(declared, name);
+        if let Some(declared) = self.touches_decl.get(&(kind, name.to_string())) {
+            set.merge(declared);
         }
         set
     }
@@ -427,10 +428,13 @@ impl Checker<'_> {
                     .cloned();
                 let mut cx = Cx::new(file);
                 cx.unit = f.name.name.clone();
-                let (out, declared) = match &sig {
-                    Some(s) => (s.out.clone(), s.effect),
-                    None => (None, f.effect.value),
-                };
+                let out = sig.as_ref().and_then(|s| s.out.clone());
+                let declared = self
+                    .touches_decl
+                    .get(&(Kind::Function, f.name.name.clone()))
+                    .cloned()
+                    .zip(f.touches.as_ref().map(touches_text));
+                let declared_class = declared.as_ref().map(|(s, _)| s.class());
                 if let Some(s) = &sig {
                     for (param, info) in f.params.iter().zip(&s.params) {
                         cx.top().vars.insert(info.name.clone(), info.ty.clone());
@@ -474,7 +478,7 @@ impl Checker<'_> {
                     unit: f.name.name.clone(),
                     label: f.name.name.clone(),
                     effect: eff.clone(),
-                    declared: Some(declared),
+                    declared: declared_class,
                     param: None,
                 });
                 eff
@@ -665,4 +669,9 @@ impl Checker<'_> {
         }
         None
     }
+}
+
+/// The words of `- touches:` as written: `nothing`, `crm, email`.
+pub fn touches_text(t: &crate::syntax::ast::Touches) -> String {
+    t.words.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", ")
 }

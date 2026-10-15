@@ -45,33 +45,41 @@ impl Checker<'_> {
         cx.acc.merge(&eff);
     }
 
-    /// A function body must not exceed its declared effect (SPEC 13.1). Called when the effect of
-    /// the statement itself (not of its children) is known, so the error lands on the right line.
+    /// A function (or tool) whose `- touches:` is written must keep that promise (SPEC 23.7).
+    /// Called when the effect of the statement itself (not of its children) is known, so the
+    /// error lands on the right line.
     pub(super) fn check_limit(&mut self, cx: &mut Cx, s: &Stmt) {
         let Some(f) = &mut cx.func else { return };
-        if f.reported || !cx.acc.exceeds(f.declared) {
+        let Some((declared, written)) = &f.declared else { return };
+        if f.reported {
+            return;
+        }
+        let extra: Vec<String> = cx.acc.sources().into_iter().filter(|n| !declared.has(n)).collect();
+        if extra.is_empty() {
             return;
         }
         f.reported = true;
-        let declared = super::effects::effect_name(f.declared);
         let name = f.name.clone();
         let noun = f.noun;
-        let have = cx.acc.detail();
-        let class = super::effects::effect_name(cx.acc.class());
+        let written = written.clone();
+        let words: Vec<String> = extra.iter().map(|n| super::effects::touch_word(n)).collect();
+        let unverified: Vec<&String> = extra.iter().filter(|n| cx.acc.unverified.contains(n)).collect();
         let d = Diagnostic::error(
             E_EXCEEDS,
             self.path(cx.file),
             s.span,
-            format!("The {noun} \"{name}\" says \"- effect: {declared}\", but this line has the effect {have}."),
+            format!("The {noun} \"{name}\" says \"- touches: {written}\", but this step touches {}.", words.join(", ")),
         )
-        .with_help(if cx.acc.class() == Effect::Unverified {
-            // `unverified` is not an effect a function can declare (SPEC 13.1)
+        .with_help(if !unverified.is_empty() {
             format!(
-                "A library call nobody approved is unverified ({}). Approve the binding's \"- effect:\" line (while developing, --allow-unverified assumes the proposed effect), or move this line out of the function.",
-                cx.acc.unverified.join(", ")
+                "A library nobody approved yet ({}) cannot be promised. Approve the binding's \"- effect:\" line (while developing, --allow-unverified assumes the proposed effect), or move this step out of the {noun}.",
+                unverified.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
             )
         } else {
-            format!("Change the {noun} to \"- effect: {class}\", or move this line out of the {noun}.")
+            format!(
+                "Add {} to the \"- touches:\" line, leave the line out to let the checker work it out, or move this step out of the {noun}.",
+                words.join(", ")
+            )
         });
         self.diags.push(d);
     }
@@ -404,8 +412,8 @@ impl Checker<'_> {
                 self.read_input_stmt(cx, into);
                 self.check_limit(cx, s);
             }
-            StmtKind::File { verb, path, arg, into } => {
-                self.file_stmt(cx, &super::stdlib::FileStmt { s, verb, path, arg, into }, in_try);
+            StmtKind::File { verb, path, arg, into, into_ty } => {
+                self.file_stmt(cx, &super::stdlib::FileStmt { s, verb, path, arg, into, into_ty }, in_try);
                 self.check_limit(cx, s);
             }
             StmtKind::CallInto { call, into, .. } => {

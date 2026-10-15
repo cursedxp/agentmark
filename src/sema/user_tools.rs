@@ -11,7 +11,7 @@ use crate::diag::Diagnostic;
 use crate::syntax::ast::{Decl, Effect, Expr, ExprKind, Ident, Payload, Stmt, TargetPart, Tool, ToolBody};
 
 use super::body::{BodyKey, Cx, FnCx};
-use super::effects::{effect_name, rank, EffectSet};
+use super::effects::{rank, EffectSet};
 use super::scope::Kind;
 use super::types::Type;
 use super::{BlockInfo, BlockKind, Checker, NodeKey, ParamInfo, Resolution, RustInfo, Sig, ToolKind, ToolResolution};
@@ -95,7 +95,8 @@ impl<'a> Checker<'a> {
                     let sig = Sig {
                         params,
                         out: v.out.as_ref().map(|o| self.resolve_type(fi, o)),
-                        effect: t.effect.value,
+                        // the class of `- touches:` is filled in by `declare_touches`
+                        effect: Effect::Pure,
                         file: fi,
                         span: v.name.span,
                     };
@@ -121,19 +122,18 @@ impl<'a> Checker<'a> {
     /// the flags every program has (Q388).
     pub(super) fn check_default_command(&mut self) {
         let p = self.p;
-        let mut runs = Vec::new();
+        let Some(units) = self.program.as_ref().map(|prog| prog.units.clone()) else { return };
         let mut commands = Vec::new();
         for (fi, f) in p.files.iter().enumerate() {
             for d in &f.ast.decls {
                 match d {
-                    Decl::Run(r) => runs.extend(r.items.iter().map(|i| i.name.clone())),
                     Decl::Command(c) => commands.push((fi, c)),
                     Decl::Agent(_) | Decl::Service(_) => return,
                     _ => {}
                 }
             }
         }
-        let ([(fi, c)], [only]) = (commands.as_slice(), runs.as_slice()) else { return };
+        let ([(fi, c)], [only]) = (commands.as_slice(), units.as_slice()) else { return };
         if &c.name.name != only {
             return;
         }
@@ -228,10 +228,15 @@ impl<'a> Checker<'a> {
         }
         let eff = match &v.body {
             ToolBody::Stmts(body) => {
+                let declared = self
+                    .touches_decl
+                    .get(&(Kind::Tool, t.name.name.clone()))
+                    .cloned()
+                    .zip(t.touches.as_ref().map(super::body::touches_text));
                 cx.func = Some(FnCx {
                     name: t.name.name.clone(),
                     out: sig.out.clone(),
-                    declared: sig.effect,
+                    declared,
                     reported: false,
                     noun: "tool",
                 });
@@ -251,8 +256,8 @@ impl<'a> Checker<'a> {
                 }
                 cx.acc.clone()
             }
-            // Layer 1: the declared effect is trusted, like a `## Rust` block
-            ToolBody::Rust(_) => EffectSet::of(sig.effect, &t.name.name),
+            // Layer 1: `- touches:` is trusted, like a `## Rust` block
+            ToolBody::Rust(_) => self.touches_decl.get(&(Kind::Tool, t.name.name.clone())).cloned().unwrap_or_default(),
         };
         self.blocks.push(BlockInfo {
             kind: BlockKind::Tool,
@@ -261,7 +266,7 @@ impl<'a> Checker<'a> {
             unit: t.name.name.clone(),
             label: v.name.name.clone(),
             effect: eff.clone(),
-            declared: Some(t.effect.value),
+            declared: self.touches_decl.get(&(Kind::Tool, t.name.name.clone())).map(|s| s.class()),
             param: None,
         });
         eff
@@ -441,17 +446,21 @@ impl<'a> Checker<'a> {
         let name = format!("{written}.{}", verb.name);
         let decl = fn_name(&key.1, &verb.name);
         let sig = self.sigs.get(&(Kind::Tool, decl.clone())).cloned()?;
-        if t.effect.value != Effect::Pure {
+        let touches = match self.touches_decl.get(&(Kind::Tool, t.name.name.clone())) {
+            Some(set) => set.clone(),
+            None => self.tool_verb_effect(&decl),
+        };
+        if !touches.is_pure() {
             let d = Diagnostic::error(
                 E_TOOL_EXPR,
                 self.path(cx.file),
                 e.span,
                 format!(
-                    "The tool \"{written}\" has the effect {}, so \"{name}(...)\" cannot be used inside an expression.",
-                    effect_name(t.effect.value)
+                    "The tool \"{written}\" touches {}, so \"{name}(...)\" cannot be used inside an expression.",
+                    touches.touches()
                 ),
             )
-            .with_help(format!("Call it as a statement: \"- {written} {} ... -> value\".", verb.name));
+            .with_help(format!("Call it as a step: \"{written} {} ... into <name>\".", verb.name));
             self.diags.push(d);
         }
         self.resolutions.insert(

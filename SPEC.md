@@ -786,3 +786,250 @@ A non-agent fixture folder holds `run.json` (`{"args": […]}`, optional `"stdin
 - Closures, first-class functions, user generics.
 - Async user code (handles to async library APIs are awaited by the generated code).
 - Operator overloading; every operator keeps the meaning of section 5.
+
+## 23. v0.4 — plain sentences, real Markdown
+
+From v0.4 every line of a program reads out loud as a sentence, a rendered `.agent.md` file reads like a well-written document, and every Markdown element means in AgentMark what it means in ordinary Markdown. Nothing changes in what a program does: only its syntax and the human-facing output of `check` and `doc`. Where this section and an earlier one disagree, this section wins; the earlier sections show the v0.4 syntax in their samples.
+
+### 23.1 Markdown element → meaning
+
+| Markdown | meaning in AgentMark |
+|---|---|
+| `#` heading | a part: `Program`, `Uses`, `Record`, `Enum`, `Type`, `Rule`, `Function`, `Command`, `Agent`, `Service`, `Tool`, `Binding`, `Constant` |
+| `##` heading | a part of a part: an agent's trigger or `Do` block, a service route, a tool verb, a `Rust` block |
+| paragraph directly under a heading | the description of that part |
+| `-` bullet list | properties and fields (order does not matter) |
+| `1.` numbered list | steps (order matters) |
+| `[name](target)` link | a file the program uses, or the command it starts with |
+| fenced ```` ```rust ```` block | Rust code (Layer 1) |
+
+Bold, italic and the `*` / `+` bullet markers carry no meaning; a `*` or `+` bullet is read as `-` and `fmt` writes `-`. A `>` line is a note for people (23.12).
+
+### 23.2 Descriptions
+
+The description of a part is the paragraph directly under its heading, before its first list:
+
+```
+# Rule: big Sale
+A sale of 100 EUR or more.
+
+- when: amount >= 100 EUR
+```
+
+A description may run over several lines and several paragraphs. `agentmark doc`, the `missing-doc` lint and the language server read it from there. A `>` line directly above a heading is an error (23.13).
+
+### 23.3 Steps
+
+Every list of steps is numbered: the steps of a command and a function (under `- steps:`), of an agent trigger or `## Do` block, of a service route and of a tool verb. The steps under `for each`, `if`, `else`, `otherwise`, `match` branches and `parallel` are numbered too.
+
+```
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. for each entry in region_totals(sales):
+     1. print: "{entry.region}: {entry.revenue}"
+```
+
+- A line with steps under it ends in `:`. The steps sit one level deeper: under a numbered item they start at its text (3 spaces under `1.` to `9.`, 4 under `10.` to `99.`), under a bullet 2 spaces deeper.
+- `else:` and `otherwise:` are plain lines inside the `if` or `try` step, at the indentation of its steps; the steps after them belong to them:
+
+```
+1. if photo_stamp(name) is some stamp:
+   1. print: "{name} -> {stamp}"
+   else:
+   1. print: "skipped {name}"
+```
+
+- The branches of a `match` are bullets (their order does not matter); the steps of a branch are numbered:
+
+```
+1. match block:
+   - Heading h:
+     1. return "<h{h.level}>{h.content}</h{h.level}>"
+   - Blank:
+     1. return ""
+```
+
+- The numbers are for people: `1.` on every line works too, and `fmt` writes 1, 2, 3, … at every level and fixes the indentation.
+- A bullet where a step belongs is an error (E070), and so is a numbered item where a property belongs (E071).
+
+### 23.4 Program and Uses
+
+The program's title, description and starting point are the first part of its entry file (`main.agent.md` in a folder project, the file itself in a single-file program):
+
+```
+# Program: sales
+Reads a sales file and prints how much it brought in, region by region.
+
+- start: [sales-report](#command-sales-report)
+```
+
+- `start:` names the command the program starts with: a link to the command's heading (GitHub's anchor, `#command-<name>`), a link to the file that declares it (`./commands/sales-report.agent.md`), or the plain name. The checker verifies that it is a command of the program. `fmt` writes the link form.
+- With exactly one command, `start:` can be left out. A program's agents and services need no `start:`: they all run.
+- What runs: every agent, service and command of the entry file and of the files its `# Uses` lists. The program starts without a subcommand name when it has exactly one command and no agent or service (22.6); otherwise its commands are subcommands.
+- `# Program` must be the first heading of the entry file, and only the entry file has one (E072). A project without `# Program` is a library.
+
+The files a file uses are listed in one `# Uses` section at its top (after `# Program`):
+
+```
+# Uses
+- [constants](../constants.agent.md)
+- [Sale](../records/sale.agent.md)
+```
+
+- The link text is a label for people; the path is what is used. Paths are relative to the file, so every link is clickable on GitHub.
+- A folder or a glob is a path too: `- [every rule](./rules/*.agent.md)`. A used file or folder gets a module name by writing `as <name>` after the link: `- [billing rules](./billing/) as billing`.
+- Libraries keep their heading: `# Import: crate sha2` (23.14).
+
+### 23.5 Properties of functions, commands and tools
+
+```
+# Function: region_totals
+Adds up the sales of every region, biggest revenue first.
+
+- in: sales
+- out: region totals
+- touches: nothing
+- steps:
+  1. group sales by region into by_region
+  2. …
+```
+
+- `- in:` lists the inputs, `- out:` the result, `- steps:` the steps. Commands use `- in:` exactly like functions (with defaults: `- in: path: text, dry_run: bool = false`).
+- `- touches:` (23.7) is optional on a function and a tool.
+
+### 23.6 Types from names
+
+In `- in:` and `- out:` a name alone is enough when it says what it is:
+
+| written | means |
+|---|---|
+| `in: sales` | `sales: list of Sale` (a record `Sale` exists; `sales` is its plural) |
+| `in: invoice` | `invoice: Invoice` |
+| `in: old sales, new sales` | `old_sales: list of Sale`, `new_sales: list of Sale` |
+| `out: region totals` | `list of RegionTotal` |
+| `in: due_date` | `due_date: date` (the last-word table of 2.1) |
+| `in: path: text` | as written |
+
+- The words of a name are matched against the records, enums and type aliases the file can see, longest ending first (`region totals` → `RegionTotal`), ignoring case and `_`. The words before the matched ones are part of the name.
+- Plurals are regular English only: `+s`, `+es`, `y` → `ies`. A plural means `list of`. Irregular plurals need the type written.
+- No match: the last word decides as for record fields (2.1): `date` / `at` / `on` → `date`, `amount` / `price` / `total` / `fee` → `money`, `count` / `qty` / `number` → `int`.
+- Still unclear: error E230, "Could not tell what `vat` is. Write its type: `vat: <type>`."
+- An input written `name: type` is never guessed.
+
+### 23.7 What a part touches
+
+`- touches:` replaces `- effect:`. The words "effect", "pure", "local", "network" and "model" are no longer part of the syntax or of the reports.
+
+| written | means |
+|---|---|
+| `- touches: nothing` | reads and computes only (was `pure`) |
+| `- touches: files` | the `file` tool |
+| `- touches: print`, `input` | standard output, standard input |
+| `- touches: AI` | asks a model |
+| `- touches: crm, email` | the tools, libraries or `state` named |
+
+- On a `# Function` and a `# Tool` the line is optional: without it the checker works out what the part touches. Written, it is a checked promise: a step that touches something not on the list is an error (E206).
+- A `## Rust` block, which the checker cannot read, must say what it touches; the line is trusted, as `- effect:` was.
+- Inside the compiler every part still has its effect class (`pure` < `local` < `network` < `model`, 8); the IR and `check --json` keep it.
+- `check` and `doc` say it the same way, one line per part:
+
+```
+region_totals: touches nothing
+sales-report: touches files, print
+invoice-chaser / Every day at 09:00: touches AI, crm, email, log
+```
+
+- `AI` comes first, then the rest in alphabetical order; the `file` tool is written `files`.
+- Libraries (`# Binding`) keep `- effect:` and `- proposed-effect:` and `tools.toml` keeps `effect =` (OPEN_QUESTIONS Q430).
+
+### 23.8 Rules name their record in the heading
+
+```
+# Rule: big Sale
+A sale of 100 EUR or more.
+
+- when: amount >= 100 EUR
+```
+
+The last word of the heading is the record, the words before it the rule's name (joined with `_`). The rule then reads like its use: `for each big sale in sales:`. `- for:` is gone.
+
+### 23.9 Naming a result: `into`
+
+`into <name>` at the end of a step names its result. It is the only way; `set` and `->` are gone.
+
+| v0.3 | v0.4 |
+|---|---|
+| `set by_region = group sales by region` | `group sales by region into by_region` |
+| `set totals = empty list of RegionTotal` | `empty list of RegionTotal into totals` |
+| `file read path -> content` | `file read path into content` |
+| `ask model with invoice: "…" -> reminder` | `ask model with invoice: "…" into reminder` |
+| `slugger slug title -> s` | `slugger slug title into s` |
+| `do net_amount(invoice, 19) -> n` | `do net_amount(invoice, 19) into n` |
+| `read body as Invoice -> inv` | `read body as Invoice into inv` |
+
+- `<value> into <name>` with a name that already exists gives it a new value, as `set` did (OPEN_QUESTIONS Q431).
+- `into` is a reserved word.
+- `->` stays in signatures, where it means "returns": `## slug(title: text) -> text`, `## Rust: fingerprint -> text`, binding items.
+
+### 23.10 Reading a file into records
+
+The name after `into` decides how a file is read:
+
+```
+1. try file read path into sales
+   otherwise:
+   1. print: "Could not read {path}"
+   2. stop
+```
+
+- The name gets its type from the records the file can see, as in 23.6 (`sales` → `list of Sale`), or from a type written after it: `into content: text`.
+- A `list of` a record: the file is CSV and its header row names the fields (as `csv.parse`). A file whose name does not end in `.csv` (any case) is a read failure.
+- Anything else, and a name that matches no record, is the raw text, as before.
+- A file that cannot be read and a file that is not valid CSV go to the same `otherwise`.
+- `csv.parse(…)` stays in the library.
+
+### 23.11 Adding to a list: `add`
+
+```
+1. add RegionTotal to totals:
+   - region
+   - orders: count of region_sales
+   - revenue: sum of amount in region_sales
+```
+
+- `add <value> to <list>` replaces `append`.
+- `add <Record> to <list>:` builds the record from the bullets under it: `name: value`, as in a record definition, and a bare `name` takes the value of that name. An enum variant with fields is built the same way.
+- `fmt` writes `add X { … } to list` in this form. Elsewhere a record is still written `Sale { region: "EU", amount: 120.00 EUR }` (OPEN_QUESTIONS Q432).
+
+### 23.12 Notes
+
+A `>` line that is not directly above a heading is a note for people: `fmt` keeps it, everything else ignores it (OPEN_QUESTIONS Q433). The examples do not use notes.
+
+### 23.13 Removed syntax
+
+There is no backward compatibility. Each removed form is an error that shows the new form:
+
+| code | written | message |
+|---|---|---|
+| E060 | `# Run`, `# Start` | `# Run` was removed. Start the entry file with `# Program: <name>`; name the command it starts with in `- start: <command>`. |
+| E061 | `## Run` | `## Run` was removed. Write the command's steps under `- steps:` as a numbered list. |
+| E062 | `- args:` | `args:` was renamed. Write: `- in: <inputs>` |
+| E063 | `- effect:` (function, tool, Rust block) | `effect:` was removed. Write: `- touches: <what>`, for example `- touches: nothing` |
+| E064 | `set x = v` | `set` was removed. Write: `<value> into <name>` |
+| E065 | `… -> x` | `->` was replaced by `into`. Write: `<step> into <name>` |
+| E066 | `append x to list` | `append` was renamed. Write: `add <value> to <list>` |
+| E067 | `- for:` in a rule | `for:` was removed. Put the record last in the heading: `# Rule: <name> <Record>` |
+| E068 | `>` directly above a heading | A description goes under its heading as a plain paragraph, not in a `>` line above it. |
+| E069 | `# Import: <file>` | File imports moved to a `# Uses` section. Write: `- [<label>](<path>)` under `# Uses`. |
+
+Each message quotes the line rewritten in the new form where it can (`set by_region = group sales by region` → "Write: group sales by region into by_region").
+
+### 23.14 Not changed
+
+- `group … by …`, `for each`, the collection words, `try` / `otherwise`, `stop`, `print`, `guard`, `match`, `respond`, `return`.
+- Agent trigger headings (`## Every day at 09:00`, `## When …`), `## Do <name>` blocks, service routes and tool verb headings stay headings; only their steps are numbered (OPEN_QUESTIONS Q434).
+- `# Import: crate <name>` for libraries (OPEN_QUESTIONS Q435), `# Binding` files and their `- effect:` line, `tools.toml`.
+- The hard limits (18.3): the nesting limit counts steps, from the first step under `- steps:` (or under a `##` heading); `- steps:` itself is not a level. At most 3 levels.

@@ -10,7 +10,7 @@
 use crate::diag::Span;
 use serde::Serialize;
 
-/// Plain `>` comment lines directly above a `- key: value` property of a declaration.
+/// Plain `>` note lines directly above a `- key: value` property of a declaration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PropComment {
     pub key: String,
@@ -34,7 +34,7 @@ pub struct Spanned<T> {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct File {
     pub path: String,
-    /// Leading `>` comment block that is separated from the first heading by a blank line.
+    /// Leading `>` note block that is separated from the first heading by a blank line.
     pub doc: Option<String>,
     pub imports: Vec<Import>,
     pub decls: Vec<Decl>,
@@ -45,15 +45,19 @@ pub struct Import {
     pub span: Span,
     pub doc: Option<String>,
     pub kind: ImportKind,
+    /// The link text of a `# Uses` entry (`- [constants](../constants.agent.md)`); `None` for a
+    /// `# Import: crate` line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ImportKind {
-    /// `# Import: ./records/invoice.agent.md` or `... as billing`
+    /// `- [invoice](./records/invoice.agent.md)` under `# Uses`, or `... as billing`
     File { path: String, alias: Option<Ident> },
-    /// `# Import: ./rules/*.agent.md`
+    /// `- [every rule](./rules/*.agent.md)`
     Glob { pattern: String },
-    /// `# Import: ./billing as billing`
+    /// `- [billing](./billing/) as billing`
     Folder { path: String, alias: Ident },
     /// `# Import: crate serde_json` or `crate reqwest as http_client`
     Crate { name: Ident, alias: Option<Ident> },
@@ -80,6 +84,9 @@ pub enum TypeKind {
     Result(Box<TypeExpr>),
     /// `map of K to V` (SPEC 22.2)
     Map(Box<TypeExpr>, Box<TypeExpr>),
+    /// A name written without a type in `- in:` / `- out:` (`sales`, `region totals`): sema
+    /// finds the type from the words (SPEC 23.6).
+    Infer(Vec<String>),
     /// `handle of <crate>.<Type>`: a value of a library type AgentMark has no equivalent for
     /// (SPEC 22.4). `name` is the dotted path (`sha2.Sha256`); `mode` is how a binding
     /// parameter holds it.
@@ -128,7 +135,8 @@ pub enum Decl {
     /// `# Tool: name` written in AgentMark (SPEC 22.5).
     Tool(Tool),
     Constant(Constant),
-    Run(Run),
+    /// `# Program: name`, the first part of the entry file (SPEC 23.4).
+    Program(Program),
     /// A `## Rust: name` block, hoisted to module level (OPEN_QUESTIONS Q2).
     RustBlock(RustBlock),
     /// Layer 2 only, produced by `agent_lower`: a block that runs on a trigger.
@@ -304,11 +312,22 @@ pub struct Function {
     pub name: Ident,
     pub params: Vec<Param>,
     pub out: Option<TypeExpr>,
-    pub effect: Spanned<Effect>,
+    /// `- touches:`; `None` when the checker works it out (SPEC 23.7).
+    pub touches: Option<Touches>,
     pub body: Vec<Stmt>,
 }
 
-/// `# Tool: name` with `- effect:` and one `## verb(params) -> type` block per verb (SPEC 22.5).
+/// `- touches: nothing` / `- touches: crm, email` (SPEC 23.7): what a part may touch, as written.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Touches {
+    /// The value after `touches:`.
+    pub span: Span,
+    /// The words, `nothing` included when it is written.
+    pub words: Vec<Ident>,
+}
+
+/// `# Tool: name` with an optional `- touches:` and one `## verb(params) -> type` block per verb
+/// (SPEC 22.5).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Tool {
     pub span: Span,
@@ -316,7 +335,7 @@ pub struct Tool {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub prop_comments: Vec<PropComment>,
     pub name: Ident,
-    pub effect: Spanned<Effect>,
+    pub touches: Option<Touches>,
     pub verbs: Vec<ToolVerb>,
 }
 
@@ -370,8 +389,9 @@ pub struct Command {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub prop_comments: Vec<PropComment>,
     pub name: Ident,
+    /// `- in:`
     pub args: Vec<Param>,
-    /// Statements of the `## Run` block.
+    /// The steps under `- steps:`.
     pub body: Vec<Stmt>,
 }
 
@@ -437,7 +457,8 @@ pub struct RustBlock {
     pub parent: Option<Ident>,
     pub params: Vec<Param>,
     pub out: Option<TypeExpr>,
-    pub effect: Spanned<Effect>,
+    /// What the Rust code touches: trusted, the checker cannot read Rust.
+    pub touches: Touches,
     pub rust: RustCode,
 }
 
@@ -451,11 +472,24 @@ pub struct Constant {
     pub value: Expr,
 }
 
+/// `# Program: sales` with its description and `- start:` (SPEC 23.4).
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Run {
+pub struct Program {
     pub span: Span,
     pub doc: Option<String>,
-    pub items: Vec<Ident>,
+    pub name: Ident,
+    pub start: Option<Start>,
+}
+
+/// The value of `- start:`: `[sales-report](#command-sales-report)`, `[x](./commands/x.agent.md)`
+/// or the plain name `sales-report`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Start {
+    pub span: Span,
+    /// The link text, when written as a link.
+    pub label: Option<String>,
+    /// The link target, or the plain name.
+    pub target: String,
 }
 
 // ---------------------------------------------------------------- statements
@@ -491,23 +525,23 @@ pub enum StmtKind {
         else_: Vec<Stmt>,
     },
     Stop,
-    /// `do remind`, `do net_amount(invoice, 19) -> n`
+    /// `do remind`, `do net_amount(invoice, 19) into n`
     Do {
         name: Ident,
         args: Vec<Expr>,
         into: Option<Ident>,
-        /// Written `try f(x) -> v` without the `do` (only after `try`, SPEC 22.3).
+        /// Written `try f(x) into v` without the `do` (only after `try`, SPEC 22.3).
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         bare: bool,
     },
-    /// `ask model [with v]: "prompt" [as Record] -> var`
+    /// `ask model [with v]: "prompt" [as Record] into var`
     AskModel {
         with: Option<Expr>,
         prompt: Expr,
         as_record: Option<Ident>,
         into: Ident,
     },
-    /// `email send customer: "..."`, `log: "..."`, `do crm get invoice id -> inv`
+    /// `email send customer: "..."`, `log: "..."`, `do crm get invoice id into inv`
     ToolCall {
         tool: Ident,
         verb: Option<Ident>,
@@ -521,6 +555,7 @@ pub enum StmtKind {
         cond: Expr,
         else_: Option<Box<Stmt>>,
     },
+    /// `<value> into <name>` (SPEC 23.9): a new name, or a new value for one that exists.
     Set {
         var: Ident,
         expr: Expr,
@@ -539,23 +574,28 @@ pub enum StmtKind {
         ty: TypeExpr,
         into: Ident,
     },
+    /// `add <value> to <list>`, or `add <Record> to <list>:` with the fields as bullets
+    /// (SPEC 23.11; the record arrives as a [`ExprKind::Variant`]).
     Append {
         value: Expr,
         list: Expr,
     },
-    /// `read input -> text`: all of standard input (SPEC 22.3).
+    /// `read input into text`: all of standard input (SPEC 22.3).
     ReadInput {
         into: Ident,
     },
-    /// The built-in `file` tool (SPEC 22.3): `file read path -> content`, `file write path: text`,
-    /// `file rename old to new`, `file list folder -> names`.
+    /// The built-in `file` tool (SPEC 22.3): `file read path into content`, `file write path: text`,
+    /// `file rename old to new`, `file list folder into names`.
     File {
         verb: Ident,
         path: Expr,
         arg: Option<FileArg>,
         into: Option<Ident>,
+        /// `into content: text`: the type written after the name (SPEC 23.10).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        into_ty: Option<TypeExpr>,
     },
-    /// `try csv.parse(text) as list of Sale -> sales`, `do text.trim(x) -> y`: a call of the
+    /// `try csv.parse(text) as list of Sale into sales`, `do text.trim(x) into y`: a call of the
     /// built-in library whose value is stored (SPEC 22.3). `via_do` is the `do` spelling.
     CallInto {
         call: Expr,
@@ -576,7 +616,7 @@ pub enum StmtKind {
         /// `- otherwise:`, always the last branch.
         otherwise: Option<Otherwise>,
     },
-    /// Layer 2 only (`agent_lower`): ask the model. `ask model with v: "p" as R -> x`.
+    /// Layer 2 only (`agent_lower`): ask the model. `ask model with v: "p" as R into x`.
     /// `model` is the driver string of the agent that wrote it (`claude:haiku`).
     ModelCall {
         with: Option<Expr>,

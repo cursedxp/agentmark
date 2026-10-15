@@ -89,6 +89,7 @@ const RESERVED: &[&str] = &[
     "otherwise",
     "some",
     "none",
+    "into",
 ];
 
 /// Record a mistake in what the parser just matched, and let parsing carry on.
