@@ -9,4 +9,6 @@ Cargo.lock.bak
 tools/docs-site/node_modules/
 tools/docs-site/dist/
 target-*/
-.claude/
+.claude/worktrees/
+.claude/settings.local.json
+.claude/no-docs-needed
