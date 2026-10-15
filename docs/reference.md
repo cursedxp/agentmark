@@ -41,7 +41,7 @@ This is the whole language in one file. It follows `SPEC.md` section by section,
 
 Every section opens with a small complete example, then a list of rules, then the details. Code blocks marked as programs are checked by `tests/docs.rs`, and pieces without a heading line are parsed there. Output shown here is the real output of the tools.
 
-Where the specification left a question open, the text states the choice and `OPEN_QUESTIONS.md` lists it as a `Q` number. Appendix B groups the numbers by topic.
+Where the specification left a question open, the text states the choice and `dev/OPEN_QUESTIONS.md` lists it as a `Q` number. Appendix B groups the numbers by topic.
 
 **Rules that hold everywhere**
 - One step is one line, at most 120 characters. The text between the quotes of a string does not count, per Q35.
@@ -2862,7 +2862,7 @@ A list with two kinds of value is an error:
   1. list of 1, "two" into mixed
 ```
 
-The decisions behind these rules are Q320 to Q328 in `OPEN_QUESTIONS.md`.
+The decisions behind these rules are Q320 to Q328 in `dev/OPEN_QUESTIONS.md`.
 
 **Errors**
 
@@ -3797,7 +3797,7 @@ Every step form of the language, with where it is explained. The [cheat sheet](#
 
 ## Appendix B. Decisions the specification left open
 
-These are the choices made while implementing, grouped by topic. Each one is written out in `OPEN_QUESTIONS.md`.
+These are the choices made while implementing, grouped by topic. Each one is written out in `dev/OPEN_QUESTIONS.md`.
 
 | topic | questions |
 |---|---|

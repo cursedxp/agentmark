@@ -62,7 +62,7 @@ What passed:
 
 ## What failed
 
-Nothing in the test suite. Known gaps, all recorded in `OPEN_QUESTIONS.md`:
+Nothing in the test suite. Known gaps, all recorded in `docs/dev/OPEN_QUESTIONS.md`:
 
 - There are no prebuilt binaries. `install.sh` builds from source, and generated projects depend on the runtime in that source folder (Q222).
 - `shellcheck` was not run on `install.sh`, and a second real-cargo install run (the update path) was not tested.
@@ -120,7 +120,7 @@ Acceptance:
 3. `agentmark fmt --check` and `agentmark lint` pass on every example with 0 warnings; `check` reports 0 errors, 0 warnings.
 4. No removed syntax remains in docs, examples or templates, except where a sentence or table shows an old form next to its replacement (SPEC 23.13, reference section 23, the two templates' "these old forms are errors" line) and the `- effect:` line of bindings (Q430).
 5. Every example part has a description under its heading, properties are bullets, steps are numbered, `# Uses` entries are relative links.
-6. Every OPEN item of the brief is in `OPEN_QUESTIONS.md` (Q430–Q440, Q434–Q436 and Q438 among them); choices made while implementing are Q441–Q463.
+6. Every OPEN item of the brief is in `docs/dev/OPEN_QUESTIONS.md` (Q430–Q440, Q434–Q436 and Q438 among them); choices made while implementing are Q441–Q463.
 
 What changed:
 
@@ -129,4 +129,4 @@ What changed:
 - Reports: `check` and `doc` say "What each part touches" (`region_totals: touches nothing`); `check --json` keeps the classes.
 - Tools: `fmt` renumbers, reindents, writes `add` bullets and `start:` links; lint, binder file format, language server, tree-sitter and VS Code grammars, all docs and templates on v0.4.
 
-Known gaps (see OPEN_QUESTIONS.md): `- start:` with several commands does not yet make a default command (Q441); only CSV for typed reads (Q440); headings vs `- steps:` stay inconsistent between triggers/routes/verbs and commands/functions (Q434); no migration tool ships (Q454); six old clippy warnings outside v0.4 code remain.
+Known gaps (see docs/dev/OPEN_QUESTIONS.md): `- start:` with several commands does not yet make a default command (Q441); only CSV for typed reads (Q440); headings vs `- steps:` stay inconsistent between triggers/routes/verbs and commands/functions (Q434); no migration tool ships (Q454); six old clippy warnings outside v0.4 code remain.

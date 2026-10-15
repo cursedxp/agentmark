@@ -148,7 +148,7 @@ ok: 0 errors, 0 warnings.
 | set up my editor or an AI assistant | [Editors and AI assistants](#editors-and-ai-assistants) |
 | read the language specification | [SPEC.md](SPEC.md) (section 22 makes it general-purpose) |
 | see how the compiler works | [DESIGN.md](DESIGN.md) |
-| see decisions the spec left open | [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) |
+| see decisions the spec left open | [docs/dev/OPEN_QUESTIONS.md](docs/dev/OPEN_QUESTIONS.md) |
 
 Ten example projects live in `examples/`. `fixtures/` holds the input files, model answers, tool data and expected output and traces for running them offline.
 

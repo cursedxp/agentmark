@@ -2,12 +2,12 @@
 
 This document fixes the architecture every implementation step follows. SPEC.md is the
 language; this file is how the compiler is built. When the two disagree, SPEC wins and the
-disagreement goes into `OPEN_QUESTIONS.md`.
+disagreement goes into `docs/dev/OPEN_QUESTIONS.md`.
 
 ## 1. Repository layout
 
 The repository root is a Cargo **package and workspace** at the same time, so the paths named
-in PROMPT.md (`tests/errors/`, `tests/docs.rs`, `src/binder/core`, `codegen/rust.rs`) are literal.
+in docs/dev/PROMPT.md (`tests/errors/`, `tests/docs.rs`, `src/binder/core`, `codegen/rust.rs`) are literal.
 
 ```
 Cargo.toml                    [package] agentmark (lib + bin) + [workspace] members

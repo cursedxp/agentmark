@@ -56,7 +56,7 @@ Three documents define the project:
 
 * `SPEC.md` defines the language. It is never edited to make something easier.
 * `DESIGN.md` defines the architecture.
-* `OPEN_QUESTIONS.md` holds every choice the specification left open, as a numbered `Q` entry.
+* `docs/dev/OPEN_QUESTIONS.md` holds every choice the specification left open, as a numbered `Q` entry.
 
 When you change behaviour, change the code, a test, and the doc that describes it. That doc is `docs/reference.md`. Add a `Q` entry when you had to decide something.
 
@@ -160,7 +160,7 @@ In v0.4 a statement is one numbered step (`1. wait 5 minutes`). If it names a re
    test in `tests/ir_lower.rs`, a formatter sample, and a fixture whose expected trace shows it working.
 10. **Docs.** Add the form to `docs/reference.md` (the section it belongs to, and Appendix A) with a complete
     example, and to the list of forms in `reference_shows_every_statement_form` in `tests/docs.rs`. Record any
-    choice the specification did not settle in `OPEN_QUESTIONS.md`.
+    choice the specification did not settle in `docs/dev/OPEN_QUESTIONS.md`.
 
 A statement that is pure sugar for existing layer-2 statements should not enter layer 2 at all: lower it in
 `src/lower/agent_lower.rs` and let the generator stay unchanged. That is the point of the three layers.
@@ -454,7 +454,7 @@ regression test; test output stays free of warnings; shared helpers for the sema
 
 ## Open questions and decisions
 
-`OPEN_QUESTIONS.md` is the memory of the project. A decision has a question, the choice, and why.
+`docs/dev/OPEN_QUESTIONS.md` is the memory of the project. A decision has a question, the choice, and why.
 
 The numbers are grouped by the step that made them:
 
