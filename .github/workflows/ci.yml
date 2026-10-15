@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build
+      - name: Test
+        run: cargo test --workspace
+      - name: Examples are canonical, lint-clean and check clean
+        run: tools/guard/check-examples.sh "$PWD/target/debug/agentmark" fmt lint check
+      - name: Stop-hook guard tests
+        run: tools/guard/test-stop-guard.sh
+
+  docs-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tools/docs-site/package-lock.json
+      - name: Build docs site and check in-page links
+        working-directory: tools/docs-site
+        run: |
+          npm ci
+          npm run build
+          npm run check-links

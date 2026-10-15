@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Renders the AgentMark Markdown docs into one self-contained HTML page.",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "check-links": "node check-links.mjs"
   },
   "devDependencies": {
     "highlight.js": "11.12.0",
