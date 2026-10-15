@@ -1,84 +1,95 @@
-# Import: ../constants.agent.md
-# Import: ../functions/ensure-schema.agent.md
-# Import: ../records/new-note.agent.md
-# Import: ../records/note.agent.md
+# Uses
+- [constants](../constants.agent.md)
+- [ensure_schema](../functions/ensure-schema.agent.md)
+- [NewNote](../records/new-note.agent.md)
+- [Note](../records/note.agent.md)
+
 # Import: crate sqlx
 
-> A small notes API: create, list, read and delete notes. Everything is stored in SQLite.
-> Every route opens the database, makes sure the table exists, and then runs its query.
-> Rows are not read column by column: SQLite's json_object turns a row into JSON text and `json.parse` reads it.
-> (Typed row access is not exercised in v0.3.)
 # Service: notes
+A small notes API: create, list, read and delete notes. Everything is stored in SQLite.
+Every route opens the database, makes sure the table exists, and then runs its query.
+Rows are not read column by column: SQLite's json_object turns a row into JSON text and `json.parse` reads it.
+(Typed row access is not exercised in v0.3.)
+
 - listen: 0.0.0.0:8081
 
 ## POST /notes
-- read body as NewNote -> draft
-- guard: draft.title is not empty else respond 400
-- try sqlx sqlite_pool_connect database_url -> pool
-  otherwise:
-    - respond 503
-- try ensure_schema(pool)
-  otherwise:
-    - respond 503
-- sqlx query "insert into notes (title, body) values (?, ?)" -> statement
-- statement bind draft.title -> with_title
-- with_title bind draft.body -> insert
-- try insert execute pool -> outcome
-  otherwise:
-    - respond 500
-- outcome last_insert_rowid -> id
-- respond 201 Note { id: id, title: draft.title, body: draft.body }
+Creates a note from the request body and answers with it.
+
+1. read body as NewNote into draft
+2. guard: draft.title is not empty else respond 400
+3. try sqlx sqlite_pool_connect database_url into pool
+   otherwise:
+   1. respond 503
+4. try ensure_schema(pool)
+   otherwise:
+   1. respond 503
+5. sqlx query "insert into notes (title, body) values (?, ?)" into statement
+6. statement bind draft.title into with_title
+7. with_title bind draft.body into insert
+8. try insert execute pool into outcome
+   otherwise:
+   1. respond 500
+9. outcome last_insert_rowid into id
+10. respond 201 Note { id: id, title: draft.title, body: draft.body }
 
 ## GET /notes
-- try sqlx sqlite_pool_connect database_url -> pool
-  otherwise:
-    - respond 503
-- try ensure_schema(pool)
-  otherwise:
-    - respond 503
-- sqlx query_scalar "select json_group_array({note_json}) from (select * from notes order by id)" -> listing
-- try listing fetch_one pool -> encoded
-  otherwise:
-    - respond 500
-- set parsed = json.parse(encoded) as list of Note
-- match parsed:
-  - ok notes:
-    - respond 200 notes
-  - error:
-    - respond 500
+Every note, oldest first.
+
+1. try sqlx sqlite_pool_connect database_url into pool
+   otherwise:
+   1. respond 503
+2. try ensure_schema(pool)
+   otherwise:
+   1. respond 503
+3. sqlx query_scalar "select json_group_array({note_json}) from (select * from notes order by id)" into listing
+4. try listing fetch_one pool into encoded
+   otherwise:
+   1. respond 500
+5. json.parse(encoded) as list of Note into parsed
+6. match parsed:
+   - ok notes:
+     1. respond 200 notes
+   - error:
+     1. respond 500
 
 ## GET /notes/{id}
-- try sqlx sqlite_pool_connect database_url -> pool
-  otherwise:
-    - respond 503
-- try ensure_schema(pool)
-  otherwise:
-    - respond 503
-- sqlx query_scalar "select {note_json} from notes where id = ?" -> statement
-- statement bind id -> lookup
-- try lookup fetch_optional pool -> found
-  otherwise:
-    - respond 500
-- guard: found is not empty else respond 404
-- set parsed = json.parse(found) as Note
-- match parsed:
-  - ok note:
-    - respond 200 note
-  - error:
-    - respond 500
+One note, or 404 when there is none with that id.
+
+1. try sqlx sqlite_pool_connect database_url into pool
+   otherwise:
+   1. respond 503
+2. try ensure_schema(pool)
+   otherwise:
+   1. respond 503
+3. sqlx query_scalar "select {note_json} from notes where id = ?" into statement
+4. statement bind id into lookup
+5. try lookup fetch_optional pool into found
+   otherwise:
+   1. respond 500
+6. guard: found is not empty else respond 404
+7. json.parse(found) as Note into parsed
+8. match parsed:
+   - ok note:
+     1. respond 200 note
+   - error:
+     1. respond 500
 
 ## DELETE /notes/{id}
-- try sqlx sqlite_pool_connect database_url -> pool
-  otherwise:
-    - respond 503
-- try ensure_schema(pool)
-  otherwise:
-    - respond 503
-- sqlx query "delete from notes where id = ?" -> statement
-- statement bind id -> removal
-- try removal execute pool -> outcome
-  otherwise:
-    - respond 500
-- outcome rows_affected -> removed
-- guard: removed > 0 else respond 404
-- respond 204
+Deletes a note, or answers 404 when there was none.
+
+1. try sqlx sqlite_pool_connect database_url into pool
+   otherwise:
+   1. respond 503
+2. try ensure_schema(pool)
+   otherwise:
+   1. respond 503
+3. sqlx query "delete from notes where id = ?" into statement
+4. statement bind id into removal
+5. try removal execute pool into outcome
+   otherwise:
+   1. respond 500
+6. outcome rows_affected into removed
+7. guard: removed > 0 else respond 404
+8. respond 204

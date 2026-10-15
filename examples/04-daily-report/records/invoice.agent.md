@@ -1,5 +1,6 @@
-> An invoice as stored in the CRM.
 # Record: Invoice
+An invoice as stored in the CRM.
+
 - id: text
 - customer: text
 - amount: money

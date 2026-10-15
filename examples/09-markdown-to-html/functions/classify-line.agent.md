@@ -1,17 +1,20 @@
-# Import: ../records/block.agent.md
+# Uses
+- [Block](../records/block.agent.md)
 
-> Decides what kind of Markdown line this is and strips the marks that say so.
 # Function: classify_line
+Decides what kind of Markdown line this is and strips the marks that say so.
+
 - in: line: text
 - out: Block
-- effect: pure
-  - set clean = text.trim(line)
-  - if clean = "":
-    - return Blank
-  - if text.starts_with(clean, "## "):
-    - return Heading { level: 2, content: regex.replace(clean, "^## ", "") }
-  - if text.starts_with(clean, "# "):
-    - return Heading { level: 1, content: regex.replace(clean, "^# ", "") }
-  - if text.starts_with(clean, "- "):
-    - return ListItem { content: regex.replace(clean, "^- ", "") }
-  - return Paragraph { content: clean }
+- touches: nothing
+- steps:
+  1. text.trim(line) into clean
+  2. if clean = "":
+     1. return Blank
+  3. if text.starts_with(clean, "## "):
+     1. return Heading { level: 2, content: regex.replace(clean, "^## ", "") }
+  4. if text.starts_with(clean, "# "):
+     1. return Heading { level: 1, content: regex.replace(clean, "^# ", "") }
+  5. if text.starts_with(clean, "- "):
+     1. return ListItem { content: regex.replace(clean, "^- ", "") }
+  6. return Paragraph { content: clean }

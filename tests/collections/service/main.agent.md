@@ -1,5 +1,5 @@
-# Import: ./services/tally.agent.md
+# Program: tally
+A counter service whose state holds a map.
 
-> A counter service whose state holds a map.
-# Run
-- tally
+# Uses
+- [tally](./services/tally.agent.md)

@@ -27,7 +27,7 @@
         {
           "label": "Every 15 minutes",
           "file": "examples/03-support-triage/agents/support-triage.agent.md",
-          "line": 10,
+          "line": 12,
           "effects": {
             "class": "model",
             "summary": "model, network(crm, http), local(log)",

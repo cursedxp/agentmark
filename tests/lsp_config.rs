@@ -5,7 +5,7 @@ use agentmark::project::Project;
 fn load(toml: &str) -> Project {
     Project::from_memory(
         "p",
-        vec![("p/agentmark.toml", toml), ("p/a.agent.md", "# Constant: a\n- value: 1\n")],
+        vec![("p/agentmark.toml", toml), ("p/a.agent.md", "# Constant: a\nThe number one.\n\n- value: 1\n")],
     )
 }
 

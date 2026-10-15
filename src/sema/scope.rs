@@ -87,7 +87,7 @@ pub fn decl_header(d: &Decl) -> Option<(Kind, &str, Span)> {
         Decl::Tool(x) => (Kind::Tool, &x.name.name, x.name.span),
         Decl::Constant(x) => (Kind::Constant, &x.name.name, x.name.span),
         Decl::RustBlock(x) => (Kind::RustBlock, &x.name.name, x.name.span),
-        Decl::Run(_) | Decl::Entry(_) => return None,
+        Decl::Program(_) | Decl::Entry(_) => return None,
     })
 }
 
@@ -275,14 +275,14 @@ mod tests {
 
     #[test]
     fn a_file_sees_its_own_and_imported_names_only() {
-        let main = format!("# Import: ./a.agent.md\n\n{}", rec("M"));
+        let main = format!("# Uses\n- [a](./a.agent.md)\n\n{}", rec("M"));
         let p = Project::from_memory(
             "app/main.agent.md",
             vec![
                 ("app/main.agent.md", &main),
                 (
                     "app/a.agent.md",
-                    &format!("# Import: ./b.agent.md\n\n{}", rec("A")),
+                    &format!("# Uses\n- [b](./b.agent.md)\n\n{}", rec("A")),
                 ),
                 ("app/b.agent.md", &rec("B")),
             ],
@@ -305,7 +305,7 @@ mod tests {
             vec![
                 (
                     "app/main.agent.md",
-                    &format!("# Import: ./a.agent.md as billing\n\n{}", rec("M")),
+                    &format!("# Uses\n- [a](./a.agent.md) as billing\n\n{}", rec("M")),
                 ),
                 ("app/a.agent.md", &rec("A")),
             ],

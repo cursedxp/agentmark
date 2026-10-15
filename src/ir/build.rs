@@ -83,7 +83,7 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
                     }
                 }
                 Decl::Tool(t) => b.tool(t, &mut p.functions, &mut p.rust_fns),
-                Decl::Run(r) => p.run.extend(r.items.iter().map(|i| i.name.clone())),
+                Decl::Program(_) => {} // what runs comes from `checked.program`
                 Decl::Constant(_) => {} // inlined at every use
                 Decl::Agent(_) | Decl::Rule(_) => {
                     panic!("internal compiler error: agent_lower left an agent or rule behind")
@@ -91,6 +91,9 @@ pub fn build(project: &Project, checked: &Checked, lowered: &Lowered) -> ir::Pro
             }
         }
         b.crates(fi, &mut p.crates);
+    }
+    if let Some(prog) = &checked.program {
+        p.run = prog.units.clone();
     }
     p
 }
@@ -127,6 +130,7 @@ impl<'a> Builder<'a> {
             ast::TypeKind::Result(i) => Type::Result(Box::new(self.ty(i))),
             ast::TypeKind::Map(k, v) => Type::Map(Box::new(self.ty(k)), Box::new(self.ty(v))),
             ast::TypeKind::Handle { name, .. } => Type::Handle(name.clone()),
+            ast::TypeKind::Infer(_) => panic!("internal compiler error: sema left a type to infer unresolved"),
         }
     }
 
@@ -168,7 +172,7 @@ impl<'a> Builder<'a> {
             .and_then(|(_, i)| i.clone())
     }
 
-    /// `set x = …` on an existing variable: whatever the model was given no longer describes it.
+    /// `… into x` on an existing variable: whatever the model was given no longer describes it.
     fn forget_input(&mut self, name: &str) {
         if let Some(entry) = self.env.iter_mut().rev().find_map(|f| f.get_mut(name)) {
             entry.1 = None;
@@ -431,29 +435,30 @@ impl<'a> Builder<'a> {
             effect: ir::union_effects(&body),
             body,
             source: self.src(c.span.line),
-            run: self.src(self.run_line(c.span.line)),
+            run: self.src(self.steps_line(c.span.line)),
         }
     }
 
-    /// Line of the `## Run` heading after the `# Command` heading at `from` (the heading itself if
-    /// it cannot be found).
-    fn run_line(&self, from: u32) -> u32 {
+    /// Line of the `- steps:` property after the `# Command` heading at `from` (the heading itself
+    /// if it cannot be found).
+    fn steps_line(&self, from: u32) -> u32 {
         self.project.files[self.fi]
             .text
             .lines()
             .enumerate()
             .skip(from as usize)
+            .take_while(|(_, l)| !l.starts_with("# "))
             .find(|(_, l)| {
-                let t = l.trim_start();
-                t.len() >= 6 && t.is_char_boundary(6) && t[..6].eq_ignore_ascii_case("## run") && !t[6..].starts_with(|c: char| c.is_alphanumeric() || c == ':')
+                let t = l.trim_start().trim_start_matches(['-', '*', '+']).trim_start();
+                t.starts_with("steps:")
             })
             .map_or(from, |(i, _)| i as u32 + 1)
     }
 
     fn rust_fn(&mut self, r: &ast::RustBlock) -> ir::RustFn {
         let name = r.name.name.clone();
-        let mut effect = EffectSet::pure();
-        effect.add(r.effect.value, &r.name.name);
+        // `- touches:` is trusted (SPEC 23.7)
+        let effect = self.checked.touches.get(&(crate::sema::Kind::RustBlock, r.name.name.clone())).cloned().unwrap_or_default();
         ir::RustFn {
             params: self.params(&r.params),
             ret: r.out.as_ref().map(|t| self.ty(t)),
@@ -799,13 +804,14 @@ impl<'a> Builder<'a> {
                     into: Some(ir::LocalVar { name: into.name.clone(), ty: Type::Text }),
                 }
             }
-            K::File { verb, path, arg, into } => {
+            K::File { verb, path, arg, into, .. } => {
+                let records = self.checked.file_reads.get(&self.nk(s.span)).cloned();
                 let path = self.expr(path);
                 let arg = arg.as_ref().map(|a| match a {
                     ast::FileArg::To(e) | ast::FileArg::Content(e) => self.expr(e),
                 });
                 let ty = match verb.name.as_str() {
-                    "read" => Some(Type::Text),
+                    "read" => Some(records.clone().unwrap_or(Type::Text)),
                     "list" => Some(Type::List(Box::new(Type::Text))),
                     "exists" => Some(Type::Bool),
                     _ => None,
@@ -817,8 +823,12 @@ impl<'a> Builder<'a> {
                     }
                     _ => None,
                 };
+                let records = match records {
+                    Some(Type::List(item)) => Some(*item),
+                    _ => None,
+                };
                 ir::StmtKind::Effect {
-                    call: ir::EffectCall::File(ir::FileCall { verb: verb.name.clone(), path, arg }),
+                    call: ir::EffectCall::File(ir::FileCall { verb: verb.name.clone(), path, arg, records }),
                     into,
                 }
             }

@@ -9,11 +9,23 @@ const INVOICE: &str =
     "# Record: Invoice\n- id: text\n- amount: money\n- due: date\n- status: text\n\n";
 
 fn rule(when: &str) -> String {
-    format!("{INVOICE}# Rule: r\n- for: Invoice\n- when: {when}\n")
+    format!("{INVOICE}# Rule: r Invoice\n- when: {when}\n")
 }
 
+/// A function `f`; `body` holds one step per line (top-level lines are numbered here, indented
+/// lines are the numbered steps under them, as written).
 fn func(out: &str, body: &str) -> String {
-    format!("{INVOICE}# Function: f\n- in: invoice: Invoice, n: int, tag: maybe text\n- out: {out}\n- effect: pure\n  {body}\n")
+    let mut steps = String::new();
+    let mut n = 0;
+    for line in body.lines() {
+        if line.starts_with(' ') {
+            steps.push_str(&format!("  {line}\n"));
+        } else {
+            n += 1;
+            steps.push_str(&format!("  {n}. {line}\n"));
+        }
+    }
+    format!("{INVOICE}# Function: f\n- in: invoice: Invoice, n: int, tag: maybe text\n- out: {out}\n- touches: nothing\n- steps:\n{steps}")
 }
 
 // ------------------------------------------------------------------ record fields (2.1)
@@ -110,7 +122,7 @@ fn money_plus_duration_is_an_error_with_a_caret_under_the_whole_sum() {
     let e = errors(&rule("amount + 3 days > 5 EUR"));
     assert_eq!(
         e,
-        "t.agent.md:9\n  - when: amount + 3 days > 5 EUR\n          ^^^^^^^^^^^^^^^\n  Cannot add a duration to money.\n  Money only combines with money; durations combine with dates and other durations."
+        "t.agent.md:8\n  - when: amount + 3 days > 5 EUR\n          ^^^^^^^^^^^^^^^\n  Cannot add a duration to money.\n  Money only combines with money; durations combine with dates and other durations."
     );
 }
 
@@ -182,13 +194,13 @@ fn unknown_field_in_a_rule_suggests_the_field() {
     let e = errors(&rule("amout > 100 EUR"));
     assert_eq!(
         e,
-        "t.agent.md:9\n  - when: amout > 100 EUR\n          ^^^^^\n  Unknown field \"amout\" on Invoice. Did you mean \"amount\"?"
+        "t.agent.md:8\n  - when: amout > 100 EUR\n          ^^^^^\n  Unknown field \"amout\" on Invoice. Did you mean \"amount\"?"
     );
 }
 
 #[test]
 fn unknown_field_after_a_dot() {
-    let e = first_error(&func("text", "- return invoice.statsu"));
+    let e = first_error(&func("text", "return invoice.statsu"));
     assert!(
         e.contains("Unknown field \"statsu\" on Invoice. Did you mean \"status\"?"),
         "{e}"
@@ -197,7 +209,7 @@ fn unknown_field_after_a_dot() {
 
 #[test]
 fn field_access_on_a_non_record() {
-    let e = first_error(&func("text", "- return n.x"));
+    let e = first_error(&func("text", "return n.x"));
     assert!(
         e.contains("\"n\" is a number, which has no fields, so \".x\" cannot be read."),
         "{e}"
@@ -206,7 +218,7 @@ fn field_access_on_a_non_record() {
 
 #[test]
 fn unknown_name_lists_close_names() {
-    let e = first_error(&func("int", "- return nn"));
+    let e = first_error(&func("int", "return nn"));
     assert!(
         e.contains("Unknown name \"nn\". Did you mean \"n\"?"),
         "{e}"
@@ -222,7 +234,7 @@ fn the_rule_record_is_also_available_by_name() {
 
 #[test]
 fn returning_first_where_from_a_non_maybe_function() {
-    let e = errors("# Record: Invoice\n- id: text\n- status: text\n\n# Function: find_invoice\n- in: invoices: list of Invoice, wanted: text\n- out: Invoice\n- effect: pure\n  - return first invoice in invoices where invoice.id = wanted\n");
+    let e = errors("# Record: Invoice\n- id: text\n- status: text\n\n# Function: find_invoice\n- in: invoices: list of Invoice, wanted: text\n- out: Invoice\n- touches: nothing\n- steps:\n  1. return first invoice in invoices where invoice.id = wanted\n");
     assert!(
         e.contains("This can find nothing, but the function says it returns \"Invoice\"."),
         "{e}"
@@ -231,40 +243,40 @@ fn returning_first_where_from_a_non_maybe_function() {
 
 #[test]
 fn returning_first_where_from_a_maybe_function_is_fine() {
-    ok("# Record: Invoice\n- id: text\n\n# Function: find_invoice\n- in: invoices: list of Invoice, wanted: text\n- out: maybe Invoice\n- effect: pure\n  - return first invoice in invoices where invoice.id = wanted\n");
+    ok("# Record: Invoice\n- id: text\n\n# Function: find_invoice\n- in: invoices: list of Invoice, wanted: text\n- out: maybe Invoice\n- touches: nothing\n- steps:\n  1. return first invoice in invoices where invoice.id = wanted\n");
 }
 
 #[test]
 fn a_maybe_field_cannot_be_used_in_arithmetic_or_comparisons() {
-    let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- effect: pure\n  - return i.s + 1\n";
+    let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- touches: nothing\n- steps:\n  1. return i.s + 1\n";
     let e = first_error(src);
     assert!(
         e.contains("This value can be empty (maybe int), so it cannot be used in arithmetic yet."),
         "{e}"
     );
-    let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Rule: r\n- for: I\n- when: s > 3\n";
+    let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Rule: r I\n- when: s > 3\n";
     let e = first_error(src);
     assert!(e.contains("so it cannot be compared yet."), "{e}");
 }
 
 #[test]
 fn a_maybe_field_can_be_checked_with_is_not_empty_in_a_condition() {
-    ok("# Record: I\n- id: text\n- s: maybe int\n\n# Rule: r\n- for: I\n- when: s is not empty and s > 3\n");
+    ok("# Record: I\n- id: text\n- s: maybe int\n\n# Rule: r I\n- when: s is not empty and s > 3\n");
 }
 
 #[test]
 fn if_some_unwraps() {
-    ok("# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- effect: pure\n  - if i.s is some v:\n    - return v + 1\n  - return 0\n");
+    ok("# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- touches: nothing\n- steps:\n  1. if i.s is some v:\n     1. return v + 1\n  2. return 0\n");
 }
 
 #[test]
 fn guard_not_empty_unwraps_for_the_rest_of_the_block() {
-    ok("# Record: I\n- id: text\n\n# Function: f\n- in: items: list of I, w: text\n- out: text\n- effect: pure\n  - set found = first x in items where x.id = w\n  - guard: found is not empty\n  - return found.id\n");
+    ok("# Record: I\n- id: text\n\n# Function: f\n- in: items: list of I, w: text\n- out: text\n- touches: nothing\n- steps:\n  1. first x in items where x.id = w into found\n  2. guard: found is not empty\n  3. return found.id\n");
 }
 
 #[test]
 fn a_maybe_record_has_no_fields_until_checked() {
-    let e = first_error("# Record: I\n- id: text\n\n# Function: f\n- in: items: list of I, w: text\n- out: text\n- effect: pure\n  - set found = first x in items where x.id = w\n  - return found.id\n");
+    let e = first_error("# Record: I\n- id: text\n\n# Function: f\n- in: items: list of I, w: text\n- out: text\n- touches: nothing\n- steps:\n  1. first x in items where x.id = w into found\n  2. return found.id\n");
     assert!(
         e.contains("\"found\" can be empty here, so \"id\" cannot be read from it yet."),
         "{e}"
@@ -274,13 +286,13 @@ fn a_maybe_record_has_no_fields_until_checked() {
 
 #[test]
 fn assigning_again_forgets_what_was_checked() {
-    let e = first_error("# Record: I\n- id: text\n\n# Function: f\n- in: items: list of I, w: text\n- out: text\n- effect: pure\n  - set found = first x in items where x.id = w\n  - guard: found is not empty\n  - set found = first x in items where x.id = \"b\"\n  - return found.id\n");
+    let e = first_error("# Record: I\n- id: text\n\n# Function: f\n- in: items: list of I, w: text\n- out: text\n- touches: nothing\n- steps:\n  1. first x in items where x.id = w into found\n  2. guard: found is not empty\n  3. first x in items where x.id = \"b\" into found\n  4. return found.id\n");
     assert!(e.contains("\"found\" can be empty here"), "{e}");
 }
 
 #[test]
 fn a_maybe_value_in_text_is_an_error() {
-    let src = "# Record: I\n- id: text\n- s: maybe text\n\n# Function: f\n- in: i: I\n- out: text\n- effect: pure\n  - return \"s is {i.s}\"\n";
+    let src = "# Record: I\n- id: text\n- s: maybe text\n\n# Function: f\n- in: i: I\n- out: text\n- touches: nothing\n- steps:\n  1. return \"s is {i.s}\"\n";
     let e = first_error(src);
     assert!(e.contains("so it cannot be written into text yet."), "{e}");
 }
@@ -289,7 +301,7 @@ fn a_maybe_value_in_text_is_an_error() {
 fn is_some_on_a_plain_value() {
     let e = first_error(&func(
         "int",
-        "- if n is some v:\n    - return v\n  - return 0",
+        "if n is some v:\n   1. return v\nreturn 0",
     ));
     assert!(
         e.contains("is never empty, so \"is some\" is not needed."),
@@ -301,7 +313,7 @@ fn is_some_on_a_plain_value() {
 
 #[test]
 fn return_type_mismatch() {
-    let e = first_error(&func("int", "- return invoice.status"));
+    let e = first_error(&func("int", "return invoice.status"));
     assert!(
         e.contains("This returns text, but the function says it returns \"int\"."),
         "{e}"
@@ -310,21 +322,21 @@ fn return_type_mismatch() {
 
 #[test]
 fn a_plain_value_fits_a_maybe_result() {
-    ok(&func("maybe int", "- return n"));
+    ok(&func("maybe int", "return n"));
 }
 
 #[test]
 fn call_arity_and_argument_types() {
     let src = format!(
-        "{}\n# Function: g\n- out: int\n- effect: pure\n  - return f(1)\n",
-        func("int", "- return n")
+        "{}\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return f(1)\n",
+        func("int", "return n")
     );
     let e = first_error(&src);
     assert!(
         e.contains("\"f\" takes 3 values (invoice, n, tag), but 1 was given."),
         "{e}"
     );
-    let src = format!("{}\n# Function: g\n- in: i: Invoice\n- out: int\n- effect: pure\n  - return f(i, \"x\", \"t\")\n", func("int", "- return n"));
+    let src = format!("{}\n# Function: g\n- in: i: Invoice\n- out: int\n- touches: nothing\n- steps:\n  1. return f(i, \"x\", \"t\")\n", func("int", "return n"));
     let e = first_error(&src);
     assert!(
         e.contains("\"n\" of \"f\" must be int, but this is text."),
@@ -335,8 +347,8 @@ fn call_arity_and_argument_types() {
 #[test]
 fn unknown_function_suggests() {
     let src = format!(
-        "{}\n# Function: g\n- out: int\n- effect: pure\n  - return ff(1)\n",
-        func("int", "- return n")
+        "{}\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return ff(1)\n",
+        func("int", "return n")
     );
     let e = first_error(&src);
     assert!(
@@ -347,12 +359,12 @@ fn unknown_function_suggests() {
 
 #[test]
 fn return_outside_a_function_and_stop_inside_one() {
-    let e = first_error("# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- return 1\n");
+    let e = first_error("# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. return 1\n");
     assert!(
         e.contains("\"return\" only works inside a function."),
         "{e}"
     );
-    let e = first_error(&func("int", "- stop\n  - return n"));
+    let e = first_error(&func("int", "stop\nreturn n"));
     assert!(
         e.contains("\"stop\" ends a block, but this is a function."),
         "{e}"
@@ -361,7 +373,7 @@ fn return_outside_a_function_and_stop_inside_one() {
 
 #[test]
 fn a_function_with_out_must_return() {
-    let e = first_error("# Function: f\n- out: int\n- effect: pure\n  - set x = 1\n");
+    let e = first_error("# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. 1 into x\n");
     assert!(
         e.contains("The function \"f\" says it returns a value but never does."),
         "{e}"
@@ -369,8 +381,8 @@ fn a_function_with_out_must_return() {
 }
 
 #[test]
-fn set_keeps_the_type_of_a_variable() {
-    let e = first_error(&func("int", "- set x = 1\n  - set x = \"a\"\n  - return x"));
+fn into_keeps_the_type_of_a_variable() {
+    let e = first_error(&func("int", "1 into x\n\"a\" into x\nreturn x"));
     assert!(e.contains("\"x\" holds int, but this is text."), "{e}");
 }
 
@@ -403,7 +415,7 @@ fn a_constant_defined_in_terms_of_itself() {
 
 #[test]
 fn record_literals_and_for_each_over_non_lists() {
-    let e = first_error("# Agent: a\n- model: claude\n- tools: log\n\n## On start\nfor each x in 5:\n  - log: \"x\"\n");
+    let e = first_error("# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. for each x in 5:\n   1. log: \"x\"\n");
     assert!(
         e.contains("\"for each\" needs a list, but this is a number."),
         "{e}"
@@ -412,7 +424,7 @@ fn record_literals_and_for_each_over_non_lists() {
 
 #[test]
 fn rule_filters_check_the_record() {
-    let src = "# Record: Invoice\n- id: text\n\n# Record: Lead\n- id: text\n\n# Rule: r\n- for: Lead\n- when: id = \"a\"\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each r invoice in crm.invoices:\n  - log: \"x\"\n";
+    let src = "# Record: Invoice\n- id: text\n\n# Record: Lead\n- id: text\n\n# Rule: r Lead\n- when: id = \"a\"\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each r invoice in crm.invoices:\n   1. log: \"x\"\n";
     let e = first_error(src);
     assert!(
         e.contains("The rule \"r\" is about Lead, but the list holds Invoice."),
@@ -422,7 +434,7 @@ fn rule_filters_check_the_record() {
 
 #[test]
 fn unknown_rule_suggests() {
-    let src = "# Record: Invoice\n- id: text\n\n# Rule: overdue\n- for: Invoice\n- when: id = \"a\"\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each overdu invoice in crm.invoices:\n  - log: \"x\"\n";
+    let src = "# Record: Invoice\n- id: text\n\n# Rule: overdue Invoice\n- when: id = \"a\"\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each overdu invoice in crm.invoices:\n   1. log: \"x\"\n";
     let e = first_error(src);
     assert!(
         e.contains("Unknown rule \"overdu\". Did you mean \"overdue\"?"),
@@ -432,9 +444,9 @@ fn unknown_rule_suggests() {
 
 #[test]
 fn model_answers_are_text_or_the_named_record() {
-    let src = "# Record: Q\n- score: int\n\n# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- ask model: \"hi\" -> t\n- ask model: \"hi\" as Q -> q\n- guard: q matches Q\n- log: \"{t} {q.score}\"\n";
+    let src = "# Record: Q\n- score: int\n\n# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. ask model: \"hi\" into t\n2. ask model: \"hi\" as Q into q\n3. guard: q matches Q\n4. log: \"{t} {q.score}\"\n";
     ok(src);
-    let bad = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- ask model: \"hi\" as Qq -> q\n";
+    let bad = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. ask model: \"hi\" as Qq into q\n";
     let e = first_error(bad);
     assert!(e.contains("Unknown type \"Qq\""), "{e}");
 }

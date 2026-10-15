@@ -10,34 +10,33 @@
 
 ## A whole program
 
-A program is a few `.agent.md` files. Headings say what a part is, bullet points say what it does, and `>` lines describe it. This one reads a sales file and prints what every region brought in:
+A program is a few `.agent.md` files, and they are ordinary Markdown. A heading says what a part is, the paragraph under it describes it, bullets are its details and numbers are its steps. This one reads a sales file and prints what every region brought in:
 
 ```agentmark
-> One line of the sales file: where it was sold and for how much.
+# Program: sales-summary
+Reads a sales file and prints what every region brought in.
+
+- start: [sales-summary](#command-sales-summary)
+
 # Record: Sale
+One line of the sales file: where it was sold and for how much.
+
 - region: text
 - amount: money
 
-> Prints the revenue of every region in a sales file: `sales-summary <path>`.
 # Command: sales-summary
-- args: path: text
+Prints the revenue of every region in a sales file: `sales-summary <path>`.
 
-## Run
-- try file read path -> content
-  otherwise:
-    - print: "Could not read {path}"
-    - stop
-- try csv.parse(content) as list of Sale -> sales
-  otherwise:
-    - print: "{path} is not a valid sales file"
-    - stop
-- set by_region = group sales by region
-- for each region, rows in by_region:
-  - print: "{region}: {sum of amount in rows}"
-- print: "Total: {sum of amount in sales}"
-
-# Run
-- sales-summary
+- in: path: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. group sales by region into by_region
+  3. for each region, region_sales in by_region:
+     1. print: "{region}: {sum of amount in region_sales}"
+  4. print: "Total: {sum of amount in sales}"
 ```
 
 Saved as `sales-summary.agent.md`, next to the `sales.csv` of `fixtures/06-sales-report/input/`, it prints:
@@ -55,7 +54,7 @@ What to notice:
 - **`money`** is a type with a currency (`120.00 EUR`). Money never mixes with a plain number or another currency.
 - Reading a file can fail, so it is written `try … otherwise:`. There are no exceptions and no `null`.
 - A value that may be missing is `maybe`.
-- `agentmark check` prints what each part can touch. It computes this from the code. Nobody declares it by hand.
+- `agentmark check` prints what each part touches. It computes this from the steps. Nobody declares it by hand.
 
 It is a general-purpose language: records and enums, functions, `match`, lists and maps, a built-in library for text, patterns, numbers, dates, paths, JSON and CSV, files, commands, web services and any Rust library you can name.
 
@@ -102,12 +101,12 @@ The same rule holds there: keep that checkout. Without installing, `cargo run --
 ## Your first program in 3 steps
 
 1. Save the program above as `sales-summary.agent.md`. Copy `fixtures/06-sales-report/input/sales.csv` next to it.
-2. Check it. This prints what the program can touch:
+2. Check it. This prints what the program touches:
 
    ```text
    $ agentmark check sales-summary.agent.md
-   Effects (what each block can touch)
-     sales-summary / Run: local(file, print)
+   What each part touches
+     sales-summary: touches files, print
 
    ok: 0 errors, 0 warnings.
    ```
@@ -128,10 +127,11 @@ The same check on `examples/06-sales-report`, the full version that also sorts t
 
 ```console
 $ agentmark check examples/06-sales-report
-Effects (what each block can touch)
-  sales-report / Run: local(file, print)
-  function region_totals: pure
-  function table_row: pure
+What each part touches
+  sales-report: touches files, print
+  region_totals: touches nothing
+  table_row: touches nothing
+
 ok: 0 errors, 0 warnings.
 ```
 
@@ -148,7 +148,7 @@ ok: 0 errors, 0 warnings.
 | set up my editor or an AI assistant | [Editors and AI assistants](#editors-and-ai-assistants) |
 | read the language specification | [SPEC.md](SPEC.md) (section 22 makes it general-purpose) |
 | see how the compiler works | [DESIGN.md](DESIGN.md) |
-| see decisions the spec left open | [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) |
+| see decisions the spec left open | [docs/dev/OPEN_QUESTIONS.md](docs/dev/OPEN_QUESTIONS.md) |
 
 Ten example projects live in `examples/`. `fixtures/` holds the input files, model answers, tool data and expected output and traces for running them offline.
 
@@ -177,20 +177,21 @@ Problems are printed as `file:line`, the source line, a caret and a plain-langua
 
 ### check
 
-Reads everything, reports errors and warnings, and prints what each block can touch. This is the line you approve.
+Reads everything, reports errors and warnings, and prints what each part touches. This is the report you read first and approve.
 
 | It says | Meaning |
 |---|---|
-| `pure` | touches nothing |
-| `local(file, print)` | works on this computer |
-| `network(crm, email)` | talks to those tools |
-| `model` | asks an AI |
+| `touches nothing` | only looks at what it has |
+| `touches files, print` | works on this computer |
+| `touches crm, email` | talks to those tools |
+| `touches AI, ...` | asks an AI (always listed first) |
 
 ```console
 $ agentmark check examples/10-log-analyzer
-Effects (what each block can touch)
-  analyze-log / Run: local(file, print)
-  function rank_services: pure
+What each part touches
+  analyze-log: touches files, print
+  rank_services: touches nothing
+
 ok: 0 errors, 0 warnings.
 ```
 
@@ -211,7 +212,7 @@ built out (8 files). Compile it with: cargo build --release --manifest-path out/
 
 `run` builds the program and runs it. `trace` does the same and prints the trace on stdout, one JSON object per line: every file touched, every line printed, every tool and model call.
 
-- A program with one `# Command` in its `# Run` makes that command the default. The arguments go after `--`: `analyze-log <path> [--top N]` here.
+- A program whose only command is the one named in `# Program`'s `- start:` makes that command the default. The arguments go after `--`: `analyze-log <path> [--top N]` here.
 - A program with schedules (an agent's "every day at 09:00") fires each once, so a run ends.
 
 ```console
@@ -252,7 +253,7 @@ lint: 0 errors, 0 warnings in 7 files.
 
 ### doc
 
-Prints the documentation page of a project, or the cheat sheet of a bound library. The page lists commands, records, functions, services, agents and what each block can touch.
+Prints the documentation page of a project, or the cheat sheet of a bound library. The page lists commands, records, functions, services, agents and what each part touches.
 
 ```console
 $ agentmark doc examples/06-sales-report
@@ -261,7 +262,7 @@ $ agentmark doc examples/06-sales-report
 ### sales-report
 Reads a sales CSV file and writes a revenue report per region, biggest region first.
 …
-- can touch: local(file, print)
+sales-report: touches files, print
 …
 ```
 
@@ -304,9 +305,9 @@ effect: pure
 
 ## Libraries
 
-**Built in.** `text`, `regex`, `number`, `money`, `date`, `path`, `json` and `csv` are part of the language. Each has a fixed effect that `check` shows, and all of them are pure. They are listed in [docs/reference.md](docs/reference.md), section 22.3.
+**Built in.** `text`, `regex`, `number`, `money`, `date`, `path`, `json` and `csv` are part of the language. None of them touches anything outside the program. They are listed in [docs/reference.md](docs/reference.md), section 22.3.
 
-`file` is a built-in tool that needs no `tools.toml` entry. Its verbs are `file read`, `write`, `append`, `list`, `rename`, `exists` and `delete`. Reading standard input is `- read input -> text`.
+`file` is a built-in tool that needs no `tools.toml` entry. Its verbs are `file read`, `write`, `append`, `list`, `rename`, `exists` and `delete`. Reading standard input is `read input into text`.
 
 **Any Rust crate.** The rest of the Rust ecosystem is available through the binder and three lines in your program. The binder is the `agentmark bind` command from the table above.
 
@@ -318,14 +319,14 @@ You create a handle with a statement and call methods on it, and the checker kno
 
 ### Any crate: three lines
 
-1. Write `# Import: crate sha2` at the top of the file and use the library in a plain statement: `- sha2 sha256_digest "{invoice.id}{invoice.amount}" -> digest`.
+1. Write `# Import: crate sha2` at the top of the file and use the library in a plain step: `sha2 sha256_digest "{invoice.id}{invoice.amount}" into digest`.
 2. Run `agentmark check`. The first time, it generates `bindings/sha2.agent.md` and stops, because nobody has approved what the library may touch.
 3. Open the binding, read the proposed effect and change `- effect: unverified` to the right class (`pure` here). `check` is green.
 
 ```console app
 $ AGENTMARK_MODEL=mock:$PWD/tests/binder/model.json AGENTMARK_RUSTDOC_JSON=$PWD/tests/binder/sha2.json AGENTMARK_RUSTDOC_JSON_DIR=$PWD/tests/binder agentmark check app
 binding sha2: generated
-app/bindings/sha2.agent.md:5
+app/bindings/sha2.agent.md:6
   - effect: unverified
   The binding "sha2" is unverified: nobody approved what it may touch.
   Approve it by changing the line to "- effect: pure" (or the right class).
@@ -338,7 +339,7 @@ ok: 0 errors, 0 warnings.
 
 Here `app` is a copy of `examples/05-invoice-service` without its `bindings/sha2.agent.md`.
 
-The effect line is the only thing you approve. It is what `check` holds every caller to: a function that says `- effect: pure` and calls a library you marked `network` is an error. The pin is the version in the binding header: the generated `Cargo.toml` depends on `sha2 = "=0.10.9"`.
+The `- effect:` line of a binding (the one place that word is kept) is the only thing you approve. It is what `check` holds every caller to: a function that says `- touches: nothing` and calls a library you marked `network` is an error. The pin is the version in the binding header: the generated `Cargo.toml` depends on `sha2 = "=0.10.9"`.
 
 **Watch out:** `build`, `run` and `trace` refuse a program that uses an unapproved binding. While you develop, `--allow-unverified` on `check`, `build`, `run` and `trace` assumes the proposed effect and warns once per binding.
 
@@ -346,14 +347,14 @@ The effect line is the only thing you approve. It is what `check` holds every ca
 
 ## Tools you write, tools you connect
 
-A tool is something a program calls with a statement, such as `- slugger slug title -> s`. Two kinds exist.
+A tool is something a program calls with a step, such as `slugger slug title into s`. Two kinds exist.
 
 | Kind | Where it lives | Needs |
 |---|---|---|
 | written in AgentMark | a `# Tool` declaration | nothing else |
 | implemented outside the program (a real CRM, an email provider) | `tools.toml` and `rust/connect.rs` | Rust code, see [Connecting real tools](docs/connect.md) |
 
-A `# Tool` has one `## verb(params) -> type` block per verb. Its declared effect is checked against its body exactly like a function's.
+A `# Tool` has one `## verb(params) -> type` block per verb. What it touches is worked out from its body, and a `- touches:` line you write is checked against it, exactly like a function's.
 
 A program that only uses these tools and the built-in `file` tool needs no `tools.toml` and no Rust. [docs/guide.md](docs/guide.md) shows a complete example in Lesson 11, "Write your own tool".
 
@@ -380,30 +381,37 @@ An **agent** is a program that wakes up on a schedule or an event, uses tools, a
 
 What agents add is the vocabulary for the risky part:
 
-- Every block states what it may touch (model, network, files, local state).
+- Every block's touches are reported (AI, systems, files, local state).
 - `ask model` is followed by a `guard:` on the answer.
 - `check` refuses an agent that does more than its `tools:` line says.
 
 ```agentmark
-> Says hello every Monday.
+# Program: greeter
+Says hello every Monday.
+
 # Agent: greeter
+Says hello every Monday.
+
 - model: claude
 - tools: log
 
 ## Every Monday at 08:00
-- ask model: "Write one friendly sentence for the week." -> line
-- guard: line is not empty
-- log: "{line}"
+Asks the model for one friendly sentence and logs it.
+
+1. ask model: "Write one friendly sentence for the week." into line
+2. guard: line is not empty
+3. log: "{line}"
 ```
 
 `examples/01-invoice-chaser` is a complete agent. `check` prints what it can touch.
 
 ```console
 $ agentmark check examples/01-invoice-chaser
-Effects (what each block can touch)
-  invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)
-  invoice-chaser / Do remind: model, network(email, crm), local(log)
-  rule overdue: pure
+What each part touches
+  invoice-chaser / Every day at 09:00: touches AI, crm, email, log
+  invoice-chaser / Do remind: touches AI, crm, email, log
+  overdue: touches nothing
+
 ok: 0 errors, 0 warnings.
 ```
 

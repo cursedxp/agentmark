@@ -1,7 +1,6 @@
-# Import: ./commands/mixed.agent.md
-# Import: ./commands/words.agent.md
+# Program: words
+Every collection word of SPEC 22.2, one command each.
 
-> Every collection word of SPEC 22.2, one command each.
-# Run
-- words
-- mixed
+# Uses
+- [mixed](./commands/mixed.agent.md)
+- [words](./commands/words.agent.md)

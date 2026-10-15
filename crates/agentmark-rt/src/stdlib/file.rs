@@ -15,10 +15,23 @@ fn fail(what: &str, path: &str, e: std::io::Error) -> RtError {
     RtError::Lib(format!("cannot {what} \"{path}\": {why}"))
 }
 
-/// `file read path -> content`: the whole file as text.
+/// `file read path into content`: the whole file as text.
 pub fn read(ctx: &Ctx, path: &str) -> Result<String, RtError> {
     ctx.trace_file("read", path, None)?;
     std::fs::read_to_string(path).map_err(|e| fail("read", path, e))
+}
+
+/// `file read path into sales` where `sales` is a list of records (SPEC 23.10): the file is CSV,
+/// its header row names the fields. Traced like `read`; a file whose name does not end in `.csv`
+/// (any case) fails like a file that is not valid CSV.
+pub fn read_records<T: serde::de::DeserializeOwned>(ctx: &Ctx, path: &str) -> Result<Vec<T>, RtError> {
+    let text = read(ctx, path)?;
+    if !path.to_ascii_lowercase().ends_with(".csv") {
+        return Err(RtError::Lib(format!(
+            "cannot read \"{path}\" as records: only .csv files can be read into a list of records"
+        )));
+    }
+    super::csv::parse(&text).map_err(|e| RtError::Lib(format!("\"{path}\" is not a valid CSV file: {e}")))
 }
 
 /// `file write path: content`: exactly `content`; an existing file is replaced.
@@ -34,7 +47,7 @@ pub fn append(ctx: &Ctx, path: &str, line: &str) -> Result<(), RtError> {
     writeln!(f, "{line}").map_err(|e| fail("append to", path, e))
 }
 
-/// `file list folder -> names`: the names inside the folder (files and folders), sorted.
+/// `file list folder into names`: the names inside the folder (files and folders), sorted.
 pub fn list(ctx: &Ctx, path: &str) -> Result<Vec<String>, RtError> {
     ctx.trace_file("list", path, None)?;
     let mut names = Vec::new();
@@ -55,7 +68,7 @@ pub fn rename(ctx: &Ctx, old: &str, new: &str) -> Result<(), RtError> {
     std::fs::rename(old, new).map_err(|e| fail("rename", old, e))
 }
 
-/// `file exists path -> present`: is there a file or folder at the path?
+/// `file exists path into present`: is there a file or folder at the path?
 pub fn exists(ctx: &Ctx, path: &str) -> Result<bool, RtError> {
     ctx.trace_file("exists", path, None)?;
     Ok(std::path::Path::new(path).exists())

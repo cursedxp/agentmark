@@ -573,14 +573,14 @@ impl Checker<'_> {
             format!("\"{}\" holds a result, which can only be matched.", segs[0].name),
         )
         .with_help(format!(
-            "Write \"- match {}:\" with the branches \"ok value\" and \"error problem\".",
+            "Write \"match {}:\" with the branches \"ok value\" and \"error problem\".",
             segs[0].name
         ));
         self.diags.push(d);
         Type::Unknown
     }
 
-    /// `none` whose type nothing decides (`set d = none`) would not compile.
+    /// `none` whose type nothing decides (`none into d`) would not compile.
     pub(super) fn untyped_none(&mut self, cx: &Cx, e: &Expr, t: &Type) {
         let span = e.span;
         if matches!(e.kind, ExprKind::None) && matches!(t, Type::Maybe(i) if i.is_unknown()) {
@@ -604,7 +604,7 @@ impl Checker<'_> {
             span,
             format!("A {n} cannot be written into text as a whole."),
         )
-        .with_help("Use \"- match <value>:\" and write what each variant carries.");
+        .with_help("Use \"match <value>:\" and write what each variant carries.");
         self.diags.push(d);
     }
 

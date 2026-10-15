@@ -122,6 +122,7 @@ fn ty_of(t: &TypeExpr) -> Result<Ty, String> {
         TypeKind::Result(_) => Err("a signature cannot say \"result of\"; failures are already handled".into()),
         TypeKind::Map(..) => Err("a binding signature cannot use a map".into()),
         TypeKind::Handle { name, mode } => Ok(Ty::Handle { name: name.clone(), mode: *mode }),
+        TypeKind::Infer(words) => Err(format!("\"{}\" is not a type", words.join(" "))),
     }
 }
 

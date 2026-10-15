@@ -329,10 +329,7 @@ impl Lw<'_> {
                 default: None,
             }],
             out: Some(named_type("bool", r.span)),
-            effect: Spanned {
-                value: Effect::Pure,
-                span: r.span,
-            },
+            touches: None,
             body: vec![Stmt {
                 span: synth(r.when.span),
                 comments: Vec::new(),
@@ -357,7 +354,6 @@ impl Lw<'_> {
         for (bi, b) in a.blocks.iter().enumerate() {
             let info = self.block_info(b.span, &[BlockKind::Entry, BlockKind::Action]);
             let param = info.and_then(|i| i.param.clone());
-            let class = info.map(|i| i.effect.class()).unwrap_or(Effect::Pure);
             self.bare = vec![param.clone()];
             let body = self.stmts(&b.body);
             let param_decl = param.map(|(v, r)| Param {
@@ -370,8 +366,6 @@ impl Lw<'_> {
             });
             match &b.trigger {
                 Trigger::Do(n) => {
-                    // an unverified binding counts like network (SPEC 15.3)
-                    let class = if class == Effect::Unverified { Effect::Network } else { class };
                     out.push(Decl::Function(Function {
                         span: b.span,
                         doc: b.doc.clone(),
@@ -382,10 +376,7 @@ impl Lw<'_> {
                         },
                         params: param_decl.into_iter().collect(),
                         out: None,
-                        effect: Spanned {
-                            value: class,
-                            span: b.span,
-                        },
+                        touches: None,
                         body,
                     }));
                 }
@@ -674,7 +665,8 @@ impl Lw<'_> {
                 list: self.expr(list),
             },
             StmtKind::ReadInput { into } => StmtKind::ReadInput { into: into.clone() },
-            StmtKind::File { verb, path, arg, into } => StmtKind::File {
+            StmtKind::File { verb, path, arg, into, into_ty } => StmtKind::File {
+                into_ty: into_ty.clone(),
                 verb: verb.clone(),
                 path: self.expr(path),
                 arg: arg.as_ref().map(|a| match a {

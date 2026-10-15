@@ -1,12 +1,14 @@
-> tests/errors/indent-too-deep.agent.md:12
->       - log: "nested too far"
->   ^^^^
->   This line is indented 4 spaces, but only 2 are possible here. Indent by one level (2 spaces) at a time.
+> tests/errors/indent-too-deep.agent.md:14
+>       1. log: "nested under a step that takes no steps"
+>          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>   Nothing can be indented under this step.
 
 # Agent: greeter
+Greets on start.
+
 - model: claude
 - tools: email, log
 
 ## On start
-- log: "hello"
-    - log: "nested too far"
+1. log: "hello"
+    1. log: "nested under a step that takes no steps"

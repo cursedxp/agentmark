@@ -206,9 +206,9 @@ fn arguments_named_a_and_rest_and_money_and_date_arguments_work() {
     // the same types as arguments of a subcommand (several commands)
     let src = temp("odd2-src");
     write(&src, "agentmark.toml", "name = \"odd2\"\nversion = \"0.1.0\"\ntargets = [\"rust\"]\n");
-    write(&src, "main.agent.md", "# Import: ./one.agent.md\n# Import: ./two.agent.md\n\n# Run\n- one\n- two\n");
-    write(&src, "one.agent.md", "# Command: one\n- args: price: money, day: date\n\n## Run\n- print: \"{price} {day}\"\n");
-    write(&src, "two.agent.md", "# Command: two\n\n## Run\n- print: \"two\"\n");
+    write(&src, "main.agent.md", "# Program: one\n\n# Uses\n- [one](./one.agent.md)\n- [two](./two.agent.md)\n");
+    write(&src, "one.agent.md", "# Command: one\n- in: price: money, day: date\n- steps:\n  1. print: \"{price} {day}\"\n");
+    write(&src, "two.agent.md", "# Command: two\n- steps:\n  1. print: \"two\"\n");
     let out = temp("odd2-out");
     let o = agentmark(&["build", s(&src), "--target", "rust", "-o", s(&out)]).output_locked();
     assert!(o.status.success(), "{}", stderr(&o));

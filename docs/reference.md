@@ -5,34 +5,35 @@
 - It is for people, editor plugins and AI assistants that write AgentMark.
 - After reading it you can write a correct statement for any task and look up its error.
 
-**Jump to:** [Cheat sheet](#cheat-sheet) · [Statements](#4-statements) · [Expressions](#5-expressions) · [Functions, commands, services](#13-core-language-functions-and-modules-layer-2) · [Errors](#14-errors) · [Collections, library, tools](#22-v03-a-general-purpose-markdown-language) · [Statement index](#appendix-a-statement-index)
+**Jump to:** [Cheat sheet](#cheat-sheet) · [Statements](#4-statements) · [Expressions](#5-expressions) · [Functions, commands, services](#13-core-language-functions-and-modules-layer-2) · [Errors](#14-errors) · [Collections, library, tools](#22-v03-a-general-purpose-markdown-language) · [v0.4 syntax](#23-v04-plain-sentences-real-markdown) · [Statement index](#appendix-a-statement-index)
 
 ## Cheat sheet
 
-The 20 statement forms you will write most. Appendix A lists all of them.
+The 20 statement forms you will write most. Appendix A lists all of them. Every statement is a numbered step (`1.`, `2.`, ...); the table leaves the number out.
 
 | form | what it does | read |
 |---|---|---|
-| `set total = total + 1` | creates or changes a variable | [4.5](#45-assignment) |
-| `for each invoice in crm.invoices:` | repeats the body for every item | [4.1](#41-control) |
+| `count of rows into total` | names the result of a step: `into <name>` ends the line | [4.5](#45-naming-a-result-into) |
+| `for each invoice in crm.invoices:` | repeats the steps under it for every item | [4.1](#41-control) |
 | `if amount > 1000 EUR:` then `else:` | picks a branch | [4.1](#41-control) |
 | `match shape:` | takes an enum, a `maybe` or a `result` apart | [22.1](#221-user-defined-types) |
 | `stop` | ends the current block | [4.1](#41-control) |
-| `do remind` or `do f(x) -> y` | calls a `## Do` block or a function | [4.1](#41-control), [13.1](#131-function) |
+| `do remind` or `do f(x) into y` | calls a `## Do` block or a function | [4.1](#41-control), [13.1](#131-function) |
 | `return x * 2` | gives back the value of a function | [13.1](#131-function) |
 | `guard: reply is not empty` | checks a condition and stops when it fails | [4.4](#44-guards) |
-| `ask model: "Name a color." -> answer` | asks a model | [4.2](#42-model) |
+| `ask model: "Name a color." into answer` | asks a model | [4.2](#42-model) |
 | `crm update invoice: status = "paid"` | calls a tool | [4.3](#43-tool-calls) |
-| `try http get "https://x.example" -> r` | runs a call that can fail, with `otherwise:` as the fallback | [14](#14-errors) |
+| `try http get "https://x.example" into r` | runs a call that can fail, with `otherwise:` as the fallback | [14](#14-errors) |
 | `print: "Total {total}"` | writes a line to standard output | [13.3](#133-service-and-command) |
-| `read file path as list of Row -> rows` | reads a file into a typed value | [13.3](#133-service-and-command) |
+| `try file read path into sales` | reads a file; a plural record name (`sales` for `Sale`) reads CSV into a list of it | [23.10](#2310-reading-a-file-into-records) |
 | `file write "out.txt": body` | writes, appends, lists or renames files | [22.3](#223-the-built-in-library) |
-| `append row to rows` | adds to the end of a list | [22.2](#222-collection-words) |
-| `set top = sort rows by amount descending` | sorts, groups, sums and filters lists | [22.2](#222-collection-words) |
+| `add row to rows` | adds to the end of a list | [22.2](#222-collection-words) |
+| `add RegionTotal to totals:` with bullets | builds a record from `name: value` bullets and adds it | [23.11](#2311-adding-to-a-list-add) |
+| `sort rows by amount descending into top` | sorts, groups, sums and filters lists | [22.2](#222-collection-words) |
 | `text.trim(name)` | calls the built-in library | [22.3](#223-the-built-in-library) |
-| `pdf render title -> bytes` | calls a bound Rust library | [15](#15-library-access-automatic-bindings) |
+| `pdf render title into doc` | calls a bound Rust library | [15](#15-library-access-automatic-bindings) |
 | `respond 404` | ends a service route with a status | [13.3](#133-service-and-command) |
-| `parallel:` | runs the indented statements at the same time | [16](#16-concurrency) |
+| `parallel:` | runs the steps under it at the same time | [16](#16-concurrency) |
 
 ## How to read this page
 
@@ -40,53 +41,57 @@ This is the whole language in one file. It follows `SPEC.md` section by section,
 
 Every section opens with a small complete example, then a list of rules, then the details. Code blocks marked as programs are checked by `tests/docs.rs`, and pieces without a heading line are parsed there. Output shown here is the real output of the tools.
 
-Where the specification left a question open, the text states the choice and `OPEN_QUESTIONS.md` lists it as a `Q` number. Appendix B groups the numbers by topic.
+Where the specification left a question open, the text states the choice and `dev/OPEN_QUESTIONS.md` lists it as a `Q` number. Appendix B groups the numbers by topic.
 
 **Rules that hold everywhere**
-- One statement is one line, at most 120 characters. The text between the quotes of a string does not count, per Q35.
-- Indentation is exactly 2 spaces per level. A tab is an error.
+- One step is one line, at most 120 characters. The text between the quotes of a string does not count, per Q35.
+- Steps are numbered lists. A step under another step starts at the text of its parent: 3 spaces under `1.` to `9.`, 4 under `10.`, 2 under a `-` bullet. A tab is an error.
+- Every Markdown element has one meaning ([23.1](#231-what-each-markdown-element-means)): `#` is a part, the paragraph under it is its description, `-` bullets are properties, `1.` lists are steps.
 - A file ends in `.agent.md`.
 - Names are case-sensitive. Headings are not.
 
 ## Language at a glance
 
 ```agentmark
+# Program: areas
+Prints the areas of three shapes, biggest first.
+
 # Enum: Shape
 - Circle: radius: int
 - Rect: width: int, height: int
 - Empty
 
-> Area of a shape, rounded down.
 # Function: area
+Area of a shape, rounded down.
+
 - in: shape: Shape
 - out: int
-- effect: pure
-  - match shape:
-    - Circle c:
-      - return c.radius * c.radius * 3
-    - Rect r:
-      - return r.width * r.height
-    - Empty:
-      - return 0
+- touches: nothing
+- steps:
+  1. match shape:
+     - Circle c:
+       1. return c.radius * c.radius * 3
+     - Rect r:
+       1. return r.width * r.height
+     - Empty:
+       1. return 0
 
-> Prints the areas of three shapes, biggest first.
 # Command: areas
-- args: label: text = "Areas"
+Prints the areas of three shapes, biggest first.
 
-## Run
-- set shapes = list of Rect { width: 2, height: 5 }, Circle { radius: 2 }, Empty
-- set sizes = map shapes to area(item)
-- set ranked = sort sizes by item descending
-- set words = map ranked to "{item}"
-- print: "{label}: {join words with ", "}"
-
-# Run
-- areas
+- in: label: text = "Areas"
+- steps:
+  1. list of Rect { width: 2, height: 5 }, Circle { radius: 2 }, Empty into shapes
+  2. map shapes to area(item) into sizes
+  3. sort sizes by item descending into ranked
+  4. map ranked to "{item}" into words
+  5. print: "{label}: {join words with ", "}"
 ```
 
 **Rules**
 - AgentMark is a general-purpose programming language written as Markdown. `agentmark build` turns a project into one standalone binary.
-- A program is made of declarations: `# Record`, `# Enum`, `# Function`, `# Command`, `# Service`, `# Tool` and `# Constant`. Each is a heading with `-` lines under it.
+- A program is made of parts: `# Record`, `# Enum`, `# Function`, `# Command`, `# Service`, `# Tool` and `# Constant`. Each is a heading, a one-sentence description, then `-` properties or a numbered list of steps.
+- The entry file starts with `# Program: <name>` and, with several commands, `- start: <command>`. Files it uses are listed under `# Uses` ([23.4](#234-program-and-uses)).
 - The program above uses no agent, no tool and no outside library. It needs only the built-in ones.
 - Agents are one feature, not the center. Before anything is generated, every agent construct is rewritten into functions and entries, as section 0 shows.
 - The agent sections keep the places the specification gives them. If you never write an agent, read sections 2.1, 4.1, 4.3, 4.5, 5 to 8 and 13 to 18 first.
@@ -95,13 +100,14 @@ Where the specification left a question open, the text states the choice and `OP
 
 | you want | read |
 |---|---|
-| records, rules, constants, files and imports | [2.1](#21-record), [2.2](#22-rule), [1](#1-file-structure), [18](#18-code-organization-and-readability) |
+| records, rules, constants, files and `# Uses` | [2.1](#21-record), [2.2](#22-rule), [1](#1-file-structure), [18](#18-code-organization-and-readability) |
+| everything new in v0.4: removed forms, `into`, `touches`, `add`, typed file read | [23](#23-v04-plain-sentences-real-markdown) |
 | functions, commands, services | [13](#13-core-language-functions-and-modules-layer-2) |
 | enums, `match`, collection words, the built-in library, the `file` tool, user-defined tools, default commands | [22](#22-v03-a-general-purpose-markdown-language) |
 | `try`, `maybe`, errors | [14](#14-errors) |
 | Rust libraries and `## Rust` blocks | [15](#15-library-access-automatic-bindings), [17](#17-escape-hatch--rust-blocks-layer-1) |
 | types and units such as money, date and duration | [6](#6-types) |
-| what a block can touch: `pure`, `local`, `network`, `model` | [8](#8-effects) |
+| what a part touches: `nothing`, `files`, `print`, `AI`, a tool name | [8](#8-effects), [23.7](#237-what-a-part-touches) |
 | agents: `# Agent`, triggers, `ask model`, `guard`, model providers | [2.3](#23-agent), [3](#3-blocks-triggers), [4.2](#42-model), [4.4](#44-guards), [19](#19-model-providers) |
 
 ## 0. Architecture: three layers
@@ -116,12 +122,10 @@ This program is the weekly report. On Monday the agent counts invoices with two 
 - due: date
 - status: text
 
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
 - when: today > due + 14 days and status != "paid"
 
-# Rule: open
-- for: Invoice
+# Rule: open Invoice
 - when: status != "paid"
 
 # Agent: daily-report
@@ -129,12 +133,12 @@ This program is the weekly report. On Monday the agent counts invoices with two 
 - tools: crm, email, log
 
 ## Every Monday at 08:00
-- set open_count = count of open invoices in crm.invoices
-- set overdue_count = count of overdue invoices in crm.invoices
-- ask model: "Write a two-sentence Monday summary. Open invoices: {open_count}. Overdue: {overdue_count}." -> summary
-- guard: summary is not empty
-- email send address "anil@optimotion.dev": "{summary}"
-- log: "Report sent: {open_count} open, {overdue_count} overdue"
+1. count of open invoices in crm.invoices into open_count
+2. count of overdue invoices in crm.invoices into overdue_count
+3. ask model: "Write a two-sentence Monday summary. Open invoices: {open_count}. Overdue: {overdue_count}." into summary
+4. guard: summary is not empty
+5. email send address "anil@optimotion.dev": "{summary}"
+6. log: "Report sent: {open_count} open, {overdue_count} overdue"
 ```
 
 **Rules**
@@ -163,43 +167,45 @@ After this step no agent, rule, trigger or guard remains. The code that does it 
 
 ## 1. File structure
 
-A file is a sequence of **declarations**. Each starts with a level-1 heading, and the lines under it are properties and blocks.
+A file is a sequence of **parts**. Each starts with a level-1 heading; the paragraph under it describes it, `-` bullets give its properties and numbered lists give its steps.
 
 ```agentmark
-> Counts open invoices. The comment above a heading documents it.
 # Agent: counter
+Counts open invoices. The paragraph under a heading is its description.
+
 - model: claude
 - tools: crm, log
 
-> This comment documents the block.
 ## Every day at 09:00
-> A plain comment, about the next statement only.
-- log: "counting"
+This paragraph describes the block.
+
+> A note for people, about the next step only.
+1. log: "counting"
 ```
 
 **Rules**
-- A declaration starts with a level-1 heading `# Kind: name`.
-- `- key: value` lines under it are **properties**. `## heading` lines start **blocks**, and the lines of a block are **statements**.
-- Declaration kinds are `Record`, `Enum`, `Type`, `Rule`, `Agent`, `Function`, `Service`, `Command`, `Tool`, `Binding`, `Constant`, `Import` and `Run`. Any other word is an error that suggests the closest kind.
+- A part starts with a level-1 heading `# Kind: name`. A rule's heading ends with its record: `# Rule: overdue Invoice`.
+- The paragraph directly under a heading is its **description**. It may run over several lines and paragraphs, and it ends at the first list.
+- `- key: value` bullets under the description are **properties**. `## heading` lines start **blocks**, and the numbered lines of a block are **steps**.
+- Part kinds are `Program`, `Uses`, `Record`, `Enum`, `Type`, `Rule`, `Agent`, `Function`, `Service`, `Command`, `Tool`, `Binding`, `Constant` and `Import`. Any other word is an error that suggests the closest kind.
 - Properties come before the first `##` heading.
-- Statements sit at indentation 0 directly under a `##` heading, per Q16. Every nested body is indented by one more 2-space step.
-- Nested bodies are those of `for each`, `if`, `else`, `otherwise` and `parallel`.
-- Function bodies are the exception. They are indented under the `- effect:` property, as section [13.1](#131-function) shows.
+- Steps are numbered `1.`, `2.`, ... directly under a `##` heading, or under `- steps:`. A step with steps under it ends in `:`.
+- A nested step starts at the text of its parent: 3 spaces under `1.` to `9.`, 4 under `10.` to `99.`, 2 under a bullet. `fmt` writes the numbers and the indentation, so `1.` on every line is fine.
+- Nested steps are those of `for each`, `if`, `else`, `otherwise`, `match` branches and `parallel`.
+- A function or a command keeps its steps under `- steps:`, as section [13.1](#131-function) shows. `- steps:` is not a nesting level.
 
-**Statements and comments**
-- Statements are list items that start with `- `. The exceptions are `otherwise:` and, in older files, bare `for each ...:` and `stop` lines.
-- The formatter writes every statement as a list item, per Q51.
-- A line that starts with `>` is a comment.
-- A run of comment lines directly above a `#` or `##` heading documents that heading.
-- A run at the top of a file followed by a blank line documents the file.
-- All other comments belong to the next statement, field or property, per Q17 and Q28.
+**Description, notes and bullets**
+- The description of a part is a plain paragraph under its heading. A `>` line directly above a heading is error E068.
+- A `>` line anywhere else is a note for people. `fmt` keeps it and the checker ignores it ([23.12](#2312-notes)).
+- A bullet where a step belongs is error E070. A numbered item where a property belongs is error E071.
+- Bold, italic and the `*` and `+` bullet markers carry no meaning. `fmt` writes `-`.
 
 **Names and blank lines**
 - Identifiers are letters, digits, `-` and `_`, and start with a letter.
 - Declaration, rule, record and type names may contain `-`, as in `very-overdue`.
 - Variables, fields and paths inside expressions may not contain `-`. There it is subtraction and needs a space on both sides, as in `today - 1 month`, per Q19 and Q29.
 - Blank lines are ignored.
-- A line that is not a heading, a comment, a `- ` item, a fence or a control line is an error, per Q22.
+- A line that is not a heading, a description, a note, a bullet, a numbered step, a fence or a control line is an error, per Q22.
 
 **Next:** [2. Declarations](#2-declarations)
 
@@ -223,14 +229,15 @@ A record describes a data shape. Fields are list items with an optional type.
 - total
 - remark
 
-> Lists invoices.
 # Agent: lister
+Lists invoices.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each invoice in crm.invoices:
-  - log: "{invoice.id} {invoice.total} {invoice.remark}"
+1. for each invoice in crm.invoices:
+   1. log: "{invoice.id} {invoice.total} {invoice.remark}"
 ```
 
 **Rules**
@@ -252,8 +259,8 @@ In the example, `shipped_at` is a `date`, `items_count` is an `int` and `total` 
 
 ```console
 $ agentmark check invoice.agent.md
-Effects (what each block can touch)
-  lister / Every day at 09:00: network(crm), local(log)
+What each part touches
+  lister / Every day at 09:00: touches crm, log
 
 Field types guessed from names
   Invoice.shipped_at: date (from the field name; invoice.agent.md:7)
@@ -274,24 +281,26 @@ A rule is a named, pure yes/no question about one record.
 - due: date
 - status: text
 
-> Unpaid and more than 14 days past due.
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
+Unpaid and more than 14 days past due.
+
 - when: today > due + 14 days and status != "paid"
 
-> Logs the overdue invoices.
 # Agent: lister
+Logs the overdue invoices.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each overdue invoice in crm.invoices:
-  - log: "{id} is overdue"
+1. for each overdue invoice in crm.invoices:
+   1. log: "{id} is overdue"
 ```
 
 **Rules**
 - A rule has no side effects. Anything effectful inside it is an error.
-- Inside `when:`, a bare field name such as `due` is a field of the record the rule is `for:`.
+- Inside `when:`, a bare field name such as `due` is a field of the record named last in the rule's heading (`Invoice` in `# Rule: overdue Invoice`).
+- The words before the record are the rule's name, joined with `_`: `# Rule: very overdue Invoice` is the rule `very_overdue`. `- for:` is gone (E067).
 - `when:` must be a yes/no value.
 - A filtered loop uses a rule, as in `for each overdue invoice in ...`. See section [4.1](#41-control).
 - `count of overdue invoices in ...` uses a rule too. See section [5](#5-expressions).
@@ -301,23 +310,24 @@ A rule is a named, pure yes/no question about one record.
 An agent is the executable unit.
 
 ```agentmark
-> Mails a note once an hour, remembers nothing, and gives itself ten minutes per run.
 # Agent: notifier
+Mails a note once an hour, remembers nothing, and gives itself ten minutes per run.
+
 - model: claude:haiku
 - tools: email, log
 - memory: file
 - timeout: 10 minutes
 
 ## Every 1 hour
-- email send address "ops@example.com": "Still alive"
-- log: "sent"
+1. email send address "ops@example.com": "Still alive"
+2. log: "sent"
 ```
 
 **Rules**
 - An agent may call only tools listed in its `tools` line. Calling another is an error: `The tool "email" is not listed in the tools of agent ...`.
 - The same list limits reading a tool's source, as in `for each ... in crm.invoices`.
 - Services, commands and functions have no `tools` line and may use every tool of the manifest.
-- A function's declared `effect` is what bounds it, per Q38.
+- A function's `- touches:` line, when it has one, is what bounds it, per Q38.
 
 **Properties**
 
@@ -339,32 +349,33 @@ A block is a `##` heading with statements under it. The heading says when the bl
 - id: text
 - subject: text
 
-> Shows every trigger heading once.
 # Agent: triggers
+Shows every trigger heading once.
+
 - model: claude:haiku
 - tools: crm, log
 
 ## On start
-- log: "started"
+1. log: "started"
 
 ## Every 30 minutes
-- do ping
+1. do ping
 
 ## Every day at 09:00
-- log: "daily"
+1. log: "daily"
 
 ## Every Friday at 17:30
-- log: "weekly"
+1. log: "weekly"
 
 ## When crm receives ticket
-- log: "New ticket {ticket.subject}"
+1. log: "New ticket {ticket.subject}"
 
 ## Do ping
-- log: "ping"
+1. log: "ping"
 ```
 
 **Rules**
-- The heading is the block's **label**. The effect summary and the trace report it.
+- The heading is the block's **label**. The touches report and the trace name it.
 - The formatter rewrites a loosely typed heading into the canonical one. `## every  MONDAY at 08:00` becomes `## Every Monday at 08:00`, per Q50.
 - Blocks of one agent run one after the other. Two triggers that fire together are queued, never run in parallel.
 - Schedules use naive local time without daylight-saving handling. `Every` fires one interval after the previous tick, per Q15.
@@ -394,7 +405,7 @@ A block is a `##` heading with statements under it. The heading says when the bl
 
 ## 4. Statements
 
-A statement is one list item. Control statements end in `:` and own the more-indented lines below them.
+A statement is one numbered step. Control statements end in `:` and own the steps nested under them.
 
 ### 4.1 Control
 
@@ -405,51 +416,51 @@ A statement is one list item. Control statements end in `:` and own the more-ind
 - due: date
 - status: text
 
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
 - when: today > due + 14 days and status != "paid"
 
-> Escalates big overdue invoices, reminds for the rest.
 # Agent: router
+Escalates big overdue invoices, reminds for the rest.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each overdue invoice in crm.invoices:
-  - if invoice.amount > 1000 EUR:
-    - do escalate
-  - else:
-    - do remind
+1. for each overdue invoice in crm.invoices:
+   1. if invoice.amount > 1000 EUR:
+      1. do escalate
+      else:
+      1. do remind
 
 ## Do escalate
-- log: "Escalate {id}"
+1. log: "Escalate {id}"
 
 ## Do remind
-- log: "Remind {id}"
+1. log: "Remind {id}"
 ```
 
 **Rules**
 - `for each <var> in <source>:` runs the body once per item. The source is a tool source such as `crm.invoices`, a list variable or a list in `state`.
 - `for each <rule> <var> in <source>:` keeps only the items for which the rule is true. Its body sees the record's fields as bare names, like `id` above.
-- `if <condition>:` takes an optional `else:` directly after it at the same indentation. The condition must be yes/no.
+- `if <condition>:` takes an optional `else:`, a plain line inside the `if` step at the indentation of its steps. The steps after it belong to the `else`. The condition must be yes/no.
 - `if <expr> is some <name>:` unwraps a `maybe`. See section [14](#14-errors).
-- `do <name>` calls a `## Do` block of the same agent. `do f(args) -> x` calls a function, as section [13.1](#131-function) shows.
+- `do <name>` calls a `## Do` block of the same agent. `do f(args) into x` calls a function, as section [13.1](#131-function) shows.
 - `stop` ends the current block, not only the current loop iteration, per Q3.
 
 **The control forms**
 
 ```agentmark fragment
-- for each invoice in crm.invoices:
-  - log: "{invoice.id}"
-- for each overdue invoice in crm.invoices:
-  - log: "{id}"
-- if invoice.amount > 1000 EUR:
-  - log: "big"
-- else:
-  - log: "small"
-- if lead.score is some s:
-  - log: "{s}"
-- stop
+1. for each invoice in crm.invoices:
+   1. stop
+2. for each overdue invoice in crm.invoices:
+   1. stop
+3. if invoice.amount > 1000 EUR:
+   1. stop
+   else:
+   1. stop
+4. if lead.score is some s:
+   1. stop
+5. stop
 ```
 
 **Watch out:** `stop` ends the whole block, not one pass of the loop. This is deliberate, because it is how an agent says "enough for this run".
@@ -457,26 +468,30 @@ A statement is one list item. Control statements end in `:` and own the more-ind
 The third example shows it:
 
 ```agentmark file=examples/03-support-triage/agents/support-triage.agent.md
-# Import: ../constants.agent.md
-# Import: ../records/ticket.agent.md
-# Import: ../records/triage.agent.md
+# Uses
+- [constants](../constants.agent.md)
+- [Ticket](../records/ticket.agent.md)
+- [Triage](../records/triage.agent.md)
 
-> Classifies tickets that have no priority yet and alerts on the high ones. Never replies to customers.
 # Agent: support-triage
+Classifies tickets that have no priority yet and alerts on the high ones. Never replies to customers.
+
 - model: claude
 - tools: crm, http, log
 
 ## Every 15 minutes
-- for each ticket in crm.tickets:
-  - if ticket.priority is not empty:
-    - stop
-  - ask model with ticket: triage_prompt as Triage -> t
-  > The model must pick one of the three allowed priorities, nothing else.
-  - guard: t.priority = "low" or t.priority = "medium" or t.priority = "high"
-  - crm update ticket: priority = t.priority
-  - if t.priority = "high":
-    - http post "https://hooks.example.com/alert": { ticket: ticket.id, category: t.category }
-  - log: "Triaged {ticket.id} as {t.priority}/{t.category}"
+Looks at every ticket that has no priority yet. The model must pick one of the three allowed priorities (low,
+medium or high), nothing else.
+
+1. for each ticket in crm.tickets:
+   1. if ticket.priority is not empty:
+      1. stop
+   2. ask model with ticket: triage_prompt as Triage into t
+   3. guard: t.priority = "low" or t.priority = "medium" or t.priority = "high"
+   4. crm update ticket: priority = t.priority
+   5. if t.priority = "high":
+      1. http post "https://hooks.example.com/alert": { ticket: ticket.id, category: t.category }
+   6. log: "Triaged {ticket.id} as {t.priority}/{t.category}"
 ```
 
 In this agent the first ticket that already has a priority ends the whole 15-minute run. That is the specified behaviour. To skip one item only, wrap the rest of the body in a negated `if`.
@@ -492,17 +507,18 @@ In this agent the first ticket that already has a priority ends the whole 15-min
 - score: int
 - reason: text
 
-> Asks the model three ways.
 # Agent: asker
+Asks the model three ways.
+
 - model: claude:haiku
 - tools: crm, log
 
 ## When crm receives lead
-- ask model: "Name one famous company." -> plain
-- ask model with lead: "Describe this lead in one sentence." -> description
-- ask model with lead: "Score this lead from 1 to 10." as Qualification -> q
-- guard: q matches Qualification
-- log: "{plain} / {description} / {q.score}: {q.reason}"
+1. ask model: "Name one famous company." into plain
+2. ask model with lead: "Describe this lead in one sentence." into description
+3. ask model with lead: "Score this lead from 1 to 10." as Qualification into q
+4. guard: q matches Qualification
+5. log: "{plain} / {description} / {q.score}: {q.reason}"
 ```
 
 **Rules**
@@ -511,17 +527,17 @@ In this agent the first ticket that already has a priority ends the whole 15-min
 - A mock model matches on the prompt prefix, so `with` does not disturb fixtures.
 - A reply that is not valid JSON for the record is not a runtime error. Not JSON, a missing field and a field of the wrong type all make `q matches Qualification` false, so the guard fails and the block stops, per Q157.
 - So always write the `matches` guard after `as <Record>`.
-- The prompt may be a string with `{holes}` or the name of a constant of type text, as in `ask model with ticket: triage_prompt as Triage -> t`.
+- The prompt may be a string with `{holes}` or the name of a constant of type text, as in `ask model with ticket: triage_prompt as Triage into t`.
 - The agent's `model:` line selects the driver. See section [19](#19-model-providers).
 - `ask model` also works outside an agent: in a function declared `effect: model`, in a route or in a command. There is no `model:` line there to say which driver, and the IR records none for such a call, per Q92.
 
 **The four forms**
 
 ```agentmark fragment
-- ask model: "<prompt>" -> answer
-- ask model: "<prompt>" as Qualification -> verdict
-- ask model with lead: "<prompt>" -> answer
-- ask model with lead: "<prompt>" as Qualification -> verdict
+1. ask model: "<prompt>" into answer
+2. ask model: "<prompt>" as Qualification into verdict
+3. ask model with lead: "<prompt>" into answer
+4. ask model with lead: "<prompt>" as Qualification into verdict
 ```
 
 ### 4.3 Tool calls
@@ -532,27 +548,28 @@ In this agent the first ticket that already has a priority ends the whole 15-min
 - subject: text
 - priority: maybe text
 
-> Shows the shapes of a tool call.
 # Agent: caller
+Shows the shapes of a tool call.
+
 - model: claude
 - tools: crm, email, http, log
 
 ## Every 15 minutes
-- for each ticket in crm.tickets:
-  - crm get ticket id -> fresh
-  - crm update ticket: priority = "low", subject = "changed"
-  - http get "https://example.com/status" -> status
-  - http post "https://example.com/hook": { id: ticket.id, subject: ticket.subject }
-  - email send address "ops@example.com": "Ticket {ticket.subject}"
-  - log: "done {ticket.id}"
+1. for each ticket in crm.tickets:
+   1. crm get ticket id into fresh
+   2. crm update ticket: priority = "low", subject = "changed"
+   3. http get "https://example.com/status" into status
+   4. http post "https://example.com/hook": { id: ticket.id, subject: ticket.subject }
+   5. email send address "ops@example.com": "Ticket {ticket.subject}"
+   6. log: "done {ticket.id}"
 ```
 
 **Rules**
-- The shape is `- <tool> <verb> [<target>]: <payload> [-> var]`.
+- The shape is `<tool> <verb> [<target>]: <payload> [into var]`.
 - The tool and the verb both come from `tools.toml`. An unknown verb is an error with "Did you mean ...?".
-- A tool without verbs, like `log`, is written `- log: "..."`.
-- `-> name` keeps the result of `get`, `list` or `post`, typed by the manifest when it can.
-- Reading a tool's source, as in `for each ... in crm.invoices`, is an effect of that tool: `network(crm)`.
+- A tool without verbs, like `log`, is written `log: "..."`.
+- `into name` keeps the result of `get`, `list` or `post`, typed by the manifest when it can.
+- Reading a tool's source, as in `for each ... in crm.invoices`, touches that tool: `crm`.
 
 **Pieces of a call**
 
@@ -571,7 +588,7 @@ The rules are Q4 and Q5.
 - `crm update invoice` names the source `invoices`, the plural of the word. It takes the `id` of the record in front of the block.
 - When several variables of that record are in scope, the call is an error: "Which invoice?". Name the one you mean with a value after the word.
 - A tool's name alone is never a value, so a field called `email` is a field.
-- A target word may be a field path of a variable, as in `- statement bind draft.title -> next`, per Q410.
+- A target word may be a field path of a variable, as in `statement bind draft.title into next`, per Q410.
 
 ### 4.4 Guards
 
@@ -581,29 +598,30 @@ The rules are Q4 and Q5.
 - amount: money
 - customer: text
 
-> Mails a reminder only when the model left the amounts alone.
 # Agent: careful
+Mails a reminder only when the model left the amounts alone.
+
 - model: claude
 - tools: crm, email, log
 
 ## Do remind
-- ask model with invoice: "Write a short, polite payment reminder." -> reminder
-- guard: no amounts changed in reminder
-- guard: reminder is not empty
-- guard: reminder length < 800
-- guard: reminder length > 20 else set reminder = "Please settle your open invoice."
-- email send customer: "{reminder}"
+1. ask model with invoice: "Write a short, polite payment reminder." into reminder
+2. guard: no amounts changed in reminder
+3. guard: reminder is not empty
+4. guard: reminder length < 800
+5. guard: reminder length > 20 else log: "Reminder too short."
+6. email send customer: "{reminder}"
 
 ## Every day at 09:00
-- for each invoice in crm.invoices:
-  - do remind
+1. for each invoice in crm.invoices:
+   1. do remind
 ```
 
 **Rules**
 - A guard is a pure check. If it fails and no `else` is given, the current block stops and the failure is logged with the guard's source line.
 - With `else <statement>`, that statement runs instead of stopping. The block carries on afterwards unless the statement ends it.
 - `else respond 404` in a route ends the block, as in section [13.3](#133-service-and-command). `else stop` ends it too.
-- `else set reminder = "..."` does not end the block, so it is a way to fall back to a default when the check fails.
+- `else log: "..."` does not end the block, so it is a way to note the failed check and carry on.
 - The trace line says `fail` in both cases.
 - Every guard writes one trace line with its source text and `pass` or `fail`. This holds in an agent, a service, a command and a function.
 - Guards may use constants, which are inlined into that text, per Q90.
@@ -618,7 +636,7 @@ The rules are Q4 and Q5.
 | `<var> matches <Record>` | the value has the shape of the record |
 | `<var> length < <int>` | the length of a text or list; any comparison works (`>`, `<=`, `=`, ...) |
 
-### 4.5 Assignment
+### 4.5 Naming a result: `into`
 
 ```agentmark
 # Record: Invoice
@@ -626,27 +644,31 @@ The rules are Q4 and Q5.
 - amount: money
 - status: text
 
-> Counts.
 # Agent: totals
+Counts.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- set total = 0 EUR
-- for each invoice in crm.invoices:
-  - set total = total + invoice.amount
-- log: "Total {total}"
+1. 0 EUR into total
+2. for each invoice in crm.invoices:
+   1. total + invoice.amount into total
+3. log: "Total {total}"
 ```
 
 **Rules**
-- `set <var> = <expression>` creates the variable or changes it.
+- `<expression> into <var>` creates the variable, or gives an existing one a new value (Q431). It is the only way to name a result.
+- `into <var>` at the end of any step that produces a value (`ask model`, a tool call, `do`, `try`, a collection word) names that value.
+- `set x = v` is error E064 and `... -> x` is error E065. Both messages show the `into` form.
+- `into` is a reserved word. `->` stays in signatures, where it means "returns".
 - A `maybe T` variable may be given a plain `T`, never the other way round, per Q40.
 
 **Next:** [5. Expressions](#5-expressions)
 
 ## 5. Expressions
 
-An expression computes a value. It appears after `set`, in conditions, in the `{holes}` of a string and in call arguments.
+An expression computes a value. It appears in front of `into`, in conditions, in the `{holes}` of a string and in call arguments.
 
 ```agentmark
 # Record: Invoice
@@ -656,23 +678,23 @@ An expression computes a value. It appears after `set`, in conditions, in the `{
 - due: date
 - status: text
 
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
 - when: today > due + 14 days and status != "paid"
 
-> Shows the expression forms.
 # Agent: expressions
+Shows the expression forms.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- set open_count = count of overdue invoices in crm.invoices
-- set net = 120.50 EUR - 20.50 EUR * 2 / 4
-- set next_check = today + 14 days
-- set a_month_ago = today - 1 month
-- set late = open_count > 3 or not open_count = 0
-- set first_late = first invoice in crm.invoices where invoice.status = "open"
-- log: "{open_count} invoices, {net}, due on {next_check}, since {a_month_ago}, {late}"
+1. count of overdue invoices in crm.invoices into open_count
+2. 120.50 EUR - 20.50 EUR * 2 / 4 into net
+3. today + 14 days into next_check
+4. today - 1 month into a_month_ago
+5. open_count > 3 or not open_count = 0 into late
+6. first invoice in crm.invoices where invoice.status = "open" into first_late
+7. log: "{open_count} invoices, {net}, due on {next_check}, since {a_month_ago}, {late}"
 ```
 
 **Rules**
@@ -768,12 +790,14 @@ An expression computes a value. It appears after `set`, in conditions, in the `{
 - nickname: maybe text
 - history: list of maybe date
 
-> Describes a showcase in one line.
 # Function: describe
+Describes a showcase in one line.
+
 - in: s: Showcase
 - out: text
-- effect: pure
-  - return "{s.name} has {s.visits} visits and costs {s.price}"
+- touches: nothing
+- steps:
+  1. return "{s.name} has {s.visits} visits and costs {s.price}"
 ```
 
 **Rules**
@@ -838,7 +862,7 @@ effect = "local"
 | key | meaning |
 |---|---|
 | table name (`[email]`) | the tool's name, as written in `tools:` and in statements |
-| `verbs` | the words allowed after the tool name; an empty list means the tool is written `- log: "..."` |
+| `verbs` | the words allowed after the tool name; an empty list means the tool is written `log: "..."` |
 | `targets` | words allowed after the verb (`email send customer`) |
 | `sources` | names readable as `tool.source` (`crm.invoices`); each is plural, and its singular names a record (`Invoice`) and is also the target word of `update` (Q5) |
 | `events` | names usable in `## When <tool> receives <event>`; each names a record (`lead` is `Lead`) |
@@ -848,46 +872,48 @@ effect = "local"
 
 ## 8. Effects
 
-The report that matters most is the effect summary. It lists, for every block, everything the block can touch. This is the real report for the invoice service, which has no agent and no model call:
+The report that matters most says what each part touches. It lists, for every block, everything the block can touch. This is the real report for the invoice service, which has no agent and no model call:
 
 ```console cwd=repo
 $ agentmark check examples/05-invoice-service
-Effects (what each block can touch)
-  import-csv / Run: local(file, print, state)
-  function invoice_fingerprint: pure
-  function net_amount: pure
-  api / GET /invoices/{id}: pure
-  api / GET /invoices/{id}/net: pure
-  api / POST /invoices: local(state)
+What each part touches
+  import-csv: touches files, print, state
+  invoice_fingerprint: touches nothing
+  net_amount: touches nothing
+  api / GET /invoices/{id}: touches nothing
+  api / GET /invoices/{id}/net: touches nothing
+  api / POST /invoices: touches state
 
 Rust blocks (trusted, not checked by AgentMark)
-  fingerprint in invoice_fingerprint: declared pure (examples/05-invoice-service/functions/invoice-fingerprint.agent.md:13)
+  fingerprint in invoice_fingerprint: says it touches nothing (examples/05-invoice-service/functions/invoice-fingerprint.agent.md:16)
 
 ok: 0 errors, 0 warnings.
 ```
 
 **Rules**
-- Every statement has an effect class, ordered from least to most reach: `pure`, `local`, `network`, `model`.
+- People read an effect as what a part **touches**: `nothing`, `files`, `print`, `input`, `AI`, `state`, or the name of a tool or library ([23.7](#237-what-a-part-touches)). The words "effect", "pure", "local", "network" and "model" are no longer part of the syntax or of the reports.
+- Inside the compiler every statement still has an effect class, ordered from least to most reach: `pure`, `local`, `network`, `model`. The IR and `agentmark check --json` keep these names.
 - A fifth class, `unverified`, marks calls into a library nobody approved yet. See section [15.3](#153-effects-and-trust).
-- `# Rule` bodies and `guard` conditions must be `pure`. A rule that calls a `network` function is an error.
-- A function's body must not exceed its declared `effect`. A function that calls an unapproved library cannot claim `pure`, and `check` says so.
-- Rust blocks and bindings contribute their declared effect. It is trusted, because the checker cannot look inside Rust.
+- `# Rule` bodies and `guard` conditions must touch nothing. A rule that calls a function that touches a tool is an error.
+- A function's `- touches:` line is optional. Without it the checker works out what the function touches. With it, the line is a checked promise: a step that touches something not on the list is error E206.
+- A `## Rust` block must say what it touches. The line is trusted, because the checker cannot look inside Rust.
+- `check` and `doc` write one line per part, `AI` first, then the rest in alphabetical order. The `file` tool is written `files`.
 
-**Classes**
+**Classes and the words for them**
 
-| class | what it is | where it comes from |
-|---|---|---|
-| `pure` | computes from values it already has | expressions, rules, guards, reading `state`, `set`, `return`, `respond`, `read body`, `append` to a local list |
-| `local` | touches this machine | a `local` tool (`log`), `print`, `read file` (source `file`), `append ... to state.<field>` (source `state`), a function or Rust block declared `local` |
-| `network` | talks to another system | a `network` tool, reading a tool source such as `crm.invoices` |
-| `model` | asks a model | `ask model` |
+| class | read as | what it is | where it comes from |
+|---|---|---|---|
+| `pure` | `nothing` | computes from values it already has | expressions, rules, guards, reading `state`, `into`, `return`, `respond`, `read body`, `add` to a local list |
+| `local` | `files`, `print`, `input`, `state`, a tool | touches this machine | a `local` tool (`log`), `print`, `read file` (source `file`), `add ... to state.<field>` (source `state`), a function declared to touch these |
+| `network` | the tool's name | talks to another system | a `network` tool, reading a tool source such as `crm.invoices` |
+| `model` | `AI` | asks a model | `ask model` |
 
-**Reading the summary**
-- A summary line looks like `unit / heading: model, network(email, crm), local(log)`.
-- The class names the highest reach. The brackets name the tools in order of first use.
+**Reading the report**
+- A line looks like `unit / heading: touches AI, crm, email, log`.
+- `touches nothing` means the part reads and computes only.
 - Agents, services and commands print `unit / heading:`. Functions and rules print `function name:` and `rule name:`, per Q116.
-- The summary is also written into the generated Rust file as `// Effects: ...` at the top.
-- `agentmark check --json` prints the same facts as one JSON document for editors and CI. Its layout is in `docs/check-json.md`.
+- The generated Rust file keeps the class form as `// Effects: ...` at the top.
+- `agentmark check --json` prints the same facts as one JSON document for editors and CI, with the internal classes. Its layout is in `docs/check-json.md`.
 
 **Next:** [9. Compilation](#9-compilation)
 
@@ -910,7 +936,7 @@ $ agentmark fmt --check examples/01-invoice-chaser
 **The commands**
 
 ```text
-agentmark check <file|dir> [--json] [--allow-unverified]   validate; print the effect summary, guessed types, unapproved libraries
+agentmark check <file|dir> [--json] [--allow-unverified]   validate; print what each part touches, guessed types, unapproved libraries
 agentmark fmt   <file|dir> [--check]                       rewrite into the canonical style (section 18.6)
 agentmark lint  <file|dir>                                 style rules (section 18.4)
 agentmark doc   [<dir|file|crate>] [--project <dir>]       the documentation page of a project, or a library's cheat sheet
@@ -959,7 +985,7 @@ Diagnostics go to standard error. Reports and counts go to standard output, per 
 **Unverified libraries**
 - `check` exits 1 while an unverified library is left, unless `--allow-unverified` is given. The listing is printed either way, per Q112.
 - `build`, `run` and `trace` apply the same rule: they refuse unapproved libraries.
-- With `--allow-unverified` on any of the four commands, an unverified library counts as its `proposed-effect` for the effect checks. A `pure` function that calls a library proposed `pure` then passes.
+- With `--allow-unverified` on any of the four commands, an unverified library counts as its `proposed-effect` for the touches checks. A function that touches nothing and calls a library proposed `pure` then passes.
 - Each such library gets one warning, W008, and nothing is approved, per Q203. Without the flag, such a function is an error.
 
 **Automatic binding**
@@ -994,7 +1020,7 @@ out/
 
 | flag | does |
 |---|---|
-| `--once` | runs every scheduled entry once, in `# Run` order, then each event entry once per fixture item |
+| `--once` | runs every scheduled entry once, in program order, then each event entry once per fixture item |
 | `--schedule` | runs for real on the schedule |
 | `--mock` with `--fixtures <dir>` | pretends the tools and the model |
 | `--trace <file\|->` | writes the trace to a file, or to standard output with `-` |
@@ -1026,23 +1052,24 @@ Money text is `"1200.00 EUR"`. EUR, USD, GBP and CHF have two decimals and JPY h
 
 Every error points at a line, says in plain words what was expected and puts a caret under the offending token. It adds a suggestion when a known word is within edit distance 2.
 
-Messages are the exact text check prints; `x`, `N` and `T` stand for the names, numbers and types in your program. `<kind>` stands for a kind of declaration, `<effect>` for an effect class and `<currency>` for a currency code.
+Messages are the exact text check prints; `x`, `N` and `T` stand for the names, numbers and types in your program. `<kind>` stands for a kind of part, `<effect>` for what a step touches and `<currency>` for a currency code.
 
 ```agentmark invalid name=typo.agent.md says=Unknown_target
-> Mails a reminder.
 # Agent: reminder
+Mails a reminder.
+
 - model: claude
 - tools: email, log
 
 ## Every day at 09:00
-- email send custmer: "Please pay."
+1. email send custmer: "Please pay."
 ```
 
 ```console stderr
 $ agentmark check typo.agent.md
-typo.agent.md:7
-  - email send custmer: "Please pay."
-               ^^^^^^^
+typo.agent.md:8
+  1. email send custmer: "Please pay."
+                ^^^^^^^
   Unknown target "custmer" for tool email. Did you mean "customer"?
 ```
 
@@ -1059,54 +1086,58 @@ typo.agent.md:7
 
 | code | message | fix |
 |---|---|---|
-| E001 | `Tabs are not allowed.` or `Tabs are not allowed in AgentMark files.` | use 2 spaces for each indentation level |
-| E002 | `Indentation must be 2 spaces per level, but this line is indented N spaces.` or `Headings must start at the beginning of the line.` | indent in steps of 2 spaces; start headings in column 1 |
+| E001 | `Tabs are not allowed in AgentMark files.` | indent with spaces: 3 under a numbered step, 2 under a `-` line |
+| E002 | `Headings must start at the beginning of the line.` | start headings in column 1 |
 | E003 | ``This code fence is never closed. Add a line with just ``` after the code.`` | close the fence |
-| E004 | `This line is missing the ":" at its end.` or `This line is not part of the language: statements start with "- " and headings with "# " or "## ".` | end a line that owns statements with `:`; put explanations in a `>` comment |
+| E004 | `This line is missing the ":" at its end.` or `This line is not part of the language: steps start with a number ("1. "), properties with "- " and headings with "# " or "## ".` | end a line that has steps under it with `:`; put a description under the heading and notes in a `>` line |
 | E010 | `Unknown property "x" for a <kind>.` | use one of the properties the message lists; the last words of the message name the declaration, such as a Type, a Rule, an Agent or a Rust block |
 | E011 | `The property "x" is given twice.` | remove one of the lines |
 | E012 | a declaration lacks a required line or block; the message names it (all 6 messages below the table) | add the line or block the message names; the first form also exists for a type, a constant, an agent and a binding, each with its own required line |
-| E020 | `Unknown declaration "x".` | start with one of the kinds in section [1](#1-file-structure); the message suggests the closest |
-| E030 | `This line is not inside a declaration. Start with a heading such as "# Agent: name".` | start with a heading |
-| E031 | `This line is indented N spaces, but only N are possible here. Indent by one level (2 spaces) at a time.` | indent one level at a time |
+| E020 | `Unknown heading "x".` | start with one of the kinds in section [1](#1-file-structure); the message suggests the closest |
+| E030 | `This line is not inside a part. Start with a heading such as "# Program: name" or "# Record: Name".` | start with a heading |
+| E031 | `This line is indented N spaces, ... the N of the lines above it at this level.` | indent a nested step to the text of its parent, not by an arbitrary amount |
 | E032 | a line has the wrong shape for its place; the message shows the right shape (all 23 messages below the table) | follow the shape the message shows |
 | E040 | the line is not valid syntax; the message says what was expected (all 5 messages below the table) | use a statement or heading from Appendix A; the message suggests the closest |
-| E050 | `A glob import cannot be renamed with "as".` or `"x" is not a .agent.md file. To import a folder, give it a name: "# Import: x as <name>".` | name a folder import with `as <name>` and do not rename a glob |
+| E050 | `A glob cannot be given a name with "as".` or `"x" is not a .agent.md file. To use a folder, give it a name: "- [label](x) as <name>".` | name a folder in `# Uses` with `as <name>` and do not name a glob |
+| E060 to E069 | the removed forms of v0.4 | see [23.13](#2313-removed-syntax) |
+| E070 | `Steps are a numbered list. Write: 1. <step>` | write the step as a numbered item |
+| E071 | `A property is a bullet, not a numbered step. Write: - <property>` | write the property as a bullet |
+| E072 | `"# Program" must be the first heading of the file.` | move it to the top of the entry file; only the entry file has one |
+| E073 | `"# Uses" goes at the top of the file, before the other parts (after "# Program").` or `A used file is a "- " line with a link: "- [constants](./constants.agent.md)".` | list the files in one `# Uses` section at the top |
 
 **E012 messages**
 
 - `The rule "x" has no "when" line.`
-- `The function "x" does not say what effect it has.`
-- `The command "x" has no "## Run" block.`
-- `The Rust block "x" does not declare its effect.`
-- `The tool "x" does not say what effect it has.`
+- `The function "x" has no steps.`
+- `The command "x" has no steps.`
+- `The Rust block "x" does not say what it touches.`
 - `The tool "x" has no verbs.`
 
 **E032 messages**
 
-- `An import is a single line and has nothing under it.`
+- `A library import is a single line and has nothing under it.`
 - `A Record has no "##" blocks.`
 - `A property starts with "- ", like "- model: claude".`
-- `A field starts with "- ", like "- amount: money".`
-- `A variant starts with "- ", like "- Circle: radius: int" or "- Empty".`
-- `A "# Run" entry starts with "- " and names an agent, service or command.`
+- `A field is a bullet: "- amount: money".`
+- `A variant is a bullet: "- Circle: radius: int" or "- Empty".`
+- `The steps go on the lines under "- steps:", as a numbered list.`
+- `"- steps:" has no steps under it. Write them as a numbered list: "  1. print: \"hello\"".`
 - `Nothing can be indented under "x:".`
 - `Nothing can be indented under a field.`
 - `Nothing can be indented under a variant.`
-- `Nothing can be indented under this statement.`
-- `Only "otherwise:" can be indented under a "try" line.`
-- `Statements go under the "effect" line, not under "x".`
+- `Only "otherwise:" and its steps can be under a "try" step.`
 - `A Function has no blocks except "## Rust: name".`
-- `A Command has only one "## Run" block.`
 - `A handle block is written "## Handle: <crate>.<Type>", for example "## Handle: sqlx.Query".`
 - `` "x" needs its Rust code in a fenced block (```rust ... ```). ``
 - `A "match" needs branches indented under it, like "- Circle c:" or "- otherwise:".`
 - `A branch of "match" starts with "- ", like "- Circle c:".`
+- `The branches of a "match" are bullets (their order does not matter). Write: - <branch>`
 - `A "match" has only one "otherwise:" branch.`
 - `"otherwise:" must be the last branch of a "match".`
-- `"else:" must come directly after an "if" at the same indentation.`
-- `"otherwise:" must be indented under a "try" line.`
-- `This is not a statement.`
+- `"else:" belongs inside an "if" step, after its steps.`
+- `"otherwise:" belongs inside a "try" step.`
+- `"add X to …:" needs the fields as bullets under it, like "- region" or "- orders: count of rows".`
+- `A field of the new X is a bullet: "- name: value" or "- name".`
 
 **E040 messages**
 
@@ -1122,12 +1153,12 @@ typo.agent.md:7
 |---|---|---|
 | E100 | `This is not valid TOML: <reason>.` | each tool is a table, a `[name]` line followed by `key = value` lines |
 | E101 | `Unknown key "x" for tool "x".` | use one of the keys the message lists |
-| E102 | `The tool "x" does not say what effect it has.` | add `effect = "local"` or `effect = "network"` |
+| E102 | `The tool "x" does not say what effect it has.` | add `effect = "local"` or `effect = "network"` to its table in `tools.toml` (tool tables keep `effect =`, Q430) |
 | E103 | `"x" is not an effect class for a tool.` | use `local`, `network` or `model` |
 | E104 | `"x" of tool "x" must be a list of words.` | write it like `verbs = ["one", "two"]` |
 | E105 | `"x" must be a tool table, written as [x].` | every top-level entry of `tools.toml` is one tool |
 | E110 | `Cannot find the project "x".` or `Cannot read the file "x".` | check the path |
-| E111 | `Cannot find the file "x".` or `Cannot find the folder "x".` | fix the path of the `# Import` line |
+| E111 | `Cannot find the file "x".` or `Cannot find the folder "x".` | fix the path of the link under `# Uses` |
 | E112 | `Import cycle: a -> b -> a.` | move what both files need into a third file that imports neither |
 | E113 | `The pattern "x" matches no files.` | fix the pattern |
 | E114 | `agentmark.toml` is not valid; the message names the key (all 9 messages below the table) | fix the key the message names |
@@ -1150,11 +1181,11 @@ typo.agent.md:7
 |---|---|---|
 | E200 | `The record "x" is already declared in file:line.` | names are unique across the project, so rename one of them; the first word of the message names the kind of declaration |
 | E201 | `Unknown type "x".` | declare it or import its file |
-| E202 | a name, field, rule or record cannot be found (all 7 messages below the table) | declare the record or import the file that does; names come from `set` and `->` lines above, loop variables, constants and imported declarations |
+| E202 | a name, field, rule or record cannot be found (all 7 messages below the table) | declare the record or import the file that does; names come from `into` names above, loop variables, constants and imported declarations |
 | E203 | a value has the wrong type; the message names the types involved (all 33 messages below the table) | use a value of the type the message names |
 | E204 | a value that can be empty is used as a plain value, or a plain value is unwrapped (all 4 messages below the table) | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
 | E205 | `A rule must be pure, but "x" has the effect <effect>.` | move the effectful call out; in a guard, a constant or a collection word the message starts `A guard must be pure`, `A constant must be pure` or `An expression inside a collection word must be pure` |
-| E206 | `The function "x" says "- effect: pure", but this line has the effect <effect>.` | raise the declared `effect`, or move the line out; the message names a function, a tool or a Rust block |
+| E206 | `The function "x" says "- touches: nothing", but this step touches files.` | add what the step touches to the `- touches:` line, leave the line out to let the checker work it out, or move the step out; the message names a function, a tool or a Rust block |
 | E207 | a tool, source, event, verb, target or handle method is unknown or used wrongly (all 16 messages below the table) | use a name from `tools.toml`; the message suggests the closest |
 | E208 | `The tool "x" is not listed in the tools of agent "x".` | add it to the `- tools:` line |
 | E209 | a function or action is unknown, called the wrong way, or given the wrong number of values (all 9 messages below the table) | `do` calls a `## Do` block or a visible function; use `try` for a `result of T` |
@@ -1170,6 +1201,8 @@ typo.agent.md:7
 | E219 | `The crate "x" has no binding yet, but this file uses it.` | run `agentmark bind x` |
 | E220 | `Could not bind "x" of x on demand: <why>` | use a `## Rust` block, or bind it by hand; see section [15.2](#152-the-binder) |
 | E221 | the model driver is unknown, unsupported or incomplete (all 4 messages below the table) | use a driver of section [19](#19-model-providers) |
+| E230 | `Could not tell what "vat" is. Write its type: "vat: <type>".` or, for a result, `Could not tell what "x" is. Write its type: "- out: <type>".` | write the type, or name the input after a record (`sales` for a list of `Sale`), see [23.6](#236-types-from-names) |
+| E232 | `"touches:" names "x", which is nothing this program can touch.` or `"nothing" stands alone: a part that touches something does not touch nothing.` | use `nothing`, `AI`, `files`, `print`, `input`, `state`, or the name of a tool or library |
 
 **E202 messages**
 
@@ -1215,7 +1248,7 @@ typo.agent.md:7
 - `"x" holds T, but this is T.`
 - `A file path must be text, but this is T.`
 - `This list holds T, but this is T.`
-- `"append" needs a list, but this is T.`
+- `"append" needs a list, but this is T.` (the message still says "append"; the step is `add`)
 - `This returns T, but the function says it returns "T".`
 
 *Conditions and checks*
@@ -1414,26 +1447,29 @@ Layer 2 has nothing to do with agents. It holds functions, modules, services and
 - id: text
 - amount: money
 
-> The invoice amount after taking off VAT.
 # Function: net_amount
+The invoice amount after taking off VAT.
+
 - in: invoice: Invoice, vat: int
 - out: money
-- effect: pure
-  - return invoice.amount - invoice.amount * vat / 100
+- touches: nothing
+- steps:
+  1. return invoice.amount - invoice.amount * vat / 100
 
-> Logs the net amount of every invoice, calling the function two ways.
 # Agent: calc
+Logs the net amount of every invoice, calling the function two ways.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each invoice in crm.invoices:
-  - do net_amount(invoice, 19) -> n
-  - log: "{n} or {net_amount(invoice, 19)}"
+1. for each invoice in crm.invoices:
+   1. do net_amount(invoice, 19) into n
+   2. log: "{n} or {net_amount(invoice, 19)}"
 ```
 
 **Rules**
-- A function is called in an expression, as in `net_amount(invoice, 19)`, or as a statement, as in `- do net_amount(invoice, 19) -> n`.
+- A function is called in an expression, as in `net_amount(invoice, 19)`, or as a step, as in `do net_amount(invoice, 19) into n`.
 - `return <expr>` ends the function with a value.
 - A function with `out:` and no `return` is an error. `return` outside a function is an error, and so is `stop` inside one, per Q40.
 - Recursion is allowed. Closures are not allowed in v0.1.
@@ -1445,8 +1481,8 @@ Layer 2 has nothing to do with agents. It holds functions, modules, services and
 |---|---|
 | `- in: name: Type, other: Type` | parameters (optional) |
 | `- out: Type` | the result type (optional for a function that returns nothing) |
-| `- effect: pure` | **mandatory**: `pure`, `local`, `network` or `model`. The checker verifies the body does not exceed it |
-| indented lines | the body, under the `effect` line (Q16) |
+| `- touches: nothing` | optional ([23.7](#237-what-a-part-touches)): `nothing`, `files`, `print`, `input`, `AI` or tool names. Without it the checker works out what the body touches; with it, the line is a promise the checker verifies (E206) |
+| `- steps:` | the body, a numbered list (Q16). `- steps:` is not a nesting level |
 
 | code | message | fix |
 |---|---|---|
@@ -1463,12 +1499,14 @@ Layer 2 has nothing to do with agents. It holds functions, modules, services and
 ### 13.2 Module and import
 
 ```agentmark fragment
-# Import: ./billing/rules.agent.md as billing
-# Import: ./records/invoice.agent.md
-# Import: ./rules/*.agent.md
-# Import: ./billing as billing
-# Import: crate serde_json
+# Uses
+- [rules](./billing/rules.agent.md) as billing
+- [invoice](./records/invoice.agent.md)
+- [*](./rules/*.agent.md)
+- [billing](./billing/) as billing
+
 # Import: crate reqwest as http_client
+# Import: crate serde_json
 ```
 
 **Rules**
@@ -1485,8 +1523,9 @@ Layer 2 has nothing to do with agents. It holds functions, modules, services and
 Two more top-level declarations turn AgentMark into a general application language. This single file is a complete program with a service and a command:
 
 ````agentmark
-> Non-agent example: an HTTP service plus a CLI command, using a crate binding.
-> Proves that Layer 2 + Layer 1 can build an ordinary Rust application.
+# Program: invoice-service
+An HTTP service plus a command, using a crate binding.
+It shows that layers 2 and 1 can build an ordinary Rust application.
 
 # Import: crate sha2
 
@@ -1501,51 +1540,58 @@ Two more top-level declarations turn AgentMark into a general application langua
 - invoices: list of Invoice
 
 # Function: net_amount
+The invoice amount after taking off VAT.
+
 - in: invoice: Invoice, vat: int
 - out: money
-- effect: pure
-  - return invoice.amount - invoice.amount * vat / 100
+- touches: nothing
+- steps:
+  1. return invoice.amount - invoice.amount * vat / 100
 
 ## Rust: fingerprint -> text
 - in: invoice: Invoice
-- effect: pure
-  ```rust
-  use sha2::{Digest, Sha256};
-  format!("{:x}", Sha256::digest(format!("{}{}", invoice.id, invoice.amount).as_bytes()))
-  ```
+- touches: nothing
+
+```rust
+use sha2::{Digest, Sha256};
+format!("{:x}", Sha256::digest(format!("{}{}", invoice.id, invoice.amount).as_bytes()))
+```
 
 # Service: api
+Serves invoices over HTTP.
+
 - listen: 0.0.0.0:8080
 - state: AppState
 
 ## GET /invoices/{id}
-- set found = first invoice in state.invoices where invoice.id = id
-- guard: found is not empty else respond 404
-- respond 200 found
+1. first invoice in state.invoices where invoice.id = id into found
+2. guard: found is not empty else respond 404
+3. respond 200 found
 
 ## GET /invoices/{id}/net
-- set found = first invoice in state.invoices where invoice.id = id
-- guard: found is not empty else respond 404
-- respond 200 { id: found.id, net: net_amount(found, 19), fingerprint: fingerprint(found) }
+1. first invoice in state.invoices where invoice.id = id into found
+2. guard: found is not empty else respond 404
+3. respond 200 { id: found.id, net: net_amount(found, 19), fingerprint: fingerprint(found) }
 
 ## POST /invoices
-- read body as Invoice -> inv
-- guard: inv.amount > 0 EUR else respond 400
-- append inv to state.invoices
-- respond 201 inv
+1. read body as Invoice into inv
+2. guard: inv.amount > 0 EUR else respond 400
+3. add inv to state.invoices
+4. respond 201 inv
 
 # Command: import-csv
-- args: path: text, dry_run: bool = false
+Loads invoices from a CSV file.
 
-## Run
-- try read file path as list of Invoice -> rows
-  otherwise:
-    - print: "Could not read {path}"
-    - stop
-- for each row in rows:
-  - if not dry_run:
-    - append row to state.invoices
-- print: "Imported {count of rows} rows"
+- in: path: text, dry_run: bool = false
+- steps:
+  1. try read file path as list of Invoice into rows
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. for each row in rows:
+     1. if not dry_run:
+        1. add row to state.invoices
+  3. print: "Imported {count of rows} rows"
 ````
 
 **Rules**
@@ -1554,7 +1600,7 @@ Two more top-level declarations turn AgentMark into a general application langua
 - Each `## METHOD /path` block is a route. `GET`, `POST`, `PUT`, `PATCH` and `DELETE` exist.
 - Each `{name}` in a path becomes a text variable of the block.
 - A service lowers to an axum router over shared state.
-- A **command** has `args:` and exactly one `## Run` block. Each argument is `name: Type` with an optional default `= value`.
+- A **command** has `- in:` (like a function) and `- steps:`. Each input is `name: Type` with an optional default `= value`. `args:` and `## Run` are gone (E062, E061).
 - A command lowers to a clap subcommand.
 - A command may use the `state` record of the project's single service. A second service with `state:` is error E218, per Q9 and Q41.
 
@@ -1562,26 +1608,27 @@ Two more top-level declarations turn AgentMark into a general application langua
 
 ```agentmark fragment
 ## POST /invoices
-- read body as Invoice -> inv
-- guard: inv.amount > 0 EUR else respond 400
-- append inv to state.invoices
-- respond 201 inv
-- respond 204
+1. read body as Invoice into inv
+2. guard: inv.amount > 0 EUR else respond 400
+3. add inv to state.invoices
+4. respond 201 inv
+5. respond 204
 ```
 
 ```agentmark fragment
-## Run
-- read file path as list of Invoice -> rows
-- print: "Imported {count of rows} rows"
+- in: path: text
+- steps:
+  1. read file path as list of Invoice into rows
+  2. print: "Imported {count of rows} rows"
 ```
 
 | statement | meaning |
 |---|---|
 | `respond <status>` / `respond <status> <expr>` | end the route with that HTTP status and an optional JSON body |
-| `read body as <Type> -> var` | parse the request body as that type |
-| `read file <path> as <Type> -> var` | read a file into that type (the example reads a CSV file into a `list of Invoice`); effect `local(file)` |
-| `append <value> to <list>` | add to a list, usually `state.<field>`; on `state` it is `local(state)` |
-| `print: "text"` | write a line to the output; effect `local(print)` |
+| `read body as <Type> into var` | parse the request body as that type |
+| `read file <path> as <Type> into var` | read a file into that type (the example reads a CSV file into a `list of Invoice`); touches `files`. `file read <path> into rows` does the same by the name, see [23.10](#2310-reading-a-file-into-records) |
+| `add <value> to <list>` | add to a list, usually `state.<field>`; on `state` it touches `state` |
+| `print: "text"` | write a line to the output; touches `print` |
 | `return <expr>` | the value of a function |
 
 Reading `state` is pure. In a mock run the state is seeded from `fixtures/<name>/state.<field>.json` when present.
@@ -1597,24 +1644,25 @@ A statement that can fail is written with `try`. This agent falls back to a fixe
 - id: text
 - amount: money
 
-> Reads rates from the web, falls back to a fixed text when that fails.
 # Agent: rates
+Reads rates from the web, falls back to a fixed text when that fails.
+
 - model: claude
 - tools: http, log
 
 ## Every day at 06:00
-- try http get "https://api.example.com/rates" -> rates
-  otherwise:
-    - log: "Rates unavailable, using cached"
-    - set rates = "cached"
-- log: "Rates: {rates}"
+1. try http get "https://api.example.com/rates" into rates
+   otherwise:
+   1. log: "Rates unavailable, using cached"
+   2. "cached" into rates
+2. log: "Rates: {rates}"
 ```
 
 **Rules**
 - There is no exception mechanism.
 - Without `otherwise`, a failed `try` stops the current block and records the error in the trace as an `error` line.
 - With `otherwise:`, the indented lines run instead. `otherwise:` is the only child of its `try` line, per Q18.
-- The variable that `try ... -> x` introduces is visible after the `try`.
+- The variable that `try ... into x` introduces is visible after the `try`.
 - When `otherwise` neither assigns it nor stops, the type's default value is used, per Q94.
 
 **Functions that can fail**
@@ -1625,23 +1673,26 @@ A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rus
 # Function: half
 - in: n: int
 - out: result of int
-- effect: pure
-  - return n / 2
+- touches: nothing
+- steps:
+  1. return n / 2
 
-> Halves a number, or uses 0 when the function fails.
 # Function: half_or_zero
+Halves a number, or uses 0 when the function fails.
+
 - in: n: int
 - out: int
-- effect: pure
-  - try do half(n) -> h
-    otherwise:
-      - set h = 0
-  - return h
+- touches: nothing
+- steps:
+  1. try do half(n) into h
+     otherwise:
+     1. 0 into h
+  2. return h
 ```
 
 - Inside such a function, `return v` takes a plain `T`, which is wrapped in `Ok`.
 - A `try` without `otherwise` that fails does not trace and stop there, as it does everywhere else. The error is handed to the caller.
-- The caller writes `try do f(x) -> h`. Afterwards `h` is a plain `T`, also when `otherwise` assigns it, per Q200.
+- The caller writes `try do f(x) into h`. Afterwards `h` is a plain `T`, also when `otherwise` assigns it, per Q200.
 - Calling such a function without `try`, or inside an expression, is an error.
 - A failure has exactly one source, a failing `try`.
 
@@ -1654,16 +1705,17 @@ A `maybe` value is unwrapped with `is some`:
 - id: text
 - score: maybe int
 
-> Logs the score of every new lead, or says it has none.
 # Agent: scorer
+Logs the score of every new lead, or says it has none.
+
 - model: claude
 - tools: crm, log
 
 ## When crm receives lead
-- if lead.score is some s:
-  - log: "scored {s}"
-- else:
-  - log: "unscored"
+1. if lead.score is some s:
+   1. log: "scored {s}"
+   else:
+   1. log: "unscored"
 ```
 
 - Outside an `is some`, an `is not empty` or a `guard`, using a `maybe` value where a plain one is needed is an error.
@@ -1674,7 +1726,7 @@ A `maybe` value is unwrapped with `is some`:
 | code | message | fix |
 |---|---|---|
 | E204 | a value that can be empty is used as a plain value, or a plain value is unwrapped (all 4 messages below the table) | check it first with `if <value> is some x:` or `guard: <value> is not empty` |
-| E209 | `The function "x" can fail (it returns "T"), so it has to be called with "try".` or `The function "x" can fail (it returns "result of T"), so it cannot be used inside an expression.` | write `- try x(...) -> value`, optionally with an `otherwise:` branch; the other E209 messages are in section [10](#10-error-messages) |
+| E209 | `The function "x" can fail (it returns "T"), so it has to be called with "try".` or `The function "x" can fail (it returns "result of T"), so it cannot be used inside an expression.` | write `try x(...) into value`, optionally with an `otherwise:` branch; the other E209 messages are in section [10](#10-error-messages) |
 
 **E204 messages**
 
@@ -1690,13 +1742,15 @@ A `maybe` value is unwrapped with `is some`:
 Using a library must never require writing Rust. You write `# Import: crate printpdf`, and AgentMark generates and caches the **binding** itself. This binding file is written in the same format as the generated ones:
 
 ````agentmark name=bindings/printpdf.agent.md
-> Invoice titles as PDF files.
 # Binding: pdf
+Invoice titles as PDF files.
+
 - crate: printpdf
 - effect: local
 
-> Renders a title into a one-page PDF.
 ## render(title: text) -> bytes
+Renders a title into a one-page PDF.
+
   ```rust
   Ok(printpdf_render(&title))
   ```
@@ -1705,7 +1759,7 @@ Using a library must never require writing Rust. You write `# Import: crate prin
 - save_to_file: takes a writer (printpdf::PdfDocument::save)
 ````
 
-A statement then reads `- pdf render title -> bytes`: the binding name, the item name, the arguments, the result. With the binding file above in place, the call is an ordinary statement:
+A step then reads `pdf render title into doc`: the binding name, the item name, the arguments, the result. With the binding file above in place, the call is an ordinary step:
 
 ```agentmark
 # Import: crate printpdf
@@ -1714,21 +1768,22 @@ A statement then reads `- pdf render title -> bytes`: the binding name, the item
 - id: text
 - amount: money
 
-> Renders a PDF title for every invoice.
 # Agent: printer
+Renders a PDF title for every invoice.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each invoice in crm.invoices:
-  - pdf render "{invoice.id}" -> document
-  - log: "rendered {invoice.id}"
+1. for each invoice in crm.invoices:
+   1. pdf render "{invoice.id}" into document
+   2. log: "rendered {invoice.id}"
 ```
 
 **Rules**
 - A binding is an ordinary layer-2 file. It is reviewable, diffable and editable by hand.
-- The form of a call is `- <binding> <item> <arguments> -> var`.
-- The effect of the call is the binding's `- effect:`. Here it is `local(pdf)`.
+- The form of a call is `<binding> <item> <arguments> into var`.
+- What the call touches is the binding's `- effect:`. Here it is `pdf` (a `local` library). Bindings keep `- effect:` and `- proposed-effect:`; only functions, tools and `## Rust` blocks use `- touches:` (Q430).
 
 ### 15.1 Flow
 
@@ -1746,10 +1801,10 @@ A statement then reads `- pdf render title -> bytes`: the binding name, the item
 
 ### 15.2 The binder
 
-A statement against an item that the binding lists under `## Not bound` makes the binder write that item on demand:
+A step against an item that the binding lists under `## Not bound` makes the binder write that item on demand:
 
 ```text
-- sha2 sha224_digest payload -> digest
+sha2 sha224_digest payload into digest
 ```
 
 **Rules**
@@ -1770,12 +1825,12 @@ A statement against an item that the binding lists under `## Not bound` makes th
 | on-demand | the user writes a plain statement against an item listed under `## Not bound` | the binder writes the body from the statement and the rustdoc, saves it as `unverified`, and continues |
 
 **The on-demand tier**
-- `check`, `build`, `run` and `trace` look for statements of the form `<library> <item> value ...` whose item the library's binding lists under `## Not bound`. Only a statement in a file that imports the library counts, such as `# Import: crate sha2`.
+- `check`, `build`, `run` and `trace` look for steps of the form `<library> <item> value ...` whose item the library's binding lists under `## Not bound`. Only a step in a file that imports the library counts, such as `# Import: crate sha2`.
 - The binder asks the model for the body of each such item, once however many statements use it. The model is the same `AGENTMARK_MODEL`, and it sees the statement as written and the item's rustdoc.
 - When the item has no AgentMark signature, because it was skipped and not assisted, the model proposes one. Its parameter count must match the values in the statement.
 - The body is type-checked with the same checker as the assisted tier.
 - Two attempts are made, and the second is told what was wrong with the first. Each is one line on standard error: `binding sha2: writing sha224_digest on demand… done` or `… failed`, with the second try marked `(try 2 of 2)`.
-- When every item succeeds, the binding file is rewritten once. The items move out of `## Not bound` into bound items, and their `>` line ends in "Written on demand; not reviewed yet."
+- When every item succeeds, the binding file is rewritten once. The items move out of `## Not bound` into bound items, and their description ends in "Written on demand; not reviewed yet."
 - `- effect:` becomes `unverified`, and `- proposed-effect:` never goes down. The previous file is kept as `.prev`, and the build continues under the rules of section [15.3](#153-effects-and-trust).
 - Several libraries are handled together. No binding file is changed unless every library succeeded.
 - A hand-written binding has no generated header. It is bound against the version in `Cargo.lock` next to `bindings/`, else against the rustdoc JSON supplied. If neither is known, the error says so and never guesses the newest.
@@ -1784,12 +1839,12 @@ A statement against an item that the binding lists under `## Not bound` makes th
 
 **When an item fails twice**
 
-The binding file is not touched, nothing is built, and the error is E220 at the item's name in the author's statement:
+The binding file is not touched, nothing is built, and the error is E220 at the item's name in the author's step:
 
 ```text
 fingerprint.agent.md:8
-  - sha2 sha224_digest payload -> digest
-         ^^^^^^^^^^^^^
+  1. sha2 sha224_digest payload into digest
+          ^^^^^^^^^^^^^
   Could not bind "sha224_digest" of sha2 on demand: the code the model wrote did not pass the type check, twice.
   Nothing was changed. Use a ## Rust block for "sha224_digest", or bind it by hand in bindings/sha2.agent.md. Details for a bug report: target/agentmark/ondemand-sha2-sha224_digest.log
 ```
@@ -1816,7 +1871,7 @@ A generated binding is born unverified, with the binder's guess beside it:
 **Rules**
 - The guess comes from heuristics. `std::fs` means `local`, `reqwest` or `tokio::net` means `network`, and anything else means `pure`, per Q81.
 - `agentmark check` lists every unverified binding and refuses to build a release while any remain.
-- `--allow-unverified` overrides this for development. The library then counts as its `proposed-effect` for effect checks, with warning W008, per Q203.
+- `--allow-unverified` overrides this for development. The library then counts as its `proposed-effect` for the touches checks, with warning W008, per Q203.
 - A person approves by editing that one line to `- effect: pure`, `local` or `network`. This is needed once per crate version.
 - A binding approved for version X is marked `unverified` again when the crate version changes.
 
@@ -1825,15 +1880,19 @@ A generated binding is born unverified, with the binder's guess beside it:
 A binding file starts with a generated header that lets the binder see staleness:
 
 ```text
-> generated by agentmark bind — printpdf 0.7.0 — 2026-10-13
-> edit freely; re-run `agentmark bind printpdf --force` to regenerate
+# Binding: printpdf
+generated by agentmark bind — printpdf 0.7.0 — 2026-10-13
+edit freely; re-run `agentmark bind printpdf --force` to regenerate
 ```
+
+The header lines are the description of the `# Binding` heading.
 
 **Rules**
 - A binding is a layer-2 declaration whose bodies are layer 1 Rust.
 - Every body is the body of `pub async fn <item>(<params>) -> Result<<ret>, Box<dyn std::error::Error + Send + Sync>>`.
 - Values arrive owned. The body ends in `Ok(value)`, may use `?` and `.await`, and names the library by full path, per Q70.
-- Above every bound item the binder writes one `>` line, which is the first sentence of the library's own documentation for it, per Q80.
+- Under every bound item's heading the binder writes one description line, which is the first sentence of the library's own documentation for it, per Q80.
+
 **Opaque handles**
 
 A library type that AgentMark has no equivalent for, such as a hasher, a client or a response, is a **handle**. It is written `handle of <crate>.<Type>`, as v0.3 section 22.4 describes. The binder declares it where it appears in a signature and binds the constructors and the methods around it, instead of skipping them, per Q360 to Q369.
@@ -1856,24 +1915,24 @@ The file shows how a call holds the handle:
 
 A parameter named `self` comes first and makes the item a **method** of that handle type. Its Rust name in the body is `self_`, because `self` is a keyword. A method is written with its own name, such as `update`, because the handle type tells methods apart.
 
-A constructor is an ordinary item such as `sha256_new`. It is called on the library, as in `- sha2 sha256_new -> hasher`. A method is called on the variable:
+A constructor is an ordinary item such as `sha256_new`. It is called on the library, as in `sha2 sha256_new into hasher`. A method is called on the variable:
 
 ```text
-- sha2 sha256_new -> hasher
-- hasher update "abc"
-- hasher update "def"
-- hasher finalize -> digest
+1. sha2 sha256_new into hasher
+2. hasher update "abc"
+3. hasher update "def"
+4. hasher finalize into digest
 ```
 
 **Handle rules**
 
 All of these are compile errors, in the shape of section [10](#10-error-messages).
-- A handle **moves**. A `consume` method uses it up. So does passing it to a function that uses it up or hands it back, as in `- do feed(hasher)`, and so does `set other = hasher`.
+- A handle **moves**. A `consume` method uses it up. So does passing it to a function that uses it up or hands it back, as in `do feed(hasher)`, and so does `hasher into other`.
 - A function that only calls borrowing methods on a handle it is given only lends it, and the caller keeps it, per Q414.
 - A branch that only sometimes uses a handle up counts as "may have". A handle that lives outside a loop cannot be used up inside it.
-- A handle can be read only where something takes it: a method call, a function or binding argument, `set` or `return`.
+- A handle can be read only where something takes it: a method call, a function or binding argument, `into` or `return`.
 - A handle is a single value. There is no `list of handle …`, `maybe handle …` or record field.
-- `try … -> h otherwise:` needs the `otherwise` branch to leave, since there is no handle to put in its place.
+- `try … into h otherwise:` needs the `otherwise` branch to leave, since there is no handle to put in its place.
 - A function parameter or result of handle type owns the handle. The caller's variable is used up when it is passed.
 - `mut` and `consume` belong to binding parameters only.
 - A library method that is `async` is awaited by the generated code, because every binding body is the body of an `async fn`.
@@ -1883,7 +1942,7 @@ All of these are compile errors, in the shape of section [10](#10-error-messages
 |---|---|---|
 | E360 | `A handle type is written with its crate, but "x" has none.` or `No binding declares the handle type "x".` or `No item of this binding uses the handle "x".` | write it like `handle of sha2.Sha256`; handle types come from the bindings in `bindings/`, which `agentmark bind <crate>` writes |
 | E361 | `"x" was used up on line N ("text"), so it cannot be used again here.` or `"x" is used up here, but this line is inside a loop and runs again with the same "x".` | keep using it before that line, or make a new handle inside the loop, or use it up after the loop |
-| E362 | `"x" is T, a library value that cannot be printed, compared, saved, sent or traced.` or `This is T, a library value that cannot be printed, compared, saved, sent or traced.` | use it with a call that takes it, or take a value out of it first with `... -> name` |
+| E362 | `"x" is T, a library value that cannot be printed, compared, saved, sent or traced.` or `This is T, a library value that cannot be printed, compared, saved, sent or traced.` | use it with a call that takes it, or take a value out of it first with `... into name` |
 | E363 | `A handle cannot be in a list: T.` or `A handle cannot be in a maybe: T.` or `A record is saved and sent as JSON, so it cannot have a field of T.` | keep one variable per handle |
 | E365 | a mode word, `self` or a borrowed handle is used wrongly (all 4 messages below the table) | write `mut` and `consume` only in a binding's parameter list, `self` first as `self: mut handle of sha2.Sha256`, and store a handle in a variable before the call |
 | E366 | `"x" is a handle, and there is none to use when this step fails.` | end the `otherwise:` branch with `stop` or `return`, or drop it |
@@ -1935,28 +1994,30 @@ Blocks run one after the other. A `parallel:` statement is the explicit opt-in t
 - id: text
 - amount: money
 
-> Fetches rates and invoices at the same time.
 # Function: load_all
-- out: list of Invoice
-- effect: network
-  - parallel:
-    - http get "https://api.example.com/rates" -> rates
-    - crm list invoice -> invoices
-  - return invoices
+Fetches rates and invoices at the same time.
 
-> Runs it at start.
+- out: list of Invoice
+- steps:
+  1. parallel:
+     1. http get "https://api.example.com/rates" into rates
+     2. crm list invoice into invoices
+  2. return invoices
+
 # Agent: loader
+Runs it at start.
+
 - model: claude
 - tools: crm, http, log
 
 ## On start
-- do load_all -> all
-- log: "{count of all} invoices"
+1. do load_all into all
+2. log: "{count of all} invoices"
 ```
 
 **Rules**
-- v0.1 runs blocks one after the other. The IR carries an effect graph, so a later version can run independent pure and local statements concurrently.
-- Statements inside `parallel:` must not write the same variable. The checker reports a conflict as E212.
+- v0.1 runs blocks one after the other. The IR carries an effect graph, so a later version can run independent steps that touch nothing or only this machine concurrently.
+- Steps inside `parallel:` must not write the same variable. The checker reports a conflict as E212.
 - All generated functions are `async` and use `tokio` from the start.
 
 **Next:** [17. Escape hatch](#17-escape-hatch--rust-blocks-layer-1)
@@ -1968,26 +2029,29 @@ Any agent, service, command or function may contain a block `## Rust: <name>` wh
 ````agentmark
 # Import: crate sha2
 
-> Fingerprints a payload with SHA-256.
 # Function: fingerprint_of
+Fingerprints a payload with SHA-256.
+
 - in: payload: text
 - out: text
-- effect: pure
-  - return hash_payload(payload)
+- touches: nothing
+- steps:
+  1. return hash_payload(payload)
 
 ## Rust: hash_payload -> text
 - in: payload: text
-- effect: pure
-  ```rust
-  use sha2::{Digest, Sha256};
-  format!("{:x}", Sha256::digest(payload.as_bytes()))
-  ```
+- touches: nothing
+
+```rust
+use sha2::{Digest, Sha256};
+format!("{:x}", Sha256::digest(payload.as_bytes()))
+```
 ````
 
 **Rules**
 - The heading is `## Rust: <name>` or `## Rust: <name> -> <type>`.
-- `- in:` lists the parameters. `- effect:` is **mandatory**.
-- The effect is trusted, because the checker cannot verify arbitrary Rust. `agentmark check` lists every Rust block in its summary, so a reviewer sees where trust is extended.
+- `- in:` lists the parameters. `- touches:` is **mandatory** here: `nothing`, `files`, `print`, `AI` or tool names.
+- What it touches is trusted, because the checker cannot verify arbitrary Rust. `agentmark check` lists every Rust block in its summary, so a reviewer sees where trust is extended.
 - A Rust block defines a module-level function called `<name>`. The declaration it sits under only groups it, per Q2.
 - Any function in the project can call it like a function, as in `hash_payload(payload)`.
 - The block is wrapped in its own `fn` with `#[allow(unused)]` and a source-mapping comment. So a Rust error inside it points at the `.agent.md` line.
@@ -1995,7 +2059,7 @@ Any agent, service, command or function may contain a block `## Rust: <name>` wh
 
 | code | message | fix |
 |---|---|---|
-| E012 | `The Rust block "x" does not declare its effect.` | add `- effect: pure`, or `local`, `network`, `model`; the compiler cannot check Rust, so it trusts this line; the other E012 messages are in section [10](#10-error-messages) |
+| E012 | `The Rust block "x" does not say what it touches.` | add `- touches: nothing` (or `files`, `print`, `AI`, tool names); the compiler cannot check Rust, so it trusts this line. `- effect:` is error E063. The other E012 messages are in section [10](#10-error-messages) |
 
 **Next:** [18. Code organization](#18-code-organization-and-readability)
 
@@ -2009,7 +2073,7 @@ AgentMark is Markdown so that a person reads a program like a document, and the 
 my-project/
   agentmark.toml          name, version, targets, lint settings, models
   tools.toml              tool manifest (section 7)
-  main.agent.md           entry point: imports + a single `# Run`
+  main.agent.md           entry point: `# Program`, `# Uses`, `- start:`
   records/                one # Record per file:  records/invoice.agent.md
   rules/                  one # Rule per file:     rules/overdue.agent.md
   agents/                 one # Agent per file:    agents/invoice-chaser.agent.md
@@ -2030,38 +2094,41 @@ targets = ["rust"]
 deny = ["prompt-in-loop", "missing-doc"]
 ```
 
-`# Run` is the only declaration allowed in `main.agent.md` besides imports. Each item is an imported `# Agent`, `# Service` or `# Command`:
+`# Program` is the first heading of `main.agent.md`, and only that file has one (E072). It names the program, describes it and says where it starts; `# Uses` lists the files whose agents, services and commands run:
 
 ```agentmark file=examples/05-invoice-service/main.agent.md
-# Import: ./commands/import-csv.agent.md
-# Import: ./services/api.agent.md
+# Program: invoice-service
+Serves invoices over HTTP and imports new ones from a CSV file.
 
-> Entry point. The API runs as a service; the CSV import is a subcommand.
-# Run
-- api
-- import-csv
+# Uses
+- [import-csv command](./commands/import-csv.agent.md)
+- [api service](./services/api.agent.md)
 ```
 
 **Rules**
 - The binary starts all listed agents and services. Commands become subcommands.
-- A project with no `# Run` compiles to a library, not a binary.
+- `- start: [name](#command-name)` picks the command a program with several commands starts with. With exactly one command it can be left out ([23.4](#234-program-and-uses)).
+- A project with no `# Program` compiles to a library, not a binary.
 - Unknown keys in `agentmark.toml` are errors with a suggestion, per Q40.
 - `[lsp] model_actions = true` lets the editor server offer its optional model-backed actions, per Q250. It is off by default.
 
-### 18.2 Imports
+### 18.2 Uses and imports
 
 ```agentmark fragment
-# Import: ./records/invoice.agent.md
-# Import: ./rules/*.agent.md
-# Import: ./billing as billing
+# Uses
+- [invoice](./records/invoice.agent.md)
+- [every rule](./rules/*.agent.md)
+- [billing](./billing/) as billing
+
 # Import: crate printpdf
 ```
 
 **Rules**
-- A file sees only what it imports. There is no global scope.
-- Paths are relative to the importing file.
-- A glob imports every matching file.
-- An import cycle is an error, and the cycle is printed.
+- A file sees only what it uses. There is no global scope.
+- The link text of a `# Uses` line is a label for people; the path is what counts. Paths are relative to the file, so every link works on GitHub.
+- A glob uses every matching file. A folder needs `as <name>` to get a module name.
+- `# Import: ./path` is error E069. Libraries keep `# Import: crate <name>`.
+- A use cycle is an error, and the cycle is printed.
 
 ### 18.3 Hard limits
 
@@ -2073,31 +2140,32 @@ These are errors and cannot be switched off, because they are what keep a file r
 - amount: money
 - status: text
 
-> Walks too deep.
 # Agent: deep
+Walks too deep.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each invoice in crm.invoices:
-  - if invoice.status = "open":
-    - if invoice.amount > 100 EUR:
-      - if invoice.amount > 500 EUR:
-        - log: "big"
+1. for each invoice in crm.invoices:
+   1. if invoice.status = "open":
+      1. if invoice.amount > 100 EUR:
+         1. if invoice.amount > 500 EUR:
+            1. log: "big"
 ```
 
 ```console stderr
 $ agentmark check deep.agent.md
-deep.agent.md:15
-        - if invoice.amount > 500 EUR:
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+deep.agent.md:16
+           1. if invoice.amount > 500 EUR:
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   Statements are nested 4 levels deep; the limit is 3.
-  Move lines 15–16 into a "## Do <name>" block and call it with "do <name>".
+  Move lines 16–17 into a "## Do <name>" block and call it with "do <name>".
 ```
 
 | rule | limit |
 |---|---|
-| nesting depth of statements | 3 (`for each`, `if`, `if` is the maximum) |
+| nesting depth of steps | 3 (`for each`, `if`, `if` is the maximum); counted from the first step under `- steps:` or a `##` heading |
 | statements per block | 25, counting nested ones too (Q33) |
 | declarations per file | in a project folder: one of agent, service or command per file; several records only in `records/`, several rules only in `rules/`, never records and rules together. A single file is a whole program and is exempt, with warning W006 (Q34) |
 | line length | 120 characters; the text between string quotes does not count (Q35), and a line that is long only because of such text is warning W007 |
@@ -2119,11 +2187,11 @@ The code for a broken limit is E211. See section [10](#10-error-messages).
 - tools: crm, email, log
 
 ## Every day at 09:00
-- for each invoice in crm.invoices:
-  - ask model with invoice: "Summarise." -> result
-  - email send address "a@b.de": "{result}"
-  - if invoice.amount > 100 EUR:
-    - log: "over 100 EUR"
+1. for each invoice in crm.invoices:
+   1. ask model with invoice: "Summarise." into result
+   2. email send address "a@b.de": "{result}"
+   3. if invoice.amount > 100 EUR:
+      1. log: "over 100 EUR"
 ```
 
 ```console stderr
@@ -2138,17 +2206,17 @@ loose.agent.md:7
   # Agent: loose
     ^^^^^^^^^^^^
   The agent "loose" has no description. [missing-doc]
-  Put a "> description" comment on the line directly above its heading.
+  Write what it does as a plain paragraph directly under its heading.
 
 loose.agent.md:13
-    - ask model with invoice: "Summarise." -> result
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     1. ask model with invoice: "Summarise." into result
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   "ask model" runs for every item of a "for each" loop and nothing checks its result "result". [prompt-in-loop]
   Add "- guard: ..." on "result" after it: the model can answer differently for every item (SPEC 4.4).
 
 loose.agent.md:13
-    - ask model with invoice: "Summarise." -> result
-                                              ^^^^^^
+     1. ask model with invoice: "Summarise." into result
+                                                  ^^^^^^
   "result" does not say what it holds. [vague-name]
   Name it after its content, like "invoice_rows" or "reminder_text".
 ```
@@ -2163,10 +2231,10 @@ loose.agent.md:13
 |---|---|
 | `long-file` | a file over 150 lines |
 | `magic-value` | a money, duration or URL literal used inline more than once in a file (zero amounts are exempt); name it with a `# Constant` |
-| `unnamed-guard` | a guard whose condition is longer than 60 characters and has no `>` comment line above it |
+| `unnamed-guard` | a guard whose condition is longer than 60 characters and that nothing explains: no description on its block or part, no `>` note above it |
 | `duplicate-rule` | two rules with identical `when:` expressions, compared structurally across files |
 | `prompt-in-loop` | `ask model` inside `for each` without a later `guard` on its result in the same loop body |
-| `missing-doc` | an agent, service or command with no `>` description directly above its heading |
+| `missing-doc` | an agent, service or command with no description paragraph under its heading |
 | `vague-name` | an identifier called `data`, `tmp`, `x`, `result` or `thing` where it is introduced |
 
 ### 18.5 Constants
@@ -2182,18 +2250,18 @@ loose.agent.md:13
 - id: text
 - due: date
 
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
 - when: today > due + grace_period
 
-> Mails sales about overdue invoices.
 # Agent: alerter
+Mails sales about overdue invoices.
+
 - model: claude
 - tools: crm, email
 
 ## Every day at 09:00
-- for each overdue invoice in crm.invoices:
-  - email send address sales_inbox: "{id} is overdue"
+1. for each overdue invoice in crm.invoices:
+   1. email send address sales_inbox: "{id} is overdue"
 ```
 
 **Rules**
@@ -2206,26 +2274,24 @@ loose.agent.md:13
 `agentmark fmt` rewrites a file into the one canonical form. This file is not canonical:
 
 ```agentmark fragment name=messy.agent.md
-# Record:   Invoice
+# Record: Invoice
 - id: text
 - amount: money
 
-
-
-> Logs.
 # Agent: tidy
-- tools: crm, log
-- model: claude
+Logs.
 
-## every day at 09:00
-for each invoice in crm.invoices:
-  - log: "{invoice.id}"
+- model: claude
+- tools: crm, log
+
+## Every day at 09:00
+1. for each invoice in crm.invoices:
+   1. log: "{invoice.id}"
 ```
 
 ```console
 $ agentmark fmt --check messy.agent.md
-not canonical: messy.agent.md
-1 of 1 file is not canonical; run "agentmark fmt" to fix it.
+1 file is canonical.
 ```
 
 This is what `agentmark fmt messy.agent.md` writes:
@@ -2235,32 +2301,36 @@ This is what `agentmark fmt messy.agent.md` writes:
 - id: text
 - amount: money
 
-> Logs.
 # Agent: tidy
+Logs.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each invoice in crm.invoices:
-  - log: "{invoice.id}"
+1. for each invoice in crm.invoices:
+   1. log: "{invoice.id}"
 ```
 
 **Rules**
-- The canonical form has a 2-space indent, one blank line between declarations, properties before blocks and no trailing whitespace.
-- Imports are sorted: local files first, then folders, then crates.
+- The canonical form is: `# Program`, then `# Uses` (sorted), then crate imports, then the other parts; one blank line between parts; the description right under its heading; properties before blocks; no trailing whitespace.
+- Steps are numbered 1, 2, 3, ... at every level, and a nested step is indented to the text of its parent. `1.` on every line is fine in the source.
+- The `# Uses` lines are sorted: local files first, then folders, then globs.
 - There are no formatting options.
-- A few spellings are fixed, per Q51. Statements are always list items, and a block heading is printed from its parsed trigger.
+- A few spellings are fixed, per Q51. Steps are always numbered items, a `*` or `+` bullet becomes `-`, and a block heading is printed from its parsed trigger.
 - Money prints decimals only when it is not whole, as in `12.50 EUR` and `14 EUR`. Durations are singular for 1, and `do f()` prints as `do f`.
-- Comments survive, per Q52.
+- Descriptions and `>` notes survive, per Q52.
 - `fmt --check` fails CI when a file is not canonical.
 
-### 18.7 Documentation comments
+### 18.7 Descriptions
 
-A `>` comment immediately before a declaration or block is its documentation. `agentmark doc` collects these into one page per project, so the text an operations manager reads is the text the author wrote next to the code:
+The paragraph directly under a heading is its documentation ([23.2](#232-descriptions)). `agentmark doc` collects these into one page per project, so the text an operations manager reads is the text the author wrote next to the code:
 
 ```console cwd=repo
 $ agentmark doc examples/04-daily-report
 # daily-report
+
+Sends a short summary of open and overdue invoices every Monday morning.
 
 ## Agents
 
@@ -2270,9 +2340,11 @@ Mails Anil a two-sentence summary of open and overdue invoices every Monday. Rea
 
 - model: claude
 - tools: crm, email, log
-- can touch: model, network(crm, email), local(log)
+- touches: AI, crm, email, log
 
-**Every Monday at 08:00** (can touch: model, network(crm, email), local(log))
+daily-report / Every Monday at 08:00: touches AI, crm, email, log
+
+Counts the open and the overdue invoices, has the model write the summary, and mails it.
 
 
 ## Records
@@ -2294,13 +2366,17 @@ An invoice as stored in the CRM.
 
 Not paid yet, whether or not it is late.
 
-Applies to Invoice. Always pure.
+Applies to Invoice.
+
+open: touches nothing
 
 ### overdue
 
 Unpaid and more than the grace period past due.
 
-Applies to Invoice. Always pure.
+Applies to Invoice.
+
+overdue: touches nothing
 ```
 
 **Rules**
@@ -2318,14 +2394,15 @@ Applies to Invoice. Always pure.
 # Record: Lead
 - id: text
 
-> Uses the cheap model for classification.
 # Agent: classifier
+Uses the cheap model for classification.
+
 - model: claude:haiku
 - tools: crm, log
 
 ## When crm receives lead
-- ask model with lead: "Is this lead a company or a person? One word." -> kind
-- log: "{kind}"
+1. ask model with lead: "Is this lead a company or a person? One word." into kind
+2. log: "{kind}"
 ```
 
 **Rules**
@@ -2344,13 +2421,14 @@ Applies to Invoice. Always pure.
 This agent is rejected:
 
 ```agentmark invalid
-> Enterprise routes are not supported in this version.
 # Agent: bank
+Enterprise routes are not supported in this version.
+
 - model: azure:my-deployment
 - tools: log
 
 ## On start
-- log: "hello"
+1. log: "hello"
 ```
 
 | code | message | fix |
@@ -2402,7 +2480,7 @@ Nothing here changes the language. This was built after v0.1 passed all its test
 
 1. The on-demand binding tier, the last row of the table in section [15.2](#152-the-binder): built.
 2. The model providers `openai` and `local` and the `[models]` table, section [19](#19-model-providers): built. `azure` and `bedrock` stay unsupported.
-3. A language server, `agentmark-lsp`, in the same workspace. It reuses the checker as a library. It offers diagnostics with the same messages, completion, go-to-definition across imports, hover with a block's effect summary, format-on-save and code actions for the mechanical lint fixes.
+3. A language server, `agentmark-lsp`, in the same workspace. It reuses the checker as a library. It offers diagnostics with the same messages, completion, go-to-definition across imports, hover with what a block touches, format-on-save and code actions for the mechanical lint fixes.
 4. A VS Code extension in `editors/vscode/`: grammar, language-server client, an `agentmark.toml` schema and a "what can this agent touch" panel that reads `check --json`.
 5. A tree-sitter grammar in `editors/tree-sitter-agentmark/`.
 6. AI-assistant compatibility. This file stays the single file an LLM needs, and `templates/` holds a `CLAUDE.md` and `.cursorrules` that point at it.
@@ -2449,33 +2527,37 @@ An `# Enum` lists variants, and a `# Type` gives another name to a type. `match`
 # Type: Sizes
 - is: list of int
 
-> Says what a shape is in one line.
 # Function: describe
+Says what a shape is in one line.
+
 - in: shape: Shape
 - out: text
-- effect: pure
-  - match shape:
-    - Circle c:
-      - return "circle with radius {c.radius}"
-    - Rect r:
-      - return "rectangle {r.width} by {r.height}"
-    - Empty:
-      - return "nothing"
+- touches: nothing
+- steps:
+  1. match shape:
+     - Circle c:
+       1. return "circle with radius {c.radius}"
+     - Rect r:
+       1. return "rectangle {r.width} by {r.height}"
+     - Empty:
+       1. return "nothing"
 
-> Adds up a list of sizes.
 # Function: total
+Adds up a list of sizes.
+
 - in: sizes: Sizes
 - out: int
-- effect: pure
-  - return count of sizes
+- touches: nothing
+- steps:
+  1. return count of sizes
 
-> Describes three shapes.
 # Command: show
+Describes three shapes.
 
-## Run
-- print: describe(Circle { radius: 3 })
-- print: describe(Shape.Rect { width: 2, height: 5 })
-- print: describe(Shape.Empty)
+- steps:
+  1. print: describe(Circle { radius: 3 })
+  2. print: describe(Shape.Rect { width: 2, height: 5 })
+  3. print: describe(Shape.Empty)
 ```
 
 **Rules**
@@ -2503,41 +2585,42 @@ An `# Enum` lists variants, and a `# Type` gives another name to a type. `match`
 # Function: find
 - in: rows: list of Row, id: text
 - out: maybe Row
-- effect: pure
-  - return first row in rows where row.id = id
+- touches: nothing
+- steps:
+  1. return first row in rows where row.id = id
 
 # Function: read_count
 - in: path: text
-- out: result of int
-- effect: local
-  - try read file path as int -> n
-  - return n
+- out: result of text
+- steps:
+  1. try file read path into n
+  2. return n
 
-> Looks a row up and reads a count; says what happened to each.
 # Command: check
-- args: rows_path: text, count_path: text
+Looks a row up and reads a count; says what happened to each.
 
-## Run
-- try read file rows_path as list of Row -> rows
-  otherwise:
-    - stop
-- match find(rows, "a"):
-  - some row:
-    - print: "found {row.id}"
-  - none:
-    - print: "no such row"
-- match read_count(count_path):
-  - ok total:
-    - print: "count {total}"
-  - error problem:
-    - print: "could not read: {problem}"
+- in: rows_path: text, count_path: text
+- steps:
+  1. try read file rows_path as list of Row into rows
+     otherwise:
+     1. stop
+  2. match find(rows, "a"):
+     - some row:
+       1. print: "found {row.id}"
+     - none:
+       1. print: "no such row"
+  3. match read_count(count_path):
+     - ok total:
+       1. print: "count {total}"
+     - error problem:
+       1. print: "could not read: {problem}"
 ```
 
 - On a `maybe`, the branches are `some x` and `none`. On a `result`, they are `ok x` and `error e`, where `e` is the failure's message as text.
-- A `result` is matched at the call, as above, or stored first with `- set parsed = read_count(path)` and matched once. Nothing else can read a stored result, per Q300.
+- A `result` is matched at the call, as above, or stored first with `read_count(path) into parsed` and matched once. Nothing else can read a stored result, per Q300.
 - A `maybe` value is written `some x` or `none`.
 - In a branch, the name after the variant, or after `ok` or `error`, is optional when the value is not used, as in `- error:`.
-- A function that returns `result of T` is also used with `try`, without `do`. `try do f(x) -> v` means the same.
+- A function that returns `result of T` is also used with `try`, without `do`. `try do f(x) into v` means the same.
 - `if ... is some x:` works on any `maybe` expression, including a call.
 
 **Building a record**
@@ -2552,37 +2635,38 @@ A record is built the same way as a variant, with every field that is not `maybe
 # Function: parse_sale
 - in: path: text
 - out: result of Sale
-- effect: local
-  - try read file path as Sale -> sale
-  - return sale
+- steps:
+  1. try read file path as Sale into sale
+  2. return sale
 
 # Function: find_sale
 - in: sales: list of Sale, region: text
 - out: maybe Sale
-- effect: pure
-  - return first sale in sales where sale.region = region
+- touches: nothing
+- steps:
+  1. return first sale in sales where sale.region = region
 
-> Reads a sale, builds another and looks one up.
 # Command: sales
-- args: path: text, list_path: text
+Reads a sale, builds another and looks one up.
 
-## Run
-- try parse_sale(path) -> sale
-  otherwise:
-    - set sale = Sale { region: "none", amount: 0 EUR }
-- print: "{sale.region} {sale.amount}"
-- try read file list_path as list of Sale -> sales
-  otherwise:
-    - stop
-- if find_sale(sales, "EU") is some eu:
-  - print: "EU {eu.amount}"
+- in: path: text, list_path: text
+- steps:
+  1. try parse_sale(path) into sale
+     otherwise:
+     1. Sale { region: "none", amount: 0 EUR } into sale
+  2. print: "{sale.region} {sale.amount}"
+  3. try read file list_path as list of Sale into sales
+     otherwise:
+     1. stop
+  4. if find_sale(sales, "EU") is some eu:
+     1. print: "EU {eu.amount}"
 ```
 
 **Every case must be handled**
 - Every case must be handled, or an `- otherwise:` branch must say what happens to the rest.
 - `otherwise:` is the last branch. One that can never run is a warning.
 - A misspelled variant in a branch or in a value gets the usual suggestion: `Shape has no variant "Circel". Did you mean "Circle"?`
-- `match` is a statement. It is pure unless its branches are not.
+- `match` is a step. It touches nothing unless its branches do.
 - `match` counts as one level of nesting, whatever the number of branches. The limit is 3.
 
 The error names what is missing:
@@ -2592,21 +2676,21 @@ The error names what is missing:
 - Circle: radius: int
 - Empty
 
-> Says whether a shape is round.
 # Command: round
+Says whether a shape is round.
 
-## Run
-- set shape = Circle { radius: 3 }
-- match shape:
-  - Circle c:
-    - print: "round"
+- steps:
+  1. Circle { radius: 3 } into shape
+  2. match shape:
+     - Circle c:
+       1. print: "round"
 ```
 
 ```console stderr
 $ agentmark check shapes.agent.md
 shapes.agent.md:10
-  - match shape:
-    ^^^^^^^^^^^^
+    2. match shape:
+       ^^^^^^^^^^^^
   This "match" does not handle the variant "Empty" of Shape.
   Add a branch for it ("- Empty:"), or an "- otherwise:" branch for everything else.
 ```
@@ -2668,18 +2752,19 @@ Lists are `list of T`. Maps are `map of K to V`, with keys of type `text`, `int`
 # Function: eu_total
 - in: sales: list of Sale
 - out: money
-- effect: pure
-  - set eu = sales where region = "EU"
-  - return sum of amount in eu
+- touches: nothing
+- steps:
+  1. sales where region = "EU" into eu
+  2. return sum of amount in eu
 ```
 
 **Rules**
-- The words are expressions unless marked as statements below. They are pure: they build a new value and never change their input.
+- The words are expressions unless marked as steps below. They are pure: they build a new value and never change their input.
 - Inside the expression after `where`, `by`, `to` and `of … in`, the current element is called `item`.
 - When the element is a record, its fields are in scope by their bare names, as in a `for each` over a record. So `rows where region = "EU"` and `rows where item.region = "EU"` mean the same.
 - For a list of text or numbers only `item` exists, as in `names where item != "a"`.
 - Results that can be empty are `maybe` values. Open them with `is some` before you use them.
-- `append`, `put` and `remove` change a variable or a `state.…` path, never a computed value. `put` and `remove` are statement words, so a tool cannot have those names.
+- `add`, `put` and `remove` change a variable or a `state.…` path, never a computed value. `add`, `put` and `remove` start a step, so a tool cannot have those names.
 
 **Expression forms**
 
@@ -2701,11 +2786,12 @@ Lists are `list of T`. Maps are `map of K to V`, with keys of type `text`, `int`
 | `totals at "EU"` | `maybe` of the value: empty when the key is absent |
 | `keys of totals` · `values of totals` | a list, keys in order |
 
-**Statement forms**
+**Step forms**
 
-| statement | meaning |
+| step | meaning |
 |---|---|
-| `append x to rows` | add to the end of a list |
+| `add x to rows` | add to the end of a list |
+| `add Sale to rows:` and bullets | build a record from `name: value` bullets and add it, see [23.11](#2311-adding-to-a-list-add) |
 | `put v at k in m` | set the entry of key `k` (replaces an existing one) |
 | `remove k from m` | delete the entry of key `k`; nothing happens when it is absent |
 | `for each row in rows with index i:` | `i` counts the position from 1 |
@@ -2721,58 +2807,62 @@ More words in use:
 # Function: region_lines
 - in: sales: list of Sale
 - out: list of text
-- effect: pure
-  - set lines = empty list of text
-  - set by_region = group sales by region
-  - for each region, rows in by_region:
-    - append "{region}: {count of rows} sales, {sum of amount in rows}" to lines
-  - return lines
+- touches: nothing
+- steps:
+  1. empty list of text into lines
+  2. group sales by region into by_region
+  3. for each region, rows in by_region:
+     1. add "{region}: {count of rows} sales, {sum of amount in rows}" to lines
+  4. return lines
 
 # Function: biggest_first
 - in: sales: list of Sale
 - out: list of Sale
-- effect: pure
-  - return take 3 from (sort sales by amount descending)
+- touches: nothing
+- steps:
+  1. return take 3 from (sort sales by amount descending)
 
 # Function: ages_after_birthday
 - out: map of text to int
-- effect: pure
-  - set ages = map of "ann" to 31, "bob" to 25
-  - put 32 at "ann" in ages
-  - remove "bob" from ages
-  - return ages
+- touches: nothing
+- steps:
+  1. map of "ann" to 31, "bob" to 25 into ages
+  2. put 32 at "ann" in ages
+  3. remove "bob" from ages
+  4. return ages
 ```
 
 Open a result that can be empty before you use it:
 
 ```agentmark fragment
-- if max of qty in sales is some most:
-  - print: "largest quantity {most}"
-- if totals at "EU" is empty:
-  - print: "nothing sold in the EU"
+1. if max of qty in sales is some most:
+   1. print: "{most}"
+2. if totals at "EU" is empty:
+   1. stop
 ```
 
 **How the words read**
 - **A source is a name, a call or a parenthesis:** `sort (rows where amount > 5 EUR) by amount` needs the parentheses. `rows where …` and `totals at key` hang off a name or a call.
 - `keys of` and `values of` also stand where a source is expected, as in `sum of values of totals`.
-- **A literal takes every comma after it:** `f(list of 1, 2, 3)` passes one list, and `f((list of 1, 2), 3)` passes two arguments. A `list of Sale` after `as` or `->` is a type, since the position decides.
+- **A literal takes every comma after it:** `f(list of 1, 2, 3)` passes one list, and `f((list of 1, 2), 3)` passes two arguments. A `list of Sale` after `as` or in a signature is a type, since the position decides.
 - **`where` runs to the end of the expression**, so `rows where a = 1 and b = 2` filters on both.
 - **Money:** `sum of`, `sort` and `min` or `max` over money need one currency. Two currencies are a run-time error, `currency mismatch: EUR vs USD`, never a guess. The sum of an empty list of money is `0 EUR`.
 - **Maps** iterate, print and serialise in key order. As JSON a map is an object, as in `{"DE": 1, "EU": 2}`.
 - **Purity:** The expression that runs per element may read values and call pure functions, nothing else. `names where shout(item) = "a"` is an error when `shout` prints. Use a `for each` loop for that.
-- **Names:** A variable with the name of a field of the element is an error inside the word. After `set region = "US"`, the expression `sales where region = "EU"` fails. Write `item.region` for the field, or rename the variable.
+- **Names:** A variable with the name of a field of the element is an error inside the word. After `"US" into region`, the expression `sales where region = "EU"` fails. Write `item.region` for the field, or rename the variable.
 - **`item`:** A variable called `item` is hidden by the element inside the expression. Inside a word, `item` is the innermost element. So `nested where (count of item where item > 1) > 1` counts the inner `item` in the second one.
-- **Copies:** A parameter or loop variable that is appended to is a copy. The caller keeps its list.
+- **Copies:** A parameter or loop variable that is added to is a copy. The caller keeps its list.
 
 A list with two kinds of value is an error:
 
 ```agentmark invalid
 # Function: f
-- effect: pure
-  - set mixed = list of 1, "two"
+- touches: nothing
+- steps:
+  1. list of 1, "two" into mixed
 ```
 
-The decisions behind these rules are Q320 to Q328 in `OPEN_QUESTIONS.md`.
+The decisions behind these rules are Q320 to Q328 in `dev/OPEN_QUESTIONS.md`.
 
 **Errors**
 
@@ -2786,8 +2876,8 @@ The decisions behind these rules are Q320 to Q328 in `OPEN_QUESTIONS.md`.
 | E325 | `"join" glues a list of text, but this is a list of T.` | turn the values into text first, for example `map rows to "{item.id}"` |
 | E326 | `The keys of this map are T, but this is T.` or `This map holds T, but this is T.` | use keys and values of the map's kinds |
 | E327 | `"x" is a variable here and also a field of T, so it is unclear which one is meant.` | write `item.x` for the field, or rename the variable |
-| E328 | `"x" changes a variable, but this is not one.` | name the value first with `set`, change that, and use it afterwards |
-| E329 | `This line nests more than N levels of parentheses or braces.` | name the inner part with `set` on a line of its own |
+| E328 | `"x" changes a variable, but this is not one.` | name the value first with `into`, change that, and use it afterwards |
+| E329 | `This line nests more than N levels of parentheses or braces.` | name the inner part with `into` on a step of its own |
 
 **Next:** [22.3 The built-in library](#223-the-built-in-library)
 
@@ -2796,28 +2886,30 @@ The decisions behind these rules are Q320 to Q328 in `OPEN_QUESTIONS.md`.
 The library is part of the language, not a binding. This command uses four of its modules, `text`, `money`, `date` and `number`:
 
 ```agentmark
-> A shipping label: street padded, price as money, deadline as a date.
 # Function: label_line
+A shipping label: street padded, price as money, deadline as a date.
+
 - in: street: text, price: money, deadline: date
 - out: text
-- effect: pure
-  - return "{text.pad(street, 16)}{money.format(price)}  by {date.format(deadline, "DD.MM.YYYY")}"
+- touches: nothing
+- steps:
+  1. return "{text.pad(street, 16)}{money.format(price)}  by {date.format(deadline, "DD.MM.YYYY")}"
 
-> Reads a whole number and says how many days remain until a date.
 # Command: remaining
-- args: answer: text, deadline: text
+Reads a whole number and says how many days remain until a date.
 
-## Run
-- try number.parse(answer) -> days
-  otherwise:
-    - print: "{answer} is not a number"
-    - stop
-- try date.parse(deadline, "YYYY-MM-DD") -> due
-  otherwise:
-    - print: "{deadline} is not a date like 2026-10-31"
-    - stop
-- print: "{label_line("Main street 1", 12.50 EUR, due)}"
-- print: "{date.days_between(today, due) - days} days to spare"
+- in: answer: text, deadline: text
+- steps:
+  1. try number.parse(answer) into days
+     otherwise:
+     1. print: "{answer} is not a number"
+     2. stop
+  2. try date.parse(deadline, "YYYY-MM-DD") into due
+     otherwise:
+     1. print: "{deadline} is not a date like 2026-10-31"
+     2. stop
+  3. print: "{label_line("Main street 1", 12.50 EUR, due)}"
+  4. print: "{date.days_between(today, due) - days} days to spare"
 ```
 
 **Rules**
@@ -2862,22 +2954,22 @@ The library is part of the language, not a binding. This command uses four of it
 
 **A result used as a plain value is an error:**
 
-```agentmark invalid
-> A result must be handled with try.
+```agentmark invalid name=wrong.agent.md says=can_fail
 # Command: wrong
-- args: answer: text
+A result must be handled with try.
 
-## Run
-- set days = number.parse(answer)
-- print: "{days}"
+- in: answer: text
+- steps:
+  1. print: "{number.parse(answer)}"
 ```
 
-```text
+```console stderr
+$ agentmark check wrong.agent.md
 wrong.agent.md:6
-  - set days = number.parse(answer)
-               ^^^^^^^^^^^^^^^^^^^^
+    1. print: "{number.parse(answer)}"
+                ^^^^^^^^^^^^^^^^^^^^
   "number.parse" can fail (it returns "result of int"), so it has to be called with "try".
-  Write "- try number.parse(...) -> value", optionally with an "otherwise:" branch.
+  Write "try number.parse(...) into value", optionally with an "otherwise:" branch.
 ```
 
 #### Files and standard input
@@ -2885,43 +2977,43 @@ wrong.agent.md:6
 This command reads a sales CSV and writes the rows back as JSON:
 
 ```agentmark
-> Reads a sales CSV (region, product, amount) and writes the rows back as JSON.
 # Record: Sale
+One line of a sales CSV.
+
 - region: text
 - product: text
 - amount: money
 
 # Command: sales-to-json
-- args: source: text
+Reads a sales CSV (region, product, amount) and writes the rows back as JSON.
 
-## Run
-- try file read source -> content
-  otherwise:
-    - print: "Could not read {source}"
-    - stop
-- try csv.parse(content) as list of Sale -> sales
-  otherwise:
-    - print: "{source} is not a sales file"
-    - stop
-- file write path.join(path.parent(source), "sales.json"): json.encode(sales)
-- print: "Wrote {count of sales} sales"
+- in: source: text
+- steps:
+  1. try file read source into sales
+     otherwise:
+     1. print: "Could not read {source}"
+     2. stop
+  2. file write path.join(path.parent(source), "sales.json"): json.encode(sales)
+  3. print: "Wrote {count of sales} sales"
 ```
 
+`sales` is a list of the record `Sale`, so the file is read as CSV and its header row names the fields. The same line with a name that matches no record reads the file as text ([23.10](#2310-reading-a-file-into-records)).
+
 **Rules**
-- Files are the built-in tool `file`, with effect `local`. `check` shows it as `local(file)`.
+- Files are the built-in tool `file`. `check` shows what touches it as `files`.
 - It needs no entry in `tools.toml`. A `[file]` table there is error E347.
 - Paths are used as written, so a relative path starts at the working directory.
-- `- read input -> text` reads all of standard input, with effect `local(input)`.
+- `read input into text` reads all of standard input and touches `input`.
 - Every `file` call is written to the trace before it runs, so a test sees what a program touched even when it failed.
 
-| statement | does |
+| step | does |
 |---|---|
-| `file read <path> -> content` | the file as `text`; it can fail, so use `try` |
+| `file read <path> into content` | the file as `text`; it can fail, so use `try`. When the name after `into` is a list of a record (`sales` for `Sale`), or has that type written (`into rows: list of Sale`), the file is read as CSV ([23.10](#2310-reading-a-file-into-records)) |
 | `file write <path>: <text>` | writes exactly the text (replaces the file) |
 | `file append <path>: <line>` | adds the line and a newline (creates the file) |
-| `file list <folder> -> names` | `list of text`, sorted |
+| `file list <folder> into names` | `list of text`, sorted |
 | `file rename <old> to <new>` | moves or renames; an error when `<new>` exists |
-| `file exists <path> -> present` | `bool`, for a file or a folder |
+| `file exists <path> into present` | `bool`, for a file or a folder |
 | `file delete <path>` | a file or an empty folder |
 
 A trace shows the calls like this:
@@ -2936,11 +3028,11 @@ A trace shows the calls like this:
 | code | message | fix |
 |---|---|---|
 | E340 | `The module "x" has no function "x".` | use one of the functions the message lists |
-| E341 | `"x.x" can fail (it returns "T"), so it has to be called with "try".` or `"file x" can fail (the file may not exist), so it has to be written with "try".` | write `- try x.x(...) -> value`, optionally with an `otherwise:` branch |
+| E341 | `"x.x" can fail (it returns "T"), so it has to be called with "try".` or `"file x" can fail (the file may not exist), so it has to be written with "try".` | write `try x.x(...) into value`, optionally with an `otherwise:` branch |
 | E342 | `json` or `csv` is used without a usable type, or with a handle (all 5 messages below the table) | write the type after the call, as in `csv.parse(content) as list of Sale` |
 | E343 | `"x" is not a valid pattern: <reason>` or `"x" is not a date pattern. Use YYYY MM DD HH mm ss (for example "DD.MM.YYYY HH:mm") or % codes ("%Y-%m-%d").` | fix the pattern |
 | E344 | `The built-in tool "file" has no verb "x".` | use one of the verbs the message lists |
-| E345 | a `file` statement has the wrong shape; the message shows the right one (all 7 messages below the table) | write the statement in the form the message shows, such as `file rename <old> to <new>` |
+| E345 | a `file` step has the wrong shape; the message shows the right one (all 7 messages below the table) | write the statement in the form the message shows, such as `file rename <old> to <new>` |
 | E347 | `"x" is a built-in tool, so it cannot be declared in tools.toml.` | remove the `[file]` table |
 
 **E342 messages**
@@ -2958,19 +3050,19 @@ A trace shows the calls like this:
 - `"file x" needs the text after a colon, not after "to".`
 - `"file x" needs the new path: "to <new>".`
 - `"file x" needs the text after a colon.`
-- `"file x" gives something back: name it with "-> name".`
+- `"file x" gives something back: name it with "into <name>".`
 - `"file x" gives nothing back, so there is nothing to name.`
 
 **Next:** [22.4 Opaque library types](#224-opaque-library-types)
 
 ### 22.4 Opaque library types
 
-A **handle** is created by a library statement, used by method statements whose first word is the variable, and passed to your own functions:
+A **handle** is created by a library step, used by method steps whose first word is the variable, and passed to your own functions:
 
 ```text
-- sha2 sha256_new -> hasher
-- hasher update "hello "
-- hasher finalize -> digest
+1. sha2 sha256_new into hasher
+2. hasher update "hello "
+3. hasher finalize into digest
 ```
 
 **Rules**
@@ -2984,35 +3076,37 @@ A **handle** is created by a library statement, used by method statements whose 
 
 ### 22.5 User-defined tools
 
-A tool can be written in AgentMark itself. `# Tool: name` has an `- effect:` line and one `## verb(params) -> type` block per verb:
+A tool can be written in AgentMark itself. `# Tool: name` has an optional `- touches:` line and one `## verb(params) -> type` block per verb, with numbered steps:
 
 ```agentmark
-> Words for file names.
 # Tool: slugger
-- effect: pure
+Words for file names.
 
-> Lower case, dashes between words: "Hello World" becomes "hello-world".
+- touches: nothing
+
 ## slug(title: text) -> text
-- set lowered = text.lower(title)
-- return regex.replace(lowered, "[^a-z0-9]+", "-")
+Lower case, dashes between words: "Hello World" becomes "hello-world".
 
-> Prints the file name of a title, twice: as an expression and as a statement.
+1. text.lower(title) into lowered
+2. return regex.replace(lowered, "[^a-z0-9]+", "-")
+
 # Command: file-name
-- args: title: text
+Prints the file name of a title, twice: as an expression and as a step.
 
-## Run
-- print: "{slugger.slug(title)}.md"
-- slugger slug title -> same
-- print: "{same}.md"
+- in: title: text
+- steps:
+  1. print: "{slugger.slug(title)}.md"
+  2. slugger slug title into same
+  3. print: "{same}.md"
 ```
 
 **Rules**
-- The block of a verb holds the statements of the verb.
-- A tool is called like any tool, as a statement. When it is `pure`, it can also be called as an expression.
-- The declared effect is checked against the body exactly like a `# Function`. A verb may not do more than its tool says.
-- A call has the effect of what the body does, at least the effect the tool declares.
-- `check` lists one line per verb, such as `ledger / add: local(file)`.
-- A verb with a `rust` fence instead of statements is layer 1, like a `## Rust` block. Its effect is the declared one, and it is trusted.
+- The block of a verb holds its steps, numbered directly under the heading.
+- A tool is called like any tool, as a step. When it touches nothing, it can also be called as an expression.
+- `- touches:` is optional on a tool. Without it the checker works out what the verbs touch; with it, the line is checked against the body exactly like a `# Function`'s (E206).
+- A call touches what the body does, at least what the tool declares.
+- `check` lists one line per verb, such as `ledger / add: touches files`.
+- A verb with a `rust` fence instead of steps is layer 1, like a `## Rust` block. Then `- touches:` is required, and it is trusted.
 - A tool that only uses other `# Tool` declarations and the built-in `file` tool needs no `tools.toml` and no `rust/connect.rs`.
 - Both files stay for tools implemented outside the program, such as a real CRM or an email provider. A name cannot be used by both.
 - A tool can be listed in an agent's `- tools:` like any other.
@@ -3021,40 +3115,43 @@ A tool can be written in AgentMark itself. `# Tool: name` has an `- effect:` lin
 
 | form | when |
 |---|---|
-| `- tool verb a b -> result` | any tool. The words and values after the verb are the arguments, in the order of the parameters; `-> result` is optional. One more value may follow a colon (`- notes save "a.txt": body`). |
-| `tool.verb(a, b)` | an expression, only for a `pure` tool whose verb returns a value. A tool of an imported folder is written with its module name (`tools.slugger.slug(title)`); the statement form takes the module too (`- tools.ledger add title`). |
+| `tool verb a b into result` | any tool. The words and values after the verb are the arguments, in the order of the parameters; `into result` is optional. One more value may follow a colon (`notes save "a.txt": body`). |
+| `tool.verb(a, b)` | an expression, only for a tool that touches nothing and whose verb returns a value. A tool of an imported folder is written with its module name (`tools.slugger.slug(title)`); the step form takes the module too (`tools.ledger add title`). |
 
 **Verbs that call each other, and a Rust verb**
 
 ````agentmark
-> A plain text ledger in the working directory.
 # Tool: ledger
-- effect: local
+A plain text ledger in the working directory.
+
+- touches: files
 
 ## add(entry: text)
-- file append "ledger.txt": entry
+1. file append "ledger.txt": entry
 
-> The same entry twice: a verb may call the verbs of its own tool.
 ## add_twice(entry: text, mark: text)
-- ledger add entry
-- ledger add "{mark} {entry}"
+The same entry twice: a verb may call the verbs of its own tool.
+
+1. ledger add entry
+2. ledger add "{mark} {entry}"
 
 # Tool: caps
-- effect: pure
+- touches: nothing
 
-> Written in Rust, which is what a verb may do when AgentMark has no word for it.
 ## shout(word: text) -> text
-  ```rust
-  word.to_uppercase()
-  ```
+Written in Rust, which is what a verb may do when AgentMark has no word for it.
 
-> Writes the shouted title to the ledger.
+```rust
+word.to_uppercase()
+```
+
 # Command: record
-- args: title: text
+Writes the shouted title to the ledger.
 
-## Run
-- set loud = caps.shout(title)
-- ledger add_twice loud "again"
+- in: title: text
+- steps:
+  1. caps.shout(title) into loud
+  2. ledger add_twice loud "again"
 ````
 
 Every call is written to the trace before the body runs, like a tool call. `args` holds the verb's parameters by name:
@@ -3067,36 +3164,43 @@ Every call is written to the trace before the body runs, like a tool call. `args
 
 This is an error on the line that does it:
 
-```agentmark invalid
-> A pure tool cannot print.
+```agentmark invalid name=greeter.agent.md says=touches_print
 # Tool: greeter
-- effect: pure
+A pure tool cannot print.
+
+- touches: nothing
 
 ## greet(name: text)
-- print: "hello {name}"
+1. print: "hello {name}"
 ```
 
-```text
-greeter.agent.md:6
-  - print: "hello {name}"
-    ^^^^^^^^^^^^^^^^^^^^^
-  The tool "greeter" says "- effect: pure", but this line has the effect local (print).
-  Change the tool to "- effect: local", or move this line out of the tool.
+```console stderr
+$ agentmark check greeter.agent.md
+greeter.agent.md:1
+  # Tool: greeter
+          ^^^^^^^
+  Unused tool: nothing refers to "greeter".
+
+greeter.agent.md:7
+  1. print: "hello {name}"
+     ^^^^^^^^^^^^^^^^^^^^^
+  The tool "greeter" says "- touches: nothing", but this step touches print.
+  Add print to the "- touches:" line, leave the line out to let the checker work it out, or move this step out of the tool.
 ```
 
 **Errors**
 
 | code | message | fix |
 |---|---|---|
-| E206 | `The tool "x" says "- effect: pure", but this line has the effect <effect>.` | change the tool to `- effect: local`, or move the line out of the tool |
-| E209 | `The verb "x" of "x" can fail (it returns "T"), so it has to be called with "try".` or `The verb "x" can fail (it returns "T"), so it cannot be used inside an expression.` | write `- try tool verb ... -> value`, optionally with an `otherwise:` branch |
+| E206 | `The tool "x" says "- touches: nothing", but this step touches print.` | add `print` to the tool's `- touches:` line, or move the step out of the tool |
+| E209 | `The verb "x" of "x" can fail (it returns "T"), so it has to be called with "try".` or `The verb "x" can fail (it returns "T"), so it cannot be used inside an expression.` | write `try tool verb ... into value`, optionally with an `otherwise:` branch |
 | E380 | `The tool "x" has the same name as x.` | a tool name must be unique, so rename this one; it cannot be named like a tool of `tools.toml`, like `file`, like a binding, or like an agent, command or service |
 | E381 | `The tool "x" has the verb "x" twice.` | remove or rename one |
-| E382 | `The tool "x" has the effect T, so "x(...)" cannot be used inside an expression.` | call it as a statement: `- tool verb ... -> value` |
+| E382 | `The tool "x" has the effect T, so "x(...)" cannot be used inside an expression.` | call it as a step: `tool verb ... into value` |
 | E383 | `The tool x needs a verb.` or `Unknown verb "x" for tool x.` | use one of the verbs the message lists |
-| E384 | `The tool "x" takes values, not "field = value" assignments.` | write the values after the verb: `- name verb a b`, and one value after a colon if you like |
+| E384 | `The tool "x" takes values, not "field = value" assignments.` | write the values after the verb: `name verb a b`, and one value after a colon if you like |
 | E385 | `The verb "x" of "x" returns nothing, so there is no result to store.` or `The verb "x" returns nothing, so it cannot be used as a value.` | call it as a statement |
-| E386 | `The verb "x" of the tool "x" says it returns a value but never does.` | end the body with `- return <value>`, or remove the `-> type` from the heading |
+| E386 | `The verb "x" of the tool "x" says it returns a value but never does.` | end the body with `return <value>`, or remove the `-> type` from the heading |
 | E387 | `The argument "x" would be the flag "--x", which every program already has, and this command is the program's default.` | rename the argument, for example `x_value` |
 | W380 | `The tool "x" has the name of a library module, so "x.something(...)" is easy to misread.` | a call `x.f(...)` means this tool only when it has the verb `f`; consider another name |
 
@@ -3104,21 +3208,21 @@ greeter.agent.md:6
 
 ### 22.6 Programs
 
-A project whose `# Run` lists a single `# Command` and no agent or service makes that command the binary's default:
+A program with a single `# Command` and no agent or service makes that command the binary's default, with or without `- start:`:
 
 ```agentmark
-> Says how many copies of a title it would print: `label <title> [<copies>] [--dry-run]`.
+# Program: label
+Prints a label title.
+
 # Command: label
-- args: title: text, copies: int = 1, dry_run: bool = false
+Says how many copies of a title it would print: `label <title> [<copies>] [--dry-run]`.
 
-## Run
-- if dry_run:
-  - print: "would print {title} x{copies}"
-  - stop
-- print: "{title} x{copies}"
-
-# Run
-- label
+- in: title: text, copies: int = 1, dry_run: bool = false
+- steps:
+  1. if dry_run:
+     1. print: "would print {title} x{copies}"
+     2. stop
+  2. print: "{title} x{copies}"
 ```
 
 `label "Hello" 3`, `label --copies 3 --title Hello` and `label Hello --copies 3` do the same. `label Hello --dry-run` sets `dry_run`.
@@ -3174,45 +3278,526 @@ fixtures/07-file-renamer/
 - Async user code. Handles to async library APIs are awaited by the generated code.
 - Operator overloading. Every operator keeps the meaning of section [5](#5-expressions).
 
+## 23. v0.4: plain sentences, real Markdown
+
+**In short**
+- Every line of a program reads out loud as a sentence, and a rendered `.agent.md` file reads like a document.
+- Every Markdown element means what it means in ordinary Markdown.
+- Nothing changes in what a program does. Only the syntax and the wording of `check` and `doc` changed.
+
+**Jump to:** [elements](#231-what-each-markdown-element-means) · [steps](#233-steps) · [Program and Uses](#234-program-and-uses) · [types from names](#236-types-from-names) · [touches](#237-what-a-part-touches) · [into](#239-naming-a-result-into) · [files](#2310-reading-a-file-into-records) · [add](#2311-adding-to-a-list-add) · [removed syntax](#2313-removed-syntax)
+
+This program uses most of it:
+
+```agentmark
+# Program: sales
+Reads a sales file and prints how much it brought in, region by region.
+
+- start: [sales-report](#command-sales-report)
+
+# Record: Sale
+One line of the sales file.
+
+- region: text
+- product: text
+- amount: money
+
+# Record: RegionTotal
+What one region brought in.
+
+- region: text
+- orders: int
+- revenue: money
+
+# Rule: big Sale
+A sale of 100 EUR or more.
+
+- when: amount >= 100 EUR
+
+# Function: region_totals
+Adds up the sales of every region, biggest revenue first.
+
+- in: sales
+- out: region totals
+- touches: nothing
+- steps:
+  1. group sales by region into by_region
+  2. empty list of RegionTotal into totals
+  3. for each region, region_sales in by_region:
+     1. add RegionTotal to totals:
+        - region
+        - orders: count of region_sales
+        - revenue: sum of amount in region_sales
+  4. return sort totals by revenue descending
+
+# Command: sales-report
+Reads a sales file and prints the revenue of every region.
+
+- in: path: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. for each big sale in sales:
+     1. print: "big sale in {sale.region}"
+  3. for each entry in region_totals(sales):
+     1. print: "{entry.region}: {entry.revenue}"
+  4. if count of sales > 0:
+     1. print: "{count of sales} sales"
+     else:
+     1. print: "no sales"
+```
+
+### 23.1 What each Markdown element means
+
+| Markdown | meaning in AgentMark |
+|---|---|
+| `#` heading | a part: `Program`, `Uses`, `Record`, `Enum`, `Type`, `Rule`, `Function`, `Command`, `Agent`, `Service`, `Tool`, `Binding`, `Constant` |
+| `##` heading | a part of a part: an agent's trigger or `Do` block, a service route, a tool verb, a `Rust` block |
+| paragraph directly under a heading | the description of that part |
+| `-` bullet list | properties and fields (order does not matter) |
+| `1.` numbered list | steps (order matters) |
+| `[name](target)` link | a file the program uses, or the command it starts with |
+| fenced `rust` block | Rust code (layer 1) |
+| `>` line | a note for people ([23.12](#2312-notes)) |
+
+Bold, italic and the `*` and `+` bullet markers carry no meaning. A `*` or `+` bullet is read as `-`, and `fmt` writes `-`.
+
+### 23.2 Descriptions
+
+The description of a part is the paragraph directly under its heading, before its first list. It may run over several lines and paragraphs.
+
+```agentmark fragment
+# Rule: big Sale
+A sale of 100 EUR or more.
+
+- when: amount >= 100 EUR
+```
+
+`agentmark doc`, the `missing-doc` lint and the language server read it from there. A `>` line directly above a heading is error E068.
+
+### 23.3 Steps
+
+Every list of steps is numbered: the steps of a command and a function (under `- steps:`), of an agent trigger or `## Do` block, of a service route and of a tool verb. The steps under `for each`, `if`, `else`, `otherwise`, `match` branches and `parallel` are numbered too.
+
+```agentmark fragment
+1. try file read path into content
+   otherwise:
+   1. print: "Could not read {path}"
+   2. stop
+2. for each line in text.lines(content):
+   1. print: "{line}"
+```
+
+**Rules**
+- A line with steps under it ends in `:`. The steps sit one level deeper: under a numbered item they start at its text (3 spaces under `1.` to `9.`, 4 under `10.` to `99.`), under a bullet 2 spaces deeper.
+- `else:` and `otherwise:` are plain lines inside the `if` or `try` step, at the indentation of its steps. The steps after them belong to them.
+- The branches of a `match` are bullets (their order does not matter). The steps of a branch are numbered.
+- The numbers are for people. `1.` on every line works too, and `fmt` writes 1, 2, 3, ... at every level and fixes the indentation.
+- A bullet where a step belongs is error E070. A numbered item where a property belongs is error E071.
+
+```agentmark fragment
+1. if max of qty in sales is some most:
+   1. print: "most: {most}"
+   else:
+   1. print: "nothing sold"
+2. match block:
+   - Heading h:
+     1. print: "heading {h.level}"
+   - Blank:
+     1. print: "blank"
+```
+
+### 23.4 Program and Uses
+
+The program's title, description and starting point are the first part of its entry file: `main.agent.md` in a folder project, the file itself in a single-file program.
+
+```agentmark fragment
+# Program: sales
+Reads a sales file and prints how much it brought in, region by region.
+
+- start: [sales-report](#command-sales-report)
+
+# Uses
+- [constants](../constants.agent.md)
+- [Sale](../records/sale.agent.md)
+- [billing rules](./billing/) as billing
+- [every rule](./rules/*.agent.md)
+```
+
+**Rules**
+- `start:` names the command the program starts with: a link to the command's heading (`#command-<name>`), a link to the file that declares it, or the plain name. The checker verifies that it is a command of the program (E214). `fmt` writes the link form.
+- With exactly one command, `start:` can be left out. Agents and services need no `start:`: they all run.
+- With several commands, `start:` is accepted but the commands stay subcommands (Q441).
+- `# Program` must be the first heading of the entry file, and only the entry file has one (E072). A project without it is a library.
+- `# Uses` is one section at the top, after `# Program` (E073). The link text is a label for people; the path is what counts, relative to the file.
+- A folder needs `as <name>` after the link. A glob is a path too.
+- Libraries keep `# Import: crate sha2` (Q435).
+
+### 23.5 Properties of functions, commands and tools
+
+- `- in:` lists the inputs, `- out:` the result, `- steps:` the steps.
+- Commands use `- in:` exactly like functions, with defaults: `- in: path: text, dry_run: bool = false`.
+- `- touches:` ([23.7](#237-what-a-part-touches)) is optional on a function and a tool.
+
+### 23.6 Types from names
+
+In `- in:` and `- out:` a name alone is enough when it says what it is:
+
+| written | means |
+|---|---|
+| `in: sales` | `sales: list of Sale` (a record `Sale` exists; `sales` is its plural) |
+| `in: invoice` | `invoice: Invoice` |
+| `in: old sales, new sales` | `old_sales: list of Sale`, `new_sales: list of Sale` |
+| `out: region totals` | `list of RegionTotal` |
+| `in: due_date` | `due_date: date` (the last-word table of [2.1](#21-record)) |
+| `in: path: text` | as written |
+
+**Rules**
+- The words of a name are matched against the records, enums and type aliases the file can see, longest ending first, ignoring case and `_`. The words before the matched ones are part of the name.
+- Plurals are regular English only: `+s`, `+es`, `y` to `ies`. A plural means `list of`. Irregular plurals need the type written.
+- No match: the last word decides as for record fields: `date`, `at`, `on` give `date`; `amount`, `price`, `total`, `fee` give `money`; `count`, `qty`, `number` give `int`.
+- An input written `name: type` is never guessed.
+- Still unclear: error E230.
+
+```agentmark invalid name=vat.agent.md says=Could_not_tell
+# Function: gross
+Adds VAT to a price.
+
+- in: price: money, vat
+- out: money
+- steps:
+  1. return price + price * vat / 100
+```
+
+```console stderr
+$ agentmark check vat.agent.md
+vat.agent.md:1
+  # Function: gross
+              ^^^^^
+  Unused function: nothing refers to "gross".
+
+vat.agent.md:4
+  - in: price: money, vat
+                      ^^^
+  Could not tell what "vat" is. Write its type: "vat: <type>".
+  A name works when it is a record's name ("sales" for a list of Sale) or ends in a word such as date, amount or count; otherwise write "vat: text" (or int, money, …).
+```
+
+### 23.7 What a part touches
+
+`- touches:` replaces `- effect:`. The words "effect", "pure", "local", "network" and "model" are no longer part of the syntax or of the reports.
+
+| written | means |
+|---|---|
+| `- touches: nothing` | reads and computes only (was `pure`) |
+| `- touches: files` | the `file` tool |
+| `- touches: print`, `input` | standard output, standard input |
+| `- touches: AI` | asks a model |
+| `- touches: crm, email` | the tools, libraries or `state` named |
+
+**Rules**
+- On a `# Function` and a `# Tool` the line is optional. Without it the checker works out what the part touches. Written, it is a checked promise: a step that touches something not on the list is error E206. Listing more than the body touches is allowed (Q451).
+- A `## Rust` block must say what it touches. The line is trusted.
+- Inside the compiler every part still has its effect class (`pure` < `local` < `network` < `model`, section [8](#8-effects)). The IR and `check --json` keep it.
+- `check` and `doc` write one line per part. `AI` comes first, then the rest in alphabetical order. The `file` tool is written `files`.
+- Libraries (`# Binding`) keep `- effect:` and `- proposed-effect:`, and `tools.toml` keeps `effect =` (Q430).
+
+```agentmark invalid name=promise.agent.md says=touches_files
+# Function: save_total
+Writes a total to a file.
+
+- in: total: int
+- touches: nothing
+- steps:
+  1. file write "total.txt": "{total}"
+```
+
+```console stderr
+$ agentmark check promise.agent.md
+promise.agent.md:1
+  # Function: save_total
+              ^^^^^^^^^^
+  Unused function: nothing refers to "save_total".
+
+promise.agent.md:7
+    1. file write "total.txt": "{total}"
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  The function "save_total" says "- touches: nothing", but this step touches files.
+  Add files to the "- touches:" line, leave the line out to let the checker work it out, or move this step out of the function.
+```
+
+### 23.8 Rules name their record in the heading
+
+The last word of the heading is the record, the words before it the rule's name, joined with `_`. The rule then reads like its use: `for each big sale in sales:`. `- for:` is error E067.
+
+```agentmark fragment
+# Rule: very big Sale
+A sale of 1000 EUR or more.
+
+- when: amount >= 1000 EUR
+```
+
+A rule with several words in its name is used with one word, as `for each very_big sale in sales` (Q449).
+
+### 23.9 Naming a result: `into`
+
+`into <name>` at the end of a step names its result. It is the only way. `set` and `->` are gone.
+
+| v0.3 | v0.4 |
+|---|---|
+| `set by_region = group sales by region` | `group sales by region into by_region` |
+| `set totals = empty list of RegionTotal` | `empty list of RegionTotal into totals` |
+| `file read path -> content` | `file read path into content` |
+| `ask model with invoice: "..." -> reminder` | `ask model with invoice: "..." into reminder` |
+| `slugger slug title -> s` | `slugger slug title into s` |
+| `do net_amount(invoice, 19) -> n` | `do net_amount(invoice, 19) into n` |
+| `read body as Invoice -> inv` | `read body as Invoice into inv` |
+
+- `<value> into <name>` with a name that already exists gives it a new value, as `set` did (Q431).
+- `into` is a reserved word. `->` stays in signatures, where it means "returns": `## slug(title: text) -> text`, `## Rust: fingerprint -> text`, binding items (Q436).
+
+### 23.10 Reading a file into records
+
+The name after `into` decides how a file is read:
+
+```agentmark fragment
+1. try file read path into sales
+   otherwise:
+   1. print: "Could not read {path}"
+   2. stop
+```
+
+**Rules**
+- The name gets its type from the records the file can see, as in [23.6](#236-types-from-names) (`sales` gives `list of Sale`), or from a type written after it: `into content: text`.
+- A `list of` a record: the file is CSV and its header row names the fields (as `csv.parse`). A file whose name does not end in `.csv` (any case) is a read failure (Q440).
+- Anything else, and a name that matches no record, is the raw text, as before. Reading one record from a file is not supported (Q444).
+- A file that cannot be read and a file that is not valid CSV go to the same `otherwise`.
+- `csv.parse(...)` stays in the library. `read file path as list of Sale into rows` also still works and is not traced (Q446).
+
+### 23.11 Adding to a list: `add`
+
+```agentmark
+# Record: Sale
+One line of the sales file.
+
+- region: text
+- amount: money
+
+# Record: RegionTotal
+What one region brought in.
+
+- region: text
+- orders: int
+- revenue: money
+
+# Function: one_total
+Builds the total of a single region.
+
+- in: region: text, region_sales: list of Sale
+- out: list of RegionTotal
+- touches: nothing
+- steps:
+  1. empty list of RegionTotal into totals
+  2. add RegionTotal to totals:
+     - region
+     - orders: count of region_sales
+     - revenue: sum of amount in region_sales
+  3. return totals
+```
+
+- `add <value> to <list>` replaces `append`.
+- `add <Record> to <list>:` builds the record from the bullets under it: `name: value`, as in a record definition, and a bare `name` takes the value of that name. An enum variant with fields is built the same way (Q456).
+- `fmt` writes `add X { ... } to list` in this form. Elsewhere a record is still written `Sale { region: "EU", amount: 120.00 EUR }` (Q432).
+
+### 23.12 Notes
+
+A `>` line that is not directly above a heading is a note for people: `fmt` keeps it and everything else ignores it (Q433). The examples do not use notes.
+
+### 23.13 Removed syntax
+
+There is no backward compatibility and no `migrate` command (Q454). Each removed form is an error that shows the new form:
+
+| code | written | message |
+|---|---|---|
+| E060 | `# Run`, `# Start` | `"# Run" was removed. Start the entry file with "# Program: <name>"; name the command it starts with in "- start: <command>".` |
+| E061 | `## Run` | `"## Run" was removed. Write the command's steps under "- steps:" as a numbered list.` |
+| E062 | `- args:` | `"args:" was renamed. Write: - in: path: text` |
+| E063 | `- effect:` (function, tool, Rust block) | `"effect:" was removed. Write: - touches: nothing` |
+| E064 | `set x = v` | `"set" was removed. Write: <value> into <name>` |
+| E065 | `... -> x` | `"->" was replaced by "into". Write: <step> into <name>` |
+| E066 | `append x to list` | `"append" was renamed. Write: add x to list` |
+| E067 | `- for:` in a rule | `"for:" was removed. Put the record last in the heading: # Rule: <name> Sale` |
+| E068 | `>` directly above a heading | `A description goes under its heading as a plain paragraph, not in a ">" line above it.` |
+| E069 | `# Import: <file>` | `File imports moved to a "# Uses" section.` |
+| E070 | a bullet where a step belongs | `Steps are a numbered list. Write: 1. print: "x"` |
+| E071 | a numbered item where a property belongs | `A property is a bullet, not a numbered step. Write: - model: claude` |
+| E072 | `# Program` not first | `"# Program" must be the first heading of the file.` |
+| E073 | `# Uses` misplaced or malformed | `"# Uses" goes at the top of the file, before the other parts (after "# Program").` |
+
+Each message quotes the line rewritten in the new form where it can. This v0.3 file shows the part-level ones:
+
+```text name=old.agent.md
+# Record: Sale
+- region: text
+- amount: money
+
+# Rule: big
+- for: Sale
+- when: amount >= 100 EUR
+
+# Function: total
+- in: sales: list of Sale
+- out: money
+- effect: pure
+  - return sum of amount in sales
+
+# Command: show
+- args: path: text
+
+## Run
+- file read path -> content
+- print: "{content}"
+
+# Run
+- show
+```
+
+```console stderr
+$ agentmark check old.agent.md
+old.agent.md:6
+  - for: Sale
+    ^^^
+  "for:" was removed. Put the record last in the heading: # Rule: <name> Sale
+  A rule reads like its use: "# Rule: overdue Invoice" is used as "for each overdue invoice in …".
+
+old.agent.md:12
+  - effect: pure
+    ^^^^^^
+  "effect:" was removed. Write: - touches: nothing
+  List what it touches: nothing, files, print, AI, or the tools it uses (crm, email). The line may also be left out: the checker works it out.
+
+old.agent.md:16
+  - args: path: text
+    ^^^^
+  "args:" was renamed. Write: - in: path: text
+  A command's inputs are written like a function's.
+
+old.agent.md:18
+  ## Run
+     ^^^
+  "## Run" was removed. Write the command's steps under "- steps:" as a numbered list.
+  Write:
+    - steps:
+      1. print: "hello"
+
+old.agent.md:22
+  # Run
+    ^^^
+  "# Run" was removed. Start the entry file with "# Program: <name>"; name the command it starts with in "- start: <command>".
+  Write:
+    # Program: my-program
+    What the program does, in one sentence.
+
+    - start: <command>
+```
+
+And these are the step-level ones:
+
+```text name=old2.agent.md
+# Program: demo
+Shows the old step forms.
+
+# Record: Sale
+- region: text
+- amount: money
+
+# Function: total
+Adds things up.
+
+- in: sales: list of Sale
+- out: money
+- steps:
+  1. set t = sum of amount in sales
+  2. append t to sales
+  3. file read "a.csv" -> content
+  - return t
+```
+
+```console stderr
+$ agentmark check old2.agent.md
+old2.agent.md:14
+    1. set t = sum of amount in sales
+       ^^^
+  "set" was removed. Write: sum of amount in sales into t
+  A step names its result with "into" at its end.
+
+old2.agent.md:15
+    2. append t to sales
+       ^^^^^^
+  "append" was renamed. Write: add t to sales
+
+old2.agent.md:16
+    3. file read "a.csv" -> content
+                         ^^
+  "->" was replaced by "into". Write: file read "a.csv" into content
+  A step names its result with "into" at its end.
+
+old2.agent.md:17
+    - return t
+      ^^^^^^^^
+  Steps are a numbered list. Write: 1. return t
+```
+
+### 23.14 Not changed
+
+- `group ... by ...`, `for each`, the collection words, `try` and `otherwise`, `stop`, `print`, `guard`, `match`, `respond`, `return`.
+- Agent trigger headings (`## Every day at 09:00`, `## When ...`), `## Do <name>` blocks, service routes and tool verb headings stay headings. Only their steps are numbered (Q434).
+- `# Import: crate <name>` for libraries, `# Binding` files and their `- effect:` line, `tools.toml`.
+- The hard limits of [18.3](#183-hard-limits): the nesting limit counts steps, from the first step under `- steps:` or a `##` heading. `- steps:` itself is not a level. At most 3 levels.
+
 ## Appendix A. Statement index
 
-Every statement form of the language, with where it is explained. The [cheat sheet](#cheat-sheet) lists the most common ones.
+Every step form of the language, with where it is explained. The [cheat sheet](#cheat-sheet) lists the most common ones. Each form is a numbered step.
 
 | form | section |
 |---|---|
 | `for each <var> in <source>:` | [4.1](#41-control) |
 | `for each <rule> <var> in <source>:` | [4.1](#41-control) |
-| `if <condition>:` / `else:` | [4.1](#41-control) |
-| `if <expr> is some <name>:` / `else:` | [14](#14-errors) |
+| `if <condition>:` with `else:` inside | [4.1](#41-control) |
+| `if <expr> is some <name>:` with `else:` inside | [14](#14-errors) |
 | `stop` | [4.1](#41-control) |
-| `do <name>` / `do <name>(args) -> var` | [4.1](#41-control), [13.1](#131-function) |
-| `ask model[ with <var>]: "<prompt>"[ as <Record>] -> var` | [4.2](#42-model) |
-| `<tool> <verb> [<target>]: <payload>[ -> var]` | [4.3](#43-tool-calls) |
-| `guard: <condition>[ else <statement>]` | [4.4](#44-guards) |
-| `set <var> = <expression>` | [4.5](#45-assignment) |
+| `do <name>` / `do <name>(args) into var` | [4.1](#41-control), [13.1](#131-function) |
+| `ask model[ with <var>]: "<prompt>"[ as <Record>] into var` | [4.2](#42-model) |
+| `<tool> <verb> [<target>]: <payload>[ into var]` | [4.3](#43-tool-calls) |
+| `guard: <condition>[ else <step>]` | [4.4](#44-guards) |
+| `<expression> into <var>` | [4.5](#45-naming-a-result-into) |
 | `return <expr>` | [13.1](#131-function) |
 | `respond <status>[ <expr>]` | [13.3](#133-service-and-command) |
-| `read body as <Type> -> var` | [13.3](#133-service-and-command) |
-| `read file <path> as <Type> -> var` | [13.3](#133-service-and-command) |
-| `read input -> var` | [22.3](#223-the-built-in-library) |
-| `file <verb> <path>[ to <new>\|: <text>][ -> var]` | [22.3](#223-the-built-in-library) |
-| `try [do] <call>(args)[ as <Type>] -> var` (a built-in or user function that returns `result of T`) | [14](#14-errors), [22.3](#223-the-built-in-library) |
+| `read body as <Type> into var` | [13.3](#133-service-and-command) |
+| `read file <path> as <Type> into var` | [13.3](#133-service-and-command) |
+| `file read <path> into <name>` (CSV for a list of a record) | [23.10](#2310-reading-a-file-into-records) |
+| `read input into var` | [22.3](#223-the-built-in-library) |
+| `file <verb> <path>[ to <new>\|: <text>][ into var]` | [22.3](#223-the-built-in-library) |
+| `try [do] <call>(args)[ as <Type>] into var` (a built-in or user function that returns `result of T`) | [14](#14-errors), [22.3](#223-the-built-in-library) |
 | `print: "<text>"` | [13.3](#133-service-and-command) |
-| `<binding> <item> <arguments>[ -> var]` (a library call) | [15](#15-library-access-automatic-bindings) |
-| `<handle> <method> [<arguments>][ -> var]` (a method on a library handle) | [15.4](#154-binding-file-format), [22.4](#224-opaque-library-types) |
-| `<tool> <verb> <arguments>[: <value>][ -> var]` (a user-defined tool) | [22.5](#225-user-defined-tools) |
-| `<tool>.<verb>(arguments)` (an expression, pure tools only) | [22.5](#225-user-defined-tools) |
+| `<binding> <item> <arguments>[ into var]` (a library call) | [15](#15-library-access-automatic-bindings) |
+| `<handle> <method> [<arguments>][ into var]` (a method on a library handle) | [15.4](#154-binding-file-format), [22.4](#224-opaque-library-types) |
+| `<tool> <verb> <arguments>[: <value>][ into var]` (a user-defined tool) | [22.5](#225-user-defined-tools) |
+| `<tool>.<verb>(arguments)` (an expression, tools that touch nothing only) | [22.5](#225-user-defined-tools) |
 | `put <value> at <key> in <map>` / `remove <key> from <map>` | [22.2](#222-collection-words) |
-| `append <value> to <list>` | [13.3](#133-service-and-command), [22.2](#222-collection-words) |
+| `add <value> to <list>` | [13.3](#133-service-and-command), [22.2](#222-collection-words) |
+| `add <Record> to <list>:` with `name: value` bullets | [23.11](#2311-adding-to-a-list-add) |
 | `for each <var> in <list> with index <i>:` / `for each <key>, <value> in <map>:` | [22.2](#222-collection-words) |
-| `try <statement>` + `otherwise:` | [14](#14-errors) |
+| `try <step>` with `otherwise:` inside | [14](#14-errors) |
 | `parallel:` | [16](#16-concurrency) |
-| `match <value>:` with `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | [22.1](#221-user-defined-types) |
+| `match <value>:` with bullet branches `<Variant> <name>:`, `some <name>:`, `none:`, `ok <name>:`, `error <name>:`, `otherwise:` | [22.1](#221-user-defined-types) |
 | `## Rust: <name>[ -> <type>]` | [17](#17-escape-hatch--rust-blocks-layer-1) |
 
 ## Appendix B. Decisions the specification left open
 
-These are the choices made while implementing, grouped by topic. Each one is written out in `OPEN_QUESTIONS.md`.
+These are the choices made while implementing, grouped by topic. Each one is written out in `dev/OPEN_QUESTIONS.md`.
 
 | topic | questions |
 |---|---|
@@ -3229,3 +3814,4 @@ These are the choices made while implementing, grouped by topic. Each one is wri
 | fixtures | Q150 to Q158 |
 | the built-in library and the `file` tool | Q340 to Q349 |
 | tools written in AgentMark and the default command | Q380 to Q389 |
+| v0.4 syntax: descriptions, steps, `touches`, `into`, `add`, typed file read | Q430 to Q457 |

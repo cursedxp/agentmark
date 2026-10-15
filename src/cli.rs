@@ -32,7 +32,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Check a file or project: errors, effect summary, inferred types, what to approve.
+    /// Check a file or project: errors, what each part touches, inferred types, what to approve.
     Check {
         /// A `.agent.md` file or a project folder.
         path: String,

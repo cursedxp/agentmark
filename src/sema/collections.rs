@@ -63,7 +63,7 @@ impl Checker<'_> {
     }
 
     /// A variable that has the name of a field of the element would silently win over the field
-    /// inside a word's expression (`set region = "US"` then `sales where region = "EU"`): refuse.
+    /// inside a word's expression (`1. "US" into region` then `sales where region = "EU"`): refuse.
     pub(super) fn check_hides_field(&mut self, cx: &Cx, first: &crate::syntax::ast::Ident) {
         if first.name == "item" {
             return;
@@ -506,7 +506,7 @@ impl Checker<'_> {
         }
     }
 
-    /// `append`, `put` and `remove` change a variable (or `state.…`), not a value they compute.
+    /// `add … to`, `put` and `remove` change a variable (or `state.…`), not a value they compute.
     pub(super) fn want_variable(&mut self, cx: &Cx, target: &Expr, what: &str) {
         let ok = matches!(&target.kind, ExprKind::Path(_))
             && matches!(
@@ -520,7 +520,7 @@ impl Checker<'_> {
                 target.span,
                 format!("\"{what}\" changes a variable, but this is not one."),
             )
-            .with_help("Name the value first with \"set\", change that, and use it afterwards.");
+            .with_help("Name the value first with \"<value> into <name>\", change that, and use it afterwards.");
             self.diags.push(d);
         }
     }

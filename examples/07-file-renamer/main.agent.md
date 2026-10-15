@@ -1,5 +1,5 @@
-# Import: ./commands/rename-photos.agent.md
+# Program: file-renamer
+Renames camera photos so their names start with the day they were taken.
 
-> Entry point. The program is one command, so `rename-photos <folder>` runs it directly.
-# Run
-- rename-photos
+# Uses
+- [rename-photos command](./commands/rename-photos.agent.md)

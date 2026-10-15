@@ -87,6 +87,12 @@ fn strip(v: &mut serde_json::Value) {
             if m.contains_key("code") {
                 m.remove("line");
             }
+            // `- start: name` is printed as the link `[name](#command-name)`: the same command.
+            if let Some(serde_json::Value::String(t)) = m.get_mut("target") {
+                if let Some(rest) = t.strip_prefix("#command-") {
+                    *t = rest.to_string();
+                }
+            }
             m.values_mut().for_each(strip);
         }
         serde_json::Value::Array(a) => a.iter_mut().for_each(strip),
@@ -170,11 +176,11 @@ fn invalid_source_is_reported_not_formatted() {
 #[test]
 fn imports_sort_local_files_then_folders_then_crates() {
     let out = fmt_ok(
-        "# Import: crate zed\n# Import: ./b as b\n# Import: ./z.agent.md\n# Import: ./a.agent.md\n# Import: crate alpha\n\n# Record: A\n- x: text\n",
+        "# Import: crate zed\n# Uses\n- [z](./z.agent.md)\n- [b](./b/) as b\n- [a](./a.agent.md)\n\n# Import: crate alpha\n\n# Record: A\n- x: text\n",
     );
     assert!(out.starts_with(
-        "# Import: ./a.agent.md\n# Import: ./z.agent.md\n# Import: ./b as b\n# Import: crate alpha\n# Import: crate zed\n\n# Record: A\n"
-    ));
+        "# Uses\n- [a](./a.agent.md)\n- [z](./z.agent.md)\n- [b](./b/) as b\n\n# Import: crate alpha\n# Import: crate zed\n\n# Record: A\n"
+    ), "{out}");
 }
 
 #[test]
@@ -209,9 +215,9 @@ fn expressions_keep_exactly_the_parentheses_precedence_needs() {
         ("\"a \\{b\\} {c} \\\"q\\\"\"", "\"a \\{b} {c} \\\"q\\\"\""),
     ];
     for (input, want) in cases {
-        let src = format!("# Function: f\n- effect: pure\n  - set v = {input}\n");
+        let src = format!("# Function: f\n- touches: nothing\n- steps:\n  1. return {input}\n");
         let out = fmt_ok(&src);
-        let want_line = format!("  - set v = {want}\n");
+        let want_line = format!("  1. return {want}\n");
         assert!(out.contains(&want_line), "{input:?} printed as\n{out}");
         check_properties(&src);
     }
@@ -219,49 +225,15 @@ fn expressions_keep_exactly_the_parentheses_precedence_needs() {
 
 #[test]
 fn comments_the_parser_drops_are_written_back_where_they_were() {
-    let src = "\
-# Agent: a
-- model: claude
-> after the last property
-
-## Do x
-- if a:
-  - log: \"1\"
-> above else
-- else:
-  - log: \"2\"
-> end of block
-
-# Run
-- a
-> between run items
-- b
-";
+    let src = "# Program: a\n\n# Agent: a\n- model: claude\n> after the last property\n> after the last property\n\n## Do x\n1. if a:\n   1. log: \"1\"\n   > above else\n   else:\n   1. log: \"2\"\n> end of block\n";
     let out = check_properties(src);
-    let expected = "\
-# Agent: a
-- model: claude
-> after the last property
-
-## Do x
-- if a:
-  - log: \"1\"
-> above else
-- else:
-  - log: \"2\"
-> end of block
-
-# Run
-- a
-> between run items
-- b
-";
+    let expected = "# Program: a\n\n# Agent: a\n- model: claude\n> after the last property\n> after the last property\n\n## Do x\n1. if a:\n   1. log: \"1\"\n   > above else\n   else:\n   1. log: \"2\"\n> end of block\n";
     assert_eq!(out, expected);
 }
 
 #[test]
 fn a_comment_before_the_first_heading_stays_apart_from_the_file_doc() {
-    let src = "> file doc\n\n> loose note\n\n# Record: A\n- x: text\n";
+    let src = "> file doc\n> loose note\n\n# Record: A\n- x: text\n";
     let out = check_properties(src);
     assert_eq!(out, src);
 }
@@ -275,42 +247,14 @@ fn a_file_with_only_a_doc_or_nothing_formats() {
 
 #[test]
 fn fenced_rust_is_verbatim() {
-    let src = "\
-# Function: f
-- effect: pure
-
-## Rust: g -> text
-- effect: pure
-  ```rust
-  fn x() {
-      let   y = 1;   // spaces   kept
-
-  }
-  ```
-";
+    let src = "# Function: f\n- touches: nothing\n- steps:\n  1. return g()\n\n## Rust: g -> text\n- touches: nothing\n\n```rust\nfn x() {\n    let   y = 1;   // spaces   kept\n\n}\n```\n";
     let out = check_properties(src);
-    assert!(out.contains("  fn x() {\n      let   y = 1;   // spaces   kept\n\n  }\n"));
+    assert!(out.contains("```rust\nfn x() {\n    let   y = 1;   // spaces   kept\n\n}\n```\n"));
 }
 
 #[test]
 fn blank_lines_inside_fenced_rust_are_not_collapsed() {
-    let src = "\
-# Function: f
-- effect: pure
-
-## Rust: g -> text
-- effect: pure
-  ```rust
-  let a = 1;
-
-
-  let s = \"line one
-
-
-  line four\";
-  format!(\"{a}{s}\")
-  ```
-";
+    let src = "# Function: f\n- touches: nothing\n- steps:\n  1. return g()\n\n## Rust: g -> text\n- touches: nothing\n\n```rust\nlet a = 1;\n\nlet s = \"line one\n\nline four\";\nformat!(\"{a}{s}\")\n```\n";
     let out = check_properties(src);
     assert_eq!(out, src);
 }
@@ -332,23 +276,142 @@ fn a_comment_between_not_bound_and_its_first_item_stays_below_the_heading() {
 
 #[test]
 fn a_comment_above_otherwise_or_else_lines_up_with_it() {
-    let src = "\
-> Doc.
-# Agent: a
-- model: claude
-
-## Do go
-- try http get \"https://x.example\" -> r
-  > what happens when it fails
-  otherwise:
-    - log: \"no\"
-- if a:
-  - log: \"1\"
-  > trailing in if
-> above else
-- else:
-  - log: \"2\"
-";
+    let src = "# Agent: a\nDoc.\n\n- model: claude\n\n## Do go\n1. try http get \"https://x.example\" into r\n   otherwise:\n   1. log: \"no\"\n2. if a:\n   1. log: \"1\"\n   > trailing in if\n   > above else\n   else:\n   1. log: \"2\"\n";
     let out = check_properties(src);
     assert_eq!(out, src);
+}
+
+// ---------------------------------------------------------------------------------------------
+// v0.4 (SPEC 23): numbered steps, descriptions, `# Program` / `# Uses`, `add`.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn steps_are_renumbered_at_every_level() {
+    let src = "# Command: c\nDoes things.\n\n- steps:\n  1. print: \"a\"\n  1. for each x in xs:\n     1. print: \"b\"\n     1. for each y in ys:\n        1. print: \"c\"\n        1. print: \"d\"\n  1. print: \"e\"\n";
+    let out = check_properties(src);
+    assert_eq!(
+        out,
+        "# Command: c\nDoes things.\n\n- steps:\n  1. print: \"a\"\n  2. for each x in xs:\n     1. print: \"b\"\n     2. for each y in ys:\n        1. print: \"c\"\n        2. print: \"d\"\n  3. print: \"e\"\n"
+    );
+}
+
+#[test]
+fn children_are_reindented_to_the_text_of_their_parent() {
+    // Lenient input: any deeper indentation means "under it"; under `10.` the text starts at 4.
+    let mut src = String::from("# Command: c\nDoes things.\n\n- steps:\n");
+    for i in 0..9 {
+        src.push_str(&format!("  1. print: \"{i}\"\n"));
+    }
+    src.push_str("  1. for each x in xs:\n         1. print: \"a\"\n         1. print: \"b\"\n  1. print: \"z\"\n");
+    let out = check_properties(&src);
+    assert!(out.contains("  9. print: \"8\"\n  10. for each x in xs:\n      1. print: \"a\"\n      2. print: \"b\"\n  11. print: \"z\"\n"), "{out}");
+    // Under `1.` it is 3 spaces, however deep the input was.
+    let out = fmt_ok("# Command: c\nDoes things.\n\n- steps:\n  1. for each x in xs:\n          1. print: \"a\"\n");
+    assert!(out.contains("  1. for each x in xs:\n     1. print: \"a\"\n"), "{out}");
+    // A top-level list (agent block) has no bullet before it.
+    let out = fmt_ok("# Agent: a\nDoc.\n\n- model: claude\n\n## Do x\n1. for each x in xs:\n      1. log: \"a\"\n");
+    assert!(out.contains("1. for each x in xs:\n   1. log: \"a\"\n"), "{out}");
+}
+
+#[test]
+fn a_sibling_else_moves_inside_its_if() {
+    let src = "# Command: c\nDoes things.\n\n- steps:\n  1. if a:\n     1. print: \"yes\"\n  2. else:\n     1. print: \"no\"\n  3. print: \"after\"\n";
+    let out = fmt_ok(src);
+    assert_eq!(
+        out,
+        "# Command: c\nDoes things.\n\n- steps:\n  1. if a:\n     1. print: \"yes\"\n     else:\n     1. print: \"no\"\n  2. print: \"after\"\n"
+    );
+    assert_eq!(fmt_ok(&out), out);
+}
+
+#[test]
+fn an_inline_record_after_add_becomes_field_bullets() {
+    let src = "# Function: f\nDoc.\n\n- touches: nothing\n- steps:\n  1. add RegionTotal { region: region, orders: count of rs, revenue: 1 } to totals\n  2. add RegionTotal { region: other } to totals\n";
+    let out = check_properties(src);
+    assert_eq!(
+        out,
+        "# Function: f\nDoc.\n\n- touches: nothing\n- steps:\n  1. add RegionTotal to totals:\n     - region\n     - orders: count of rs\n     - revenue: 1\n  2. add RegionTotal to totals:\n     - region: other\n"
+    );
+    // Written the long way, `region: region` is written as the bare name.
+    let long = fmt_ok("# Function: f\nDoc.\n\n- touches: nothing\n- steps:\n  1. add RegionTotal to totals:\n     - region: region\n");
+    assert!(long.contains("     - region\n"), "{long}");
+}
+
+#[test]
+fn start_is_written_as_a_link_to_a_command_of_the_same_file() {
+    let src = "# Program: p\nDoc.\n\n- start:   sales-report\n\n# Command: sales-report\nDoc.\n\n- steps:\n  1. print: \"x\"\n";
+    let out = check_properties(src);
+    assert!(out.contains("- start: [sales-report](#command-sales-report)\n"), "{out}");
+    // Already a link: unchanged.
+    assert_eq!(fmt_ok(&out), out);
+    // A link to a file stays a link to that file.
+    let file = "# Program: p\nDoc.\n\n- start: [it](./commands/it.agent.md)\n\n# Uses\n- [it](./commands/it.agent.md)\n";
+    assert_eq!(fmt_ok(file), file);
+}
+
+#[test]
+fn parts_come_in_the_order_program_uses_crates_rest() {
+    let src = "# Import: crate zed\n\n# Uses\n- [z](./z.agent.md)\n- [a](./a.agent.md)\n\n# Import: crate alpha\n\n# Record: A\n- x: text\n";
+    let out = fmt_ok(src);
+    assert_eq!(
+        out,
+        "# Uses\n- [a](./a.agent.md)\n- [z](./z.agent.md)\n\n# Import: crate alpha\n# Import: crate zed\n\n# Record: A\n- x: text\n"
+    );
+    let with_program = "# Program: p\nDoc.\n\n# Uses\n- [z](./z.agent.md)\n- [a](./a.agent.md)\n\n# Import: crate zed\n\n# Record: A\n- x: text\n";
+    let out = fmt_ok(with_program);
+    assert!(out.starts_with("# Program: p\nDoc.\n\n# Uses\n- [a](./a.agent.md)\n- [z](./z.agent.md)\n\n# Import: crate zed\n\n# Record: A\n"), "{out}");
+}
+
+#[test]
+fn a_uses_entry_keeps_its_label_and_as_name() {
+    let src = "# Uses\n-   [every rule](./rules/*.agent.md)\n- [billing rules](./billing/)   as   billing\n";
+    let out = fmt_ok(src);
+    assert_eq!(out, "# Uses\n- [every rule](./rules/*.agent.md)\n- [billing rules](./billing/) as billing\n");
+}
+
+#[test]
+fn a_description_sits_under_its_heading_followed_by_one_blank_line() {
+    let src = "# Record: Sale\nA sale.\n\n\nIt has two lines of description.\n- region: text\n\n\n- amount: money\n";
+    let out = check_properties(src);
+    assert_eq!(
+        out,
+        "# Record: Sale\nA sale.\n\nIt has two lines of description.\n\n- region: text\n- amount: money\n"
+    );
+    // Under a `##` heading too.
+    let src = "# Agent: a\nDoc.\n- model: claude\n\n## Do x\nWhat x does.\n1. log: \"1\"\n";
+    let out = fmt_ok(src);
+    assert!(out.contains("## Do x\nWhat x does.\n\n1. log: \"1\"\n"), "{out}");
+}
+
+#[test]
+fn star_and_plus_bullets_are_written_as_dashes() {
+    let out = fmt_ok("# Record: A\nDoc.\n\n* x: text\n+ y: int\n");
+    assert_eq!(out, "# Record: A\nDoc.\n\n- x: text\n- y: int\n");
+}
+
+#[test]
+fn match_branches_stay_bullets_with_numbered_steps() {
+    let src = "# Command: c\nDoc.\n\n- steps:\n  1. match x:\n   - ok v:\n         1. print: \"{v}\"\n   - error:\n       1. stop\n";
+    let out = check_properties(src);
+    assert_eq!(
+        out,
+        "# Command: c\nDoc.\n\n- steps:\n  1. match x:\n     - ok v:\n       1. print: \"{v}\"\n     - error:\n       1. stop\n"
+    );
+}
+
+#[test]
+fn every_example_formats_to_itself_even_the_generated_bindings_once() {
+    // Idempotent on the canonical form of every example file (bindings included).
+    for path in example_files() {
+        let src = std::fs::read_to_string(&path).unwrap();
+        let once = fmt_ok(&src);
+        assert_eq!(fmt_ok(&once), once, "{}", path.display());
+    }
+}
+
+#[test]
+fn the_messy_file_is_idempotent() {
+    let src = std::fs::read_to_string("tests/fmt/messy.agent.md").unwrap();
+    let once = fmt_ok(&src);
+    assert_eq!(fmt_ok(&once), once);
 }

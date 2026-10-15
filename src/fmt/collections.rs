@@ -128,7 +128,8 @@ pub(super) fn simple(c: &CollStmt) -> Option<String> {
 }
 
 impl Printer {
-    pub(super) fn coll_stmt(&mut self, c: &CollStmt, line: u32, indent: usize) {
+    pub(super) fn coll_stmt(&mut self, c: &CollStmt, line: u32, indent: usize, marker: &str) {
+        let inner = indent + marker.len();
         match c {
             CollStmt::ForEachIndex {
                 var,
@@ -140,13 +141,13 @@ impl Printer {
                     line,
                     indent,
                     format!(
-                        "- for each {} in {} with index {}:",
+                        "{marker}for each {} in {} with index {}:",
                         var.name,
                         expr_text(source),
                         index.name
                     ),
                 );
-                self.stmts(body, indent + 1);
+                self.stmts(body, inner);
             }
             CollStmt::ForEachEntry {
                 key,
@@ -158,17 +159,17 @@ impl Printer {
                     line,
                     indent,
                     format!(
-                        "- for each {}, {} in {}:",
+                        "{marker}for each {}, {} in {}:",
                         key.name,
                         value.name,
                         expr_text(source)
                     ),
                 );
-                self.stmts(body, indent + 1);
+                self.stmts(body, inner);
             }
             _ => {
                 let t = simple(c).unwrap_or_default();
-                self.push(line, indent, format!("- {t}"));
+                self.push(line, indent, format!("{marker}{t}"));
             }
         }
     }

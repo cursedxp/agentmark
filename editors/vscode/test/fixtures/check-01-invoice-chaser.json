@@ -27,7 +27,7 @@
         {
           "label": "Every day at 09:00",
           "file": "examples/01-invoice-chaser/agents/invoice-chaser.agent.md",
-          "line": 10,
+          "line": 12,
           "effects": {
             "class": "model",
             "summary": "model, network(crm, email), local(log)",
@@ -47,7 +47,7 @@
         {
           "label": "Do remind",
           "file": "examples/01-invoice-chaser/agents/invoice-chaser.agent.md",
-          "line": 14,
+          "line": 18,
           "effects": {
             "class": "model",
             "summary": "model, network(email, crm), local(log)",

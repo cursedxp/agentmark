@@ -64,28 +64,20 @@ fn s(p: &Path) -> &str {
 #[test]
 fn check_every_example_prints_its_effect_summary() {
     let cases = [
-        (
-            "examples/01-invoice-chaser",
-            "invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)\n",
-        ),
-        (
-            "examples/02-lead-qualifier",
-            "lead-qualifier / When crm receives lead: model, network(crm, email), local(log)\n",
-        ),
-        (
-            "examples/03-support-triage",
-            "support-triage / Every 15 minutes: model, network(crm, http), local(log)\n",
-        ),
-        (
-            "examples/04-daily-report",
-            "daily-report / Every Monday at 08:00: model, network(crm, email), local(log)\n",
-        ),
-        ("examples/05-invoice-service", "api / POST /invoices: local(state)\n"),
+        ("examples/01-invoice-chaser", "invoice-chaser / Every day at 09:00: touches AI, crm, email, log\n"),
+        ("examples/02-lead-qualifier", "lead-qualifier / When crm receives lead: touches AI, crm, email, log\n"),
+        ("examples/03-support-triage", "support-triage / Every 15 minutes: touches AI, crm, http, log\n"),
+        ("examples/04-daily-report", "daily-report / Every Monday at 08:00: touches AI, crm, email, log\n"),
+        ("examples/05-invoice-service", "api / POST /invoices: touches state\n"),
+        ("examples/06-sales-report", "sales-report: touches files, print\n"),
+        ("examples/06-sales-report", "region_totals: touches nothing\n"),
     ];
     for (path, line) in cases {
         let o = run(&["check", path]);
         assert_eq!(code(&o), 0, "{path}: {}{}", out(&o), err(&o));
-        assert!(out(&o).contains(line), "{path}:\n{}", out(&o));
+        assert!(out(&o).contains("What each part touches\n"), "{path}:\n{}", out(&o));
+        assert!(out(&o).contains(&format!("  {line}")), "{path}:\n{}", out(&o));
+        assert!(!out(&o).contains("network(") && !out(&o).contains("local(") && !out(&o).contains("effect"), "no internal classes: {path}:\n{}", out(&o));
         assert!(out(&o).contains("ok: 0 errors"), "{path}");
     }
 }
@@ -96,13 +88,13 @@ fn check_lists_rust_blocks_and_prints_warnings_in_the_spec_10_format() {
     let so = out(&o);
     assert_eq!(code(&o), 0, "{so}{}", err(&o));
     assert!(so.contains("Rust blocks (trusted, not checked by AgentMark)"), "{so}");
-    assert!(so.contains("fingerprint in invoice_fingerprint: declared pure (examples/05-invoice-service/functions/invoice-fingerprint.agent.md:"), "{so}");
+    assert!(so.contains("fingerprint in invoice_fingerprint: says it touches nothing (examples/05-invoice-service/functions/invoice-fingerprint.agent.md:16)"), "{so}");
     // without the binding: file:line, the source line, a caret, the plain-language message
     let d = unbound_05("check05");
     let o = run(&["check", s(&d)]);
     let se = err(&o);
     let f = format!("{}/functions/invoice-fingerprint.agent.md", s(&d));
-    assert!(se.contains(&format!("{f}:2\n  # Import: crate sha2\n")), "{se}");
+    assert!(se.contains(&format!("{f}:4\n  # Import: crate sha2\n")), "{se}");
     assert!(se.contains("The crate \"sha2\" has no binding yet"), "{se}");
     assert!(!se.to_lowercase().contains("rustc"));
 }
@@ -118,7 +110,7 @@ fn check_shows_inferred_field_types() {
     assert!(!out(&o).contains("Order.note"), "written types are not guessed");
 }
 
-const BAD_AGENT: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- lgo: \"hi\"\n";
+const BAD_AGENT: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. lgo: \"hi\"\n";
 
 #[test]
 fn check_errors_exit_1_with_did_you_mean_and_no_rust() {
@@ -199,7 +191,7 @@ fn check_json_has_the_documented_keys() {
 
 /// A project that has every kind of nested entry docs/check-json.md describes: a warning (an unused
 /// import), an inferred field, a Rust block. Self-contained, so it does not depend on `examples/`.
-const JSON_DOC_PROJECT: &str = "# Import: ./spare.agent.md\n\n# Record: Order\n- amount\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: order: Order\n- effect: pure\n  ```rust\n  order.id.to_uppercase()\n  ```\n\n## On start\n- set loud = shout({ id: \"a\", amount: 5 EUR })\n- log: \"hi {loud}\"\n";
+const JSON_DOC_PROJECT: &str = "# Uses\n- [spare](./spare.agent.md)\n\n# Record: Order\n- amount\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: order: Order\n- touches: nothing\n\n```rust\norder.id.to_uppercase()\n```\n\n## On start\n1. shout({ id: \"a\", amount: 5 EUR }) into loud\n2. log: \"hi {loud}\"\n";
 
 #[test]
 fn check_json_nested_entries_have_the_documented_keys() {
@@ -264,10 +256,14 @@ fn check_json_of_a_broken_project_still_parses() {
 
 // ---------------------------------------------------------------------------------- fmt
 
+/// Legal v0.4 in a non-canonical shape: spacing, `*` bullets, step numbers. (The formatter's own
+/// rules are tested in tests/fmt.rs; this only needs something `fmt` has to change.)
+const MESSY: &str = "# Program:   messy\nA deliberately messy file.\n\n# Record:   Invoice\nAn invoice.\n\n*  customer:   text\n* amount\n\n# Command: show\nShows it.\n\n- in:  invoice:Invoice\n- steps:\n   1.   print:   \"x\"\n   1.   print: \"y\"\n";
+
 #[test]
 fn fmt_check_fails_on_a_messy_file_and_passes_after_fmt() {
     let d = temp("fmt");
-    std::fs::copy(Path::new(ROOT).join("tests/fmt/messy.agent.md"), d.join("messy.agent.md")).unwrap();
+    write(&d, "messy.agent.md", MESSY);
     let before = std::fs::read_to_string(d.join("messy.agent.md")).unwrap();
     let o = run(&["fmt", "--check", s(&d)]);
     assert_eq!(code(&o), 1);
@@ -305,7 +301,7 @@ fn fmt_of_a_missing_path_is_a_usage_error() {
 
 // ---------------------------------------------------------------------------------- lint
 
-const UNDOCUMENTED: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n";
+const UNDOCUMENTED: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. log: \"hi\"\n";
 
 fn lint_project(tag: &str, toml: &str) -> Tmp {
     let d = temp(tag);
@@ -342,14 +338,24 @@ fn doc_collects_descriptions_and_effects() {
     let o = run(&["doc", "examples/01-invoice-chaser"]);
     assert_eq!(code(&o), 0, "{}", err(&o));
     let t = out(&o);
-    assert!(t.contains("# invoice-chaser"), "{t}");
+    // the title is the `# Program` name, its description comes first
+    assert!(
+        t.starts_with("# invoice-chaser\n\nChases unpaid invoices once a day with a polite reminder. It never changes an amount.\n\n## Agents\n"),
+        "{t}"
+    );
     assert!(t.contains("## Agents\n\n### invoice-chaser\n"), "{t}");
     assert!(t.contains("Chases unpaid invoices once a day. Never changes amounts; only sends reminders."), "{t}");
-    assert!(t.contains("- can touch: model, network(crm, email), local(log)"), "{t}");
-    assert!(t.contains("**Every day at 09:00** (can touch: model, network(crm, email), local(log))"), "{t}");
+    assert!(t.contains("- touches: AI, crm, email, log\n"), "{t}");
+    assert!(
+        t.contains("invoice-chaser / Every day at 09:00: touches AI, crm, email, log\n\nFinds every overdue invoice and reminds its customer.\n"),
+        "{t}"
+    );
+    assert!(t.contains("invoice-chaser / Do remind: touches AI, crm, email, log\n"), "{t}");
     assert!(t.contains("## Records\n\n### Invoice\n\nAn invoice as stored in the CRM.\n\n- id: text\n"), "{t}");
     assert!(t.contains("- amount: money"), "{t}");
     assert!(t.contains("## Rules\n\n### overdue\n"), "{t}");
+    assert!(t.contains("overdue: touches nothing\n"), "{t}");
+    assert!(!t.contains("can touch") && !t.contains("network(") && !t.contains("local("), "no internal classes:\n{t}");
 }
 
 #[test]
@@ -357,8 +363,40 @@ fn doc_of_a_service_lists_routes_with_their_effects() {
     let o = run(&["doc", "examples/05-invoice-service"]);
     let t = out(&o);
     assert!(t.contains("## Services\n\n### api\n"), "{t}");
-    assert!(t.contains("**POST /invoices** (can touch: local(state))"), "{t}");
+    assert!(t.contains("- touches: state\n"), "{t}");
+    assert!(t.contains("api / POST /invoices: touches state\n\nAdds the invoice in the request body."), "{t}");
+    assert!(t.contains("api / GET /invoices/{id}: touches nothing\n"), "{t}");
     assert!(t.contains("## Commands\n\n### import-csv\n"), "{t}");
+    assert!(t.contains("import-csv: touches files, print, state\n"), "{t}");
+}
+
+#[test]
+fn doc_of_a_command_example_says_what_the_command_touches() {
+    let o = run(&["doc", "examples/06-sales-report"]);
+    assert_eq!(code(&o), 0, "{}", err(&o));
+    let t = out(&o);
+    assert!(t.starts_with("# sales-report\n\nReads a sales file and writes a revenue report, region by region.\n\n## Commands\n"), "{t}");
+    assert!(
+        t.contains("### sales-report\n\nReads a sales CSV file and writes a revenue report per region, biggest region first.\n\nsales-report: touches files, print\n"),
+        "{t}"
+    );
+    assert!(t.contains("### region_totals\n\nAdds up the sales of every region, biggest revenue first.\n\nregion_totals: touches nothing\n"), "{t}");
+}
+
+#[test]
+fn check_of_an_agent_and_of_a_command_example_reads_as_sentences() {
+    // an agent: one line per trigger and per Do block, AI first, then the tools alphabetically
+    let o = run(&["check", "examples/01-invoice-chaser"]);
+    assert_eq!(
+        out(&o),
+        "What each part touches\n  invoice-chaser / Every day at 09:00: touches AI, crm, email, log\n  invoice-chaser / Do remind: touches AI, crm, email, log\n  overdue: touches nothing\n\nok: 0 errors, 0 warnings.\n"
+    );
+    // a command and its functions: the `file` tool is written `files`
+    let o = run(&["check", "examples/06-sales-report"]);
+    assert_eq!(
+        out(&o),
+        "What each part touches\n  sales-report: touches files, print\n  region_totals: touches nothing\n  table_row: touches nothing\n\nok: 0 errors, 0 warnings.\n"
+    );
 }
 
 #[test]
@@ -394,12 +432,12 @@ fn bind(project: &Path, extra: &[&str]) -> Output {
         .unwrap()
 }
 
-const USES_SHA2: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha256_digest payload -> digest\n- print: \"done\"\n";
+const USES_SHA2: &str = "# Import: crate sha2\n\n# Command: fingerprint\nPrints a fingerprint.\n\n- in: payload: bytes\n- steps:\n  1. sha2 sha256_digest payload into digest\n  2. print: \"done\"\n";
 
 fn sha2_project(tag: &str) -> Tmp {
     let d = temp(tag);
     write(&d, "agentmark.toml", "name = \"p\"\n");
-    write(&d, "main.agent.md", "# Import: ./fingerprint.agent.md\n\n# Run\n- fingerprint\n");
+    write(&d, "main.agent.md", "# Program: fingerprint\n\n# Uses\n- [fingerprint](./fingerprint.agent.md)\n");
     write(&d, "fingerprint.agent.md", USES_SHA2);
     d
 }
@@ -516,7 +554,7 @@ fn check_loads_the_binding_and_lists_it_until_approved() {
     let t = out(&o);
     assert!(t.contains("Libraries nobody approved yet"), "{t}");
     assert!(t.contains("sha2 (library sha2): "), "{t}");
-    assert!(t.contains("bindings/sha2.agent.md:5: change \"- effect: unverified\" to \"- effect: pure\""), "{t}");
+    assert!(t.contains("bindings/sha2.agent.md:6: change \"- effect: unverified\" to \"- effect: pure\""), "{t}");
     assert!(t.contains("1 unapproved library"), "{t}");
     // ... the statement `- sha2 sha256_digest payload -> digest` type-checked: no errors
     assert!(!err(&o).contains("error"), "{}", err(&o));
@@ -532,7 +570,7 @@ fn check_loads_the_binding_and_lists_it_until_approved() {
     let v: Value = serde_json::from_str(&out(&o)).unwrap();
     let u = &v["unverified_bindings"][0];
     assert_eq!((u["name"].as_str(), u["crate"].as_str(), u["proposed_effect"].as_str()), (Some("sha2"), Some("sha2"), Some("pure")));
-    assert_eq!(u["line"], 5);
+    assert_eq!(u["line"], 6);
 
     // approving the line makes it a trusted pure call
     let file = d.join("bindings/sha2.agent.md");
@@ -541,7 +579,7 @@ fn check_loads_the_binding_and_lists_it_until_approved() {
     let o = run(&["check", s(&d)]);
     assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
     assert!(!out(&o).contains("nobody approved"));
-    assert!(out(&o).contains("fingerprint / Run: local(print)"), "{}", out(&o));
+    assert!(out(&o).contains("fingerprint: touches print"), "{}", out(&o));
 }
 
 #[test]
@@ -582,23 +620,23 @@ fn generated_bindings_pass_lint_and_fmt_are_left_alone() {
 fn review_fixes_text_layout() {
     // effects are indented like the other sections
     let o = run(&["check", "examples/01-invoice-chaser"]);
-    assert!(out(&o).contains("\n  invoice-chaser / Every day at 09:00: model,"), "{}", out(&o));
-    // folder doc: title is the project name; pure units are not called "pure effects"
+    assert!(out(&o).contains("\n  invoice-chaser / Every day at 09:00: touches AI,"), "{}", out(&o));
+    // folder doc: title is the `# Program` name; a part that touches nothing says so
     let o = run(&["doc", "examples/05-invoice-service"]);
     assert!(out(&o).starts_with("# invoice-service\n"), "{}", out(&o));
-    assert!(out(&o).contains("- can touch: nothing outside itself (pure)"), "{}", out(&o));
+    assert!(out(&o).contains("net_amount: touches nothing"), "{}", out(&o));
     // the author's doc comes before the generated line of a rule
     let d = temp("ruledoc");
     write(&d, "records/order.agent.md", "# Record: Order\n- amount: money\n");
-    write(&d, "rules/big.agent.md", "# Import: ../records/order.agent.md\n\n> Big orders.\n# Rule: big\n- for: Order\n- when: amount > 5 EUR\n");
+    write(&d, "rules/big.agent.md", "# Uses\n- [order](../records/order.agent.md)\n\n# Rule: big Order\nBig orders.\n\n- when: amount > 5 EUR\n");
     let o = run(&["doc", s(&d)]);
-    assert!(out(&o).contains("### big\n\nBig orders.\n\nApplies to Order. Always pure."), "{}{}", out(&o), err(&o));
+    assert!(out(&o).contains("### big\n\nBig orders.\n\nApplies to Order.\n\nbig: touches nothing\n"), "{}{}", out(&o), err(&o));
 }
 
 #[test]
 fn fmt_leaves_no_temp_files() {
     let d = temp("fmtatomic");
-    std::fs::copy(Path::new(ROOT).join("tests/fmt/messy.agent.md"), d.join("messy.agent.md")).unwrap();
+    write(&d, "messy.agent.md", MESSY);
     assert_eq!(code(&run(&["fmt", s(&d)])), 0);
     let names: Vec<_> = std::fs::read_dir(&d).unwrap().map(|e| e.unwrap().file_name()).collect();
     assert_eq!(names.len(), 1, "{names:?}");
@@ -634,7 +672,7 @@ fn unverified_library_is_reported_once_in_text_and_kept_in_json_diagnostics() {
     assert!(v["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "W005"));
 }
 
-const PURE_FN_SHA2: &str = "# Import: crate sha2\n\n> Hashes text.\n# Function: fingerprint\n- in: s: text\n- out: bytes\n- effect: pure\n  - sha2 sha256_digest s -> d\n  - return d\n";
+const PURE_FN_SHA2: &str = "# Import: crate sha2\n\n# Function: fingerprint\nHashes text.\n\n- in: s: text\n- out: bytes\n- touches: nothing\n- steps:\n  1. sha2 sha256_digest s into d\n  2. return d\n";
 
 #[test]
 fn allow_unverified_checks_effects_with_the_proposed_effect_and_warns_once() {
@@ -717,9 +755,9 @@ fn check_that_cannot_bind_says_how_and_reports_one_error_on_the_import_line() {
 #[test]
 fn fmt_check_counts_agree_with_the_verb() {
     let d = temp("fmtplural");
-    let messy = std::fs::read_to_string(Path::new(ROOT).join("tests/fmt/messy.agent.md")).unwrap();
-    write(&d, "a.agent.md", &messy);
-    write(&d, "b.agent.md", &messy);
+    let messy = MESSY;
+    write(&d, "a.agent.md", messy);
+    write(&d, "b.agent.md", messy);
     write(&d, "c.agent.md", "# Record: C\n- id: text\n");
     let o = run(&["fmt", "--check", s(&d)]);
     assert!(out(&o).contains("2 of 3 files are not canonical; run \"agentmark fmt\" to fix them."), "{}", out(&o));
@@ -756,7 +794,7 @@ fn fmt_keeps_file_permissions() {
     use std::os::unix::fs::PermissionsExt;
     let d = temp("fmtperm");
     let f = d.join("messy.agent.md");
-    std::fs::copy(Path::new(ROOT).join("tests/fmt/messy.agent.md"), &f).unwrap();
+    write(&d, "messy.agent.md", MESSY);
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o640)).unwrap();
     assert_eq!(code(&run(&["fmt", s(&d)])), 0);
     assert_eq!(std::fs::metadata(&f).unwrap().permissions().mode() & 0o777, 0o640);
@@ -767,7 +805,7 @@ fn dot_is_a_project_folder_for_check_and_lint() {
     let d = temp("dot");
     write(&d, "agentmark.toml", "name = \"p\"\nversion = \"0.1.0\"\ntargets = [\"rust\"]\n");
     write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
-    write(&d, "records/a.agent.md", "> A.\n# Record: A\n- id: text\n");
+    write(&d, "records/a.agent.md", "# Record: A\nA.\n- id: text\n");
     for cmd in ["check", "lint"] {
         let mut c = agentmark(&[cmd, "."]);
         let o = c.current_dir(&d).output().unwrap();

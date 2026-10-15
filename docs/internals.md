@@ -13,8 +13,8 @@ Source text goes through these passes, top to bottom:
 
 ```text
 source text
-  -> src/syntax/lexer.rs       lines with kind and indentation (tabs and odd indentation are errors)
-  -> src/syntax/parser.rs      declarations and statement trees (chumsky grammars in src/syntax/parser/)
+  -> src/syntax/lexer.rs       lines with kind and indentation (tabs are errors; numbered steps, bullets, description paragraphs, notes)
+  -> src/syntax/parser.rs      parts, descriptions and step trees (chumsky grammars in src/syntax/parser/); v0.4 removed-syntax errors E060-E073
   -> AST  (src/syntax/ast.rs)
   -> src/project.rs            files, imports, globs, cycles, agentmark.toml, tools.toml, bindings
   -> src/sema/                 names, types, effects, manifest, hard limits, parallel, unused
@@ -40,7 +40,7 @@ Details of each pass are in [The pass pipeline in detail](#the-pass-pipeline-in-
 
 ## Ground rules
 
-AgentMark is a general-purpose programming language written as Markdown. Its definition is `SPEC.md` section 22. Agents are one feature built on its core.
+AgentMark is a general-purpose programming language written as Markdown. Its definition is `SPEC.md` sections 22 and 23 (v0.4 syntax). Agents are one feature built on its core.
 
 The implementation reflects that. The front end, the checker, the IR and the Rust generator know these things:
 
@@ -56,7 +56,7 @@ Three documents define the project:
 
 * `SPEC.md` defines the language. It is never edited to make something easier.
 * `DESIGN.md` defines the architecture.
-* `OPEN_QUESTIONS.md` holds every choice the specification left open, as a numbered `Q` entry.
+* `docs/dev/OPEN_QUESTIONS.md` holds every choice the specification left open, as a numbered `Q` entry.
 
 When you change behaviour, change the code, a test, and the doc that describes it. That doc is `docs/reference.md`. Add a `Q` entry when you had to decide something.
 
@@ -84,8 +84,8 @@ Two rules keep the pipeline honest:
 
 | stage | files | what it hands on |
 |---|---|---|
-| lexer | `src/syntax/lexer.rs` | `Vec<Line>` with kind (`Heading1`, `Heading2`, `Comment`, `Item`, `Control`, fences, blank), indentation in 2-space units, verbatim fenced code |
-| parser | `src/syntax/parser.rs`, `src/syntax/parser/heading.rs`, `src/syntax/parser/stmt.rs`, `src/syntax/parser/expr.rs` | `ast::File`. The first file builds the declaration and statement *tree* from indentation; the three submodules are chumsky parsers over the text of one line (headings, statements, expressions) |
+| lexer | `src/syntax/lexer.rs` | `Vec<Line>` with kind (`Heading1`, `Heading2`, `Comment` for a `>` note, `Item` for a bullet, `Numbered(n)` for a step, `Paragraph` for a description line, `Control` for `else:`/`otherwise:`, fences, blank), indentation in spaces, verbatim fenced code |
+| parser | `src/syntax/parser.rs`, `src/syntax/parser/heading.rs`, `src/syntax/parser/stmt.rs`, `src/syntax/parser/expr.rs` | `ast::File`. The first file builds the part and step *tree* from indentation (a step's children start at its text) and reports the removed v0.3 forms and the `# Program` / `# Uses` rules; the three submodules are chumsky parsers over the text of one line (headings, statements, expressions) |
 | diagnostics | `src/diag.rs` | `Diagnostic { code, severity, span, message, help, did_you_mean }`, the SPEC 10 renderer, Damerau-Levenshtein suggestions |
 | project | `src/project.rs`, `src/manifest.rs` | `Project`: parsed files, resolved imports, `Config` (the project's config file), `Manifest` (the tool manifest), load-time diagnostics |
 | semantic check | `src/sema/mod.rs` and its modules | `Result<Checked, Vec<Diagnostic>>`; see `src/sema/README.md` for the full interface |
@@ -131,13 +131,15 @@ The example is an imaginary `wait <duration>`, a statement that pauses a block. 
 
 **Checklist:**
 
+In v0.4 a statement is one numbered step (`1. wait 5 minutes`). If it names a result, the name comes last with `into`; the step grammar already strips `into <name>` and gives it to your variant. Printed `check` and `doc` lines come from what the step touches (`src/sema/effects.rs`), so give it a touches word if it needs one.
+
 1. **AST.** Add a variant to `StmtKind` in `src/syntax/ast.rs` (`Wait(Expr)`), with the span it needs.
-2. **Parser.** Add the line grammar in `src/syntax/parser/stmt.rs`: a chumsky parser inside `head()`, producing a
+2. **Parser.** Add the line grammar (the text after `N. `) in `src/syntax/parser/stmt.rs`: a chumsky parser inside `head()`, producing a
    `Head::Simple(Stmt)`. Add the leading word to the `STATEMENT_WORDS` list in that file, so it can never be taken for a
    tool name. If the statement owns an indented body, you also teach the tree builder in `src/syntax/parser.rs` about
    it, as `for each` and `if` are. Mistakes should say something: use the keyword helpers so a typo gets a
    suggestion (Q27).
-3. **Formatter.** `src/fmt.rs` prints every statement from its AST; add the canonical text (`wait 5 minutes`). The
+3. **Formatter.** `src/fmt.rs` prints every step from its AST as a numbered item; add the canonical text (`wait 5 minutes`). The
    idempotence and AST-equivalence tests in `tests/fmt.rs` need a sample that uses it.
 4. **Lint.** `src/lint.rs` walks statements to find expressions (for `magic-value`, `vague-name`, ...); add the new
    variant to that match.
@@ -158,7 +160,7 @@ The example is an imaginary `wait <duration>`, a statement that pauses a block. 
    test in `tests/ir_lower.rs`, a formatter sample, and a fixture whose expected trace shows it working.
 10. **Docs.** Add the form to `docs/reference.md` (the section it belongs to, and Appendix A) with a complete
     example, and to the list of forms in `reference_shows_every_statement_form` in `tests/docs.rs`. Record any
-    choice the specification did not settle in `OPEN_QUESTIONS.md`.
+    choice the specification did not settle in `docs/dev/OPEN_QUESTIONS.md`.
 
 A statement that is pure sugar for existing layer-2 statements should not enter layer 2 at all: lower it in
 `src/lower/agent_lower.rs` and let the generator stay unchanged. That is the point of the three layers.
@@ -395,6 +397,13 @@ The decisions behind all of it are Q250 to Q258.
 | 22.5 | `# Tool` written in AgentMark | `src/syntax/parser/tool.rs`, `src/sema/user_tools.rs`, `src/ir/build.rs` (a verb is a function named `<tool>__<verb>`), the calls in `src/codegen/rust/body.rs` | `tests/user_tools.rs`, `tests/user_tools_e2e.rs`, `tests/user_tools/` |
 | 22.6 | default command, program arguments | `src/codegen/rust/default_cmd.rs`, `src/cli/` (`run` and `trace` pass the arguments after `--`) | `tests/user_tools_e2e.rs`, `tests/examples_e2e.rs` |
 | 22.7 | non-agent examples 06 to 10 and their fixtures (a run file, an input folder, the expected output) | `examples/06-…` to `examples/10-…`, `fixtures/` | `tests/examples_e2e.rs`, `tests/sema_examples.rs` |
+| 23.1 to 23.3 | Markdown elements, descriptions, numbered steps and their indentation | `src/syntax/lexer.rs` (`Numbered`, `Paragraph`), `src/syntax/parser.rs` (the tree builder, `else:` and `otherwise:` inside a step), `src/fmt.rs` (renumbering) | `tests/syntax_errors.rs`, `tests/parse_structure.rs`, `tests/fmt.rs` |
+| 23.4 | `# Program`, `- start:`, `# Uses` | `src/syntax/parser.rs` (`uses`), `src/project.rs` (resolving the links), `src/sema/mod.rs` (the start command, E072) | `tests/parse_structure.rs`, `tests/sema_scope.rs` |
+| 23.6 | `in:` and `out:` types from names | `src/sema/decls.rs` (`infer_type`, `match_user_type`), `src/sema/types.rs` (`infer_field_type`) | `tests/sema_types.rs` |
+| 23.7 | `- touches:` and the report wording | `src/sema/decls.rs` (`touch_set`), `src/sema/body.rs`, `src/sema/stmt.rs` (E206), `src/sema/effects.rs` (`touch_word`), `src/cli/check.rs` | `tests/sema_effects.rs`, `tests/cli.rs` |
+| 23.8, 23.9, 23.11 | rule heading, `into`, `add X to list:` with bullets | `src/syntax/parser.rs`, `src/syntax/parser/stmt.rs`, `src/fmt.rs` | `tests/parse_structure.rs`, `tests/fmt.rs` |
+| 23.10 | typed file read (`file read path into sales`) | `src/sema/stdlib.rs` (the record type), `src/ir/build.rs` (`FileCall.records`), `src/codegen/rust/stdlib.rs`, runtime `crates/agentmark-rt/src/stdlib/file.rs` | `tests/stdlib_e2e.rs`, `tests/examples_e2e.rs` |
+| 23.13 | removed syntax E060 to E073 | `src/syntax/parser.rs` (the `E_*` constants and `removed_*` helpers) | `tests/syntax_errors.rs` |
 
 The documentation is tested too: `tests/docs.rs` runs every sample in `docs/*.md`. Its header comment states which
 fenced blocks are complete programs and which are fragments, and the wrapper a fragment is parsed in.
@@ -445,7 +454,7 @@ regression test; test output stays free of warnings; shared helpers for the sema
 
 ## Open questions and decisions
 
-`OPEN_QUESTIONS.md` is the memory of the project. A decision has a question, the choice, and why.
+`docs/dev/OPEN_QUESTIONS.md` is the memory of the project. A decision has a question, the choice, and why.
 
 The numbers are grouped by the step that made them:
 

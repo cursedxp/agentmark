@@ -37,16 +37,17 @@
 //!
 //! * starts with `# ` (a declaration or import): parsed as a whole file, no wrapper;
 //! * starts with `## GET|POST|PUT|PATCH|DELETE `: inside `# Service: doc-service`;
-//! * starts with `## Run`: inside `# Command: doc-command`;
 //! * starts with `## Rust`: inside `# Function: doc_host`;
 //! * starts with `## Not bound`: inside `# Binding: doc` (a library with one effect line);
 //! * starts with any other `## ` (a trigger or `## Do`): inside `# Agent: doc-agent`;
-//! * anything else (statements, `- ` lines, `for each`, `if`, `stop`): the body of `## Do doc` in
+//! * starts with `- ` (properties such as `- in: sales` or `- steps:`): the properties of
+//!   `# Function: doc_fn` (a `- steps:` with one step is added when the fragment has none);
+//! * anything else (numbered steps, `for each`, `if`, `stop`): the steps of `## Do doc` in
 //!   `# Agent: doc-agent`.
 //!
 //! A fragment that does not parse in its wrapper fails the test and the message shows the wrapped
-//! text, so the author sees what the parser saw. Expressions are shown as the statement that
-//! contains them (`- set x = ...`).
+//! text, so the author sees what the parser saw. Expressions are shown as the step that contains
+//! them (`1. ... into x`).
 
 mod support;
 
@@ -62,7 +63,16 @@ use agentmark::syntax::parser::parse_file;
 
 const TOOLS: &str = include_str!("../examples/01-invoice-chaser/tools.toml");
 
-const DOCS: [&str; 5] = ["guide", "reference", "libraries", "internals", "editor"];
+const ALL_DOCS: [&str; 5] = ["guide", "reference", "libraries", "internals", "editor"];
+
+/// The docs under test. `DOCS_ONLY=reference,internals` narrows the run to those pages (handy while
+/// one page is being rewritten); without it every page is checked.
+fn docs() -> Vec<&'static str> {
+    match std::env::var("DOCS_ONLY") {
+        Ok(only) => ALL_DOCS.iter().copied().filter(|d| only.split(',').any(|o| o == *d)).collect(),
+        Err(_) => ALL_DOCS.to_vec(),
+    }
+}
 
 // ---------------------------------------------------------------- extraction
 
@@ -155,7 +165,7 @@ fn blocks_of(doc: &str) -> Vec<Block> {
 }
 
 fn all_blocks() -> Vec<Block> {
-    DOCS.iter().flat_map(|d| blocks_of(d)).collect()
+    docs().into_iter().flat_map(blocks_of).collect()
 }
 
 fn agentmark_blocks() -> Vec<Block> {
@@ -165,7 +175,7 @@ fn agentmark_blocks() -> Vec<Block> {
 /// Every agentmark block with the named files that earlier blocks of its doc have written.
 fn agentmark_blocks_in_context() -> Vec<(Block, Context)> {
     let mut out = Vec::new();
-    for doc in DOCS {
+    for doc in docs() {
         let mut named: Context = Vec::new();
         for b in blocks_of(doc) {
             if b.is_agentmark() {
@@ -221,14 +231,16 @@ fn wrapped(fragment: &str) -> String {
         ""
     } else if ["## GET ", "## POST ", "## PUT ", "## PATCH ", "## DELETE "].iter().any(|m| first.starts_with(m)) {
         "# Service: doc-service\n\n"
-    } else if first.starts_with("## Run") {
-        "# Command: doc-command\n\n"
     } else if first.starts_with("## Rust") {
-        "# Function: doc_host\n- out: text\n- effect: pure\n  - return \"x\"\n\n"
+        "# Function: doc_host\n- out: text\n- touches: nothing\n- steps:\n  1. return \"x\"\n\n"
     } else if first.starts_with("## Not bound") {
         "# Binding: doc\n- crate: doc\n- effect: unverified\n\n"
     } else if first.starts_with("## ") {
         agent
+    } else if first.starts_with("- ") {
+        // properties (`- in: sales`, `- touches: nothing`, `- steps:` …): those of a function
+        let steps = if fragment.lines().any(|l| l.trim_end() == "- steps:") { "" } else { "- steps:\n  1. stop\n" };
+        return format!("# Function: doc_fn\n{fragment}\n{steps}");
     } else {
         return format!("{agent}## Do doc\n{fragment}\n");
     };
@@ -238,7 +250,7 @@ fn wrapped(fragment: &str) -> String {
 /// A quoted project file that imports its neighbours cannot be checked on its own (the folder
 /// projects are checked as projects by `tests/sema_examples.rs`).
 fn needs_other_files(b: &Block) -> bool {
-    b.modifier("file").is_some() && b.body.lines().any(|l| l.starts_with("# Import: ."))
+    b.modifier("file").is_some() && b.body.lines().any(|l| l.trim_end() == "# Uses")
 }
 
 fn trim_end_lines(s: &str) -> String {
@@ -249,7 +261,7 @@ fn trim_end_lines(s: &str) -> String {
 
 #[test]
 fn every_doc_exists_and_has_samples() {
-    for d in DOCS {
+    for d in docs() {
         assert!(doc_path(d).exists(), "docs/{d}.md is missing");
     }
     for d in ["guide", "reference", "libraries"] {
@@ -362,11 +374,11 @@ fn fragment_semantic_errors(src: &str) -> Option<String> {
 /// The semantic check of fragments must keep catching mistakes inside the fragment itself.
 #[test]
 fn fragment_check_still_catches_tool_mistakes() {
-    for bad in ["- crm delete invoice: x", "- email send custmer: \"x\"", "- crm: \"x\"", "- email teleport customer: \"x\""] {
+    for bad in ["1. crm delete invoice: x", "1. email send custmer: \"x\"", "1. crm: \"x\"", "1. email teleport customer: \"x\""] {
         let src = wrapped(bad);
         assert!(fragment_semantic_errors(&src).is_some(), "{bad:?} should be an error in a fragment");
     }
-    assert!(fragment_semantic_errors(&wrapped("- log: \"fine\"")).is_none());
+    assert!(fragment_semantic_errors(&wrapped("1. log: \"fine\"")).is_none());
 }
 
 #[test]
@@ -416,7 +428,7 @@ fn console_output_is_real() {
     let exe = env!("CARGO_BIN_EXE_agentmark");
     let repo = std::env::current_dir().unwrap();
     let mut ran = 0;
-    for doc in DOCS {
+    for doc in docs() {
         let mut named: Vec<(String, String)> = Vec::new();
         for b in blocks_of(doc) {
             if let Some(name) = b.modifier("name") {
@@ -597,31 +609,31 @@ fn reference_shows_every_statement_form() {
     let forms = [
         "for each ",
         "for each overdue ",
-        "- if ",
-        "- else:",
+        "if ",
+        "else:",
         "is some ",
         "stop",
-        "- do ",
+        "do ",
         "ask model:",
         "ask model with ",
-        " as Qualification ->",
-        "- guard: ",
+        " as Qualification into ",
+        "guard: ",
         " else respond ",
         "no amounts changed in",
         " is not empty",
         " matches ",
         " length < ",
-        "- set ",
-        "- return ",
-        "- respond ",
+        " into ",
+        "return ",
+        "respond ",
         "read body as",
         "read file ",
-        "- append ",
-        "- print: ",
-        "- try ",
+        "add ",
+        "print: ",
+        "try ",
         "otherwise:",
-        "- parallel:",
-        "- log: ",
+        "parallel:",
+        "log: ",
         "email send address",
         "crm update ",
         "http post ",
@@ -629,22 +641,22 @@ fn reference_shows_every_statement_form() {
         "first ",
         "## Rust: ",
         "## Not bound",
-        "# Import: crate ",
-        "# Constant: ",
-        "# Run",
+        "# Uses\n- [invoice](./records/invoice.agent.md)",
+        "# Constant:",
+        "# Program: ",
         "## Every ",
         "## When ",
         "## On start",
         "## Do ",
         "## GET ",
-        "- pdf render ",
+        "pdf render ",
     ];
     for f in forms {
         assert!(samples.contains(f), "docs/reference.md never shows the form {f:?} in a sample");
     }
 }
 
-/// SPEC 15.4 and PROMPT step 12: every bound item of a binding file has a one-line description above its
+/// SPEC 15.4 and PROMPT step 12: every bound item of a binding file has a one-line description under its
 /// heading, taken from the library's own documentation. The binding files the docs show and the one that
 /// ships with example 05 must keep that shape.
 #[test]
@@ -669,17 +681,17 @@ fn bound_items_carry_a_description_line() {
         std::fs::read_to_string("examples/05-invoice-service/bindings/sha2.agent.md").unwrap(),
     ));
     for b in agentmark_blocks() {
-        if b.body.lines().any(|l| l.starts_with("# Binding: ")) {
+        if b.body.lines().any(|l| l.starts_with("# Binding:")) {
             files.push((b.at(), b.body.clone()));
         }
     }
     for (name, text) in files {
         let lines: Vec<&str> = text.lines().collect();
         for (i, heading) in bound_headings(&text) {
-            let above = if i > 0 { lines[i - 1] } else { "" };
+            let below = lines.get(i + 1).copied().unwrap_or("");
             assert!(
-                above.starts_with("> ") && above.len() > 3,
-                "{name}: \"{heading}\" has no one-line description above it"
+                !below.trim().is_empty() && !below.starts_with(['-', '#', '>', ' ', '`']),
+                "{name}: \"{heading}\" has no description under it"
             );
             checked += 1;
         }
@@ -693,13 +705,13 @@ fn sha2_description_matches_the_library_documentation() {
     let digest = std::fs::read_to_string("tests/binder/digest.json").unwrap();
     assert!(digest.contains("Compute hash of `data`."), "the recorded rustdoc of digest changed");
     let binding = std::fs::read_to_string("examples/05-invoice-service/bindings/sha2.agent.md").unwrap();
-    assert!(binding.contains("> Compute hash of `data`.\n## sha256_digest(data: bytes) -> bytes"));
+    assert!(binding.contains("## sha256_digest(data: bytes) -> bytes\nCompute hash of `data`."));
 }
 
 /// Every `$ agentmark` line of a doc is the first line of a `console` block, and so is executed.
 #[test]
 fn every_transcript_is_executed() {
-    for doc in DOCS {
+    for doc in docs() {
         let text = read_doc(doc);
         let lines = text.lines().filter(|l| l.trim_start().starts_with("$ agentmark")).count();
         let executed = blocks_of(doc)
@@ -722,7 +734,7 @@ fn check_json_doc_matches_the_real_output() {
     std::fs::write(dir.path().join("tools.toml"), TOOLS).unwrap();
     std::fs::write(
         dir.path().join("a.agent.md"),
-        "# Record: Order\n- total\n\n> Logs.\n# Agent: logger\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n",
+        "# Record: Order\n- total\n\n# Agent: logger\nLogs.\n\n- model: claude\n- tools: log\n\n## On start\n1. log: \"hi\"\n",
     )
     .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_agentmark"))
@@ -848,7 +860,7 @@ fn editor_doc_toml_is_a_valid_config() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("agentmark.toml"), format!("{}\n", block.body)).unwrap();
     std::fs::write(dir.path().join("tools.toml"), TOOLS).unwrap();
-    std::fs::write(dir.path().join("main.agent.md"), "> Logs once.\n# Agent: hello\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n").unwrap();
+    std::fs::write(dir.path().join("main.agent.md"), "# Agent: hello\nLogs once.\n\n- model: claude\n- tools: log\n\n## On start\n1. log: \"hi\"\n").unwrap();
     let project = Project::load(dir.path().to_str().unwrap());
     let errors: Vec<_> = match sema::check(&project) {
         Ok(_) => Vec::new(),
@@ -955,7 +967,7 @@ fn templates_do_not_forbid_the_mandatory_rust_effect_line() {
         for bad in ["never add an `- effect:`", "never write an `- effect:`", "add an `- effect:` line to a rust block"] {
             assert!(!text.contains(bad), "{path} says \"{bad}\", which contradicts SPEC 17");
         }
-        assert!(text.contains("a `## rust` block needs an `- effect:` line"), "{path} must say the Rust block needs an effect line");
+        assert!(text.contains("a `## rust` block needs a `- touches:` line"), "{path} must say the Rust block needs a touches line");
         assert!(text.contains("trusted, not verified"), "{path} must say the effect line is trusted, not verified");
     }
 }

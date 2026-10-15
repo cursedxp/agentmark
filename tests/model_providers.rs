@@ -64,7 +64,7 @@ fn chat(text: &str) -> String {
 }
 
 /// Two agents on two providers, writing what each answers.
-const TWO: &str = "# Agent: cloud\n- model: openai:gpt-4o-mini\n- tools: log\n\n## On start\n- ask model: \"Q cloud\" -> a\n- log: \"cloud says {a}\"\n\n# Agent: office\n- model: local:kat-coder\n- tools: log\n\n## On start\n- ask model: \"Q office\" -> b\n- log: \"office says {b}\"\n";
+const TWO: &str = "# Agent: cloud\n- model: openai:gpt-4o-mini\n- tools: log\n\n## On start\n1. ask model: \"Q cloud\" into a\n2. log: \"cloud says {a}\"\n\n# Agent: office\n- model: local:kat-coder\n- tools: log\n\n## On start\n1. ask model: \"Q office\" into b\n2. log: \"office says {b}\"\n";
 
 /// A project with `TWO`, the `[models]` table pointing the local provider at `local_url`.
 fn project(tag: &str, local_url: &str) -> (Tmp, String) {
@@ -150,7 +150,7 @@ fn an_environment_that_is_not_in_the_table_is_named() {
 #[test]
 fn the_local_base_url_comes_from_agentmark_toml_and_the_environment_overrides_it() {
     let (local, lrx) = serve(vec![chat("x")]);
-    let src = "# Agent: office\n- model: local:kat-coder\n- tools: log\n\n## On start\n- ask model: \"Q office\" -> b\n- log: \"{b}\"\n";
+    let src = "# Agent: office\n- model: local:kat-coder\n- tools: log\n\n## On start\n1. ask model: \"Q office\" into b\n2. log: \"{b}\"\n";
     let d = temp("local-url");
     write(&d, "agentmark.toml", "name = \"l\"\n\n[models.local]\nbase_url = \"http://127.0.0.1:1/v1\"\n");
     write(&d, "l.agent.md", src);
@@ -168,7 +168,7 @@ fn the_local_base_url_comes_from_agentmark_toml_and_the_environment_overrides_it
 #[test]
 fn check_rejects_unsupported_providers_at_the_model_line() {
     let d = temp("check-azure");
-    write(&d, "a.agent.md", "# Agent: a\n- model: azure:dep\n- tools: log\n\n## On start\n- log: \"x\"\n");
+    write(&d, "a.agent.md", "# Agent: a\n- model: azure:dep\n- tools: log\n\n## On start\n1. log: \"x\"\n");
     write(&d, "tools.toml", &std::fs::read_to_string(format!("{ROOT}/tests/errors/tools.toml")).unwrap());
     let o = agentmark(&["check", d.join("a.agent.md").to_str().unwrap()]).output().unwrap();
     assert_eq!(o.status.code(), Some(1));
@@ -179,7 +179,7 @@ fn check_rejects_unsupported_providers_at_the_model_line() {
 #[test]
 fn check_accepts_every_supported_driver() {
     let d = temp("check-ok");
-    write(&d, "a.agent.md", "# Agent: a\n- model: openai:gpt-4o\n- tools: log\n\n## On start\n- log: \"x\"\n\n# Agent: b\n- model: local:kat-coder\n- tools: log\n\n## On start\n- log: \"y\"\n\n# Agent: c\n- model: claude:haiku\n- tools: log\n\n## On start\n- log: \"z\"\n\n# Agent: d\n- model: mock\n- tools: log\n\n## On start\n- log: \"w\"\n");
+    write(&d, "a.agent.md", "# Agent: a\n- model: openai:gpt-4o\n- tools: log\n\n## On start\n1. log: \"x\"\n\n# Agent: b\n- model: local:kat-coder\n- tools: log\n\n## On start\n1. log: \"y\"\n\n# Agent: c\n- model: claude:haiku\n- tools: log\n\n## On start\n1. log: \"z\"\n\n# Agent: d\n- model: mock\n- tools: log\n\n## On start\n1. log: \"w\"\n");
     write(&d, "tools.toml", &std::fs::read_to_string(format!("{ROOT}/tests/errors/tools.toml")).unwrap());
     let o = agentmark(&["check", d.join("a.agent.md").to_str().unwrap()]).output().unwrap();
     assert!(o.status.success(), "{}{}", stderr(&o), stdout(&o));
@@ -190,7 +190,7 @@ fn the_models_table_is_validated_in_agentmark_toml() {
     let bad = |tag: &str, toml: &str| {
         let d = temp(tag);
         write(&d, "agentmark.toml", toml);
-        write(&d, "a.agent.md", "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n");
+        write(&d, "a.agent.md", "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n");
         write(&d, "tools.toml", &std::fs::read_to_string(format!("{ROOT}/tests/errors/tools.toml")).unwrap());
         let o = agentmark(&["check", d.to_str().unwrap()]).output().unwrap();
         (o.status.code(), stderr(&o) + &stdout(&o))
@@ -213,8 +213,8 @@ fn the_binder_uses_the_models_table_too() {
     // AGENTMARK_ENV=test -> the canned model named by the table; no AGENTMARK_MODEL, no key
     let d = temp("bind-env");
     write(&d, "agentmark.toml", &format!("name = \"p\"\n\n[models]\ntest = \"mock:{ROOT}/tests/binder/model.json\"\n"));
-    write(&d, "main.agent.md", "# Import: ./fingerprint.agent.md\n\n# Run\n- fingerprint\n");
-    write(&d, "fingerprint.agent.md", "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha256_digest payload -> digest\n- print: \"done\"\n");
+    write(&d, "main.agent.md", "# Program: fingerprint\n\n# Uses\n- [fingerprint](./fingerprint.agent.md)\n");
+    write(&d, "fingerprint.agent.md", "# Import: crate sha2\n\n# Command: fingerprint\nPrints a fingerprint.\n\n- in: payload: bytes\n- steps:\n  1. sha2 sha256_digest payload into digest\n  2. print: \"done\"\n");
     let o = agentmark(&["bind", "sha2", "--project", d.to_str().unwrap()])
         .env("AGENTMARK_ENV", "test")
         .env("AGENTMARK_RUSTDOC_JSON", format!("{ROOT}/tests/binder/sha2.json"))

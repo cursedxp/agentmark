@@ -10,17 +10,19 @@ use agentmark::syntax::ast::{Decl, Trigger};
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, Position};
 
 use crate::index::{block_param, is_ident_char, prefixes, var_type, visible, walk_fields};
-use crate::text::{char_pos, line_text};
+use crate::text::{char_pos, is_numbered, line_text, strip_marker};
 use crate::workspace::{Analysis, Docs, OverlayFs, Doc};
 
 const BUILTIN_TYPES: [&str; 8] = ["text", "int", "money", "date", "datetime", "duration", "bool", "bytes"];
-const STATEMENTS: [&str; 12] = [
-    "guard:", "set ", "ask model", "for each ", "if ", "else:", "stop", "do ", "try ", "return ", "parallel:", "respond ",
+const STATEMENTS: [&str; 14] = [
+    "guard:", "ask model", "for each ", "if ", "else:", "stop", "do ", "try ", "return ", "parallel:", "respond ", "add ",
+    "print:", "otherwise:",
 ];
-const HEADINGS: [&str; 9] = [
-    "Agent: ", "Record: ", "Rule: ", "Function: ", "Constant: ", "Import: ", "Service: ", "Command: ", "Binding: ",
+const HEADINGS: [&str; 14] = [
+    "Program: ", "Uses", "Agent: ", "Record: ", "Enum: ", "Type: ", "Rule: ", "Function: ", "Constant: ", "Import: crate ",
+    "Service: ", "Command: ", "Tool: ", "Binding: ",
 ];
-const BLOCKS: [&str; 5] = ["Every ", "Every day at ", "When ", "On start", "Do "];
+const BLOCKS: [&str; 6] = ["Every ", "Every day at ", "When ", "On start", "Do ", "Rust: "];
 
 fn item(label: impl Into<String>, kind: CompletionItemKind, detail: impl Into<Option<String>>, doc: Option<&String>) -> CompletionItem {
     CompletionItem {
@@ -66,23 +68,26 @@ fn string_state(prefix: &str) -> Option<usize> {
 
 struct Enclosing {
     decl: Option<String>,
-    in_block: bool,
+    /// The text of the nearest `##` heading above the cursor (`Rust: fingerprint -> text`).
+    block: Option<String>,
 }
 
 fn enclosing(text: &str, line: usize) -> Enclosing {
     let mut decl = None;
-    let mut in_block = false;
+    let mut block = None;
     for l in (0..line).rev() {
         let t = line_text(text, l);
-        if t.starts_with("## ") && decl.is_none() && !in_block {
-            in_block = true;
+        if let Some(h) = t.strip_prefix("## ") {
+            if block.is_none() {
+                block = Some(h.trim().to_string());
+            }
         }
         if let Some(rest) = t.strip_prefix("# ") {
             decl = rest.split(':').next().map(|w| w.trim().to_lowercase());
             break;
         }
     }
-    Enclosing { decl, in_block }
+    Enclosing { decl, block }
 }
 
 fn matches_partial(label: &str, partial: &str) -> bool {
@@ -111,6 +116,10 @@ pub fn complete(a: &Analysis, docs: &Docs, path: &str, text: &str, pos: Position
     let partial = segs.pop().unwrap_or("").to_string();
 
     let mut items: Vec<CompletionItem> = Vec::new();
+    // a link target under `# Uses`: `- [label](../rec` offers the files of the project
+    if let Some(items) = uses_path_items(a, path, text, line, &prefix) {
+        return items;
+    }
     if trimmed.starts_with('#') {
         items = heading_items(trimmed);
     } else if !segs.is_empty() && segs[0].chars().next().is_some_and(|c| c.is_alphabetic()) {
@@ -119,29 +128,39 @@ pub fn complete(a: &Analysis, docs: &Docs, path: &str, text: &str, pos: Position
     } else {
         let before: String = prefix.chars().take(chars.len() - partial.chars().count()).collect();
         let before = before.trim_end();
-        let stmt = trimmed.strip_prefix("- ").unwrap_or(trimmed);
+        let numbered = is_numbered(trimmed);
+        let stmt = strip_marker(trimmed);
         let stmt = stmt.strip_prefix("try ").unwrap_or(stmt);
         let words_before: Vec<&str> = stmt.split_whitespace().collect();
         let ends_space = prefix.ends_with(' ');
         let rest_words = if ends_space { words_before.len() } else { words_before.len().saturating_sub(1) };
+        // a property line of a part: a bullet in the first column
+        let property_line = prefix.starts_with("- ") && !numbered;
 
-        let in_import = trimmed.starts_with("# Import");
-        if !in_import && type_context(before, &enc, trimmed) {
+        if type_context(before, &enc, trimmed) {
             items = type_items(a, path, before);
-        } else if stmt.starts_with("tools:") {
+        } else if property_line && stmt.starts_with("tools:") {
             items = tool_items(a, path);
-        } else if rest_words == 1 && stmt.starts_with("do ") {
-            items = action_items(a, path);
-        } else if rest_words == 2 && stmt.starts_with("for each ") {
+        } else if property_line && stmt.starts_with("touches:") {
+            items = touches_items(a, path);
+        } else if property_line && stmt.starts_with("start:") && !stmt.contains('[') {
+            items = start_items(a, text);
+        } else if numbered && rest_words == 1 && stmt.starts_with("do ") {
+            items = action_items(a, path, text);
+        } else if numbered && rest_words == 2 && stmt.starts_with("for each ") {
             items = rule_items(a, path);
-        } else if rest_words >= 1 && !stmt.contains(':') && tool_statement(a, path, words_before.first().copied().unwrap_or("")) {
+        } else if numbered && rest_words >= 1 && !stmt.contains(':') && tool_statement(a, path, words_before.first().copied().unwrap_or("")) {
             items = verb_items(a, path, words_before.first().copied().unwrap_or(""), rest_words);
-        } else if rest_words == 0 && enc.in_block {
+        } else if numbered && rest_words == 0 {
             items = statement_items(a, path);
-        } else if rest_words == 0 && !enc.in_block && trimmed.starts_with("- ") {
-            items = property_items(enc.decl.as_deref());
+        } else if property_line && rest_words == 0 {
+            items = property_items(enc.decl.as_deref(), enc.block.as_deref());
         } else if expr_context(before, depth) {
             items = expression_items(a, path, line);
+        }
+        // `into` names the result of a step
+        if items.is_empty() && numbered && rest_words >= 2 && into_fits(stmt) && !words_before.contains(&"into") && !expr_context(before, depth) {
+            items.push(item("into", CompletionItemKind::KEYWORD, Some("names the result of this step".to_string()), None));
         }
     }
     items.retain(|i| matches_partial(&i.label, &partial));
@@ -166,20 +185,31 @@ fn heading_items(trimmed: &str) -> Vec<CompletionItem> {
 }
 
 fn type_context(before: &str, enc: &Enclosing, trimmed: &str) -> bool {
+    if trimmed.starts_with('#') {
+        return false;
+    }
     let last = before.rsplit(|c: char| c.is_whitespace()).next().unwrap_or("");
     match last {
-        "as" | "matches" | "for:" => true,
-        "of" | "maybe" => true,
+        "as" | "matches" | "of" | "maybe" => true,
         l if l.ends_with(':') => {
             // `- amount: ` in a record, `- in: invoice: ` and `- out: ` in a function or Rust block
             let one_colon = before.matches(':').count() == 1;
             let in_record = enc.decl.as_deref() == Some("record") && trimmed.starts_with("- ") && one_colon;
             let in_signature = trimmed.starts_with("- in:") || trimmed.starts_with("- out:");
-            let signature_slot = l == "out:" || (trimmed.starts_with("- in:") && before.matches(':').count() == 2);
+            let signature_slot = l == "out:" || (trimmed.starts_with("- in:") && l != "in:");
             in_record || (in_signature && signature_slot)
         }
         _ => false,
     }
+}
+
+/// Can the step end with `into <name>`?
+fn into_fits(stmt: &str) -> bool {
+    let first = stmt.split_whitespace().next().unwrap_or("");
+    !matches!(
+        first,
+        "print:" | "guard:" | "stop" | "return" | "if" | "else:" | "otherwise:" | "for" | "match" | "parallel:" | "respond" | "add"
+    )
 }
 
 fn type_items(a: &Analysis, path: &str, before: &str) -> Vec<CompletionItem> {
@@ -221,15 +251,19 @@ fn binding_names(a: &Analysis) -> Vec<(String, Vec<String>)> {
     v
 }
 
-/// The tools written in AgentMark (SPEC 22.5): name, effect word, verbs.
-fn user_tools(a: &Analysis) -> Vec<(String, &'static str, Vec<String>)> {
+/// The tools written in AgentMark (SPEC 22.5): name, what they say they touch, verbs.
+fn user_tools(a: &Analysis) -> Vec<(String, String, Vec<String>)> {
     let mut v = Vec::new();
     for f in &a.project.files {
         for d in &f.ast.decls {
             if let Decl::Tool(t) = d {
+                let touches = t
+                    .touches
+                    .as_ref()
+                    .map(|x| x.words.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", "));
                 v.push((
                     t.name.name.clone(),
-                    agentmark::sema::effects::effect_name(t.effect.value),
+                    touches.map(|w| format!("touches {w}")).unwrap_or_else(|| "tool".to_string()),
                     t.verbs.iter().map(|x| x.name.name.clone()).collect(),
                 ));
             }
@@ -244,7 +278,7 @@ fn tool_items(a: &Analysis, _path: &str) -> Vec<CompletionItem> {
         .manifest
         .tools
         .values()
-        .map(|t| item(t.name.clone(), CompletionItemKind::MODULE, Some(format!("tool, {}", agentmark::sema::effects::effect_name(t.effect))), None))
+        .map(|t| item(t.name.clone(), CompletionItemKind::MODULE, Some(format!("tool, touches {}", agentmark::sema::effects::touch_word(&t.name))), None))
         .collect();
     out.push(item("file", CompletionItemKind::MODULE, Some("built-in tool, local".to_string()), None));
     for (b, _) in binding_names(a) {
@@ -294,7 +328,7 @@ fn verb_items(a: &Analysis, _path: &str, tool: &str, rest_words: usize) -> Vec<C
     Vec::new()
 }
 
-fn action_items(a: &Analysis, path: &str) -> Vec<CompletionItem> {
+fn action_items(a: &Analysis, path: &str, text: &str) -> Vec<CompletionItem> {
     let mut out = Vec::new();
     if let Some(fid) = a.file_id(path) {
         for d in &a.project.files[fid].ast.decls {
@@ -310,6 +344,16 @@ fn action_items(a: &Analysis, path: &str) -> Vec<CompletionItem> {
     for v in visible(a, path) {
         if matches!(v.kind, Kind::Function | Kind::RustBlock) {
             out.push(item(v.name.clone(), CompletionItemKind::FUNCTION, Some(v.kind.noun().to_string()), v.doc.as_ref()));
+        }
+    }
+    // the buffer rarely parses while the `do` is being typed: its functions and `## Do` blocks as written
+    for l in text.split('\n') {
+        let name = l.strip_prefix("# Function:").map(|n| (n, "function")).or_else(|| l.strip_prefix("## Do ").map(|n| (n, "## Do block")));
+        if let Some((n, what)) = name {
+            let n = n.trim();
+            if !n.is_empty() && !out.iter().any(|i| i.label == n) {
+                out.push(item(n.to_string(), CompletionItemKind::FUNCTION, Some(what.to_string()), None));
+            }
         }
     }
     out
@@ -331,16 +375,146 @@ fn statement_items(a: &Analysis, path: &str) -> Vec<CompletionItem> {
     out
 }
 
-fn property_items(decl: Option<&str>) -> Vec<CompletionItem> {
-    let keys: &[&str] = match decl {
-        Some("agent") => &["model:", "tools:", "memory:", "timeout:"],
-        Some("rule") => &["for:", "when:"],
-        Some("constant") => &["value:"],
-        Some("function") => &["in:", "out:", "effect:"],
-        Some("service") => &["listen:", "state:"],
-        _ => &[],
+fn property_items(decl: Option<&str>, block: Option<&str>) -> Vec<CompletionItem> {
+    // the properties of a `## Rust: name -> type` block, and of nothing else under a `##`
+    let keys: &[&str] = if block.is_some_and(|b| b.starts_with("Rust:")) {
+        &["in:", "touches:"]
+    } else {
+        match decl {
+            Some("agent") => &["model:", "tools:", "memory:", "timeout:"],
+            Some("rule") => &["when:"],
+            Some("constant") => &["value:"],
+            Some("function") => &["in:", "out:", "touches:", "steps:"],
+            Some("command") => &["in:", "steps:"],
+            Some("tool") => &["touches:"],
+            Some("program") => &["start:"],
+            Some("service") => &["listen:", "state:"],
+            _ => &[],
+        }
     };
     keys.iter().map(|k| item(*k, CompletionItemKind::PROPERTY, None, None)).collect()
+}
+
+/// What `- touches:` can name: the built-in words, then the tools and libraries.
+fn touches_items(a: &Analysis, path: &str) -> Vec<CompletionItem> {
+    let mut out: Vec<CompletionItem> = ["nothing", "files", "print", "input", "AI"]
+        .iter()
+        .map(|w| item(*w, CompletionItemKind::KEYWORD, None, None))
+        .collect();
+    out.extend(tool_items(a, path).into_iter().filter(|i| i.label != "file"));
+    out
+}
+
+/// What `- start:` can name: the commands of the project, written as the link `fmt` writes. The
+/// buffer is read as text too, because it rarely parses while this line is being typed.
+fn start_items(a: &Analysis, text: &str) -> Vec<CompletionItem> {
+    let mut found: Vec<(String, Option<String>)> = Vec::new();
+    for f in &a.project.files {
+        for d in &f.ast.decls {
+            if let Decl::Command(c) = d {
+                found.push((c.name.name.clone(), c.doc.clone()));
+            }
+        }
+    }
+    for l in text.split('\n') {
+        if let Some(n) = l.strip_prefix("# Command:") {
+            let n = n.trim().to_string();
+            if !n.is_empty() && !found.iter().any(|(f, _)| *f == n) {
+                found.push((n, None));
+            }
+        }
+    }
+    found
+        .into_iter()
+        .map(|(name, doc)| {
+            let mut it = item(name.clone(), CompletionItemKind::CLASS, Some("command".to_string()), doc.as_ref());
+            it.insert_text = Some(format!("[{name}](#command-{name})"));
+            it.filter_text = Some(name);
+            it
+        })
+        .collect()
+}
+
+/// Inside the parentheses of a `# Uses` link: the `.agent.md` files and folders of the project,
+/// written relative to this file.
+fn uses_path_items(a: &Analysis, path: &str, text: &str, line: usize, prefix: &str) -> Option<Vec<CompletionItem>> {
+    let t = prefix.trim_start();
+    let open = t.strip_prefix("- [").or_else(|| t.strip_prefix("* [")).and_then(|r| r.find("](").map(|i| &r[i + 2..]))?;
+    if open.contains(')') || !in_uses_section(text, line) {
+        return None;
+    }
+    let typed = open.to_string();
+    let here_dir = std::path::Path::new(path).parent()?.to_path_buf();
+    let root = if a.root.ends_with(".agent.md") { std::path::Path::new(&a.root).parent()?.to_path_buf() } else { std::path::PathBuf::from(&a.root) };
+    let mut found: Vec<(std::path::PathBuf, bool)> = Vec::new();
+    walk_agent_files(&root, 0, &mut found);
+    let col_end = prefix.chars().count();
+    let col_start = col_end - typed.chars().count();
+    let mut out = Vec::new();
+    for (p, is_dir) in found {
+        if p == std::path::Path::new(path) {
+            continue;
+        }
+        let mut rel = relative_to(&here_dir, &p);
+        if is_dir {
+            rel.push('/');
+        }
+        if !rel.starts_with(&typed) || rel == typed {
+            continue;
+        }
+        let mut it = item(rel.clone(), if is_dir { CompletionItemKind::FOLDER } else { CompletionItemKind::FILE }, Some(if is_dir { "folder (needs `as`)" } else { "file" }.to_string()), None);
+        it.text_edit = Some(lsp_types::CompletionTextEdit::Edit(lsp_types::TextEdit::new(
+            lsp_types::Range::new(Position::new(line as u32, col_start as u32), Position::new(line as u32, col_end as u32)),
+            rel,
+        )));
+        out.push(it);
+    }
+    Some(out)
+}
+
+/// Is `line` inside the `# Uses` section (below its heading, above the next one)?
+fn in_uses_section(text: &str, line: usize) -> bool {
+    for l in (0..line).rev() {
+        let t = line_text(text, l);
+        if t.starts_with('#') {
+            return t.trim_end() == "# Uses";
+        }
+    }
+    false
+}
+
+fn walk_agent_files(dir: &std::path::Path, depth: usize, out: &mut Vec<(std::path::PathBuf, bool)>) {
+    if depth > 5 {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut entries: Vec<_> = rd.filter_map(|e| e.ok()).collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let name = e.file_name().to_string_lossy().to_string();
+        let p = e.path();
+        if p.is_dir() {
+            if name.starts_with('.') || name == "target" || name == "node_modules" || name == "rust" {
+                continue;
+            }
+            out.push((p.clone(), true));
+            walk_agent_files(&p, depth + 1, out);
+        } else if name.ends_with(".agent.md") {
+            out.push((p, false));
+        }
+    }
+}
+
+/// `./records/invoice.agent.md` or `../constants.agent.md`: `target` seen from the folder `from`.
+fn relative_to(from: &std::path::Path, target: &std::path::Path) -> String {
+    let f: Vec<_> = from.components().collect();
+    let t: Vec<_> = target.components().collect();
+    let common = f.iter().zip(&t).take_while(|(x, y)| x == y).count();
+    let ups = f.len() - common;
+    let mut s = if ups == 0 { "./".to_string() } else { "../".repeat(ups) };
+    let rest: Vec<String> = t[common..].iter().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+    s.push_str(&rest.join("/"));
+    s
 }
 
 fn expr_context(before: &str, depth: Option<usize>) -> bool {
@@ -531,6 +705,7 @@ fn type_text(t: &agentmark::syntax::ast::TypeExpr) -> String {
             Some(w) => format!("{w} handle of {name}"),
             None => format!("handle of {name}"),
         },
+        TypeKind::Infer(words) => words.join(" "),
     }
 }
 

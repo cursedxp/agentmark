@@ -4,20 +4,20 @@
 
 - This page teaches AgentMark in small lessons. Each lesson has a goal, code, the output and a next step.
 - It is for anyone who has never written a program.
-- After it you can write a report program, read the "what can it touch" report and write a small agent.
+- After it you can write a report program, read the "what does it touch" report and write a small agent.
 
-**Jump to:** [Lesson 1: Describe the thing you keep track of](#lesson-1-describe-the-thing-you-keep-track-of) · [Lesson 2: Read a file and add it up](#lesson-2-read-a-file-and-add-it-up) · [Lesson 6: See what a program can touch](#lesson-6-see-what-a-program-can-touch) · [Lesson 7: Fix a mistake](#lesson-7-fix-a-mistake) · [Lesson 11: Write your own tool](#lesson-11-write-your-own-tool) · [Lesson 12: Add an agent](#lesson-12-add-an-agent) · [Lesson 15: Read ten finished programs](#lesson-15-read-ten-finished-programs) · [Lesson 16: Words used on this page](#lesson-16-words-used-on-this-page)
+**Jump to:** [Lesson 1: Describe the thing you keep track of](#lesson-1-describe-the-thing-you-keep-track-of) · [Lesson 2: Read a file and add it up](#lesson-2-read-a-file-and-add-it-up) · [Lesson 6: See what a program touches](#lesson-6-see-what-a-program-touches) · [Lesson 7: Fix a mistake](#lesson-7-fix-a-mistake) · [Lesson 11: Write your own tool](#lesson-11-write-your-own-tool) · [Lesson 12: Add an agent](#lesson-12-add-an-agent) · [Lesson 15: Read ten finished programs](#lesson-15-read-ten-finished-programs) · [Lesson 16: Words used on this page](#lesson-16-words-used-on-this-page)
 
 ## Before you start
 
-AgentMark is a way to write programs as Markdown documents: headings, bullet points and plain sentences. A program is a few files that read like a checklist. One command turns them into a single program you can run on your computer.
+AgentMark is a way to write programs as Markdown documents: headings, plain sentences, bullet points and numbered steps. A program is a few files that read like a checklist. One command turns them into a single program you can run on your computer.
 
 By the end you will have written two things:
 
 - a **report program** that reads a sales file, adds the sales up per region and writes a report. It needs no AI and no network, only your computer and a file;
 - a small **agent** that finds overdue invoices, asks an AI to write a polite reminder, double-checks what the AI wrote, and sends it. An agent is one more thing you can write in AgentMark. It is not the whole language.
 
-You will also know how to read the "what can this touch?" report. That is the part a careful manager cares about most.
+You will also know how to read the "what does each part touch?" report. That is the part a careful manager cares about most.
 
 It takes about twenty minutes. You need:
 
@@ -34,22 +34,26 @@ Everything you write goes in files that end in `.agent.md`. They are ordinary Ma
 A program works with *things*: sales, invoices, photos, log lines. In AgentMark you describe one of them as a **record**. Create a file called `sales.agent.md` and type this:
 
 ```agentmark name=sales.agent.md
-> One line of the sales file: what was sold, where, and for how much.
 # Record: Sale
+One line of the sales file: what was sold, where, and for how much.
+
 - region: text
 - product: text
 - amount: money
 ```
 
-Read it out loud: "A record called Sale. It has a region, a product and an amount of money." That is all it says.
+Read it out loud: "A record called Sale. One line of the sales file: what was sold, where, and for how much. It has a region, a product and an amount of money." That is all it says.
 
-What each kind of line does:
+An `.agent.md` file is ordinary Markdown, and every Markdown shape means one thing in AgentMark:
 
-| Line starts with | It means |
+| In the file | It means |
 |---|---|
-| `>` | a comment, for people only. The comment right above a heading is the description of that heading |
-| `#` | a new part of the file. The word before the colon is the kind of part, the word after is its name |
-| `-` | a detail of that part |
+| a heading (`#`) | a **part** of the program. The word before the colon is the kind of part, the word after is its name |
+| the paragraph right under a heading | the **description** of that part, in plain words |
+| a bullet (`-`) | a **detail** of that part |
+| a number (`1.`, `2.`, ...) | a **step**. Steps happen in order, top to bottom |
+
+A line that starts with `>` is a note for people. Nothing reads it but you.
 
 After each name comes its kind of value:
 
@@ -72,7 +76,7 @@ If you leave the kind out, AgentMark guesses it from the last word of the name:
 | `count`, `qty`, `number` | whole number |
 | anything else | text |
 
-When it cannot tell, it says so and tells you which kind it picked. Writing the kind yourself is always the clearer choice.
+When it cannot tell, it says so and asks you to write the kind. Writing the kind yourself is always the clearer choice.
 
 **Next:** [Lesson 2: Read a file and add it up](#lesson-2-read-a-file-and-add-it-up).
 
@@ -80,32 +84,31 @@ When it cannot tell, it says so and tells you which kind it picked. Writing the 
 
 **Goal:** read a sales file and print how many sales it holds and what they add up to.
 
-A **command** is a program you start yourself and give a few values, such as the name of a file. Add one to the same file:
+A **command** is a program you start yourself and give a few values, such as the name of a file. Every program also gets a **program** part at the top: its name, what it does and which command it starts. Put this above your record, and add the command below it:
 
 ```agentmark name=sales.agent.md
-> One line of the sales file: what was sold, where, and for how much.
+# Program: sales
+Reads a sales file and prints how much it brought in.
+
+- start: [sales-report](#command-sales-report)
+
 # Record: Sale
+One line of the sales file: what was sold, where, and for how much.
+
 - region: text
 - product: text
 - amount: money
 
-> Reads a sales file and prints how much it brought in.
 # Command: sales-report
-- args: path: text
+Reads a sales file and prints how much it brought in.
 
-## Run
-- try file read path -> content
-  otherwise:
-    - print: "Could not read {path}"
-    - stop
-- try csv.parse(content) as list of Sale -> sales
-  otherwise:
-    - print: "{path} is not a valid sales file"
-    - stop
-- print: "{count of sales} sales, {sum of amount in sales} in total"
-
-# Run
-- sales-report
+- in: path: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. print: "{count of sales} sales, {sum of amount in sales} in total"
 ```
 
 Make a small sales file next to it, called `sales.csv`:
@@ -141,14 +144,13 @@ Read the command like a recipe:
 
 | Piece | What it does |
 |---|---|
-| `args: path: text` | what you give the program when you start it: here, the name of a file |
-| `## Run` | the steps, top to bottom |
-| `file read path -> content` | reads the file and keeps its words under the name `content` |
-| `try ...` with `otherwise:` | reading can fail, for example when there is no such file, so you say what to do instead: print a sentence and `stop` |
-| `csv.parse(content) as list of Sale -> sales` | turns the text into a list of `Sale` records. The first line of the file names the columns, and they must match the names in the record |
+| `start: [sales-report](#command-sales-report)` | says which command the program starts. It is a link to the command's heading |
+| `in: path: text` | what you give the program when you start it: here, the name of a file |
+| `steps:` and the numbers | the steps, top to bottom |
+| `try file read path into sales` | reads the file and keeps its content under the name `sales`. Because `Sale` is a record, the file is read as a table: its first line names the columns, and they must match the names in the record, so `sales` is a list of `Sale` |
+| `otherwise:` | reading can fail, for example when there is no such file or the table is broken, so you say what to do instead: print a sentence and `stop` |
 | `count of sales`, `sum of amount in sales` | **collection words**. They work on any list |
 | `{...}` inside a quoted sentence | filled in with the value |
-| `# Run` and `- sales-report` | say which command the program starts. With only one command, you can start the program without naming it |
 
 **Next:** [Lesson 3: Pick out the big ones](#lesson-3-pick-out-the-big-ones).
 
@@ -156,45 +158,44 @@ Read the command like a recipe:
 
 **Goal:** list the sales of 100 EUR or more.
 
-A **rule** is a question about one record that can only be answered "yes" or "no". Rules never do anything. They only look. Add one, and use it in the command:
+A **rule** is a question about one record that can only be answered "yes" or "no". Rules never do anything. They only look. The last word of the rule's heading is the record it is about. Add one, and use it in the command:
 
 ```agentmark name=sales.agent.md
-> One line of the sales file: what was sold, where, and for how much.
+# Program: sales
+Reads a sales file and prints how much it brought in.
+
+- start: [sales-report](#command-sales-report)
+
 # Record: Sale
+One line of the sales file: what was sold, where, and for how much.
+
 - region: text
 - product: text
 - amount: money
 
-> A sale of 100 EUR or more.
-# Rule: big
-- for: Sale
+# Rule: big Sale
+A sale of 100 EUR or more.
+
 - when: amount >= 100 EUR
 
-> Reads a sales file and prints how much it brought in.
 # Command: sales-report
-- args: path: text
+Reads a sales file and prints how much it brought in.
 
-## Run
-- try file read path -> content
-  otherwise:
-    - print: "Could not read {path}"
-    - stop
-- try csv.parse(content) as list of Sale -> sales
-  otherwise:
-    - print: "{path} is not a valid sales file"
-    - stop
-- print: "{count of sales} sales, {sum of amount in sales} in total"
-- print: "{count of big sales in sales} of them are big:"
-- for each big sale in sales:
-  - print: "  {region} {product} {amount}"
-
-# Run
-- sales-report
+- in: path: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. print: "{count of sales} sales, {sum of amount in sales} in total"
+  3. print: "{count of big sales in sales} of them are big:"
+  4. for each big sale in sales:
+     1. print: "  {region} {product} {amount}"
 ```
 
-Read the rule: "The rule `big` is about a Sale. It is true when the amount is at least 100 euros."
+Read the rule: "The rule `big` is about a Sale. A sale of 100 EUR or more. It is true when the amount is at least 100 euros."
 
-In the command, `big sales in sales` means "only those sales that the rule `big` says yes to". `for each big sale in sales:` does what is indented below once for each of them. Inside, `{region}` and `{amount}` are the values of the sale at hand.
+In the command, `big sales in sales` means "only those sales that the rule `big` says yes to". `for each big sale in sales:` does the numbered steps below it once for each of them. Inside, `{region}` and `{amount}` are the values of the sale at hand.
 
 ```console
 $ agentmark run sales.agent.md -- sales.csv
@@ -215,53 +216,57 @@ $ agentmark run sales.agent.md -- sales.csv
 A **function** is a piece of work with a name, so the command stays short. It takes some values in and gives one value out. This one needs a second record to hold one answer:
 
 ```agentmark name=sales.agent.md
-> One line of the sales file: what was sold, where, and for how much.
+# Program: sales
+Reads a sales file and prints how much it brought in, region by region.
+
+- start: [sales-report](#command-sales-report)
+
 # Record: Sale
+One line of the sales file: what was sold, where, and for how much.
+
 - region: text
 - product: text
 - amount: money
 
-> What one region brought in: how many orders and how much money.
 # Record: RegionTotal
+What one region brought in: how many orders and how much money.
+
 - region: text
 - orders: int
 - revenue: money
 
-> A sale of 100 EUR or more.
-# Rule: big
-- for: Sale
+# Rule: big Sale
+A sale of 100 EUR or more.
+
 - when: amount >= 100 EUR
 
-> Adds up the sales of every region, biggest revenue first.
 # Function: region_totals
-- in: sales: list of Sale
-- out: list of RegionTotal
-- effect: pure
-  - set by_region = group sales by region
-  - set totals = empty list of RegionTotal
-  - for each region, rows in by_region:
-    - append RegionTotal { region: region, orders: count of rows, revenue: sum of amount in rows } to totals
-  - return sort totals by revenue descending
+Adds up the sales of every region, biggest revenue first.
 
-> Reads a sales file and prints how much it brought in, region by region.
+- in: sales
+- out: region totals
+- steps:
+  1. group sales by region into by_region
+  2. empty list of RegionTotal into totals
+  3. for each region, region_sales in by_region:
+     1. add RegionTotal to totals:
+        - region
+        - orders: count of region_sales
+        - revenue: sum of amount in region_sales
+  4. return sort totals by revenue descending
+
 # Command: sales-report
-- args: path: text
+Reads a sales file and prints how much it brought in, region by region.
 
-## Run
-- try file read path -> content
-  otherwise:
-    - print: "Could not read {path}"
-    - stop
-- try csv.parse(content) as list of Sale -> sales
-  otherwise:
-    - print: "{path} is not a valid sales file"
-    - stop
-- print: "{count of sales} sales, {sum of amount in sales} in total"
-- for each entry in region_totals(sales):
-  - print: "{entry.region}: {entry.orders} orders, {entry.revenue}"
-
-# Run
-- sales-report
+- in: path: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. print: "{count of sales} sales, {sum of amount in sales} in total"
+  3. for each entry in region_totals(sales):
+     1. print: "{entry.region}: {entry.orders} orders, {entry.revenue}"
 ```
 
 ```console
@@ -276,10 +281,11 @@ New pieces:
 
 | Piece | What it does |
 |---|---|
-| `group sales by region` | sorts the sales into one pile per region. `for each region, rows in by_region:` then visits each pile with its name |
-| `RegionTotal { region: region, ... }` | builds a record from values |
+| `in: sales` and `out: region totals` | the names say what they are. `sales` is a list of `Sale` records, and `region totals` is a list of `RegionTotal` records. When a name does not say it, write the kind: `in: path: text` |
+| `group sales by region into by_region` | sorts the sales into one pile per region and keeps the piles under the name `by_region`. `for each region, region_sales in by_region:` then visits each pile with its name |
+| `empty list of RegionTotal into totals` | starts an empty list |
+| `add RegionTotal to totals:` and the bullets under it | builds one `RegionTotal` and puts it on the list. A bullet that is only a name, such as `region`, takes the value of that name |
 | `sort totals by revenue descending` | puts the biggest first |
-| `effect: pure` | a promise: the function only works with the values it was given. It cannot read a file or print. AgentMark checks the promise in [Lesson 6](#lesson-6-see-what-a-program-can-touch) |
 
 Other collection words you will meet: `where`, `map ... to`, `take 3 from`, `skip`, `first of`, `unique`, `join ... with`. The full list is in `docs/reference.md`, section 22.2.
 
@@ -289,61 +295,66 @@ Other collection words you will meet: `where`, `map ... to`, `take 3 from`, `ski
 
 **Goal:** write the table to a file whose name you give, instead of printing it.
 
-Three new things here: a second argument, `text.pad` to line up columns, and `file write`:
+Three new things here: a second input, `text.pad` to line up columns, and `file write`:
 
 ```agentmark name=sales.agent.md
-> One line of the sales file: what was sold, where, and for how much.
+# Program: sales
+Reads a sales file and writes a revenue report per region.
+
+- start: [sales-report](#command-sales-report)
+
 # Record: Sale
+One line of the sales file: what was sold, where, and for how much.
+
 - region: text
 - product: text
 - amount: money
 
-> What one region brought in: how many orders and how much money.
 # Record: RegionTotal
+What one region brought in: how many orders and how much money.
+
 - region: text
 - orders: int
 - revenue: money
 
-> A sale of 100 EUR or more.
-# Rule: big
-- for: Sale
+# Rule: big Sale
+A sale of 100 EUR or more.
+
 - when: amount >= 100 EUR
 
-> Adds up the sales of every region, biggest revenue first.
 # Function: region_totals
-- in: sales: list of Sale
-- out: list of RegionTotal
-- effect: pure
-  - set by_region = group sales by region
-  - set totals = empty list of RegionTotal
-  - for each region, rows in by_region:
-    - append RegionTotal { region: region, orders: count of rows, revenue: sum of amount in rows } to totals
-  - return sort totals by revenue descending
+Adds up the sales of every region, biggest revenue first.
 
-> Reads a sales file and writes a revenue report per region, biggest region first.
+- in: sales
+- out: region totals
+- steps:
+  1. group sales by region into by_region
+  2. empty list of RegionTotal into totals
+  3. for each region, region_sales in by_region:
+     1. add RegionTotal to totals:
+        - region
+        - orders: count of region_sales
+        - revenue: sum of amount in region_sales
+  4. return sort totals by revenue descending
+
 # Command: sales-report
-- args: path: text, out: text
+Reads a sales file and writes a revenue report per region, biggest region first.
 
-## Run
-- try file read path -> content
-  otherwise:
-    - print: "Could not read {path}"
-    - stop
-- try csv.parse(content) as list of Sale -> sales
-  otherwise:
-    - print: "{path} is not a valid sales file"
-    - stop
-- set lines = list of "Sales report", "------------"
-- for each entry in region_totals(sales):
-  - append "{text.pad(entry.region, 8)}{entry.revenue}" to lines
-- append "------------" to lines
-- append "{text.pad("Total", 8)}{sum of amount in sales}" to lines
-- append "Big sales: {count of big sales in sales}" to lines
-- file write out: "{join lines with "\n"}\n"
-- print: "Wrote {count of lines} lines to {out}"
-
-# Run
-- sales-report
+- in: path: text, out: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. list of "Sales report", "------------" into lines
+  3. for each entry in region_totals(sales):
+     1. add "{text.pad(entry.region, 8)}{entry.revenue}" to lines
+  4. add "------------" to lines
+  5. add "{text.pad("Total", 8)}{sum of amount in sales}" to lines
+  6. add "Big sales: {count of big sales in sales}" to lines
+  7. join lines with "\n" into report
+  8. file write out: "{report}\n"
+  9. print: "Wrote {count of lines} lines to {out}"
 ```
 
 `agentmark trace` runs the program and prints a line for everything that mattered. It is a diary of the run. Here it shows that the program read one file and wrote another:
@@ -368,9 +379,9 @@ Total   1005.50 EUR
 Big sales: 4
 ```
 
-**Next:** [Lesson 6: See what a program can touch](#lesson-6-see-what-a-program-can-touch).
+**Next:** [Lesson 6: See what a program touches](#lesson-6-see-what-a-program-touches).
 
-## Lesson 6: See what a program can touch
+## Lesson 6: See what a program touches
 
 **Goal:** know what a program can do to your computer without reading its steps.
 
@@ -378,37 +389,42 @@ Run the **safety check**:
 
 ```console
 $ agentmark check sales.agent.md
-Effects (what each block can touch)
-  rule big: pure
-  function region_totals: pure
-  sales-report / Run: local(file, print)
+What each part touches
+  big: touches nothing
+  region_totals: touches nothing
+  sales-report: touches files, print
 
 ok: 0 errors, 0 warnings.
 ```
 
-Each line is one part of the program. After the colon is everything that part can reach:
+Each line is one part of the program. After "touches" comes everything that part can reach. This is the **touches** report, and it is the first thing to read when you review a program.
 
 | It says | In plain words |
 |---|---|
-| `pure` | only looks at what it already has |
-| `local(file, print)` | works on this computer: here, it reads and writes files and prints text |
-| `network(crm, email)` | talks to other systems: here, the CRM and email |
-| `model` | asks the AI |
+| `touches nothing` | only looks at what it already has |
+| `touches files, print` | works on this computer: here, it reads and writes files and prints text |
+| `touches crm, email` | talks to other systems: here, the CRM and email |
+| `touches AI, ...` | asks the AI (always listed first) |
 
-This is the whole idea of AgentMark: you do not have to read the steps to know what a program can do. The program produces the report from its own steps, so it cannot be out of date. A part that says `pure` is checked to be pure.
+This is the whole idea of AgentMark: you do not have to read the steps to know what a program can do. The report is worked out from the steps themselves, so it cannot be out of date.
 
-The report above says: this program can read and write files on this computer and print. It cannot reach the network and cannot ask an AI.
+The report above says: this program can read and write files on this computer and print. It cannot reach another system and cannot ask an AI.
 
-When you review a program someone else wrote, read in this order: the report, the description comments, the steps. Two questions are worth asking:
+You can also promise something yourself. Write `- touches: nothing` under a function, and the safety check stops you if a step in it reads a file or prints. The promise is checked, not trusted.
 
-- Does anything say `network`? Anything that sends is the first thing to look at.
-- Does the description (the `>` comment) match what the report says?
+When you review a program someone else wrote, read in this order: the touches report, the descriptions, the steps. Three questions are worth asking:
 
-For the second question there is a command. It prints the descriptions and the reach of every part as one readable page, built from the comments the author wrote next to the steps:
+- Does anything touch a system that sends (email, crm, http)? Anything that sends is the first thing to look at.
+- Does the description match what it touches? A part described as "adds up the sales" that touches email is a red flag.
+- Is there a guard after every `ask model`? (You will meet guards in [Lesson 13](#lesson-13-let-the-agent-write-the-reminder-safely).)
+
+For the second question there is a command. It prints the descriptions and the touches of every part as one readable page, built from the descriptions the author wrote under each heading:
 
 ```console
 $ agentmark doc sales.agent.md
 # sales
+
+Reads a sales file and writes a revenue report per region.
 
 ## Commands
 
@@ -416,7 +432,7 @@ $ agentmark doc sales.agent.md
 
 Reads a sales file and writes a revenue report per region, biggest region first.
 
-- can touch: local(file, print)
+sales-report: touches files, print
 
 
 ## Records
@@ -444,7 +460,9 @@ What one region brought in: how many orders and how much money.
 
 A sale of 100 EUR or more.
 
-Applies to Sale. Always pure.
+Applies to Sale.
+
+big: touches nothing
 
 
 ## Functions
@@ -453,7 +471,7 @@ Applies to Sale. Always pure.
 
 Adds up the sales of every region, biggest revenue first.
 
-- can touch: nothing outside itself (pure)
+region_totals: touches nothing
 ```
 
 **Next:** [Lesson 7: Fix a mistake](#lesson-7-fix-a-mistake).
@@ -467,33 +485,33 @@ AgentMark tells you the line, shows it, puts a mark under the problem and says i
 **A typo.** It suggests the word it thinks you meant:
 
 ```agentmark invalid name=mistake.agent.md says=Unknown_field
-> One line of the sales file.
+# Program: sales-total
+Prints the total of a sales file.
+
+- start: [sales-total](#command-sales-total)
+
 # Record: Sale
+One line of the sales file.
+
 - region: text
 - amount: money
 
-> Prints the total of a sales file.
 # Command: sales-total
-- args: path: text
+Prints the total of a sales file.
 
-## Run
-- try file read path -> content
-  otherwise:
-    - stop
-- try csv.parse(content) as list of Sale -> sales
-  otherwise:
-    - stop
-- print: "Total: {sum of amont in sales}"
-
-# Run
-- sales-total
+- in: path: text
+- steps:
+  1. try file read path into sales
+     otherwise:
+     1. stop
+  2. print: "Total: {sum of amont in sales}"
 ```
 
 ```console stderr
 $ agentmark check mistake.agent.md
-mistake.agent.md:17
-  - print: "Total: {sum of amont in sales}"
-                           ^^^^^
+mistake.agent.md:20
+    2. print: "Total: {sum of amont in sales}"
+                              ^^^^^
   Unknown field "amont" on Sale. Did you mean "amount"?
 ```
 
@@ -501,23 +519,25 @@ mistake.agent.md:17
 
 ```agentmark invalid name=mistake.agent.md says=Cannot_add_money_to_a_date
 # Record: Invoice
+An invoice with an amount and a due day.
+
 - amount: money
 - due: date
 
-> Wrong on purpose.
-# Rule: odd
-- for: Invoice
+# Rule: odd Invoice
+Wrong on purpose.
+
 - when: today > due + amount
 ```
 
 ```console stderr
 $ agentmark check mistake.agent.md
-mistake.agent.md:6
-  # Rule: odd
+mistake.agent.md:7
+  # Rule: odd Invoice
           ^^^
   Unused rule: nothing refers to "odd".
 
-mistake.agent.md:8
+mistake.agent.md:10
   - when: today > due + amount
                   ^^^^^^^^^^^^
   Cannot add money to a date.
@@ -536,7 +556,7 @@ Two helpers, both safe to run any time:
 
 | Command | What it does |
 |---|---|
-| `agentmark fmt sales.agent.md` | rewrites the file in the one standard layout, so every AgentMark file in the world looks the same |
+| `agentmark fmt sales.agent.md` | rewrites the file in the one standard layout, so every AgentMark file in the world looks the same. It also renumbers your steps 1, 2, 3, ... |
 | `agentmark fmt --check` | only says whether `fmt` would change anything |
 | `agentmark lint sales.agent.md` | gives style advice: a file that has grown too long, the same amount typed in twice (it suggests a named **constant**), a part with no description |
 
@@ -567,50 +587,56 @@ sales-report/
   commands/sales-report.agent.md
 ```
 
-Each file starts with `# Import:` lines that say which other files it needs. A file sees only what it imports. Here are three of the files.
+Each file starts with a `# Uses` list that links the other files it needs. A file sees only what it links. Here are three of the files.
 
 First, named values, so a width is written once:
 
 ```agentmark file=examples/06-sales-report/constants.agent.md
 # Constant: column_width
+How wide the first two columns of the report are, in characters.
+
 - value: 8
 
-> Tied to the columns: two columns of column_width plus 11 characters for the widest revenue ("1005.50 EUR").
 # Constant: rule_width
+Tied to the columns: two columns of column_width plus 11 characters for the widest revenue ("1005.50 EUR").
+
 - value: 27
 ```
 
 A function that uses the name:
 
 ```agentmark file=examples/06-sales-report/functions/table-row.agent.md
-# Import: ../constants.agent.md
+# Uses
+- [constants](../constants.agent.md)
 
-> One table row: three cells, the first two padded so the columns line up.
 # Function: table_row
+One table row: three cells, the first two padded so the columns line up.
+
 - in: left: text, middle: text, right: text
 - out: text
-- effect: pure
-  - return "{text.pad(left, column_width)}{text.pad(middle, column_width)}{right}"
+- touches: nothing
+- steps:
+  1. return "{text.pad(left, column_width)}{text.pad(middle, column_width)}{right}"
 ```
 
 And `main.agent.md`, the table of contents of the program:
 
 ```agentmark file=examples/06-sales-report/main.agent.md
-# Import: ./commands/sales-report.agent.md
+# Program: sales-report
+Reads a sales file and writes a revenue report, region by region.
 
-> Entry point. The program is one command, so `sales-report <path> <out>` runs it directly.
-# Run
-- sales-report
+# Uses
+- [sales-report command](./commands/sales-report.agent.md)
 ```
 
-`agentmark check`, `run`, `doc`, `fmt` and `lint` all accept the folder in place of the file. The report for the whole project is the same kind of report you saw in [Lesson 6](#lesson-6-see-what-a-program-can-touch):
+`agentmark check`, `run`, `doc`, `fmt` and `lint` all accept the folder in place of the file. The report for the whole project is the same kind of report you saw in [Lesson 6](#lesson-6-see-what-a-program-touches):
 
 ```console cwd=repo
 $ agentmark check examples/06-sales-report
-Effects (what each block can touch)
-  sales-report / Run: local(file, print)
-  function region_totals: pure
-  function table_row: pure
+What each part touches
+  sales-report: touches files, print
+  region_totals: touches nothing
+  table_row: touches nothing
 
 ok: 0 errors, 0 warnings.
 ```
@@ -629,14 +655,14 @@ For anything else, AgentMark can use existing libraries, called *crates* in the 
 # Import: crate sha2
 ```
 
-Then use it in a step, such as `sha2 sha256_digest "some text" -> digest`.
+Then use it in a step, such as `sha2 sha256_digest "some text" into digest`.
 
 What happens the first time you run `check`:
 
 1. AgentMark writes a small description file for the library.
 2. The library starts as **unapproved**, because nobody has checked what it may touch.
 3. `check` names the file and the line, and refuses to let the program go live.
-4. A person changes that one line from `- effect: unverified` to what is true.
+4. A person changes that one line from `- effect: unverified` to what is true. (Library files keep the older word `effect` for this line. Everywhere else the word is "touches".)
 
 The true values:
 
@@ -658,30 +684,33 @@ The developer's page, `docs/libraries.md`, shows the whole thing with real outpu
 
 **Goal:** write a small tool in AgentMark and call it from a command.
 
-A **tool** is something a program calls with a statement, such as `- slugger slug title -> s`. You can write one yourself with a `# Tool` part. It has one `## verb(params) -> type` block per verb.
+A **tool** is something a program calls with a step, such as `slugger slug title into s`. You can write one yourself with a `# Tool` part. It has one `## verb(params) -> type` block per verb, each with its own description and numbered steps.
 
-Its declared effect is checked against its body, exactly like a function's. A program that only uses tools like this one and the built-in `file` tool needs no `tools.toml` and no Rust.
+What it touches is worked out from its body, exactly like a function's. A program that only uses tools like this one and the built-in `file` tool needs no `tools.toml` and no Rust.
 
 Save this as `slugger.agent.md`:
 
 ```agentmark name=slugger.agent.md
-> Turns a title into a web address: lower case, dashes between words.
+# Program: slugger-demo
+Prints the web address of a title.
+
+- start: [address](#command-address)
+
 # Tool: slugger
-- effect: pure
+Turns a title into a web address: lower case, dashes between words.
 
 ## slug(title: text) -> text
-- set lowered = text.lower(title)
-- return regex.replace(lowered, "[^a-z0-9]+", "-")
+Lower-cases the title and replaces every run of other characters with a dash.
 
-> Prints the address of a title: `address <title>`.
+1. text.lower(title) into lowered
+2. return regex.replace(lowered, "[^a-z0-9]+", "-")
+
 # Command: address
-- args: title: text
+Prints the address of a title: `address <title>`.
 
-## Run
-- print: "/posts/{slugger.slug(title)}"
-
-# Run
-- address
+- in: title: text
+- steps:
+  1. print: "/posts/{slugger.slug(title)}"
 ```
 
 Run it. This tool turns a title into a web address:
@@ -704,8 +733,9 @@ An agent is built from the parts you already know: records, rules, steps. What i
 Start a new file, `invoice-chaser.agent.md`. It begins like the report: a record, and a rule.
 
 ```agentmark name=invoice-chaser.agent.md
-> An invoice as stored in the CRM.
 # Record: Invoice
+An invoice as stored in the CRM.
+
 - id: text
 - customer: text
 - customer_email: text
@@ -713,13 +743,13 @@ Start a new file, `invoice-chaser.agent.md`. It begins like the report: a record
 - due: date
 - status: text
 
-> Unpaid and more than 14 days past due.
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
+Unpaid and more than 14 days past due.
+
 - when: today > due + 14 days and status != "paid"
 ```
 
-Read the rule: "The rule `overdue` is about an Invoice. It is true when today is later than the due date plus 14 days, and the status is not paid." Amounts of time are real values, so `due + 14 days` works.
+Read the rule: "The rule `overdue` is about an Invoice (the last word of its heading). It is true when today is later than the due date plus 14 days, and the status is not paid." Amounts of time are real values, so `due + 14 days` works.
 
 An agent has a name, an AI model to ask, and a list of **tools**. A tool here is a system the agent can reach: your CRM, your email, a log. The agent can use only the tools on its list.
 
@@ -759,8 +789,12 @@ Next to each is the kind of reach it has. `network` means it talks to another sy
 Now add the agent. This first version is harmless on purpose: it only writes to the log.
 
 ```agentmark name=invoice-chaser.agent.md
-> An invoice as stored in the CRM.
+# Program: invoice-chaser
+Chases unpaid invoices once a day.
+
 # Record: Invoice
+An invoice as stored in the CRM.
+
 - id: text
 - customer: text
 - customer_email: text
@@ -768,19 +802,22 @@ Now add the agent. This first version is harmless on purpose: it only writes to 
 - due: date
 - status: text
 
-> Unpaid and more than 14 days past due.
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
+Unpaid and more than 14 days past due.
+
 - when: today > due + 14 days and status != "paid"
 
-> Writes a line to the log for every overdue invoice. Changes nothing.
 # Agent: invoice-chaser
+Writes a line to the log for every overdue invoice. Changes nothing.
+
 - model: claude
 - tools: crm, log
 
 ## Every day at 09:00
-- for each overdue invoice in crm.invoices:
-  - log: "{customer} is overdue: {amount}"
+Logs every overdue invoice.
+
+1. for each overdue invoice in crm.invoices:
+   1. log: "{customer} is overdue: {amount}"
 ```
 
 Read the agent part like a job description:
@@ -790,7 +827,8 @@ Read the agent part like a job description:
 | `model: claude` | the AI it may ask questions. This version does not ask any yet |
 | `tools: crm, log` | everything it may use. Nothing else |
 | `## Every day at 09:00` | a **trigger**: when the work starts |
-| the lines under the trigger | the **steps** |
+| the paragraph under the trigger | what the block does, in plain words |
+| the numbered lines under it | the **steps** |
 | `for each overdue invoice in crm.invoices:` | take every invoice from the CRM, keep only those the rule `overdue` says yes to, and for each do what is indented below |
 | `log: "..."` | writes one line. Inside the quotes, `{customer}` and `{amount}` are filled in with the values of the invoice at hand |
 
@@ -807,30 +845,33 @@ Check it. This is the report you show a colleague:
 
 ```console
 $ agentmark check invoice-chaser.agent.md
-Effects (what each block can touch)
-  rule overdue: pure
-  invoice-chaser / Every day at 09:00: network(crm), local(log)
+What each part touches
+  overdue: touches nothing
+  invoice-chaser / Every day at 09:00: touches crm, log
 
 ok: 0 errors, 0 warnings.
 ```
 
-In one line it says: this agent, at 09:00 each day, can reach the CRM over the network and write to the log, and nothing else. It cannot send email, because `email` is not on its list. If you try, the check stops you:
+In one line it says: this agent, at 09:00 each day, touches the CRM and the log, and nothing else. It cannot send email, because `email` is not on its list. If you try, the check stops you:
 
 ```agentmark invalid name=mistake.agent.md says=is_not_listed_in_the_tools
-> Mails a reminder.
 # Agent: reminder
+Mails a reminder.
+
 - model: claude
 - tools: log
 
 ## Every day at 09:00
-- email send address "ap@example.com": "Please pay."
+Mails the accounts office.
+
+1. email send address "ap@example.com": "Please pay."
 ```
 
 ```console stderr
 $ agentmark check mistake.agent.md
-mistake.agent.md:7
-  - email send address "ap@example.com": "Please pay."
-    ^^^^^
+mistake.agent.md:10
+  1. email send address "ap@example.com": "Please pay."
+     ^^^^^
   The tool "email" is not listed in the tools of agent "reminder".
   Add it to the "- tools:" line, for example "- tools: log, email".
 ```
@@ -841,11 +882,15 @@ mistake.agent.md:7
 
 **Goal:** have the AI write a reminder, check what it wrote, and send it.
 
-Replace the agent part with this version:
+Replace the agent part with this version (the record and the rule stay as they are):
 
 ```agentmark name=invoice-chaser.agent.md
-> An invoice as stored in the CRM.
+# Program: invoice-chaser
+Chases unpaid invoices once a day with a polite reminder.
+
 # Record: Invoice
+An invoice as stored in the CRM.
+
 - id: text
 - customer: text
 - customer_email: text
@@ -853,27 +898,32 @@ Replace the agent part with this version:
 - due: date
 - status: text
 
-> Unpaid and more than 14 days past due.
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
+Unpaid and more than 14 days past due.
+
 - when: today > due + 14 days and status != "paid"
 
-> Chases unpaid invoices once a day. Never changes amounts; only sends reminders.
 # Agent: invoice-chaser
+Chases unpaid invoices once a day. Never changes amounts; only sends reminders.
+
 - model: claude
 - tools: email, crm, log
 
 ## Every day at 09:00
-- for each overdue invoice in crm.invoices:
-  - do remind
+Finds every overdue invoice and reminds its customer.
+
+1. for each overdue invoice in crm.invoices:
+   1. do remind
 
 ## Do remind
-- ask model with invoice: "Write a short, polite payment reminder. Keep the amount exactly as given." -> reminder
-- guard: no amounts changed in reminder
-- guard: reminder length < 800
-- email send customer: "{reminder}"
-- crm update invoice: status = "reminded"
-- log: "Reminded {customer} about {amount}"
+Has the model write one reminder, checks it, sends it and marks the invoice as reminded.
+
+1. ask model with invoice: "Write a short, polite payment reminder. Keep the amount exactly as given." into reminder
+2. guard: no amounts changed in reminder
+3. guard: reminder length < 800
+4. email send customer: "{reminder}"
+5. crm update invoice: status = "reminded"
+6. log: "Reminded {customer} about {amount}"
 ```
 
 New pieces, one by one:
@@ -881,7 +931,7 @@ New pieces, one by one:
 | Piece | What it does |
 |---|---|
 | `## Do remind` | a named block of steps, like a recipe card. `do remind` in the trigger says "now follow that card, for this invoice". It keeps the trigger short and the card readable |
-| `ask model with invoice: "..." -> reminder` | asks the AI. It is shown the invoice, plus your instruction in quotes. Whatever it answers is kept under the name `reminder` |
+| `ask model with invoice: "..." into reminder` | asks the AI. It is shown the invoice, plus your instruction in quotes. Whatever it answers is kept under the name `reminder` |
 | `guard:` | a **guard** is a check on what the AI wrote. See below |
 | `email send customer: "{reminder}"` | sends the text. `customer` is a *target* from the menu in `tools.toml`: the agent mails the customer's email address from the invoice |
 | `crm update invoice: status = "reminded"` | marks the invoice, so it is not chased twice |
@@ -898,17 +948,17 @@ Check it:
 
 ```console
 $ agentmark check invoice-chaser.agent.md
-Effects (what each block can touch)
-  rule overdue: pure
-  invoice-chaser / Every day at 09:00: model, network(crm, email), local(log)
-  invoice-chaser / Do remind: model, network(email, crm), local(log)
+What each part touches
+  overdue: touches nothing
+  invoice-chaser / Every day at 09:00: touches AI, crm, email, log
+  invoice-chaser / Do remind: touches AI, crm, email, log
 
 ok: 0 errors, 0 warnings.
 ```
 
-The words in the report mean the same as before. `model` is new: this agent asks the AI.
+The words in the report mean the same as before. `AI` is new: this agent asks the AI.
 
-Is there a `guard` after every `ask model`? That is the third question worth asking of any agent you review.
+Is there a `guard` after every `ask model`? That is the third review question from [Lesson 6](#lesson-6-see-what-a-program-touches), and the report is where you start: look for `AI` in it, then look for the guard.
 
 **Next:** [Lesson 14: Try the agent on pretend data](#lesson-14-try-the-agent-on-pretend-data).
 
@@ -995,26 +1045,32 @@ The `examples/` folder has ten of them. Reading them is the fastest way to learn
 Here is the heart of the log analyzer, a function that counts the error lines of every service and ranks the services:
 
 ```agentmark file=examples/10-log-analyzer/functions/rank-services.agent.md
-# Import: ../constants.agent.md
-# Import: ../records/service-errors.agent.md
+# Uses
+- [constants](../constants.agent.md)
+- [ServiceErrors](../records/service-errors.agent.md)
 
-> Counts the error lines of every service and ranks the services, most errors first.
 # Function: rank_services
+Counts the error lines of every service and ranks the services, most errors first.
+
 - in: error_lines: list of text
 - out: list of ServiceErrors
-- effect: pure
-  - set by_service = group error_lines by regex.replace(item, log_pattern, "$4")
-  - set ranking = empty list of ServiceErrors
-  - for each service, rows in by_service:
-    - append ServiceErrors { service: service, errors: count of rows } to ranking
-  - return sort ranking by errors descending
+- touches: nothing
+- steps:
+  1. group error_lines by regex.replace(item, log_pattern, "$4") into by_service
+  2. empty list of ServiceErrors into ranking
+  3. for each service, service_lines in by_service:
+     1. add ServiceErrors to ranking:
+        - service
+        - errors: count of service_lines
+  4. return sort ranking by errors descending
 ```
 
 Here is the second agent. The record it works on comes first, then the agent:
 
 ```agentmark file=examples/02-lead-qualifier/records/lead.agent.md
-> An inbound lead as delivered by the CRM.
 # Record: Lead
+An inbound lead as delivered by the CRM.
+
 - id: text
 - company: text
 - message: text
@@ -1023,26 +1079,30 @@ Here is the second agent. The record it works on comes first, then the agent:
 ```
 
 ```agentmark file=examples/02-lead-qualifier/agents/lead-qualifier.agent.md
-# Import: ../constants.agent.md
-# Import: ../records/lead.agent.md
-# Import: ../records/qualification.agent.md
+# Uses
+- [constants](../constants.agent.md)
+- [Lead](../records/lead.agent.md)
+- [Qualification](../records/qualification.agent.md)
 
-> Scores every inbound lead and alerts sales about the hot ones. Never contacts the lead itself.
 # Agent: lead-qualifier
+Scores every inbound lead and alerts sales about the hot ones. Never contacts the lead itself.
+
 - model: claude:haiku
 - tools: crm, email, log
 
 ## When crm receives lead
-- ask model with lead: scoring_prompt as Qualification -> q
-- guard: q matches Qualification
-- crm update lead: score = q.score
-- if q.score >= hot_lead_score:
-  - email send address "sales@optimotion.dev": "Hot lead: {lead.company} ({q.score}/10). {q.reason}"
-- else:
-  - log: "Lead {lead.company} scored {q.score}, no action"
+Scores the new lead. A hot lead goes to sales by email; any other lead is only logged.
+
+1. ask model with lead: scoring_prompt as Qualification into q
+2. guard: q matches Qualification
+3. crm update lead: score = q.score
+4. if q.score >= hot_lead_score:
+   1. email send address "sales@optimotion.dev": "Hot lead: {lead.company} ({q.score}/10). {q.reason}"
+   else:
+   1. log: "Lead {lead.company} scored {q.score}, no action"
 ```
 
-Read it with the report in mind. It uses the CRM, email and the log, and it asks the AI. `scoring_prompt` and `hot_lead_score` are named values from the constants file.
+Read it with the touches report in mind. It touches AI, the CRM, email and the log. `scoring_prompt` and `hot_lead_score` are named values from the constants file, which the `# Uses` list links.
 
 Three things to notice:
 
@@ -1061,9 +1121,13 @@ Three things to notice:
 | record | the description of a thing you keep track of (`# Record:`) |
 | rule | a yes/no question about one record that never does anything (`# Rule:`) |
 | function | a named piece of work that takes values in and gives one value out (`# Function:`) |
+| step | one numbered line of work. Steps happen in order |
 | command | a program you start yourself and give a few values (`# Command:`) |
 | collection word | `group`, `sort`, `sum of`, `count of` and friends: they work on whole lists |
-| safety check | what `agentmark check` does: it reads the program and reports what it can touch |
+| part | one heading of a file: a record, a rule, a function, a command, an agent ... |
+| description | the plain paragraph right under a heading that says what the part is for |
+| touches | what a part reaches: files, print, a system such as the CRM, or the AI. `agentmark check` reports it for every part |
+| safety check | what `agentmark check` does: it reads the program and reports what each part touches |
 | agent | a worker that wakes up on a trigger, uses tools and may ask an AI (`# Agent:`) |
 | trigger | the heading that says when an agent's block runs (`## Every ...`, `## When ...`) |
 | block | the steps under one heading; `## Do name` is a block you can call |

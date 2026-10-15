@@ -1,10 +1,14 @@
-> Camera file names look like IMG_20261003_141500.jpg; the first group is the date as digits.
 # Constant: camera_pattern
+Camera file names look like IMG_20261003_141500.jpg; the first group is the date as digits.
+
 - value: "^IMG_([0-9]+)_[0-9]+[.][a-z]+$"
 
-> The digits of a camera date, year first: 20261003.
 # Constant: digit_date_format
+The digits of a camera date, year first: 20261003.
+
 - value: "%Y%m%d"
 
 # Constant: stamp_format
+How a day is written in the new file name: 2026-10-03.
+
 - value: "%Y-%m-%d"

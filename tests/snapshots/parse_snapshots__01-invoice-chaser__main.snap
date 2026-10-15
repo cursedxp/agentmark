@@ -6,24 +6,26 @@ path: examples/01-invoice-chaser/main.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 5
       col: 3
-      len: 40
+      len: 56
     doc: ~
     kind:
       File:
         path: "./agents/invoice-chaser.agent.md"
         alias: ~
+    label: invoice-chaser agent
 decls:
-  - Run:
+  - Program:
       span:
-        line: 4
+        line: 1
         col: 3
-        len: 3
-      doc: Entry point. Lists what runs in this binary.
-      items:
-        - name: invoice-chaser
-          span:
-            line: 5
-            col: 3
-            len: 14
+        len: 23
+      doc: Chases unpaid invoices once a day with a polite reminder. It never changes an amount.
+      name:
+        name: invoice-chaser
+        span:
+          line: 1
+          col: 12
+          len: 14
+      start: ~

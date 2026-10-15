@@ -54,7 +54,8 @@ impl Builder<'_> {
                 ast::ToolBody::Stmts(stmts) => body.extend(self.stmts(stmts)),
                 ast::ToolBody::Rust(rust) => {
                     let rname = format!("{}_{}_rust", t.name.name, v.name.name);
-                    let effect = EffectSet::of(t.effect.value, &t.name.name);
+                    // `- touches:` is trusted for a verb written in Rust (SPEC 23.7)
+                    let effect = self.checked.touches.get(&(crate::sema::Kind::Tool, t.name.name.clone())).cloned().unwrap_or_default();
                     rust_fns.push(ir::RustFn {
                         name: rname.clone(),
                         params: params.clone(),
@@ -77,8 +78,8 @@ impl Builder<'_> {
                 }
             }
             let mut effect = ir::union_effects(&body);
-            if crate::sema::effects::rank(t.effect.value) > crate::sema::effects::rank(effect.class()) {
-                effect.add(t.effect.value, &t.name.name);
+            if let Some(declared) = self.checked.touches.get(&(crate::sema::Kind::Tool, t.name.name.clone())) {
+                effect.merge(declared);
             }
             functions.push(ir::Fn {
                 name,
@@ -93,7 +94,7 @@ impl Builder<'_> {
         }
     }
 
-    /// `- slugger slug title -> s`: a call of the function the verb became.
+    /// `slugger slug title into s`: a call of the function the verb became.
     pub(super) fn user_tool_stmt(
         &mut self,
         tr: &ToolResolution,

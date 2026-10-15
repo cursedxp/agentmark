@@ -2,7 +2,7 @@
 //! hold the exact message the compiler must print (SPEC 10 format); the test runs the file through
 //! the front end and compares the rendered text exactly.
 //!
-//! Mistakes the parser can see (tabs, indentation, a missing `effect`, an unknown property) and
+//! Mistakes the parser can see (tabs, indentation, the removed `- effect:` line (E063), an unknown property) and
 //! the semantic ones (unknown tool/verb/target, unlisted tool, effect violation, unit mismatch,
 //! missing `maybe`, unknown field) go through the same front end: load the project, run
 //! `sema::check`, render the errors. `semantic_cases_parse_cleanly` proves the parser accepts the
@@ -20,7 +20,7 @@ const CASES: &[(&str, bool)] = &[
     ("tabs", false),
     ("bad-indentation", false),
     ("indent-too-deep", false),
-    ("function-missing-effect", false),
+    ("removed-effect-on-function", false),
     ("unknown-property", false),
     ("unknown-tool", true),
     ("unknown-verb", true),
@@ -97,7 +97,7 @@ macro_rules! case {
 case!(tabs, "tabs");
 case!(bad_indentation, "bad-indentation");
 case!(indent_too_deep, "indent-too-deep");
-case!(function_missing_effect, "function-missing-effect");
+case!(removed_effect_on_function, "removed-effect-on-function");
 case!(unknown_property, "unknown-property");
 case!(semantic unknown_tool, "unknown-tool");
 case!(semantic unknown_verb, "unknown-verb");

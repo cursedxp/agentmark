@@ -706,6 +706,11 @@ impl<'a> Body<'a> {
                 Eff::value(format!("bindings::{f}({a})"))
             }
             EffectCall::Fn { name, args } => Eff::value(self.fn_call(name, args)),
+            EffectCall::File(fc) if fc.records.is_some() => {
+                // a CSV file read into a list of records (SPEC 23.10)
+                let rec = self.rty(fc.records.as_ref().expect("checked by the guard"));
+                Eff::value(format!("agentmark_rt::stdlib::file::read_records::<{rec}>(ctx, {})?", self.txt(&fc.path)))
+            }
             EffectCall::File(fc) => {
                 let path = self.txt(&fc.path);
                 let more = fc.arg.as_ref().map(|a| format!(", {}", self.txt(a))).unwrap_or_default();

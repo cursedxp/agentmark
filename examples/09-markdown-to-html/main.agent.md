@@ -1,5 +1,5 @@
-# Import: ./commands/md-to-html.agent.md
+# Program: markdown-to-html
+Turns a small Markdown file into an HTML page.
 
-> Entry point. The program is one command, so `md-to-html <source> <out>` runs it directly.
-# Run
-- md-to-html
+# Uses
+- [md-to-html command](./commands/md-to-html.agent.md)

@@ -893,3 +893,109 @@ SPEC 20.3 says the model-backed editor actions are "off unless `agentmark.toml` 
 ## Q424 — Paths in editor config files (step 28)
 - Choice: `docs/editor.md` writes the source folder as `~/.agentmark/src` in shell commands and as `/Users/you/.agentmark/src` in the Lua, TOML and `file://` snippets, with a sentence saying so, because those formats do not expand `~`.
 - Why: the brief asked for `~/.agentmark/src` in place of `/path/to/agentmark`; a literal `~` in a `file://` URL or a Helix grammar path would not work.
+
+# v0.4 — plain sentences, real Markdown (SPEC 23, task 31)
+
+Items marked OPEN were left open by the v0.4 brief: the current behavior is kept and the question is recorded for a human decision. The others are choices made while implementing, with the reason.
+
+## Q430 — OPEN: `- effect:` in bindings and `effect =` in tools.toml
+- Kept as in v0.3. A `# Binding` still says `- effect: unverified` until a human approves it, with `- proposed-effect:`; `tools.toml` still says `effect = "network"`. The words "effect", "pure", "local", "network" therefore still appear in those two places, and in the "approve this line" report of `check`.
+
+## Q431 — OPEN: giving an existing name a new value
+- `<value> into <name>` with a name that already exists gives it the new value, exactly as `set` did (example 07: `renamed + 1 into renamed`). Whether reassignment should read differently ("… becomes the new renamed") is open.
+
+## Q432 — OPEN: inline `{ … }` record literals outside `add`
+- Still allowed everywhere they were (`respond 201 Note { id: id, … }`, `return Heading { level: 2, … }`, a tool payload `{ ticket: ticket.id }`). Only `add X { … } to list` is rewritten by `fmt` into `add X to list:` with one bullet per field.
+
+## Q433 — OPEN: `>` as a free note
+- A `>` line directly above a heading is E068 (descriptions go under the heading). Any other `>` line is a note for people: `fmt` keeps it, nothing else reads it (a note directly above a step is still kept with that step). A `>` block at the very top of a file, separated from the first heading by a blank line, is still the file's note. The examples use no notes.
+
+## Q434 — OPEN: headings vs `- steps:`
+- Commands and functions put their steps under a `- steps:` bullet; agent triggers (`## Every day at 09:00`), `## Do` blocks, service routes (`## GET /notes`) and tool verbs (`## slug(title: text) -> text`) keep their `##` heading with the numbered steps directly under it. The two shapes are inconsistent; unifying them is open.
+
+## Q435 — OPEN: crate imports
+- `# Import: crate sha2` (and `as name`) is unchanged; `fmt` writes it after `# Uses`. File imports moved to `# Uses` (E069 for `# Import: <file>`).
+
+## Q436 — OPEN: `->` in signatures
+- `->` is gone as a way to name a result, but stays where it means "returns": tool verb headings (`## slug(title: text) -> text`), `## Rust: fingerprint -> text` and binding items. The acceptance grep for ` -> ` excludes these signature headings.
+
+## Q437 — The inline Rust escape hatch (A6)
+- It already is a fenced ```` ```rust ```` block (`## Rust: name`, a tool verb, a binding item), so nothing was migrated. A `## Rust` block now says `- touches:` instead of `- effect:` (required, trusted). `fmt` writes its fence at column 0 after a blank line, so the rendered page shows a code block, not a list continuation; binding items keep the 2-space fence the binder writes.
+
+## Q438 — Idea, not implemented: tables (A7)
+- Test data and fixtures could be Markdown tables under a heading (`| region | product | amount |`), read like a CSV file. Recorded only.
+
+## Q439 — OPEN: names of inputs written as several words (default applied)
+- `- in: old sales, new sales` gives `old_sales` and `new_sales`, both `list of Sale`: the words are joined with `_`, and the type comes from the trailing words (SPEC 23.6). Confirm this naming.
+
+## Q440 — OPEN: other formats than CSV in `file read … into <records>`
+- Only CSV: a list of records is read from a file whose name ends in `.csv` (any case); any other name fails into `otherwise`. JSON by extension was not added: it is not trivial (a single record or a list, and `json.parse … as T` already exists). 
+
+## Q441 — `- start:` with several commands
+- `- start:` is checked: it must name (link or plain) a command of the program (E214). With exactly one command and no agent or service the command is the program's default, with or without `start:` (SPEC 22.6 unchanged). With several commands `start:` is accepted but does not yet make one of them the default: the commands stay subcommands, as in v0.3. A default command next to subcommands would need a new command-line shape.
+
+## Q442 — `# Uses` for folders, globs and module names
+- A folder is `- [billing rules](./billing/) as billing` (a folder needs `as`, as before); a glob is `- [every rule](./rules/*.agent.md)`. `as <name>` after the link replaces the `as` of `# Import:`. The link text is only a label; `fmt` keeps it (an empty label becomes the file name).
+
+## Q443 — What names are matched for types (SPEC 23.6)
+- Records, enums and type aliases the file can see (example 09: `- in: block` is `Block`). The exact name wins over a plural reading; regular plurals only (`+s`, `+es`, `y` → `ies`). For `- out:` a lower-case word that is not a built-in type (`text`, `int`, …) is read as a name. Record fields keep SPEC 2.1 (fallback `text` with a warning); `in`/`out` fail instead (E230).
+
+## Q444 — Which `file read` reads records (SPEC 23.10)
+- Only when the name after `into` is the plural of a record the file can see (or `into x: list of Sale` is written). A name that matches a record in the singular, or nothing, reads text as before (`into content`); `into content: text` forces text. Reading one record from a file is not supported.
+
+## Q445 — Indentation under numbered steps
+- The steps under `N.` start at its text: 3 spaces under `1.`–`9.`, 4 under `10.`–`99.` (CommonMark needs this, or the list would not nest when rendered). The parser takes any deeper indentation as "under it" and `fmt` fixes it; siblings indented differently are E031.
+
+## Q446 — Example 05 keeps `read file … as …`
+- `import-csv` reads with `try read file path as list of Invoice into invoices`. The short `file read path into invoices` goes through the `file` tool, which is traced, and would add a line to `expected.trace.jsonl`, which must stay byte-identical. `read file … as …` (SPEC 13.3) is not traced. Example 06 shows the short form.
+
+## Q447 — `unnamed-guard` without notes
+- Examples use no `>` notes, so a long guard condition also counts as explained when the block it is in (or the part) has a description. Example 03's `## Every 15 minutes` says what the guard protects (the guard text itself is in the trace and cannot change).
+
+## Q448 — Where `else:` and `otherwise:` go
+- Plain (unnumbered) lines inside the `if` / `try` step, at the indentation of its steps; the steps after them belong to them. A v0.3-style `else:` sibling step right after the `if` is still read and `fmt` moves it inside.
+
+## Q449 — Rules named with several words
+- `# Rule: very big Sale` names the rule `very_big`. `for each <rule> <var> in …` takes one word for the rule, so such a rule is used as `for each very_big sale in sales`.
+
+## Q450 — Source line of a command's steps
+- Generated code points the command body's source comment at the `- steps:` line (it pointed at `## Run`).
+
+## Q451 — `touches:` is checked by name
+- Every source a step touches must be listed (`AI` = asking a model, `files` = the `file` tool, `print`, `input`, `state`, a `tools.toml` tool, a library by binding or crate name, a `# Tool`); E206 names what is missing, E232 an unknown word, and `nothing` stands alone. Listing more than the body touches is allowed, and callers then see the listed sources too (v0.3's declared-effect floor). A `# Tool` with a Rust verb must say `- touches:`. A user tool used inside an expression must touch nothing (its `touches:`, else the verb's computed effect).
+
+## Q452 — `doc` and `# Program`
+- The page title is the `# Program` name and its description the first paragraph; `agentmark.toml`'s `name` is used only when there is no `# Program`. Each part's line uses the `check` wording (`region_totals: touches nothing`).
+
+## Q453 — Binding files
+- The generated header lines are now the description under `# Binding:` (no `>`), and each item's summary is the description under its `##` heading. A summary that would read as Markdown markup (it starts with `-`, `#`, `>`, a backtick, or `1. `) gets "About it: " in front. The example 05 and 08 bindings were rewritten in place, not regenerated (Q369).
+
+## Q454 — No migration tool ships
+- There is no backward compatibility: every removed form is an error (E060–E069) whose message quotes the line in the new form. The repository was converted once with a throwaway script; `agentmark` has no `migrate` command.
+
+## Q455 — Steps written as bullets
+- A step written `- print: "x"` is E070 ("Steps are a numbered list. Write: 1. print: \"x\""); so is any other bare line among steps except `else:` / `otherwise:`. A property written as a numbered item is E071.
+
+## Q456 — The fields under `add X to list:`
+- They are bullets, not steps (their order does not matter), `name: value` or a bare `name` for `name: name`. The record is built like `X { … }` (an enum variant with fields works too).
+
+## Q457 — `try <library call> into x` vs `<library call> into x`
+- Right after `try` (or after `do`), a built-in library call whose result can fail is taken apart (`try csv.parse(t) as list of Sale into sales`). Written alone, `json.parse(found) as Note into parsed` stores the `result` itself, to be matched later (example 08) — this is what `set parsed = json.parse(…)` did.
+
+## Q458 — `into` is never a tool verb
+- `do five into n` is a call of the function `five` whose result is named `n`, never the verb `into` of a tool called `five` (`into` is reserved, SPEC 23.9). Found by two helpers independently while converting tests.
+
+## Q459 — Wording of messages about touching
+- Every message people read says what something touches, never its class: E205 reads `A rule may touch nothing, but "live" touches crm.`, E206 names the sources a `- touches:` line leaves out, hover shows `Touches: \`AI, crm, email, log\``, the VS Code panel shows `touches …`. The classes stay in `check --json` (the panel uses them only for colours). An unapproved library shows as `sha2 (not approved yet)`.
+
+## Q460 — Texts the tools write for you
+- The language server's missing-doc fix writes `TODO: describe what this <kind> does.` as the paragraph under the heading; the magic-value fix writes a `# Constant` with the description "The amount 100.00 EUR, written once so it can be changed in one place." so the new part does not trip `missing-doc`; inserted guards are numbered steps, and the steps after them are renumbered.
+
+## Q461 — Library files in the guide
+- `docs/guide.md` says that library files keep the older word "effect" (Q430) and uses "touches" everywhere else. The tutorial's single-file program starts with `# Program` from Lesson 2 on; Lesson 1's file is a lone record (a library, no `# Program`).
+
+## Q462 — Editor grammars only highlight
+- tree-sitter and the TextMate grammar do not flag a bullet where a step belongs (E070) or `- touches:` in an odd place; they colour what they see and leave errors to `check`. tree-sitter accepts `- effect:` only inside `# Binding`. A description line that starts with `-`, `+` or `>` is a list or a note, as in Markdown.
+
+## Q463 — A `doc` line for rules
+- `doc` writes a rule as "Applies to Invoice." and, in its own paragraph, the `check` line `overdue: touches nothing`.

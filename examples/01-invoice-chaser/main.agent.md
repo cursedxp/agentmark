@@ -1,5 +1,5 @@
-# Import: ./agents/invoice-chaser.agent.md
+# Program: invoice-chaser
+Chases unpaid invoices once a day with a polite reminder. It never changes an amount.
 
-> Entry point. Lists what runs in this binary.
-# Run
-- invoice-chaser
+# Uses
+- [invoice-chaser agent](./agents/invoice-chaser.agent.md)

@@ -250,7 +250,7 @@ fn http_post(addr: &str, path: &str, body: &str) -> String {
     out
 }
 
-const PAY: &str = "# Record: Payment\n- id: text\n- amount: money\n\n# Service: pay\n- listen: 0.0.0.0:8080\n\n## POST /total\n- read body as Payment -> p\n- set total = p.amount + 5 USD\n- respond 200 { id: p.id, total: total }\n\n## GET /ping\n- respond 200 { ok: true }\n";
+const PAY: &str = "# Record: Payment\n- id: text\n- amount: money\n\n# Service: pay\n- listen: 0.0.0.0:8080\n\n## POST /total\n1. read body as Payment into p\n2. p.amount + 5 USD into total\n3. respond 200 { id: p.id, total: total }\n\n## GET /ping\n1. respond 200 { ok: true }\n";
 
 #[test]
 fn a_route_that_fails_answers_500_and_traces_the_error_before_the_http_line() {
@@ -307,36 +307,39 @@ fn colliding_names_get_distinct_rust_names() {
 # Function: invoice_chaser__remind
 - in: invoice: Invoice
 - out: text
-- effect: pure
-  - return "user {invoice.id}"
+- touches: nothing
+- steps:
+  1. return "user {invoice.id}"
 
 # Function: net-amount
 - in: invoice: Invoice
 - out: text
-- effect: pure
-  - return "dash"
+- touches: nothing
+- steps:
+  1. return "dash"
 
 # Function: net_amount
 - in: invoice: Invoice
 - out: text
-- effect: pure
-  - return "underscore"
+- touches: nothing
+- steps:
+  1. return "underscore"
 
 # Agent: invoice-chaser
 - model: claude
 - tools: log
 
 ## Every 5 minutes
-- set a = invoice_chaser__remind(first_invoice())
-- log: "never"
+1. invoice_chaser__remind(first_invoice()) into a
+2. log: "never"
 
 ## Do remind
-- log: "do block"
+1. log: "do block"
 "#;
     // keep the program simple: only the agent and the colliding names matter
-    let src = src.replace("- set a = invoice_chaser__remind(first_invoice())\n- log: \"never\"\n", "- do remind\n").replace(
-        "## Every 5 minutes\n- do remind",
-        "## Every 5 minutes\n- do remind\n- do invoice_chaser__remind({ id: \"x\", customer: \"y\" }) -> a\n- do net_amount({ id: \"x\", customer: \"y\" }) -> b\n- do net-amount({ id: \"x\", customer: \"y\" }) -> c\n- log: \"{a} {b} {c}\"",
+    let src = src.replace(
+        "## Every 5 minutes\n1. invoice_chaser__remind(first_invoice()) into a\n2. log: \"never\"\n",
+        "## Every 5 minutes\n1. do remind\n2. do invoice_chaser__remind({ id: \"x\", customer: \"y\" }) into a\n3. do net_amount({ id: \"x\", customer: \"y\" }) into b\n4. do net-amount({ id: \"x\", customer: \"y\" }) into c\n5. log: \"{a} {b} {c}\"\n",
     );
     let (d, file) = single("names", "names.agent.md", &src);
     let o = agentmark(&["check", s(&file)]).output().unwrap();
@@ -350,7 +353,7 @@ fn colliding_names_get_distinct_rust_names() {
 
 #[test]
 fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
-    let src = "# Record: Invoice\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: invoice: Invoice\n- effect: pure\n  ```rust\n  let loud = invoice.id.to_uppercase();\n  loud.len_of_it()\n  ```\n\n## On start\n- set loud = shout({ id: \"a\" })\n- log: \"hi {loud}\"\n";
+    let src = "# Record: Invoice\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: invoice: Invoice\n- touches: nothing\n\n```rust\nlet loud = invoice.id.to_uppercase();\nloud.len_of_it()\n```\n\n## On start\n1. shout({ id: \"a\" }) into loud\n2. log: \"hi {loud}\"\n";
     let (d, file) = single("rustblock", "shout.agent.md", src);
     let o = agentmark(&["check", s(&file)]).output().unwrap();
     assert!(o.status.success(), "the test source must be valid:\n{}\n{}", stdout(&o), stderr(&o));
@@ -359,7 +362,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
-    assert!(e.contains("shout.agent.md:13"), "points at the line of the mistake:\n{e}");
+    assert!(e.contains("shout.agent.md:14"), "points at the line of the mistake:\n{e}");
     assert!(e.contains("loud.len_of_it()"), "shows the source line:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
     assert!(e.contains("method not found in `std::string::String`"), "rustc's primary label is appended:\n{e}");
@@ -369,7 +372,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
 // ---------------------------------------------------------------------------------- review fixes
 
 
-const BROKEN_SEMICOLON: &str = "# Record: Invoice\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: invoice: Invoice\n- effect: pure\n  ```rust\n  let loud = invoice.id.to_uppercase();\n  loud;\n  ```\n\n## On start\n- set loud = shout({ id: \"a\" })\n- log: \"hi {loud}\"\n";
+const BROKEN_SEMICOLON: &str = "# Record: Invoice\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: invoice: Invoice\n- touches: nothing\n\n```rust\nlet loud = invoice.id.to_uppercase();\nloud;\n```\n\n## On start\n1. shout({ id: \"a\" }) into loud\n2. log: \"hi {loud}\"\n";
 
 #[test]
 fn a_rust_block_ending_in_a_semicolon_is_the_authors_mistake_not_an_ice() {
@@ -400,7 +403,7 @@ fn build_checks_the_generated_project_and_reports_user_rust_plainly() {
     drop(d);
 }
 
-const SEEN: &str = "# Record: Invoice\n- id: text\n- customer: text\n- status: text\n\n# Agent: seen\n- model: claude\n- tools: crm, log\n\n## On start\n- for each invoice in crm.invoices:\n  - crm update invoice: status = \"seen\"\n  - log: \"saw {invoice.id}\"\n";
+const SEEN: &str = "# Record: Invoice\n- id: text\n- customer: text\n- status: text\n\n# Agent: seen\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each invoice in crm.invoices:\n   1. crm update invoice: status = \"seen\"\n   2. log: \"saw {invoice.id}\"\n";
 
 const CONNECT: &str = r#"//! A user's connect.rs: an in-memory CRM.
 use std::sync::Mutex;
@@ -535,7 +538,7 @@ fn a_real_run_without_connecting_says_what_to_implement() {
 
 #[test]
 fn every_agent_asks_the_model_of_its_own_model_line() {
-    let src = "# Agent: small\n- model: claude:haiku\n- tools: log\n\n## On start\n- ask model: \"Q small\" -> a\n- log: \"{a}\"\n\n# Agent: big\n- model: claude:opus\n- tools: log\n\n## On start\n- ask model: \"Q big\" -> b\n- log: \"{b}\"\n";
+    let src = "# Agent: small\n- model: claude:haiku\n- tools: log\n\n## On start\n1. ask model: \"Q small\" into a\n2. log: \"{a}\"\n\n# Agent: big\n- model: claude:opus\n- tools: log\n\n## On start\n1. ask model: \"Q big\" into b\n2. log: \"{b}\"\n";
     let (d, file) = single("drivers", "two.agent.md", src);
     let fx = d.join("fx");
     write(
@@ -552,7 +555,7 @@ fn every_agent_asks_the_model_of_its_own_model_line() {
 
 #[test]
 fn build_warns_about_memory_file_and_serialized_parallel_blocks() {
-    let src = "# Agent: a\n- model: claude\n- tools: log\n- memory: file\n\n## On start\n- parallel:\n  - log: \"x\"\n";
+    let src = "# Agent: a\n- model: claude\n- tools: log\n- memory: file\n\n## On start\n1. parallel:\n   1. log: \"x\"\n";
     let (d, file) = single("notes", "a.agent.md", src);
     let o = agentmark(&["build", s(&file), "-o", s(&d.join("out")), "--no-check"]).output().unwrap();
     let e = stderr(&o);
@@ -564,7 +567,7 @@ fn build_warns_about_memory_file_and_serialized_parallel_blocks() {
 
 #[test]
 fn build_notes_are_printed_by_build_only_not_by_run_or_trace() {
-    let src = "# Agent: a\n- model: claude\n- tools: log\n- memory: file\n\n## On start\n- parallel:\n  - log: \"x\"\n";
+    let src = "# Agent: a\n- model: claude\n- tools: log\n- memory: file\n\n## On start\n1. parallel:\n   1. log: \"x\"\n";
     let (d, file) = single("notesrun", "a.agent.md", src);
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
@@ -580,7 +583,7 @@ fn build_notes_are_printed_by_build_only_not_by_run_or_trace() {
 
 #[test]
 fn a_failing_command_leaves_an_error_line_in_the_trace() {
-    let src = "# Command: slurp\n- args: path: text\n\n## Run\n- read file path as text -> t\n- print: \"got {t}\"\n";
+    let src = "# Command: slurp\n- in: path: text\n- steps:\n  1. read file path as text into t\n  2. print: \"got {t}\"\n";
     let (d, file) = single("cmderr", "slurp.agent.md", src);
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));
@@ -596,7 +599,7 @@ fn a_failing_command_leaves_an_error_line_in_the_trace() {
 
 // ---------------------------------------------------------------------------------- result of T
 
-const RESULT_FN: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n# Command: check\n- args: path: text\n\n## Run\n- try do read_count(path) -> n\n  otherwise:\n    - print: \"unreadable\"\n    - stop\n- print: \"count {n}\"\n";
+const RESULT_FN: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- steps:\n  1. try read file path as int into n\n  2. return n\n\n# Command: check\n- in: path: text\n- steps:\n  1. try do read_count(path) into n\n     otherwise:\n     1. print: \"unreadable\"\n     2. stop\n  2. print: \"count {n}\"\n";
 
 #[test]
 fn a_result_function_returns_ok_and_its_failure_reaches_the_caller() {
@@ -620,7 +623,7 @@ fn a_result_function_returns_ok_and_its_failure_reaches_the_caller() {
 
 #[test]
 fn a_result_functions_failure_without_otherwise_is_traced_once_by_the_caller() {
-    let src = RESULT_FN.replace("  otherwise:\n    - print: \"unreadable\"\n    - stop\n", "");
+    let src = RESULT_FN.replace("     otherwise:\n     1. print: \"unreadable\"\n     2. stop\n", "");
     let (d, file) = single("resultfn2", "count2.agent.md", &src);
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));

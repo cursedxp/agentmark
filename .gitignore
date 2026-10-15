@@ -8,3 +8,5 @@ Cargo.lock.bak
 
 tools/docs-site/node_modules/
 tools/docs-site/dist/
+target-*/
+.claude/

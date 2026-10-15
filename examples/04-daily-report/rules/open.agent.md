@@ -1,6 +1,7 @@
-# Import: ../records/invoice.agent.md
+# Uses
+- [Invoice](../records/invoice.agent.md)
 
-> Not paid yet, whether or not it is late.
-# Rule: open
-- for: Invoice
+# Rule: open Invoice
+Not paid yet, whether or not it is late.
+
 - when: status != "paid"

@@ -8,19 +8,19 @@ imports: []
 decls:
   - Constant:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 24
       doc: Camera file names look like IMG_20261003_141500.jpg; the first group is the date as digits.
       name:
         name: camera_pattern
         span:
-          line: 2
+          line: 1
           col: 13
           len: 14
       value:
         span:
-          line: 3
+          line: 4
           col: 10
           len: 32
         kind:
@@ -39,26 +39,26 @@ decls:
           len: 17
       value:
         span:
-          line: 7
+          line: 9
           col: 10
           len: 8
         kind:
           Str: "%Y%m%d"
   - Constant:
       span:
-        line: 9
+        line: 11
         col: 3
         len: 22
-      doc: ~
+      doc: "How a day is written in the new file name: 2026-10-03."
       name:
         name: stamp_format
         span:
-          line: 9
+          line: 11
           col: 13
           len: 12
       value:
         span:
-          line: 10
+          line: 14
           col: 10
           len: 10
         kind:

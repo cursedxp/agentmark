@@ -8,48 +8,48 @@ imports: []
 decls:
   - Record:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 21
       doc: "The model's structured verdict on a lead."
       name:
         name: Qualification
         span:
-          line: 2
+          line: 1
           col: 11
           len: 13
       fields:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 10
           name:
             name: score
             span:
-              line: 3
+              line: 4
               col: 3
               len: 5
           ty:
             kind:
               Named: int
             span:
-              line: 3
+              line: 4
               col: 10
               len: 3
         - span:
-            line: 4
+            line: 5
             col: 3
             len: 12
           name:
             name: reason
             span:
-              line: 4
+              line: 5
               col: 3
               len: 6
           ty:
             kind:
               Named: text
             span:
-              line: 4
+              line: 5
               col: 11
               len: 4

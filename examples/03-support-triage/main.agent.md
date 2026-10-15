@@ -1,5 +1,5 @@
-# Import: ./agents/support-triage.agent.md
+# Program: support-triage
+Gives every new support ticket a priority and a category, and raises an alert for the urgent ones.
 
-> Entry point. Lists what runs in this binary.
-# Run
-- support-triage
+# Uses
+- [support-triage agent](./agents/support-triage.agent.md)

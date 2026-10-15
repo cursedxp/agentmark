@@ -83,62 +83,62 @@ const PLAIN: &str = "name = \"p\"\n";
 
 #[test]
 fn magic_value_money_is_extracted_into_a_constant() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - guard: invoice.amount > 100.00 EUR\n  - guard: invoice.amount < 100.00 EUR else stop\n  - log: \"big\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. guard: invoice.amount > 100.00 EUR\n   2. guard: invoice.amount < 100.00 EUR else stop\n   3. log: \"big\"\n";
     let fixed = fix(main, PLAIN, "magic-value", "Extract the amount");
-    assert!(fixed.contains("# Constant: fixed_amount\n- value: 100.00 EUR\n"), "{fixed}");
+    assert!(fixed.contains("# Constant: fixed_amount\nThe amount 100.00 EUR, written once so it can be changed in one place.\n\n- value: 100.00 EUR\n"), "{fixed}");
     assert_eq!(fixed.matches("fixed_amount").count(), 3, "{fixed}");
 }
 
 #[test]
 fn magic_value_duration_and_url_are_extracted_too() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Pings.\n# Agent: pinger\n- model: mock\n- tools: http, log\n\n## Every 30 minutes\n- http post \"https://example.com/hook\": { id: \"a\" }\n- http post \"https://example.com/hook\": { id: \"b\" }\n\n## Every 30 minutes\n- log: \"x\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: pinger\nPings.\n\n- model: mock\n- tools: http, log\n\n## Every 30 minutes\n1. http post \"https://example.com/hook\": { id: \"a\" }\n2. http post \"https://example.com/hook\": { id: \"b\" }\n\n## Every 30 minutes\n1. log: \"x\"\n";
     // two blocks with the same heading are not valid; keep one trigger and use durations as defaults
     let main = main.replace("\n## Every 30 minutes\n- log: \"x\"\n", "");
     let fixed = fix(&main, PLAIN, "magic-value", "Extract the URL");
-    assert!(fixed.contains("# Constant: fixed_url\n- value: \"https://example.com/hook\"\n"), "{fixed}");
+    assert!(fixed.contains("# Constant: fixed_url\nThe address https://example.com/hook, written once so it can be changed in one place.\n\n- value: \"https://example.com/hook\"\n"), "{fixed}");
     assert!(fixed.contains("\"{fixed_url}\""), "{fixed}");
 }
 
 #[test]
 fn magic_value_duration_is_extracted_even_twice_on_one_line() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - guard: invoice.due + 14 days > today and invoice.due + 14 days < today + 90 days\n  - guard: invoice.due + 14 days > today\n  - log: \"x\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. guard: invoice.due + 14 days > today and invoice.due + 14 days < today + 90 days\n   2. guard: invoice.due + 14 days > today\n   3. log: \"x\"\n";
     let fixed = fix(main, PLAIN, "magic-value", "Extract the duration");
-    assert!(fixed.contains("# Constant: fixed_duration\n- value: 14 days\n"), "{fixed}");
+    assert!(fixed.contains("# Constant: fixed_duration\nThe length of time 14 days, written once so it can be changed in one place.\n\n- value: 14 days\n"), "{fixed}");
     assert_eq!(fixed.matches("fixed_duration").count(), 4, "{fixed}");
 }
 
 #[test]
 fn unnamed_guard_gets_a_comment_stub_above_it() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - guard: invoice.amount > 5 EUR and invoice.status != \"paid\" and invoice.customer != \"nobody\"\n  - log: \"x\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. guard: invoice.amount > 5 EUR and invoice.status != \"paid\" and invoice.customer != \"nobody\"\n   2. log: \"x\"\n";
     let fixed = fix(main, PLAIN, "unnamed-guard", "comment above this guard");
-    assert!(fixed.contains("  > TODO: say what this guard protects against.\n  - guard: invoice.amount"), "{fixed}");
+    assert!(fixed.contains("   > TODO: say what this guard protects against.\n   1. guard: invoice.amount"), "{fixed}");
 }
 
 #[test]
 fn prompt_in_loop_gets_a_guard_on_the_answer() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: email, crm\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - ask model with invoice: \"Write a reminder.\" -> reminder\n  - email send customer: \"{reminder}\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: email, crm\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. ask model with invoice: \"Write a reminder.\" into reminder\n   2. email send customer: \"{reminder}\"\n";
     let fixed = fix(main, PLAIN, "prompt-in-loop", "guard on \"reminder\"");
-    assert!(fixed.contains("-> reminder\n  - guard: reminder is not empty\n  - email send"), "{fixed}");
+    assert!(fixed.contains("into reminder\n   2. guard: reminder is not empty\n   3. email send"), "{fixed}");
 }
 
 #[test]
 fn prompt_in_loop_with_a_record_answer_gets_a_matches_guard() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: crm, log\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - ask model with invoice: \"Classify it.\" as Invoice -> verdict\n  - log: \"done\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: crm, log\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. ask model with invoice: \"Classify it.\" as Invoice into verdict\n   2. log: \"done\"\n";
     let fixed = fix(main, PLAIN, "prompt-in-loop", "guard on \"verdict\"");
-    assert!(fixed.contains("  - guard: verdict matches Invoice\n"), "{fixed}");
+    assert!(fixed.contains("into verdict\n   2. guard: verdict matches Invoice\n   3. log: \"done\""), "{fixed}");
 }
 
 #[test]
 fn missing_doc_gets_a_description_stub_above_the_heading() {
-    let main = "# Import: ./records/invoice.agent.md\n\n# Agent: chaser\n- model: mock\n- tools: log\n\n## On start\n- log: \"hi\"\n";
-    let fixed = fix(main, PLAIN, "missing-doc", "description above this agent");
-    assert!(fixed.contains("> TODO: describe what this agent does.\n# Agent: chaser\n"), "{fixed}");
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\n- model: mock\n- tools: log\n\n## On start\n1. log: \"hi\"\n";
+    let fixed = fix(main, PLAIN, "missing-doc", "description under this agent");
+    assert!(fixed.contains("# Agent: chaser\nTODO: describe what this agent does.\n\n- model: mock"), "{fixed}");
 }
 
 #[test]
 fn rules_without_a_mechanical_fix_offer_none() {
     // vague-name needs a name only the author knows; long-file and duplicate-rule need a decision
-    let main = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - ask model with invoice: \"Write.\" -> result\n  - guard: result is not empty\n  - log: \"{result}\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: log, crm\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. ask model with invoice: \"Write.\" into result\n   2. guard: result is not empty\n   3. log: \"{result}\"\n";
     let (_dir, root) = project(&files(main, PLAIN));
     let file = root.join("main.agent.md");
     let mut c = Client::start(None);
@@ -151,7 +151,7 @@ fn rules_without_a_mechanical_fix_offer_none() {
 
 #[test]
 fn a_did_you_mean_suggestion_is_a_quick_fix() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: email, crm\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - email send custmer: \"hello\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: email, crm\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. email send custmer: \"hello\"\n";
     let (_dir, root) = project(&files(main, PLAIN));
     let file = root.join("main.agent.md");
     let mut c = Client::start(None);
@@ -168,7 +168,7 @@ fn a_did_you_mean_suggestion_is_a_quick_fix() {
 
 // ---------------------------------------------------------------------------------- model actions
 
-const AGENT: &str = "# Import: ./records/invoice.agent.md\n\n> Chases.\n# Agent: chaser\n- model: mock\n- tools: email, crm\n\n## Every day at 09:00\n- for each invoice in crm.invoices:\n  - ask model with invoice: \"Write a reminder.\" -> reminder\n  - guard: reminder is not empty\n  - email send customer: \"{reminder}\"\n";
+const AGENT: &str = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\nChases.\n\n- model: mock\n- tools: email, crm\n\n## Every day at 09:00\n1. for each invoice in crm.invoices:\n   1. ask model with invoice: \"Write a reminder.\" into reminder\n   2. guard: reminder is not empty\n   3. email send customer: \"{reminder}\"\n";
 
 fn mock() -> Arc<MockModel> {
     Arc::new(MockModel::new(
@@ -243,7 +243,7 @@ fn model_actions_explain_a_block_and_suggest_a_guard_when_the_flag_is_on() {
     let resolved = c.request::<CodeActionResolveRequest>(suggest.clone());
     let edits = resolved.edit.unwrap().changes.unwrap().remove(&uri(&file)).unwrap();
     let new = agentmark_lsp::apply(AGENT, &edits);
-    assert!(new.contains("-> reminder\n  - guard: reminder length < 800\n  - guard: reminder is not empty"), "{new}");
+    assert!(new.contains("into reminder\n   2. guard: reminder length < 800\n   3. guard: reminder is not empty\n   4. email send"), "{new}");
 
     // an answer that is not a guard that parses is refused, nothing is inserted
     let bad = Arc::new(MockModel::new(None, vec![(agentmark_lsp::GUARD_PROMPT.to_string(), "guard: ((".to_string())]));
@@ -260,8 +260,8 @@ fn model_actions_explain_a_block_and_suggest_a_guard_when_the_flag_is_on() {
 
 #[test]
 fn doc_and_comment_stubs_are_snippets_for_clients_that_can_take_them() {
-    let main = "# Import: ./records/invoice.agent.md\n\n# Agent: chaser\n- model: mock\n- tools: log\n\n## On start\n- log: \"hi\"\n";
-    for (snippets, want) in [(true, "> ${1:describe what this agent does}\n"), (false, "> TODO: describe what this agent does.\n")] {
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: chaser\n- model: mock\n- tools: log\n\n## On start\n1. log: \"hi\"\n";
+    for (snippets, want) in [(true, "${1:describe what this agent does}\n\n"), (false, "TODO: describe what this agent does.\n\n")] {
         let (_dir, root) = project(&files(main, PLAIN));
         let file = root.join("main.agent.md");
         let mut c = Client::start_with(None, snippets);
@@ -308,7 +308,7 @@ fn apply_dym(root: &Path, file: &str, text: &str, want: &str) -> String {
 
 #[test]
 fn did_you_mean_in_config_files_replaces_only_the_word() {
-    let main = "# Import: ./records/invoice.agent.md\n\n> Says.\n# Agent: a\n- model: mock\n- tools: log\n\n## On start\n- log: \"hi\"\n";
+    let main = "# Uses\n- [invoice](./records/invoice.agent.md)\n\n# Agent: a\nSays.\n\n- model: mock\n- tools: log\n\n## On start\n1. log: \"hi\"\n";
     // agentmark.toml: an unknown [lsp] key
     let (_d, root) = project(&files(main, PLAIN));
     let fixed = apply_dym(&root, "agentmark.toml", "name = \"p\"\n[lsp]\nmodel_action = true\n", "model_actions");

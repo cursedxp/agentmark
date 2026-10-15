@@ -1,21 +1,22 @@
-> A tool whose verb can fail: it is called with `try`, like a function that returns `result of`.
+# Program: doubler
+Twice a number, through a tool whose verb can fail.
+
 # Tool: conv
-- effect: pure
+A tool whose verb can fail: it is called with `try`, like a function that returns `result of`.
+
+- touches: nothing
 
 ## double(word: text) -> result of int
-- try number.parse(word) -> n
-- return n * 2
+1. try number.parse(word) into n
+2. return n * 2
 
-> `doubler <word>` prints twice the number, or says it is not one.
 # Command: doubler
-- args: word: text
+`doubler <word>` prints twice the number, or says it is not one.
 
-## Run
-- try conv double word -> n
-  otherwise:
-    - print: "not a number: {word}"
-    - stop
-- print: "double {n}"
-
-# Run
-- doubler
+- in: word: text
+- steps:
+  1. try conv double word into n
+     otherwise:
+     1. print: "not a number: {word}"
+     2. stop
+  2. print: "double {n}"

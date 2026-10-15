@@ -39,7 +39,7 @@ fn handles_in(te: &TypeExpr, out: &mut Vec<String>) {
             handles_in(k, out);
             handles_in(v, out);
         }
-        TypeKind::Named(_) => {}
+        TypeKind::Named(_) | TypeKind::Infer(_) => {}
     }
 }
 
@@ -176,7 +176,16 @@ impl Checker<'_> {
             .text
             .lines()
             .nth(at.line.saturating_sub(1) as usize)
-            .map(|l| l.trim().trim_start_matches("- ").to_string())
+            .map(|l| {
+                // the step as written, without its list marker (`- ` or `3. `)
+                let t = l.trim();
+                let t = t.trim_start_matches("- ");
+                let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
+                match t[digits..].strip_prefix(". ") {
+                    Some(rest) if digits > 0 => rest.to_string(),
+                    _ => t.to_string(),
+                }
+            })
             .unwrap_or_default();
         self.diags.push(
             Diagnostic::error(
@@ -207,8 +216,8 @@ impl Checker<'_> {
                 format!("\"{}\" is {ty}, a library value that cannot be printed, compared, saved, sent or traced.", name.name),
             )
             .with_help(
-                "Use it with a call that takes it (\"- hasher update data\"), or take a value out of it first \
-                 (\"- hasher finalize -> digest\").",
+                "Use it with a call that takes it (\"hasher update data\"), or take a value out of it first \
+                 (\"hasher finalize into digest\").",
             ),
         );
     }
@@ -234,7 +243,7 @@ impl Checker<'_> {
                 span,
                 format!("This is {ty}, a library value that cannot be printed, compared, saved, sent or traced."),
             )
-            .with_help("Store it in a variable first (\"... -> name\") and use it with a call that takes it."),
+            .with_help("Store it in a variable first (\"... into name\") and use it with a call that takes it."),
         );
     }
 
@@ -327,7 +336,7 @@ impl Checker<'_> {
                                 span,
                                 format!("\"{}\" borrows its handle, so give it a variable, not a new value.", p.name),
                             )
-                            .with_help("Store the handle in a variable first (\"... -> name\")."),
+                            .with_help("Store the handle in a variable first (\"... into name\")."),
                         );
                     }
                 }

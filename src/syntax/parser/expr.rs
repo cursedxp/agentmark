@@ -89,6 +89,7 @@ const RESERVED: &[&str] = &[
     "otherwise",
     "some",
     "none",
+    "into",
 ];
 
 /// Record a mistake in what the parser just matched, and let parsing carry on.
@@ -301,7 +302,8 @@ pub fn type_expr<'a>() -> P<'a, TypeExpr> {
         // `lst of int`, `mayb int`: a word that is nearly a type constructor, followed by more type
         let typo = name()
             .filter(|id: &Ident| did_you_mean(&id.name, ["maybe", "list", "result", "map"]).is_some())
-            .then_ignore(sp1().then(ident().rewind()))
+            // a type followed by `into x` (`read file p as int into n`) is a whole type
+            .then_ignore(sp1().then(ident().filter(|next: &Ident| next.name != "into").rewind()))
             .map_with(|id, e| {
                 let dym = did_you_mean(&id.name, ["maybe", "list", "result", "map"]);
                 let r = e.span();

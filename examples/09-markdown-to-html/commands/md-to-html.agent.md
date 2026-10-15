@@ -1,23 +1,24 @@
-# Import: ../functions/classify-line.agent.md
-# Import: ../functions/render-block.agent.md
-# Import: ../functions/wrap-lists.agent.md
+# Uses
+- [classify_line](../functions/classify-line.agent.md)
+- [render_block](../functions/render-block.agent.md)
+- [wrap_lists](../functions/wrap-lists.agent.md)
 
-> Converts a small Markdown file into HTML: headings, bullet lists, paragraphs, bold, italic and links.
 # Command: md-to-html
-- args: source: text, out: text
+Converts a small Markdown file into HTML: headings, bullet lists, paragraphs, bold, italic and links.
 
-## Run
-- try file read source -> markdown
-  otherwise:
-    - print: "Could not read {source}"
-    - stop
-- set lines = text.lines(markdown)
-- set elements = empty list of text
-- for each line in lines:
-  - set rendered = render_block(classify_line(line))
-  - if rendered is not empty:
-    - append rendered to elements
-- set body = join elements with "\n"
-- file write out: wrap_lists(body)
-- print: "Converted {count of lines} lines of {source} into {count of elements} elements"
-- print: "Wrote {out}"
+- in: source: text, out: text
+- steps:
+  1. try file read source into markdown
+     otherwise:
+     1. print: "Could not read {source}"
+     2. stop
+  2. text.lines(markdown) into lines
+  3. empty list of text into elements
+  4. for each line in lines:
+     1. render_block(classify_line(line)) into rendered
+     2. if rendered is not empty:
+        1. add rendered to elements
+  5. join elements with "\n" into body
+  6. file write out: wrap_lists(body)
+  7. print: "Converted {count of lines} lines of {source} into {count of elements} elements"
+  8. print: "Wrote {out}"

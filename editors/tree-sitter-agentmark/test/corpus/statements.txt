@@ -3,9 +3,10 @@ For each over a collection
 ====================
 
 # Agent: a
+
 ## On start
-- for each invoice in crm.invoices:
-  - log: "{invoice.id}"
+1. for each invoice in crm.invoices:
+   1. log: "{invoice.id}"
 
 --------------------
 
@@ -16,12 +17,14 @@ For each over a collection
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (for_each
           (identifier)
           (field_expression
             (identifier)
             (identifier))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -35,9 +38,10 @@ Filtered for each with a rule
 ====================
 
 # Agent: a
+
 ## On start
-- for each overdue invoice in crm.invoices:
-  - do remind
+1. for each overdue invoice in crm.invoices:
+   1. do remind
 
 --------------------
 
@@ -48,6 +52,7 @@ Filtered for each with a rule
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (for_each
           (identifier)
           (identifier)
@@ -55,6 +60,7 @@ Filtered for each with a rule
             (identifier)
             (identifier))))
       (statement_line
+        (step_marker)
         (do_statement
           (identifier))))))
 
@@ -63,9 +69,10 @@ Bare control line
 ====================
 
 # Agent: a
+
 ## On start
-for each invoice in crm.invoices:
-  - log: "{invoice.id}"
+1. for each invoice in crm.invoices:
+   1. log: "{invoice.id}"
 
 --------------------
 
@@ -76,12 +83,14 @@ for each invoice in crm.invoices:
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (for_each
           (identifier)
           (field_expression
             (identifier)
             (identifier))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -95,11 +104,12 @@ If, else and stop
 ====================
 
 # Agent: a
+
 ## On start
-- if invoice.amount > 1000 EUR:
-  - stop
-- else:
-  - log: "small"
+1. if invoice.amount > 1000 EUR:
+   1. stop
+   else:
+   1. log: "small"
 
 --------------------
 
@@ -110,6 +120,7 @@ If, else and stop
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (if_statement
           (binary_expression
             (field_expression
@@ -117,10 +128,12 @@ If, else and stop
               (identifier))
             (money))))
       (statement_line
+        (step_marker)
         (stop_statement))
       (statement_line
         (else_statement))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -131,9 +144,10 @@ If is some
 ====================
 
 # Agent: a
+
 ## On start
-- if lead.score is some s:
-  - log: "{s}"
+1. if lead.score is some s:
+   1. log: "{s}"
 
 --------------------
 
@@ -144,6 +158,7 @@ If is some
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (if_statement
           (predicate
             (field_expression
@@ -151,6 +166,7 @@ If is some
               (identifier))
             (identifier))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -162,10 +178,11 @@ Ask model, three shapes
 ====================
 
 # Agent: a
+
 ## On start
-- ask model: "Name one famous company." -> plain
-- ask model with lead: "Describe this lead." -> description
-- ask model with lead: scoring_prompt as Qualification -> q
+1. ask model: "Name one famous company." into plain
+2. ask model with lead: "Describe this lead." into description
+3. ask model with lead: scoring_prompt as Qualification into q
 
 --------------------
 
@@ -176,12 +193,14 @@ Ask model, three shapes
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (ask_statement
           (string
             (string_content))
           (bind
             (identifier))))
       (statement_line
+        (step_marker)
         (ask_statement
           (identifier)
           (string
@@ -189,6 +208,7 @@ Ask model, three shapes
           (bind
             (identifier))))
       (statement_line
+        (step_marker)
         (ask_statement
           (identifier)
           (identifier)
@@ -202,13 +222,14 @@ Tool calls
 ====================
 
 # Agent: a
+
 ## On start
-- crm get ticket id -> fresh
-- crm update ticket: priority = "low", subject = "changed"
-- http get "https://example.com/status" -> status
-- http post "https://example.com/hook": { id: ticket.id, subject: ticket.subject }
-- email send address "ops@example.com": "Ticket {ticket.subject}"
-- log: "done {ticket.id}"
+1. crm get ticket id into fresh
+2. crm update ticket: priority = "low", subject = "changed"
+3. http get "https://example.com/status" into status
+4. http post "https://example.com/hook": { id: ticket.id, subject: ticket.subject }
+5. email send address "ops@example.com": "Ticket {ticket.subject}"
+6. log: "done {ticket.id}"
 
 --------------------
 
@@ -219,6 +240,7 @@ Tool calls
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (identifier)
@@ -227,6 +249,7 @@ Tool calls
           (bind
             (identifier))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (identifier)
@@ -240,6 +263,7 @@ Tool calls
             (string
               (string_content)))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (identifier)
@@ -248,6 +272,7 @@ Tool calls
           (bind
             (identifier))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (identifier)
@@ -265,6 +290,7 @@ Tool calls
                 (identifier)
                 (identifier))))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (identifier)
@@ -278,6 +304,7 @@ Tool calls
                 (identifier)
                 (identifier))))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -292,13 +319,14 @@ Guards
 ====================
 
 # Agent: a
+
 ## On start
-- guard: no amounts changed in reminder
-- guard: reminder is not empty
-- guard: q matches Qualification
-- guard: reminder length < 800
-- guard: reminder length > 20 else set reminder = "Please pay."
-- guard: found is not empty else respond 404
+1. guard: no amounts changed in reminder
+2. guard: reminder is not empty
+3. guard: q matches Qualification
+4. guard: reminder length < 800
+5. guard: reminder length > 20 else "Please pay." into reminder
+6. guard: found is not empty else respond 404
 
 --------------------
 
@@ -309,35 +337,42 @@ Guards
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (guard_statement
           (no_amounts_changed
             (identifier))))
       (statement_line
+        (step_marker)
         (guard_statement
           (predicate
             (identifier))))
       (statement_line
+        (step_marker)
         (guard_statement
           (predicate
             (identifier)
             (identifier))))
       (statement_line
+        (step_marker)
         (guard_statement
           (binary_expression
             (length_expression
               (identifier))
             (number))))
       (statement_line
+        (step_marker)
         (guard_statement
           (binary_expression
             (length_expression
               (identifier))
             (number))
-          (set_statement
-            (identifier)
+          (value_statement
             (string
-              (string_content)))))
+              (string_content))
+            (bind
+              (identifier)))))
       (statement_line
+        (step_marker)
         (guard_statement
           (predicate
             (identifier))
@@ -349,10 +384,11 @@ Set and return
 ====================
 
 # Agent: a
+
 ## On start
-- set total = 0 EUR
-- set total = total + invoice.amount
-- return total
+1. 0 EUR into total
+2. total + invoice.amount into total
+3. return total
 
 --------------------
 
@@ -363,18 +399,23 @@ Set and return
     (trigger_block
       (on_start_heading)
       (statement_line
-        (set_statement
-          (identifier)
-          (money)))
+        (step_marker)
+        (value_statement
+          (money)
+          (bind
+            (identifier))))
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (identifier)
             (field_expression
               (identifier)
-              (identifier)))))
+              (identifier)))
+          (bind
+            (identifier))))
       (statement_line
+        (step_marker)
         (return_statement
           (identifier))))))
 
@@ -383,10 +424,11 @@ Do with arguments and binding
 ====================
 
 # Agent: a
+
 ## On start
-- do net_amount(invoice, 19) -> n
-- do load_all -> all
-- do remind
+1. do net_amount(invoice, 19) into n
+2. do load_all into all
+3. do remind
 
 --------------------
 
@@ -397,6 +439,7 @@ Do with arguments and binding
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (do_statement
           (call_expression
             (identifier)
@@ -405,11 +448,13 @@ Do with arguments and binding
           (bind
             (identifier))))
       (statement_line
+        (step_marker)
         (do_statement
           (identifier)
           (bind
             (identifier))))
       (statement_line
+        (step_marker)
         (do_statement
           (identifier))))))
 
@@ -418,11 +463,12 @@ Try with otherwise
 ====================
 
 # Agent: a
+
 ## On start
-- try http get "https://api.example.com/rates" -> rates
-  otherwise:
-    - log: "Rates unavailable"
-    - set rates = "cached"
+1. try http get "https://api.example.com/rates" into rates
+   otherwise:
+   1. log: "Rates unavailable"
+   2. "cached" into rates
 
 --------------------
 
@@ -433,6 +479,7 @@ Try with otherwise
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (try_statement
           (tool_call
             (identifier)
@@ -444,15 +491,18 @@ Try with otherwise
       (statement_line
         (otherwise_statement))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
             (string_content))))
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (string
-            (string_content)))))))
+            (string_content))
+          (bind
+            (identifier)))))))
 
 ====================
 Parallel
@@ -460,11 +510,11 @@ Parallel
 
 # Function: load_all
 - out: list of Invoice
-- effect: network
-  - parallel:
-    - http get "https://api.example.com/rates" -> rates
-    - crm list invoice -> invoices
-  - return invoices
+- steps:
+  1. parallel:
+     1. http get "https://api.example.com/rates" into rates
+     2. crm list invoice into invoices
+  2. return invoices
 
 --------------------
 
@@ -479,12 +529,12 @@ Parallel
           (type
             (identifier)))))
     (property
-      (property_key)
-      (property_value
-        (identifier)))
+      (property_key))
     (statement_line
+      (step_marker)
       (parallel_statement))
     (statement_line
+      (step_marker)
       (tool_call
         (identifier)
         (identifier)
@@ -493,6 +543,7 @@ Parallel
         (bind
           (identifier))))
     (statement_line
+      (step_marker)
       (tool_call
         (identifier)
         (identifier)
@@ -500,6 +551,7 @@ Parallel
         (bind
           (identifier))))
     (statement_line
+      (step_marker)
       (return_statement
         (identifier)))))
 
@@ -508,12 +560,12 @@ Read, append, respond, print
 ====================
 
 # Command: c
-## Run
-- read file path as list of Invoice -> rows
-- append row to state.invoices
-- respond 200 { id: found.id, net: net_amount(found, vat_rate) }
-- respond 204
-- print: "Imported {count of rows} rows"
+- steps:
+  1. read file path as list of Invoice into rows
+  2. add row to state.invoices
+  3. respond 200 { id: found.id, net: net_amount(found, vat_rate) }
+  4. respond 204
+  5. print: "Imported {count of rows} rows"
 
 --------------------
 
@@ -521,50 +573,55 @@ Read, append, respond, print
   (declaration
     (declaration_kind)
     (identifier)
-    (trigger_block
-      (run_heading)
-      (statement_line
-        (read_statement
+    (property
+      (property_key))
+    (statement_line
+      (step_marker)
+      (read_statement
+        (identifier)
+        (identifier)
+        (type
+          (type_phrase
+            (type
+              (identifier))))
+        (bind
+          (identifier))))
+    (statement_line
+      (step_marker)
+      (add_statement
+        (identifier)
+        (field_expression
           (identifier)
-          (identifier)
-          (type
-            (type_phrase
-              (type
-                (identifier))))
-          (bind
-            (identifier))))
-      (statement_line
-        (append_statement
-          (identifier)
-          (field_expression
+          (identifier))))
+    (statement_line
+      (step_marker)
+      (respond_statement
+        (number)
+        (record_literal
+          (record_pair
             (identifier)
-            (identifier))))
-      (statement_line
-        (respond_statement
-          (number)
-          (record_literal
-            (record_pair
+            (field_expression
               (identifier)
-              (field_expression
-                (identifier)
-                (identifier)))
-            (record_pair
+              (identifier)))
+          (record_pair
+            (identifier)
+            (call_expression
               (identifier)
-              (call_expression
-                (identifier)
-                (identifier)
-                (identifier))))))
-      (statement_line
-        (respond_statement
-          (number)))
-      (statement_line
-        (print_statement
-          (string
-            (string_content)
-            (interpolation
-              (count_expression
-                (identifier)))
-            (string_content)))))))
+              (identifier)
+              (identifier))))))
+    (statement_line
+      (step_marker)
+      (respond_statement
+        (number)))
+    (statement_line
+      (step_marker)
+      (print_statement
+        (string
+          (string_content)
+          (interpolation
+            (count_expression
+              (identifier)))
+          (string_content))))))
 
 ====================
 Rust block
@@ -573,16 +630,18 @@ Rust block
 # Function: f
 - in: payload: text
 - out: text
-- effect: pure
-  - return hash_payload(payload)
+- touches: nothing
+- steps:
+  1. return hash_payload(payload)
 
 ## Rust: hash_payload -> text
 - in: payload: text
-- effect: pure
-  ```rust
-  use sha2::{Digest, Sha256};
-  format!("{:x}", Sha256::digest(payload.as_bytes()))
-  ```
+- touches: nothing
+
+```rust
+use sha2::{Digest, Sha256};
+format!("{:x}", Sha256::digest(payload.as_bytes()))
+```
 
 --------------------
 
@@ -605,7 +664,10 @@ Rust block
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
+      (step_marker)
       (return_statement
         (call_expression
           (identifier)
@@ -636,15 +698,14 @@ built-in library: module calls, decode, file tool, read input
 ================================================================================
 
 # Command: c
-- args: p: text
-
-## Run
-- try file read p -> content
-- try do csv.parse(content) as list of Sale -> rows
-- try number.parse(p) -> n
-- read input -> typed
-- file rename p to path.join(p, "x")
-- set d = json.parse(typed) as Note
+- in: p: text
+- steps:
+  1. try file read p into content
+  2. try do csv.parse(content) as list of Sale into rows
+  3. try number.parse(p) into n
+  4. read input into typed
+  5. file rename p to path.join(p, "x")
+  6. json.parse(typed) as Note into d
 
 --------------------------------------------------------------------------------
 
@@ -659,64 +720,71 @@ built-in library: module calls, decode, file tool, read input
           (identifier)
           (type
             (identifier)))))
-    (trigger_block
-      (run_heading)
-      (statement_line
-        (try_statement
-          (tool_call
-            (identifier)
-            (identifier)
-            (identifier)
-            (bind
-              (identifier)))))
-      (statement_line
-        (try_statement
-          (do_statement
-            (module_call
-              (identifier)
-              (identifier)
-              (identifier))
-            (type
-              (type_phrase
-                (type
-                  (identifier))))
-            (bind
-              (identifier)))))
-      (statement_line
-        (try_statement
-          (call_statement
-            (module_call
-              (identifier)
-              (identifier)
-              (identifier))
-            (bind
-              (identifier)))))
-      (statement_line
-        (read_statement
-          (identifier)
-          (bind
-            (identifier))))
-      (statement_line
+    (property
+      (property_key))
+    (statement_line
+      (step_marker)
+      (try_statement
         (tool_call
           (identifier)
           (identifier)
           (identifier)
+          (bind
+            (identifier)))))
+    (statement_line
+      (step_marker)
+      (try_statement
+        (do_statement
           (module_call
             (identifier)
             (identifier)
+            (identifier))
+          (type
+            (type_phrase
+              (type
+                (identifier))))
+          (bind
+            (identifier)))))
+    (statement_line
+      (step_marker)
+      (try_statement
+        (value_statement
+          (module_call
             (identifier)
-            (string
-              (string_content)))))
-      (statement_line
-        (set_statement
+            (identifier)
+            (identifier))
+          (bind
+            (identifier)))))
+    (statement_line
+      (step_marker)
+      (read_statement
+        (identifier)
+        (bind
+          (identifier))))
+    (statement_line
+      (step_marker)
+      (tool_call
+        (identifier)
+        (identifier)
+        (identifier)
+        (module_call
           (identifier)
-          (decode_expression
-            (module_call
-              (identifier)
-              (identifier)
-              (identifier))
-            (type
-              (identifier))))))))
+          (identifier)
+          (identifier)
+          (string
+            (string_content)))))
+    (statement_line
+      (step_marker)
+      (value_statement
+        (decode_expression
+          (module_call
+            (identifier)
+            (identifier)
+            (identifier))
+          (type
+            (identifier)))
+        (bind
+          (identifier))))))
 
 ====================
 Match over an enum, with qualified branches and otherwise
@@ -725,14 +793,15 @@ Match over an enum, with qualified branches and otherwise
 # Function: describe
 - in: shape: Shape
 - out: text
-- effect: pure
-  - match shape:
-    - Circle c:
-      - return "circle {c.radius}"
-    - Shape.Empty:
-      - return "nothing"
-    - otherwise:
-      - return "other"
+- touches: nothing
+- steps:
+  1. match shape:
+     - Circle c:
+       1. return "circle {c.radius}"
+     - Shape.Empty:
+       1. return "nothing"
+     - otherwise:
+       1. return "other"
 
 --------------------
 
@@ -755,7 +824,10 @@ Match over an enum, with qualified branches and otherwise
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
+      (step_marker)
       (match_statement
         (identifier)))
     (statement_line
@@ -763,6 +835,7 @@ Match over an enum, with qualified branches and otherwise
         (identifier)
         (identifier)))
     (statement_line
+      (step_marker)
       (return_statement
         (string
           (string_content)
@@ -776,12 +849,15 @@ Match over an enum, with qualified branches and otherwise
           (identifier)
           (identifier))))
     (statement_line
+      (step_marker)
       (return_statement
         (string
           (string_content))))
     (statement_line
-      (otherwise_statement))
+      (match_arm
+        (identifier)))
     (statement_line
+      (step_marker)
       (return_statement
         (string
           (string_content))))))
@@ -791,23 +867,25 @@ Match over maybe and result
 ====================
 
 ## Run
-- match found:
-  - some row:
-    - print: "{row.id}"
-  - none:
-    - stop
-- match parse_age(text):
-  - ok value:
-    - set total = value
-  - error problem:
-    - print: "{problem}"
+1. match found:
+   - some row:
+     1. print: "{row.id}"
+   - none:
+     1. stop
+2. match parse_age(text):
+   - ok value:
+     1. value into total
+   - error problem:
+     1. print: "{problem}"
 
 --------------------
 
 (source_file
-  (trigger_block
-    (run_heading)
+  (code_block
+    (wrapped_heading
+      (identifier))
     (statement_line
+      (step_marker)
       (match_statement
         (identifier)))
     (statement_line
@@ -815,6 +893,7 @@ Match over maybe and result
         (identifier)
         (identifier)))
     (statement_line
+      (step_marker)
       (print_statement
         (string
           (interpolation
@@ -825,8 +904,10 @@ Match over maybe and result
       (match_arm
         (identifier)))
     (statement_line
+      (step_marker)
       (stop_statement))
     (statement_line
+      (step_marker)
       (match_statement
         (call_expression
           (identifier)
@@ -836,14 +917,17 @@ Match over maybe and result
         (identifier)
         (identifier)))
     (statement_line
-      (set_statement
+      (step_marker)
+      (value_statement
         (identifier)
-        (identifier)))
+        (bind
+          (identifier))))
     (statement_line
       (match_arm
         (identifier)
         (identifier)))
     (statement_line
+      (step_marker)
       (print_statement
         (string
           (interpolation
@@ -854,28 +938,31 @@ Enum values
 ====================
 
 ## Run
-- set a = Circle { radius: 3 }
-- set b = Shape.Rect { width: 1, height: 2 }
-- set c = Shape.Empty
-- set d = Empty
+1. Circle { radius: 3 } into a
+2. Shape.Rect { width: 1, height: 2 } into b
+3. Shape.Empty into c
+4. Empty into d
 
 --------------------
 
 (source_file
-  (trigger_block
-    (run_heading)
+  (code_block
+    (wrapped_heading
+      (identifier))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (variant_expression
           (identifier)
           (record_literal
             (record_pair
               (identifier)
-              (number))))))
+              (number))))
+        (bind
+          (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (variant_expression
           (field_expression
             (identifier)
@@ -886,41 +973,49 @@ Enum values
               (number))
             (record_pair
               (identifier)
-              (number))))))
-    (statement_line
-      (set_statement
-        (identifier)
-        (field_expression
-          (identifier)
+              (number))))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
+      (step_marker)
+      (value_statement
+        (field_expression
+          (identifier)
+          (identifier))
+        (bind
+          (identifier))))
+    (statement_line
+      (step_marker)
+      (value_statement
         (identifier)
-        (identifier)))))
+        (bind
+          (identifier))))))
 
 ====================
 Maybe values, try without do, branches without names
 ====================
 
 ## Run
-- try parse_sale(path) -> sale
-  otherwise:
-    - set sale = none
-- return some 3
-- match parse_sale(path):
-  - ok:
-    - stop
-  - error:
-    - stop
+1. try parse_sale(path) into sale
+   otherwise:
+   1. none into sale
+2. return some 3
+3. match parse_sale(path):
+   - ok:
+     1. stop
+   - error:
+     1. stop
 
 --------------------
 
 (source_file
-  (trigger_block
-    (run_heading)
+  (code_block
+    (wrapped_heading
+      (identifier))
     (statement_line
+      (step_marker)
       (try_statement
-        (bare_call
+        (value_statement
           (call_expression
             (identifier)
             (identifier))
@@ -929,14 +1024,18 @@ Maybe values, try without do, branches without names
     (statement_line
       (otherwise_statement))
     (statement_line
-      (set_statement
+      (step_marker)
+      (value_statement
         (identifier)
-        (identifier)))
+        (bind
+          (identifier))))
     (statement_line
+      (step_marker)
       (return_statement
         (some_expression
           (number))))
     (statement_line
+      (step_marker)
       (match_statement
         (call_expression
           (identifier)
@@ -945,9 +1044,11 @@ Maybe values, try without do, branches without names
       (match_arm
         (identifier)))
     (statement_line
+      (step_marker)
       (stop_statement))
     (statement_line
       (match_arm
         (identifier)))
     (statement_line
+      (step_marker)
       (stop_statement))))

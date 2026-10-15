@@ -6,24 +6,26 @@ path: examples/03-support-triage/main.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 5
       col: 3
-      len: 40
+      len: 56
     doc: ~
     kind:
       File:
         path: "./agents/support-triage.agent.md"
         alias: ~
+    label: support-triage agent
 decls:
-  - Run:
+  - Program:
       span:
-        line: 4
+        line: 1
         col: 3
-        len: 3
-      doc: Entry point. Lists what runs in this binary.
-      items:
-        - name: support-triage
-          span:
-            line: 5
-            col: 3
-            len: 14
+        len: 23
+      doc: "Gives every new support ticket a priority and a category, and raises an alert for the urgent ones."
+      name:
+        name: support-triage
+        span:
+          line: 1
+          col: 12
+          len: 14
+      start: ~

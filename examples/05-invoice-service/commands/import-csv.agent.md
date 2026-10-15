@@ -1,15 +1,16 @@
-# Import: ../records/invoice.agent.md
+# Uses
+- [Invoice](../records/invoice.agent.md)
 
-> Loads invoices from a CSV file into the application state. With dry_run it only reads and counts.
 # Command: import-csv
-- args: path: text, dry_run: bool = false
+Loads invoices from a CSV file into the application state. With dry_run it only reads and counts.
 
-## Run
-- try read file path as list of Invoice -> rows
-  otherwise:
-    - print: "Could not read {path}"
-    - stop
-- for each row in rows:
-  - if not dry_run:
-    - append row to state.invoices
-- print: "Imported {count of rows} rows"
+- in: path: text, dry_run: bool = false
+- steps:
+  1. try read file path as list of Invoice into invoices
+     otherwise:
+     1. print: "Could not read {path}"
+     2. stop
+  2. for each invoice in invoices:
+     1. if not dry_run:
+        1. add invoice to state.invoices
+  3. print: "Imported {count of invoices} rows"

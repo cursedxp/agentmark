@@ -1,14 +1,17 @@
-> Turns titles into file-name words. Pure, so it can be used inside expressions.
 # Tool: slugger
-- effect: pure
+Turns titles into file-name words. Pure, so it can be used inside expressions.
 
-> "Hello World" becomes "hello-world".
+- touches: nothing
+
 ## slug(title: text) -> text
-- set lowered = text.lower(title)
-- return regex.replace(lowered, "[^a-z0-9]+", "-")
+"Hello World" becomes "hello-world".
 
-> The word in capitals; written in Rust, which is what a verb may do when AgentMark has no word for it.
+1. text.lower(title) into lowered
+2. return regex.replace(lowered, "[^a-z0-9]+", "-")
+
 ## shout(word: text) -> text
+The word in capitals; written in Rust, which is what a verb may do when AgentMark has no word for it.
+
 ```rust
 word.to_uppercase()
 ```

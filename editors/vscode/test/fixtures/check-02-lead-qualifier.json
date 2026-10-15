@@ -27,7 +27,7 @@
         {
           "label": "When crm receives lead",
           "file": "examples/02-lead-qualifier/agents/lead-qualifier.agent.md",
-          "line": 10,
+          "line": 12,
           "effects": {
             "class": "model",
             "summary": "model, network(crm, email), local(log)",

@@ -8,76 +8,76 @@ imports: []
 decls:
   - Constant:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 22
       doc: "Inline Markdown patterns. In each one, `[*]` is a literal star and `$1` is the text caught between the marks."
       name:
         name: bold_pattern
         span:
-          line: 2
+          line: 1
           col: 13
           len: 12
       value:
         span:
-          line: 3
+          line: 4
           col: 10
           len: 21
         kind:
           Str: "[*][*]([^*]+)[*][*]"
   - Constant:
       span:
-        line: 5
+        line: 6
         col: 3
         len: 24
-      doc: ~
+      doc: One star on each side makes the text italic.
       name:
         name: italic_pattern
         span:
-          line: 5
+          line: 6
           col: 13
           len: 14
       value:
         span:
-          line: 6
+          line: 9
           col: 10
           len: 15
         kind:
           Str: "[*]([^*]+)[*]"
   - Constant:
       span:
-        line: 9
+        line: 11
         col: 3
         len: 22
       doc: "A link is `[label](address)`: the label is the first catch, the address the second."
       name:
         name: link_pattern
         span:
-          line: 9
+          line: 11
           col: 13
           len: 12
       value:
         span:
-          line: 10
+          line: 14
           col: 10
           len: 30
         kind:
           Str: "\\[([^\\]]+)\\]\\(([^)]+)\\)"
   - Constant:
       span:
-        line: 13
+        line: 16
         col: 3
         len: 26
       doc: "A run of list items, each on its own line. The whole run is caught so it can be wrapped in one list."
       name:
         name: list_run_pattern
         span:
-          line: 13
+          line: 16
           col: 13
           len: 16
       value:
         span:
-          line: 14
+          line: 19
           col: 10
           len: 26
         kind:

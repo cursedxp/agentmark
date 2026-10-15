@@ -1,8 +1,11 @@
-# Import: ../records/invoice.agent.md
+# Uses
+- [Invoice](../records/invoice.agent.md)
 
-> The invoice amount after taking off VAT.
 # Function: net_amount
-- in: invoice: Invoice, vat: int
+The invoice amount after taking off VAT.
+
+- in: invoice, vat: int
 - out: money
-- effect: pure
-  - return invoice.amount - invoice.amount * vat / 100
+- touches: nothing
+- steps:
+  1. return invoice.amount - invoice.amount * vat / 100
