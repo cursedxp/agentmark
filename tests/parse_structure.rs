@@ -650,3 +650,200 @@ fn plain_comments_stay_attached_to_the_next_statement_field_and_property() {
     assert_eq!(r.doc.as_deref(), Some("doc"));
     assert!(r.fields[0].comments.is_empty());
 }
+
+// ---------------------------------------------------------------- v0.4 (SPEC 23)
+
+fn command_body(steps: &str) -> Vec<Stmt> {
+    let f = parse(&format!("# Command: c\nDoes things.\n\n- steps:\n{steps}"));
+    let Decl::Command(c) = f.decls.into_iter().next().unwrap() else { panic!() };
+    c.body
+}
+
+#[test]
+fn steps_nest_three_spaces_under_a_single_digit_and_four_under_two_digits() {
+    let body = command_body("  1. for each x in xs:\n     1. print: \"a\"\n");
+    let StmtKind::ForEach { body: inner, .. } = &body[0].kind else { panic!() };
+    assert_eq!(inner.len(), 1);
+    assert_eq!((inner[0].span.line, inner[0].span.col), (6, 9));
+
+    let mut steps = String::new();
+    for i in 0..9 {
+        steps.push_str(&format!("  {}. print: \"{i}\"\n", i + 1));
+    }
+    steps.push_str("  10. for each x in xs:\n      1. print: \"a\"\n      2. print: \"b\"\n  11. stop\n");
+    let body = command_body(&steps);
+    assert_eq!(body.len(), 11);
+    let StmtKind::ForEach { body: inner, .. } = &body[9].kind else { panic!() };
+    assert_eq!(inner.len(), 2);
+    assert!(matches!(body[10].kind, StmtKind::Stop));
+}
+
+#[test]
+fn indentation_is_lenient_any_deeper_line_is_under_the_step_above() {
+    // 3, 5 and 8 spaces all mean "under the step above" (the steps themselves start at 2)
+    for pad in ["   ", "     ", "        "] {
+        let body = command_body(&format!("  1. for each x in xs:\n{pad}1. stop\n"));
+        let StmtKind::ForEach { body: inner, .. } = &body[0].kind else { panic!() };
+        assert_eq!(inner.len(), 1, "{pad:?}");
+    }
+    // numbers do not matter either: 1. everywhere
+    let body = command_body("  1. print: \"a\"\n  1. print: \"b\"\n  1. print: \"c\"\n");
+    assert_eq!(body.len(), 3);
+}
+
+#[test]
+fn siblings_indented_differently_are_e031() {
+    let out = errors("# Command: c\nDoes things.\n\n- steps:\n  1. for each x in xs:\n     1. print: \"a\"\n    2. print: \"b\"\n");
+    assert!(out.contains("This line is indented 4 spaces, less than the 5 of the lines above it at this level."), "{out}");
+    let src = "# Command: c\nDoes things.\n\n- steps:\n  1. print: \"a\"\n  2. print: \"b\"\n";
+    assert!(parse_file("t.agent.md", src).is_ok());
+    let err = parse_file(
+        "t.agent.md",
+        "# Command: c\nDoes things.\n\n- steps:\n  1. for each x in xs:\n     1. print: \"a\"\n    2. print: \"b\"\n",
+    )
+    .unwrap_err();
+    assert_eq!(err[0].code, "E031");
+}
+
+#[test]
+fn else_inside_an_if_step_and_the_v03_sibling_else_step() {
+    // v0.4: a plain line inside the if step, at the indentation of its steps
+    let body = command_body("  1. if a:\n     1. print: \"yes\"\n     else:\n     1. print: \"no\"\n  2. stop\n");
+    assert_eq!(body.len(), 2);
+    let StmtKind::If { then, else_, .. } = &body[0].kind else { panic!() };
+    assert_eq!((then.len(), else_.len()), (1, 1));
+    // v0.3: `else:` as a sibling step right after the if is still read (Q448)
+    let body = command_body("  1. if a:\n     1. print: \"yes\"\n  2. else:\n     1. print: \"no\"\n  3. stop\n");
+    assert_eq!(body.len(), 2, "else is part of the if");
+    let StmtKind::If { then, else_, .. } = &body[0].kind else { panic!() };
+    assert_eq!((then.len(), else_.len()), (1, 1));
+    // and the same for `is some`
+    let body = command_body("  1. if first x in xs where x.ok is some y:\n     1. print: \"{y}\"\n     else:\n     1. stop\n");
+    assert!(matches!(&body[0].kind, StmtKind::IfSome { then, else_, .. } if then.len() == 1 && else_.len() == 1));
+}
+
+#[test]
+fn otherwise_inside_try() {
+    let body = command_body("  1. try file read path into content\n     otherwise:\n     1. print: \"no\"\n     2. stop\n  2. print: \"{content}\"\n");
+    assert_eq!(body.len(), 2);
+    let StmtKind::Try { otherwise, .. } = &body[0].kind else { panic!() };
+    let otherwise = otherwise.as_ref().unwrap();
+    assert_eq!(otherwise.len(), 2);
+    assert!(matches!(otherwise[1].kind, StmtKind::Stop));
+    // a try without otherwise
+    let body = command_body("  1. try file read path into content\n  2. stop\n");
+    assert!(matches!(&body[0].kind, StmtKind::Try { otherwise: None, .. }));
+}
+
+#[test]
+fn match_branches_are_bullets_with_numbered_steps() {
+    let body = command_body(
+        "  1. match shape:\n     - Circle c:\n       1. print: \"{c.radius}\"\n       2. stop\n     - Empty:\n       1. stop\n     - otherwise:\n       1. stop\n",
+    );
+    let StmtKind::Match { arms, otherwise, .. } = &body[0].kind else { panic!() };
+    assert_eq!(arms.len(), 2);
+    assert_eq!(arms[0].pattern.name, "Circle");
+    assert_eq!(arms[0].bind.as_ref().unwrap().name, "c");
+    assert_eq!(arms[0].body.len(), 2);
+    assert_eq!(arms[1].body.len(), 1);
+    assert!(otherwise.is_some());
+}
+
+#[test]
+fn add_to_list_with_field_bullets_and_a_bare_name() {
+    let body = command_body(
+        "  1. add RegionTotal to totals:\n     - region\n     - orders: count of region_sales\n     - revenue: 1\n",
+    );
+    let StmtKind::Append { value, list } = &body[0].kind else { panic!() };
+    assert!(matches!(&list.kind, ExprKind::Path(p) if p[0].name == "totals"));
+    let ExprKind::Variant { name, fields, .. } = &value.kind else { panic!("{value:?}") };
+    assert_eq!(name.name, "RegionTotal");
+    let names: Vec<&str> = fields.iter().map(|f| f.name.name.as_str()).collect();
+    assert_eq!(names, ["region", "orders", "revenue"]);
+    // a bare `- region` is `region: region`
+    assert!(matches!(&fields[0].value.kind, ExprKind::Path(p) if p.len() == 1 && p[0].name == "region"));
+    assert!(matches!(&fields[1].value.kind, ExprKind::CountOf { .. }));
+    // the inline form is the same statement
+    let inline = command_body("  1. add RegionTotal { region: region } to totals\n");
+    assert!(matches!(&inline[0].kind, StmtKind::Append { .. }));
+}
+
+#[test]
+fn descriptions_run_over_lines_and_paragraphs() {
+    let f = parse("# Record: R\nFirst line\nsecond line.\n\nSecond paragraph.\n\n- x: text\n");
+    let Decl::Record(r) = &f.decls[0] else { panic!() };
+    assert_eq!(r.doc.as_deref(), Some("First line\nsecond line.\n\nSecond paragraph."));
+    // under a `##` heading
+    let f = parse("# Agent: a\nDoes things.\n\n- model: claude\n\n## On start\nWhat it does\non two lines.\n\n1. stop\n");
+    assert_eq!(agent(&f).blocks[0].doc.as_deref(), Some("What it does\non two lines."));
+    // none at all
+    let f = parse("# Record: R\n- x: text\n");
+    let Decl::Record(r) = &f.decls[0] else { panic!() };
+    assert!(r.doc.is_none());
+}
+
+#[test]
+fn uses_entries_of_every_shape_and_labels() {
+    let f = parse("# Uses\n- [constants](../constants.agent.md)\n- [every rule](./rules/*.agent.md)\n- [billing rules](./billing/) as billing\n");
+    assert_eq!(f.imports.len(), 3);
+    assert_eq!(f.imports[0].label.as_deref(), Some("constants"));
+    assert!(matches!(&f.imports[0].kind, ImportKind::File { path, alias: None } if path == "../constants.agent.md"));
+    assert!(matches!(&f.imports[1].kind, ImportKind::Glob { pattern } if pattern == "./rules/*.agent.md"));
+    assert_eq!(f.imports[1].label.as_deref(), Some("every rule"));
+    assert!(matches!(&f.imports[2].kind, ImportKind::Folder { path, alias } if path == "./billing" && alias.name == "billing"));
+    assert_eq!(f.imports[2].label.as_deref(), Some("billing rules"));
+    // a folder without a name is an error; a glob cannot have one
+    assert!(errors("# Uses\n- [b](./billing/)\n").contains("give it a name"));
+    assert!(errors("# Uses\n- [r](./rules/*.agent.md) as r\n").contains("A glob cannot be given a name"));
+}
+
+#[test]
+fn program_start_as_anchor_link_file_link_or_plain_name() {
+    let start = |line: &str| {
+        let f = parse(&format!("# Program: p\nDoes things.\n\n- start: {line}\n"));
+        let Decl::Program(p) = &f.decls[0] else { panic!() };
+        p.start.clone().expect("a start")
+    };
+    let s = start("[sales-report](#command-sales-report)");
+    assert_eq!((s.label.as_deref(), s.target.as_str()), (Some("sales-report"), "#command-sales-report"));
+    let s = start("[sales](./commands/sales-report.agent.md)");
+    assert_eq!(s.target, "./commands/sales-report.agent.md");
+    let s = start("sales-report");
+    assert_eq!((s.label, s.target.as_str()), (None, "sales-report"));
+    // no start: fine
+    let f = parse("# Program: p\nDoes things.\n");
+    let Decl::Program(p) = &f.decls[0] else { panic!() };
+    assert!(p.start.is_none());
+    assert_eq!(p.doc.as_deref(), Some("Does things."));
+}
+
+#[test]
+fn star_and_plus_bullets_are_read_as_dashes() {
+    let f = parse("# Record: R\n* x: text\n+ y: int\n- z: bool\n");
+    let Decl::Record(r) = &f.decls[0] else { panic!() };
+    let names: Vec<&str> = r.fields.iter().map(|f| f.name.name.as_str()).collect();
+    assert_eq!(names, ["x", "y", "z"]);
+    let f = parse("# Command: c\nDoes things.\n\n* in: p: text\n+ steps:\n  1. stop\n");
+    let Decl::Command(c) = &f.decls[0] else { panic!() };
+    assert_eq!(c.args.len(), 1);
+    assert_eq!(c.body.len(), 1);
+}
+
+#[test]
+fn a_rule_takes_its_record_from_the_last_word_of_the_heading() {
+    let f = parse("# Rule: big Sale\nA big sale.\n\n- when: amount >= 100 EUR\n");
+    let Decl::Rule(r) = &f.decls[0] else { panic!() };
+    assert_eq!((r.name.name.as_str(), r.for_record.name.as_str()), ("big", "Sale"));
+    let f = parse("# Rule: very big Sale\nA very big sale.\n\n- when: amount >= 1000 EUR\n");
+    let Decl::Rule(r) = &f.decls[0] else { panic!() };
+    assert_eq!((r.name.name.as_str(), r.for_record.name.as_str()), ("very_big", "Sale"));
+}
+
+#[test]
+fn inputs_without_a_written_type_are_kept_for_the_checker_to_infer() {
+    let f = parse("# Function: f\nDoes things.\n\n- in: sales, old sales\n- out: region totals\n- steps:\n  1. return sales\n");
+    let Decl::Function(func) = &f.decls[0] else { panic!() };
+    assert_eq!(func.params.len(), 2);
+    assert_eq!(func.params[0].name.name, "sales");
+    assert_eq!(func.params[1].name.name, "old_sales");
+}
