@@ -176,7 +176,16 @@ impl Checker<'_> {
             .text
             .lines()
             .nth(at.line.saturating_sub(1) as usize)
-            .map(|l| l.trim().trim_start_matches("- ").to_string())
+            .map(|l| {
+                // the step as written, without its list marker (`- ` or `3. `)
+                let t = l.trim();
+                let t = t.trim_start_matches("- ");
+                let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
+                match t[digits..].strip_prefix(". ") {
+                    Some(rest) if digits > 0 => rest.to_string(),
+                    _ => t.to_string(),
+                }
+            })
             .unwrap_or_default();
         self.diags.push(
             Diagnostic::error(
