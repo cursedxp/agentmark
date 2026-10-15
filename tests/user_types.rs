@@ -163,7 +163,7 @@ fn the_fixture_checks_with_no_warnings() {
 #[test]
 fn an_alias_is_the_type_it_names() {
     let c = common::ok(&use_it(
-        "# Type: Names\n- is: list of text\n\n# Function: f\n- in: a: Names\n- out: list of text\n- effect: pure\n  - return a\n",
+        "# Type: Names\n- is: list of text\n\n# Function: f\n- in: a: Names\n- out: list of text\n- touches: nothing\n- steps:\n  1. return a\n",
     ));
     let f = &c.functions["f"];
     assert_eq!(f.params[0].ty.to_string(), "list of text");
@@ -191,7 +191,7 @@ fn an_enum_cannot_hold_itself_without_a_list() {
     let e = sema_errors("# Enum: A\n- X: b: B\n\n# Enum: B\n- Y: a: A\n");
     assert!(e.contains("The variant \"X\" of A holds a A inside itself") && e.contains("The variant \"Y\" of B holds a B inside itself"), "{e}");
     // a list keeps its elements on the heap
-    common::ok(&use_it("# Enum: Tree\n- Leaf\n- Node: children: list of Tree\n\n# Function: f\n- in: t: Tree\n- out: int\n- effect: pure\n  - return 0\n"));
+    common::ok(&use_it("# Enum: Tree\n- Leaf\n- Node: children: list of Tree\n\n# Function: f\n- in: t: Tree\n- out: int\n- touches: nothing\n- steps:\n  1. return 0\n"));
 }
 
 #[test]
@@ -266,11 +266,11 @@ fn a_record_is_built_field_by_field() {
 
 #[test]
 fn maybe_values_are_written_some_and_none() {
-    let src = "# Function: pick\n- in: n: int\n- out: maybe int\n- effect: pure\n  - if n > 0:\n    - return some n\n  - return none\n\n# Function: show\n- in: n: int\n- out: text\n- effect: pure\n  - if pick(n) is some v:\n    - return \"got {v}\"\n  - return \"nothing\"\n";
+    let src = "# Function: pick\n- in: n: int\n- out: maybe int\n- touches: nothing\n- steps:\n  1. if n > 0:\n     1. return some n\n  2. return none\n\n# Function: show\n- in: n: int\n- out: text\n- touches: nothing\n- steps:\n  1. if pick(n) is some v:\n     1. return \"got {v}\"\n  2. return \"nothing\"\n";
     let c = common::ok(&use_it(src));
     assert_eq!(c.functions["pick"].out.as_ref().unwrap().to_string(), "maybe int");
     assert!(is_canonical(src, "t.agent.md").unwrap());
-    let e = sema_errors("# Function: f\n- out: maybe int\n- effect: pure\n  - return some \"x\"\n");
+    let e = sema_errors("# Function: f\n- out: maybe int\n- touches: nothing\n- steps:\n  1. return some \"x\"\n");
     assert!(e.contains("This returns"), "{e}");
     let (out, _) = run_command(
         "maybes",
@@ -283,7 +283,7 @@ fn maybe_values_are_written_some_and_none() {
 
 #[test]
 fn try_works_with_and_without_do_and_branch_names_may_be_left_out() {
-    let base = "# Function: half\n- in: n: int\n- out: result of int\n- effect: pure\n  - return n / 2\n\n";
+    let base = "# Function: half\n- in: n: int\n- out: result of int\n- touches: nothing\n- steps:\n  1. return n / 2\n\n";
     for call in ["try half(n) -> h", "try do half(n) -> h"] {
         let src = format!("{base}# Function: f\n- in: n: int\n- out: int\n- effect: pure\n  - {call}\n    otherwise:\n      - set h = 0\n  - return h\n");
         let c = common::ok(&use_it(&src));
@@ -300,10 +300,10 @@ fn try_works_with_and_without_do_and_branch_names_may_be_left_out() {
     let src = format!("{base}# Function: g\n- effect: local\n  - match half(4):\n    - ok:\n      - print: \"fine\"\n    - error:\n      - print: \"broken\"\n\n# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: h\n- in: s: Shape\n- effect: local\n  - match s:\n    - Circle:\n      - print: \"round\"\n    - Empty:\n      - print: \"none\"\n");
     common::ok(&use_it(&src));
     // `some:` needs no name either
-    common::ok(&use_it("# Function: f\n- in: n: maybe int\n- effect: local\n  - match n:\n    - some:\n      - print: \"x\"\n    - none:\n      - print: \"y\"\n"));
+    common::ok(&use_it("# Function: f\n- in: n: maybe int\n- steps:\n  1. match n:\n     - some:\n       1. print: \"x\"\n     - none:\n       1. print: \"y\"\n"));
 }
 
-const STORED: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n";
+const STORED: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- steps:\n  1. try read file path as int into n\n  2. return n\n\n";
 
 #[test]
 fn a_result_can_be_stored_and_matched() {
@@ -336,23 +336,23 @@ fn a_stored_result_can_only_be_matched_once_and_nowhere_else() {
 
 #[test]
 fn a_none_that_nothing_types_is_an_error() {
-    let e = sema_errors("# Function: f\n- effect: local\n  - set d = none\n  - print: \"x\"\n");
+    let e = sema_errors("# Function: f\n- steps:\n  1. none into d\n  2. print: \"x\"\n");
     assert!(e.contains("This \"none\" does not say what it is a \"none\" of."), "{e}");
-    let e = sema_errors("# Function: f\n- effect: local\n  - print: \"{ a: none }\"\n");
+    let e = sema_errors("# Function: f\n- steps:\n  1. print: \"{ a: none }\"\n");
     assert!(!e.is_empty());
-    common::ok(&use_it("# Function: f\n- out: maybe int\n- effect: pure\n  - return none\n"));
+    common::ok(&use_it("# Function: f\n- out: maybe int\n- touches: nothing\n- steps:\n  1. return none\n"));
 }
 
 #[test]
 fn a_command_without_arguments_runs() {
-    let src = "> Says hi.\n# Command: demo\n\n## Run\n- print: \"hi\"\n";
+    let src = "# Command: demo\nSays hi.\n\n- steps:\n  1. print: \"hi\"\n";
     let (out, _) = run_command("noargs", src, &[], json!({}));
     assert_eq!(out, "hi\n");
 }
 
 #[test]
 fn a_record_named_like_a_rust_type_still_builds_warning_free() {
-    let src = "# Record: Box\n- tree: text\n\n# Function: word_of\n- in: s: Tree\n- out: text\n- effect: pure\n  - set word = \"angular\"\n  - match s:\n    - Leaf:\n      - set word = \"leaf\"\n    - otherwise:\n      - set word = \"node\"\n  - return word\n\n# Enum: Tree\n- Leaf\n- Node: inner: Box\n\n> Serves a box.\n# Service: boxes\n- listen: 127.0.0.1:8098\n\n## GET /box\n- respond 200 { node: Node { inner: Box { tree: \"oak\" } }, word: word_of(Leaf) }\n";
+    let src = "# Record: Box\n- tree: text\n\n# Function: word_of\n- in: s: Tree\n- out: text\n- touches: nothing\n- steps:\n  1. \"angular\" into word\n  2. match s:\n     - Leaf:\n       1. \"leaf\" into word\n     - otherwise:\n       1. \"node\" into word\n  3. return word\n\n# Enum: Tree\n- Leaf\n- Node: inner: Box\n\n# Service: boxes\nServes a box.\n\n- listen: 127.0.0.1:8098\n\n## GET /box\n1. respond 200 { node: Node { inner: Box { tree: \"oak\" } }, word: word_of(Leaf) }\n";
     let d = temp("boxed");
     write(&d, "boxes.agent.md", src);
     let out = d.join("out");
@@ -378,7 +378,7 @@ fn variants_are_found_through_module_aliases() {
     let p = Project::from_memory(
         "app/main.agent.md",
         vec![
-            ("app/main.agent.md", "# Import: ./shape.agent.md as geo\n\n# Command: go\n\n## Run\n- set a = geo.Shape.Empty\n- set b = geo.Circle { radius: 1 }\n- set c = geo.Empty\n- match c:\n  - Empty:\n    - print: \"empty\"\n  - Circle k:\n    - print: \"{k.radius}\"\n  - Rect r:\n    - print: \"{r.width}\"\n- print: \"done\"\n"),
+            ("app/main.agent.md", "# Uses\n- [shape](./shape.agent.md) as geo\n\n# Command: go\n- steps:\n  1. geo.Shape.Empty into a\n  2. geo.Circle { radius: 1 } into b\n  3. geo.Empty into c\n  4. match c:\n     - Empty:\n       1. print: \"empty\"\n     - Circle k:\n       1. print: \"{k.radius}\"\n     - Rect r:\n       1. print: \"{r.width}\"\n  5. print: \"done\"\n"),
             ("app/shape.agent.md", SH),
         ],
     );
@@ -399,7 +399,7 @@ fn match_needs_an_enum_a_maybe_or_a_result() {
     let e = sema_errors(&func("", "n: int", "local", "  - match n:\n    - Empty:\n      - print: \"x\"\n"));
     assert!(e.contains("\"match\" works on an enum, a \"maybe\" or a \"result\", but this is a number."), "{e}");
     // a result is made by a call: it cannot be passed in
-    let src = "# Function: f\n- in: r: result of int\n- effect: pure\n  - stop\n";
+    let src = "# Function: f\n- in: r: result of int\n- touches: nothing\n- steps:\n  1. stop\n";
     let e = sema_errors(src);
     assert!(e.contains("A result is made by a call and matched where it is stored; it cannot be passed in."), "{e}");
 }
@@ -415,7 +415,7 @@ fn an_unhandled_variant_is_named() {
     assert!(e.contains("does not handle the variants \"Rect\" and \"Empty\" of Shape."), "{e}");
     let e = sema_errors(&func("", "n: maybe int", "local", "  - match n:\n    - some v:\n      - print: \"x\"\n"));
     assert!(e.contains("does not handle the case \"none\" of a \"maybe\"."), "{e}");
-    let src = "# Function: g\n- out: result of int\n- effect: pure\n  - return 1\n\n# Function: f\n- effect: local\n  - match g():\n    - ok v:\n      - print: \"x\"\n";
+    let src = "# Function: g\n- out: result of int\n- touches: nothing\n- steps:\n  1. return 1\n\n# Function: f\n- steps:\n  1. match g():\n     - ok v:\n       1. print: \"x\"\n";
     let e = sema_errors(src);
     assert!(e.contains("does not handle the case \"error\" of a \"result\"."), "{e}");
 }
@@ -473,7 +473,7 @@ fn a_branch_name_gives_the_fields_of_its_variant_and_nothing_else() {
 
 #[test]
 fn the_names_of_a_matched_maybe_and_result_have_the_inner_types() {
-    let src = "# Function: g\n- out: result of int\n- effect: pure\n  - return 1\n\n# Function: f\n- in: n: maybe money\n- out: money\n- effect: local\n  - match g():\n    - ok v:\n      - print: \"{v + 1}\"\n    - error e:\n      - print: \"{e}\"\n  - match n:\n    - some m:\n      - return m + 1 EUR\n    - none:\n      - return 0 EUR\n";
+    let src = "# Function: g\n- out: result of int\n- touches: nothing\n- steps:\n  1. return 1\n\n# Function: f\n- in: n: maybe money\n- out: money\n- steps:\n  1. match g():\n     - ok v:\n       1. print: \"{v + 1}\"\n     - error e:\n       1. print: \"{e}\"\n  2. match n:\n     - some m:\n       1. return m + 1 EUR\n     - none:\n       1. return 0 EUR\n";
     let c = common::ok(&use_it(src));
     assert!(c.patterns.values().any(|p| *p == sema::Pattern::Error));
     assert!(c.patterns.values().any(|p| *p == sema::Pattern::Some));
@@ -508,7 +508,7 @@ fn in_function_pure(body: &str) -> String {
 fn an_unused_enum_is_reported_like_an_unused_record() {
     let w = common::warnings(&format!("{SH}# Command: go\n\n## Run\n- stop\n"));
     assert!(w.contains("Unused enum: nothing refers to \"Shape\"."), "{w}");
-    let w = common::warnings("# Type: T\n- is: text\n\n# Command: go\n\n## Run\n- stop\n");
+    let w = common::warnings("# Type: T\n- is: text\n\n# Command: go\n- steps:\n  1. stop\n");
     assert!(w.contains("Unused type: nothing refers to \"T\"."), "{w}");
     // a variant value is a use of its enum
     let used = format!("{SH}# Command: go\n\n## Run\n- set s = Empty\n- print: \"x\"\n");
@@ -520,15 +520,15 @@ fn an_unused_enum_is_reported_like_an_unused_record() {
 #[test]
 fn the_fixture_is_canonical_and_messy_new_forms_are_tidied() {
     assert!(is_canonical(SHAPES, "t.agent.md").unwrap());
-    let messy = "# Enum:   Shape\n-   Circle:  radius:int\n- Rect:width:int,height:int\n-   Empty\n\n#   Type: Sizes\n-   is:   list   of   int\n\n# Function: f\n- in: s:Shape\n- effect: pure\n  - match   s:\n    -   Circle   c:\n      - return 1\n    - Shape.Rect   r:\n      - return 2\n    - otherwise:\n      - return 3\n  - set x = Circle{radius:3}\n  - set y = Shape.Rect {width:1,height:2}\n";
+    let messy = "# Enum:   Shape\n-   Circle:  radius:int\n- Rect:width:int,height:int\n-   Empty\n\n#   Type: Sizes\n-   is:   list   of   int\n\n# Function: f\n- in: s:Shape\n- touches: nothing\n- steps:\n  1. match   s:\n     - Circle   c:\n       1. return 1\n     - Shape.Rect   r:\n       1. return 2\n     - otherwise:\n       1. return 3\n  2. Circle{radius:3} into x\n  3. Shape.Rect {width:1,height:2} into y\n";
     let out = format_source(messy, "t.agent.md").unwrap();
     assert_eq!(
         out,
-        "# Enum: Shape\n- Circle: radius: int\n- Rect: width: int, height: int\n- Empty\n\n# Type: Sizes\n- is: list of int\n\n# Function: f\n- in: s: Shape\n- effect: pure\n  - match s:\n    - Circle c:\n      - return 1\n    - Shape.Rect r:\n      - return 2\n    - otherwise:\n      - return 3\n  - set x = Circle { radius: 3 }\n  - set y = Shape.Rect { width: 1, height: 2 }\n"
+        "# Enum: Shape\n- Circle: radius: int\n- Rect: width: int, height: int\n- Empty\n\n# Type: Sizes\n- is: list of int\n\n# Function: f\n- in: s: Shape\n- touches: nothing\n- steps:\n  1. match s:\n     - Circle c:\n       1. return 1\n     - Shape.Rect r:\n       1. return 2\n     - otherwise:\n       1. return 3\n  2. Circle { radius: 3 } into x\n  3. Shape.Rect { width: 1, height: 2 } into y\n"
     );
     // formatting is idempotent and keeps the comments
     assert_eq!(format_source(&out, "t.agent.md").unwrap(), out);
-    let commented = "# Enum: Shape\n> the round one\n- Circle: radius: int\n- Empty\n\n# Function: f\n- in: s: Shape\n- effect: pure\n  - match s:\n    > first\n    - Circle c:\n      - return 1\n    > the rest\n    - otherwise:\n      - return 2\n";
+    let commented = "# Enum: Shape\n> the round one\n- Circle: radius: int\n- Empty\n\n# Function: f\n- in: s: Shape\n- touches: nothing\n- steps:\n  1. match s:\n     > first\n     - Circle c:\n       1. return 1\n     > the rest\n     - otherwise:\n       1. return 2\n";
     assert_eq!(format_source(commented, "t.agent.md").unwrap(), commented);
 }
 
@@ -571,7 +571,7 @@ fn the_ir_has_the_enums_and_resolved_matches() {
 
 #[test]
 fn lint_looks_inside_match_branches() {
-    let src = "# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: f\n- in: s: Shape\n- effect: local\n  - match s:\n    - Circle data:\n      - print: \"{data.radius}\"\n    - Empty:\n      - print: \"https://example.com/a and https://example.com/a\"\n";
+    let src = "# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: f\n- in: s: Shape\n- steps:\n  1. match s:\n     - Circle data:\n       1. print: \"{data.radius}\"\n     - Empty:\n       1. print: \"https://example.com/a and https://example.com/a\"\n";
     let f = parse(src);
     let findings = agentmark::lint::lint(std::slice::from_ref(&f), &agentmark::lint::LintConfig::default());
     let texts: Vec<String> = findings.iter().map(|d| d.message.clone()).collect();
@@ -621,7 +621,7 @@ fn the_fixture_program_prints_what_each_match_decides() {
 
 /// Branches that leave their name unused, a `result` matched in a route: the generated code must
 /// build without a warning (regression: the first draft named the failure `problem__err`).
-const SERVICE: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n# Enum: Shape\n- Circle: radius: int\n- Rect: width: int, height: int\n- Empty\n\n> Answers with shapes and measures the ones it is sent.\n# Service: shapes\n- listen: 127.0.0.1:8099\n\n## GET /shape\n- respond 200 Circle { radius: 3 }\n\n## GET /empty\n- respond 200 Shape.Empty\n\n## POST /area\n- read body as Shape -> shape\n- match shape:\n  - Circle c:\n    - respond 200 { area: c.radius * c.radius * 3 }\n  - Rect r:\n    - respond 200 { area: r.width * r.height }\n  - Empty:\n    - respond 200 { area: 0 }\n\n## POST /kind\n- read body as Shape -> shape\n- match shape:\n  - Circle c:\n    - respond 200 { kind: \"round\" }\n  - otherwise:\n    - respond 200 { kind: \"angular\" }\n\n## GET /count\n- match read_count(\"count.json\"):\n  - ok total:\n    - respond 200 { total: total }\n  - error problem:\n    - respond 404 { problem: problem }\n";
+const SERVICE: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- steps:\n  1. try read file path as int into n\n  2. return n\n\n# Enum: Shape\n- Circle: radius: int\n- Rect: width: int, height: int\n- Empty\n\n# Service: shapes\nAnswers with shapes and measures the ones it is sent.\n\n- listen: 127.0.0.1:8099\n\n## GET /shape\n1. respond 200 Circle { radius: 3 }\n\n## GET /empty\n1. respond 200 Shape.Empty\n\n## POST /area\n1. read body as Shape into shape\n2. match shape:\n   - Circle c:\n     1. respond 200 { area: c.radius * c.radius * 3 }\n   - Rect r:\n     1. respond 200 { area: r.width * r.height }\n   - Empty:\n     1. respond 200 { area: 0 }\n\n## POST /kind\n1. read body as Shape into shape\n2. match shape:\n   - Circle c:\n     1. respond 200 { kind: \"round\" }\n   - otherwise:\n     1. respond 200 { kind: \"angular\" }\n\n## GET /count\n1. match read_count(\"count.json\"):\n   - ok total:\n     1. respond 200 { total: total }\n   - error problem:\n     1. respond 404 { problem: problem }\n";
 
 #[test]
 fn enum_values_travel_as_tagged_json_through_a_service() {
@@ -693,7 +693,7 @@ fn the_documentation_page_lists_enums_and_types() {
     assert!(text.contains("## Types\n\n### Entries\n\nAnother name for `list of Entry`."), "{text}");
 }
 
-const NOTES: &str = "# Record: Note\n- id: int\n- title: text\n\n> Parses notes from JSON and says what happened.\n# Command: demo\n- args: body: text\n\n## Run\n- set parsed = json.parse(body) as list of Note\n- match parsed:\n  - ok notes:\n    - print: \"{count of notes} notes\"\n  - error problem:\n    - print: \"bad json\"\n- match number.parse(body):\n  - ok n:\n    - print: \"number {n}\"\n  - error:\n    - print: \"not a number\"\n";
+const NOTES: &str = "# Record: Note\n- id: int\n- title: text\n\n# Command: demo\nParses notes from JSON and says what happened.\n\n- in: body: text\n- steps:\n  1. json.parse(body) as list of Note into parsed\n  2. match parsed:\n     - ok notes:\n       1. print: \"{count of notes} notes\"\n     - error problem:\n       1. print: \"bad json\"\n  3. match number.parse(body):\n     - ok n:\n       1. print: \"number {n}\"\n     - error:\n       1. print: \"not a number\"\n";
 
 #[test]
 fn library_results_are_stored_and_matched_like_function_results() {
@@ -709,11 +709,11 @@ fn library_results_are_stored_and_matched_like_function_results() {
     assert!(e.contains("\"parsed\" holds a result, which can only be matched."), "{e}");
 }
 
-const TOTALS: &str = "# Enum: Kind\n- Sale: amount: money\n- Refund: amount: money\n- Note\n\n# Type: Totals\n- is: map of text to money\n\n# Function: lookup\n- in: totals: Totals\n- out: maybe money\n- effect: pure\n  - return totals at \"sales\"\n\n# Function: signed\n- in: kind: Kind\n- out: money\n- effect: pure\n  - match kind:\n    - Sale s:\n      - return s.amount\n    - Refund r:\n      - return 0 EUR - r.amount\n    - Note:\n      - return 0 EUR\n\n> Adds sales and refunds per region, matching each kind inside the loops.\n# Command: demo\n\n## Run\n- set totals = empty map of text to money\n- set kinds = list of Sale { amount: 5.00 EUR }, Refund { amount: 2.00 EUR }, Note\n- for each kind in kinds with index i:\n  - match kind:\n    - Sale s:\n      - put s.amount at \"sales\" in totals\n    - Refund:\n      - put signed(kind) at \"refunds\" in totals\n    - otherwise:\n      - print: \"note {i}\"\n- for each region, total in totals:\n  - print: \"{region}: {total}\"\n- match lookup(totals):\n  - some m:\n    - print: \"sales {m}\"\n  - none:\n    - print: \"no sales\"\n";
+const TOTALS: &str = "# Enum: Kind\n- Sale: amount: money\n- Refund: amount: money\n- Note\n\n# Type: Totals\n- is: map of text to money\n\n# Function: lookup\n- in: totals: Totals\n- out: maybe money\n- touches: nothing\n- steps:\n  1. return totals at \"sales\"\n\n# Function: signed\n- in: kind: Kind\n- out: money\n- touches: nothing\n- steps:\n  1. match kind:\n     - Sale s:\n       1. return s.amount\n     - Refund r:\n       1. return 0 EUR - r.amount\n     - Note:\n       1. return 0 EUR\n\n# Command: demo\nAdds sales and refunds per region, matching each kind inside the loops.\n\n- steps:\n  1. empty map of text to money into totals\n  2. list of Sale { amount: 5.00 EUR }, Refund { amount: 2.00 EUR }, Note into kinds\n  3. for each kind in kinds with index i:\n     1. match kind:\n        - Sale s:\n          1. put s.amount at \"sales\" in totals\n        - Refund:\n          1. put signed(kind) at \"refunds\" in totals\n        - otherwise:\n          1. print: \"note {i}\"\n  4. for each region, total in totals:\n     1. print: \"{region}: {total}\"\n  5. match lookup(totals):\n     - some m:\n       1. print: \"sales {m}\"\n     - none:\n       1. print: \"no sales\"\n";
 
 #[test]
 fn map_aliases_and_matches_inside_collection_loops() {
-    let alias = "# Type: Totals\n- is: map of text to money\n\n# Function: f\n- in: totals: Totals\n- out: maybe money\n- effect: pure\n  - return totals at \"EU\"\n";
+    let alias = "# Type: Totals\n- is: map of text to money\n\n# Function: f\n- in: totals: Totals\n- out: maybe money\n- touches: nothing\n- steps:\n  1. return totals at \"EU\"\n";
     let c = common::ok(&use_it(alias));
     assert_eq!(c.aliases["Totals"].ty.to_string(), "map of text to money");
     assert_eq!(c.functions["f"].params[0].ty.to_string(), "map of text to money");

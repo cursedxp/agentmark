@@ -118,7 +118,7 @@ fn a_function_that_declares_pure_cannot_use_the_file_tool() {
 
 #[test]
 fn library_calls_are_fine_in_a_rule() {
-    ok("# Record: Invoice\n- id: text\n- status: text\n\n# Rule: shouty\n- for: Invoice\n- when: text.upper(status) = \"LATE\" and regex.matches(id, \"^INV\")\n");
+    ok("# Record: Invoice\n- id: text\n- status: text\n\n# Rule: shouty Invoice\n- when: text.upper(status) = \"LATE\" and regex.matches(id, \"^INV\")\n");
 }
 
 // ------------------------------------------------------------------ errors
@@ -185,7 +185,7 @@ fn a_literal_pattern_that_cannot_work_is_checked_now() {
     let e = first_error(&func("text", "return date.format(d, \"%Q\")"));
     assert!(e.contains("is not a date pattern"), "{e}");
     // a constant holding a pattern is looked through
-    let src = format!("# Constant: bad\n- value: \"[\"\n\n{}", func("bool", "return regex.matches(s, bad)"));
+    let src = format!("# Constant: bad\n- value: \"[\"\n{}", func("bool", "return regex.matches(s, bad)"));
     let e = first_error(&src);
     assert!(e.contains("is not a valid pattern"), "{e}");
     ok(&func("bool", "return regex.matches(s, \"^[a-z]+$\")"));

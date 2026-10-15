@@ -224,7 +224,7 @@ fn wrapped(fragment: &str) -> String {
     } else if first.starts_with("## Run") {
         "# Command: doc-command\n\n"
     } else if first.starts_with("## Rust") {
-        "# Function: doc_host\n- out: text\n- effect: pure\n  - return \"x\"\n\n"
+        "# Function: doc_host\n- out: text\n- touches: nothing\n- steps:\n  1. return \"x\"\n\n"
     } else if first.starts_with("## Not bound") {
         "# Binding: doc\n- crate: doc\n- effect: unverified\n\n"
     } else if first.starts_with("## ") {
@@ -238,7 +238,7 @@ fn wrapped(fragment: &str) -> String {
 /// A quoted project file that imports its neighbours cannot be checked on its own (the folder
 /// projects are checked as projects by `tests/sema_examples.rs`).
 fn needs_other_files(b: &Block) -> bool {
-    b.modifier("file").is_some() && b.body.lines().any(|l| l.starts_with("# Import: ."))
+    b.modifier("file").is_some() && b.body.lines().any(|l| l.starts_with("# Uses\n- [.](./)"))
 }
 
 fn trim_end_lines(s: &str) -> String {
@@ -629,9 +629,9 @@ fn reference_shows_every_statement_form() {
         "first ",
         "## Rust: ",
         "## Not bound",
-        "# Import: crate ",
-        "# Constant: ",
-        "# Run",
+        "# Uses\n- [crate](crate/)",
+        "# Constant:",
+        "# Program: program",
         "## Every ",
         "## When ",
         "## On start",
@@ -669,7 +669,7 @@ fn bound_items_carry_a_description_line() {
         std::fs::read_to_string("examples/05-invoice-service/bindings/sha2.agent.md").unwrap(),
     ));
     for b in agentmark_blocks() {
-        if b.body.lines().any(|l| l.starts_with("# Binding: ")) {
+        if b.body.lines().any(|l| l.starts_with("# Binding:")) {
             files.push((b.at(), b.body.clone()));
         }
     }
@@ -693,7 +693,7 @@ fn sha2_description_matches_the_library_documentation() {
     let digest = std::fs::read_to_string("tests/binder/digest.json").unwrap();
     assert!(digest.contains("Compute hash of `data`."), "the recorded rustdoc of digest changed");
     let binding = std::fs::read_to_string("examples/05-invoice-service/bindings/sha2.agent.md").unwrap();
-    assert!(binding.contains("> Compute hash of `data`.\n## sha256_digest(data: bytes) -> bytes"));
+    assert!(binding.contains("## sha256_digest(data: bytes) -> bytes\nCompute hash of `data`."));
 }
 
 /// Every `$ agentmark` line of a doc is the first line of a `console` block, and so is executed.
@@ -722,7 +722,7 @@ fn check_json_doc_matches_the_real_output() {
     std::fs::write(dir.path().join("tools.toml"), TOOLS).unwrap();
     std::fs::write(
         dir.path().join("a.agent.md"),
-        "# Record: Order\n- total\n\n> Logs.\n# Agent: logger\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n",
+        "# Record: Order\n- total\n\n# Agent: logger\nLogs.\n\n- model: claude\n- tools: log\n\n## On start\n1. log: \"hi\"\n",
     )
     .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_agentmark"))
@@ -848,7 +848,7 @@ fn editor_doc_toml_is_a_valid_config() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("agentmark.toml"), format!("{}\n", block.body)).unwrap();
     std::fs::write(dir.path().join("tools.toml"), TOOLS).unwrap();
-    std::fs::write(dir.path().join("main.agent.md"), "> Logs once.\n# Agent: hello\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n").unwrap();
+    std::fs::write(dir.path().join("main.agent.md"), "# Agent: hello\nLogs once.\n\n- model: claude\n- tools: log\n\n## On start\n1. log: \"hi\"\n").unwrap();
     let project = Project::load(dir.path().to_str().unwrap());
     let errors: Vec<_> = match sema::check(&project) {
         Ok(_) => Vec::new(),

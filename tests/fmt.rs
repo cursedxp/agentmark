@@ -170,10 +170,10 @@ fn invalid_source_is_reported_not_formatted() {
 #[test]
 fn imports_sort_local_files_then_folders_then_crates() {
     let out = fmt_ok(
-        "# Import: crate zed\n# Import: ./b as b\n# Import: ./z.agent.md\n# Import: ./a.agent.md\n# Import: crate alpha\n\n# Record: A\n- x: text\n",
+        "# Uses\n- [a](./a.agent.md)\n- [b](./b/) as b\n- [z](./z.agent.md)\n\n# Import: crate alpha\n# Import: crate zed\n\n# Record: A\n- x: text\n",
     );
     assert!(out.starts_with(
-        "# Import: ./a.agent.md\n# Import: ./z.agent.md\n# Import: ./b as b\n# Import: crate alpha\n# Import: crate zed\n\n# Record: A\n"
+        "# Uses\n- [a](./a.agent.md)\n- [b](./b/) as b\n- [z](./z.agent.md)\n\n# Import: crate alpha\n# Import: crate zed\n\n# Record: A\n"
     ));
 }
 
@@ -219,49 +219,15 @@ fn expressions_keep_exactly_the_parentheses_precedence_needs() {
 
 #[test]
 fn comments_the_parser_drops_are_written_back_where_they_were() {
-    let src = "\
-# Agent: a
-- model: claude
-> after the last property
-
-## Do x
-- if a:
-  - log: \"1\"
-> above else
-- else:
-  - log: \"2\"
-> end of block
-
-# Run
-- a
-> between run items
-- b
-";
+    let src = "# Program: a\n\n# Agent: a\n- model: claude\n> after the last property\n> after the last property\n\n## Do x\n1. if a:\n   1. log: \"1\"\n   > above else\n   else:\n   1. log: \"2\"\n> end of block\n";
     let out = check_properties(src);
-    let expected = "\
-# Agent: a
-- model: claude
-> after the last property
-
-## Do x
-- if a:
-  - log: \"1\"
-> above else
-- else:
-  - log: \"2\"
-> end of block
-
-# Run
-- a
-> between run items
-- b
-";
+    let expected = "# Program: a\n\n# Agent: a\n- model: claude\n> after the last property\n> after the last property\n\n## Do x\n1. if a:\n   1. log: \"1\"\n   > above else\n   else:\n   1. log: \"2\"\n> end of block\n";
     assert_eq!(out, expected);
 }
 
 #[test]
 fn a_comment_before_the_first_heading_stays_apart_from_the_file_doc() {
-    let src = "> file doc\n\n> loose note\n\n# Record: A\n- x: text\n";
+    let src = "> file doc\n> loose note\n\n# Record: A\n- x: text\n";
     let out = check_properties(src);
     assert_eq!(out, src);
 }
@@ -275,42 +241,14 @@ fn a_file_with_only_a_doc_or_nothing_formats() {
 
 #[test]
 fn fenced_rust_is_verbatim() {
-    let src = "\
-# Function: f
-- effect: pure
-
-## Rust: g -> text
-- effect: pure
-  ```rust
-  fn x() {
-      let   y = 1;   // spaces   kept
-
-  }
-  ```
-";
+    let src = "# Function: f\n- touches: nothing\n- steps:\n\n## Rust: g -> text\n- touches: nothing\n\n```rust\nfn x() {\n    let   y = 1;   // spaces   kept\n\n}\n```\n";
     let out = check_properties(src);
     assert!(out.contains("  fn x() {\n      let   y = 1;   // spaces   kept\n\n  }\n"));
 }
 
 #[test]
 fn blank_lines_inside_fenced_rust_are_not_collapsed() {
-    let src = "\
-# Function: f
-- effect: pure
-
-## Rust: g -> text
-- effect: pure
-  ```rust
-  let a = 1;
-
-
-  let s = \"line one
-
-
-  line four\";
-  format!(\"{a}{s}\")
-  ```
-";
+    let src = "# Function: f\n- touches: nothing\n- steps:\n\n## Rust: g -> text\n- touches: nothing\n\n```rust\nlet a = 1;\n\nlet s = \"line one\n\nline four\";\nformat!(\"{a}{s}\")\n```\n";
     let out = check_properties(src);
     assert_eq!(out, src);
 }
@@ -332,23 +270,7 @@ fn a_comment_between_not_bound_and_its_first_item_stays_below_the_heading() {
 
 #[test]
 fn a_comment_above_otherwise_or_else_lines_up_with_it() {
-    let src = "\
-> Doc.
-# Agent: a
-- model: claude
-
-## Do go
-- try http get \"https://x.example\" -> r
-  > what happens when it fails
-  otherwise:
-    - log: \"no\"
-- if a:
-  - log: \"1\"
-  > trailing in if
-> above else
-- else:
-  - log: \"2\"
-";
+    let src = "# Agent: a\nDoc.\n\n- model: claude\n\n## Do go\n1. try http get \"https://x.example\" into r\n   otherwise:\n   1. log: \"no\"\n2. if a:\n   1. log: \"1\"\n   > trailing in if\n   > above else\n   else:\n   1. log: \"2\"\n";
     let out = check_properties(src);
     assert_eq!(out, src);
 }

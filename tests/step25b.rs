@@ -61,7 +61,7 @@ fn negative_numbers_parse_check_run_and_format() {
 
     let d = temp("neg");
     write(&d, "agentmark.toml", "name = \"neg\"\nversion = \"0.1.0\"\ntargets = [\"rust\"]\n");
-    write(&d, "main.agent.md", "# Import: ./commands/c.agent.md\n\n# Run\n- c\n");
+    write(&d, "main.agent.md", "# Program: c\n\n# Uses\n- [c](./commands/c.agent.md)\n");
     write(&d, "commands/c.agent.md", &src);
     let o = agentmark(&["build", s(&d), "-o", s(&d.join("out")), "--no-check"]).output_locked();
     assert!(o.status.success(), "{}", stderr(&o));

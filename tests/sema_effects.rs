@@ -158,7 +158,7 @@ fn a_declared_effect_is_a_floor_for_callers() {
 
 #[test]
 fn recursion_is_allowed() {
-    let src = "# Function: down\n- in: n: int\n- out: int\n- effect: pure\n  - if n = 0:\n    - return 0\n  - return down(n - 1)\n";
+    let src = "# Function: down\n- in: n: int\n- out: int\n- touches: nothing\n- steps:\n  1. if n = 0:\n     1. return 0\n  2. return down(n - 1)\n";
     let c = ok(src);
     assert!(c
         .blocks
@@ -171,7 +171,7 @@ fn recursion_is_allowed() {
 
 #[test]
 fn mutual_recursion_is_allowed() {
-    let src = "# Function: a\n- in: n: int\n- out: int\n- effect: pure\n  - return b(n)\n\n# Function: b\n- in: n: int\n- out: int\n- effect: pure\n  - return a(n)\n";
+    let src = "# Function: a\n- in: n: int\n- out: int\n- touches: nothing\n- steps:\n  1. return b(n)\n\n# Function: b\n- in: n: int\n- out: int\n- touches: nothing\n- steps:\n  1. return a(n)\n";
     ok(src);
 }
 
@@ -215,7 +215,7 @@ fn a_do_action_contributes_its_effect_to_the_caller() {
 
 #[test]
 fn a_do_block_sees_the_loop_record_but_two_different_records_are_an_error() {
-    let src = "# Record: Invoice\n- id: text\n\n# Record: Lead\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - do show\nfor each l in crm.leads:\n  - do show\n\n## Do show\n- log: \"{id}\"\n";
+    let src = "# Record: Invoice\n- id: text\n\n# Record: Lead\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\n1. for each i in crm.invoices:\n   1. do show\n2. for each l in crm.leads:\n   1. do show\n\n## Do show\n1. log: \"{id}\"\n";
     let e = first_error(src);
     assert!(
         e.contains(
@@ -228,25 +228,25 @@ fn a_do_block_sees_the_loop_record_but_two_different_records_are_an_error() {
 #[test]
 fn an_uncalled_do_block_is_a_warning_not_an_error() {
     // we do not know which record it works on, so a name that is a field of some record passes
-    let w = warnings("# Record: R\n- id: text\n\n# Agent: a\n- model: claude\n- tools: log\n\n## Do lonely\n- log: \"{id}\"\n");
+    let w = warnings("# Record: R\n- id: text\n\n# Agent: a\n- model: claude\n- tools: log\n\n## Do lonely\n1. log: \"{id}\"\n");
     assert!(w.contains("Unused action: no block calls \"do lonely\"."), "{w}");
 }
 
 #[test]
 fn an_uncalled_do_block_still_reports_names_that_no_record_has() {
-    let e = first_error("# Record: R\n- id: text\n\n# Agent: a\n- model: claude\n- tools: log\n\n## Do lonely\n- log: \"{whatever}\"\n");
+    let e = first_error("# Record: R\n- id: text\n\n# Agent: a\n- model: claude\n- tools: log\n\n## Do lonely\n1. log: \"{whatever}\"\n");
     assert!(e.contains("Unknown name \"whatever\""), "{e}");
 }
 
 #[test]
 fn do_with_a_result_variable_from_a_function() {
-    let src = "# Function: five\n- out: int\n- effect: pure\n  - return 5\n\n# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- do five -> n\n- log: \"{n}\"\n";
+    let src = "# Function: five\n- out: int\n- touches: nothing\n- steps:\n  1. return 5\n\n# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. do five into n\n2. log: \"{n}\"\n";
     ok(src);
 }
 
 #[test]
 fn do_of_an_unknown_action_suggests() {
-    let src = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- do remnd\n\n## Do remind\n- log: \"x\"\n";
+    let src = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. do remnd\n\n## Do remind\n1. log: \"x\"\n";
     let e = first_error(src);
     assert!(
         e.contains("Unknown action or function \"remnd\". Did you mean \"remind\"?"),
@@ -274,7 +274,7 @@ fn with_rust(effect: &str, rest: &str) -> String {
 fn rust_blocks_carry_their_declared_effect() {
     let src = with_rust(
         "network",
-        "# Function: f\n- in: s: text\n- out: text\n- effect: network\n  - return shout(s)\n",
+        "# Function: f\n- in: s: text\n- out: text\n- steps:\n  1. return shout(s)\n",
     );
     let c = ok(&src);
     assert_eq!(c.rust_blocks.len(), 1);
@@ -288,7 +288,7 @@ fn rust_blocks_carry_their_declared_effect() {
 fn a_pure_function_may_not_call_a_network_rust_block() {
     let src = with_rust(
         "network",
-        "# Function: f\n- in: s: text\n- out: text\n- effect: pure\n  - return shout(s)\n",
+        "# Function: f\n- in: s: text\n- out: text\n- touches: nothing\n- steps:\n  1. return shout(s)\n",
     );
     let e = first_error(&src);
     assert!(
@@ -301,15 +301,15 @@ fn a_pure_function_may_not_call_a_network_rust_block() {
 fn a_rule_may_call_a_pure_rust_block() {
     let src = with_rust(
         "pure",
-        "# Rule: r\n- for: Invoice\n- when: shout(id) = \"A\"\n",
+        "# Rule: r Invoice\n- when: shout(id) = \"A\"\n",
     );
     ok(&src);
 }
 
 #[test]
 fn unverified_bindings_count_as_unapproved_and_are_listed() {
-    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: network\n  - pdf render t -> b\n  - return b\n";
-    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: unverified\n- proposed-effect: local\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
+    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- steps:\n  1. pdf render t into b\n  2. return b\n";
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: unverified\n- proposed-effect: local\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let p = Project::from_memory(
         "app/main.agent.md",
         vec![
@@ -331,8 +331,8 @@ fn unverified_bindings_count_as_unapproved_and_are_listed() {
 
 #[test]
 fn a_function_that_uses_an_unverified_binding_cannot_claim_to_be_pure() {
-    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: pure\n  - pdf render t -> b\n  - return b\n";
-    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: unverified\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
+    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- touches: nothing\n- steps:\n  1. pdf render t into b\n  2. return b\n";
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: unverified\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let p = Project::from_memory(
         "app/main.agent.md",
         vec![
@@ -354,8 +354,8 @@ fn a_function_that_uses_an_unverified_binding_cannot_claim_to_be_pure() {
 
 #[test]
 fn an_approved_binding_is_trusted_with_its_effect() {
-    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: local\n  - pdf render t -> b\n  - return b\n";
-    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
+    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- steps:\n  1. pdf render t into b\n  2. return b\n";
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let p = Project::from_memory(
         "app/main.agent.md",
         vec![
@@ -371,7 +371,7 @@ fn an_approved_binding_is_trusted_with_its_effect() {
 
 #[test]
 fn binding_verbs_and_value_counts_are_checked() {
-    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let run = |stmt: &str| {
         let main = format!("# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: local\n  {stmt}\n  - return b\n");
         let p = Project::from_memory(
@@ -437,11 +437,11 @@ fn parallel_conflicts_through_nested_statements_and_set() {
 
 // ------------------------------------------------------------ text -> bytes for binding arguments (Q151)
 
-const HASH_BINDING: &str = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```\n";
+const HASH_BINDING: &str = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n```rust\nOk(data)\n```\n";
 
 fn hash_call(param: &str, arg: &str) -> Result<sema::Checked, String> {
     let main = format!(
-        "# Import: crate hashing\n\n# Function: make\n- in: {param}\n- out: bytes\n- effect: pure\n  - hashing digest {arg} -> b\n  - return b\n"
+        "# Import: crate hashing\n\n# Function: make\n- in: {param}\n- out: bytes\n- touches: nothing\n- steps:\n  1. hashing digest {arg} into b\n  2. return b\n"
     );
     let p = Project::from_memory(
         "app/main.agent.md",

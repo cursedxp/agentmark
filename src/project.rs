@@ -920,7 +920,7 @@ mod tests {
             vec![
                 (
                     "app/main.agent.md",
-                    "# Import: ./a.agent.md\n\n# Record: M\n- id: text\n",
+                    "# Uses\n- [a](./a.agent.md)\n\n# Record: M\n- id: text\n",
                 ),
                 ("app/a.agent.md", &rec("A")),
                 ("app/unused.agent.md", &rec("U")),
@@ -937,7 +937,7 @@ mod tests {
             vec![
                 (
                     "app/main.agent.md",
-                    "# Import: ./rules/*.agent.md\n\n# Record: M\n- id: text\n",
+                    "# Uses\n- [*](./rules/*.agent.md)\n\n# Record: M\n- id: text\n",
                 ),
                 ("app/rules/a.agent.md", &rec("A")),
                 ("app/rules/b.agent.md", &rec("B")),
@@ -957,7 +957,7 @@ mod tests {
             "app/main.agent.md",
             vec![(
                 "app/main.agent.md",
-                "# Import: ./rules/*.agent.md\n\n# Record: M\n- id: text\n",
+                "# Uses\n- [*](./rules/*.agent.md)\n\n# Record: M\n- id: text\n",
             )],
         );
         let out = p.render(&p.load_diagnostics);
@@ -974,7 +974,7 @@ mod tests {
             vec![
                 (
                     "app/main.agent.md",
-                    "# Import: ./billing as billing\n\n# Record: M\n- id: text\n",
+                    "# Uses\n- [billing](./billing/) as billing\n\n# Record: M\n- id: text\n",
                 ),
                 ("app/billing/rules.agent.md", &rec("A")),
                 ("app/billing/sub/more.agent.md", &rec("B")),
@@ -997,7 +997,7 @@ mod tests {
             vec![
                 (
                     "app/main.agent.md",
-                    "# Import: ./recrods.agent.md\n\n# Record: M\n- id: text\n",
+                    "# Uses\n- [recrods](./recrods.agent.md)\n\n# Record: M\n- id: text\n",
                 ),
                 ("app/records.agent.md", &rec("A")),
             ],
@@ -1016,15 +1016,15 @@ mod tests {
             vec![
                 (
                     "app/a.agent.md",
-                    "# Import: ./b.agent.md\n\n# Record: A\n- id: text\n",
+                    "# Uses\n- [b](./b.agent.md)\n\n# Record: A\n- id: text\n",
                 ),
                 (
                     "app/b.agent.md",
-                    "# Import: ./c.agent.md\n\n# Record: B\n- id: text\n",
+                    "# Uses\n- [c](./c.agent.md)\n\n# Record: B\n- id: text\n",
                 ),
                 (
                     "app/c.agent.md",
-                    "# Import: ./a.agent.md\n\n# Record: C\n- id: text\n",
+                    "# Uses\n- [a](./a.agent.md)\n\n# Record: C\n- id: text\n",
                 ),
             ],
         );
@@ -1046,7 +1046,7 @@ mod tests {
             "app/a.agent.md",
             vec![(
                 "app/a.agent.md",
-                "# Import: ./a.agent.md\n\n# Record: A\n- id: text\n",
+                "# Uses\n- [a](./a.agent.md)\n\n# Record: A\n- id: text\n",
             )],
         );
         let out = p.render(&p.load_diagnostics);
@@ -1063,7 +1063,7 @@ mod tests {
             vec![
                 (
                     "app/a.agent.md",
-                    "# Import: ./b.agent.md\n\n# Record: A\n- id: text\n",
+                    "# Uses\n- [b](./b.agent.md)\n\n# Record: A\n- id: text\n",
                 ),
                 ("app/b.agent.md", "# Record: B\n\t- id: text\n"),
             ],

@@ -112,8 +112,8 @@ fn tool_calls_say_which_variable_and_field_they_read() {
 
 #[test]
 fn bindings_are_resolved_as_bindings() {
-    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: local\n  - pdf render t -> b\n  - return b\n";
-    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
+    let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- steps:\n  1. pdf render t into b\n  2. return b\n";
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", main), ("app/bindings/printpdf.agent.md", binding)]);
     let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
     let t = c.tool_calls.values().next().unwrap();
@@ -125,8 +125,8 @@ fn bindings_are_resolved_as_bindings() {
 
 #[test]
 fn calls_are_resolved_to_declared_names_even_through_an_alias() {
-    let main = "# Import: ./billing as billing\n\n# Function: f\n- out: int\n- effect: pure\n  - return billing.five()\n";
-    let fns = "# Function: five\n- out: int\n- effect: pure\n  - return 5\n";
+    let main = "# Uses\n- [billing](./billing/) as billing\n\n# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. return billing.five()\n";
+    let fns = "# Function: five\n- out: int\n- touches: nothing\n- steps:\n  1. return 5\n";
     let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", main), ("app/billing/fns.agent.md", fns)]);
     let c = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
     assert!(c.resolutions.values().any(|r| matches!(r, Resolution::Call { kind: CallKind::Function, decl } if decl == "five")));
@@ -137,7 +137,7 @@ fn unwraps_say_where_a_maybe_value_is_read_as_present() {
     let c = sema::check(&Project::load("examples/05-invoice-service")).unwrap();
     // `found.id` after `guard: found is not empty` unwraps segment 0; `respond 200 found` too
     assert!(c.unwraps.values().any(|v| v == &vec![0]), "{:?}", c.unwraps);
-    let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- effect: pure\n  - if i.s is some v:\n    - return i.s\n  - return 0\n";
+    let src = "# Record: I\n- id: text\n- s: maybe int\n\n# Function: f\n- in: i: I\n- out: int\n- touches: nothing\n- steps:\n  1. if i.s is some v:\n     1. return i.s\n  2. return 0\n";
     let c = ok(src);
     assert!(c.unwraps.values().any(|v| v == &vec![1]), "{:?}", c.unwraps);
 }
@@ -183,7 +183,7 @@ fn camel_case_names_are_inferred_and_listed() {
 
 #[test]
 fn do_callers_may_use_different_variable_names_for_the_same_record() {
-    let src = "# Record: Invoice\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - do show\nfor each j in crm.invoices:\n  - do show\n\n## Do show\n- log: \"{id}\"\n";
+    let src = "# Record: Invoice\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\n1. for each i in crm.invoices:\n   1. do show\n2. for each j in crm.invoices:\n   1. do show\n\n## Do show\n1. log: \"{id}\"\n";
     let c = ok(src);
     let b = c.blocks.iter().find(|b| b.label == "Do show").unwrap();
     assert_eq!(b.param, Some(("i".to_string(), "Invoice".to_string())));
@@ -191,17 +191,17 @@ fn do_callers_may_use_different_variable_names_for_the_same_record() {
 
 #[test]
 fn text_tools_need_text_payloads() {
-    let src = "# Agent: a\n- model: claude\n- tools: email, log\n\n## On start\n- email send address \"a@b.c\": 5\n";
+    let src = "# Agent: a\n- model: claude\n- tools: email, log\n\n## On start\n1. email send address \"a@b.c\": 5\n";
     let e = first_error(src);
     assert!(e.contains("The tool email takes text here, but this is a number."), "{e}");
-    let e = first_error("# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: 5\n");
+    let e = first_error("# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. log: 5\n");
     assert!(e.contains("The tool log takes text here"), "{e}");
 }
 
 #[test]
 fn binding_arguments_are_type_checked() {
-    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n  ```rust\n  Ok(Vec::new())\n  ```\n";
-    let main = "# Import: crate printpdf\n\n# Function: make\n- in: n: int\n- out: bytes\n- effect: local\n  - pdf render n -> b\n  - return b\n";
+    let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
+    let main = "# Import: crate printpdf\n\n# Function: make\n- in: n: int\n- out: bytes\n- steps:\n  1. pdf render n into b\n  2. return b\n";
     let p = Project::from_memory("app/main.agent.md", vec![("app/main.agent.md", main), ("app/bindings/printpdf.agent.md", binding)]);
     let d = sema::check(&p).unwrap_err();
     let out = p.render(&d.into_iter().filter(|x| x.severity == agentmark::diag::Severity::Error).collect::<Vec<_>>());
@@ -210,7 +210,7 @@ fn binding_arguments_are_type_checked() {
 
 #[test]
 fn only_one_service_may_have_a_state() {
-    let src = "# Record: S\n- n: int\n\n# Service: a\n- state: S\n\n## GET /x\n- respond 200 state\n\n# Service: b\n- state: S\n\n## GET /y\n- respond 200 state\n";
+    let src = "# Record: S\n- n: int\n\n# Service: a\n- state: S\n\n## GET /x\n1. respond 200 state\n\n# Service: b\n- state: S\n\n## GET /y\n1. respond 200 state\n";
     let e = first_error(src);
     assert!(e.contains("Only one service may have a \"state:\" (\"a\" in t.agent.md:5 has one)"), "{e}");
 }
@@ -243,7 +243,7 @@ fn email_customer_needs_a_field_on_that_record() {
     let e = first_error(&agent("for each l in crm.leads:\n  - email send customer: \"x\"\n"));
     assert!(e.contains("\"customer\" needs a record in front of this block"), "{e}");
     // a record with only `customer` works, and `customer_email` wins when both exist
-    let src = "# Record: Lead\n- id: text\n- customer: text\n\n# Agent: a\n- model: claude\n- tools: email, crm\n\n## On start\nfor each l in crm.leads:\n  - email send customer: \"x\"\n";
+    let src = "# Record: Lead\n- id: text\n- customer: text\n\n# Agent: a\n- model: claude\n- tools: email, crm\n\n## On start\n1. for each l in crm.leads:\n   1. email send customer: \"x\"\n";
     let c = ok(src);
     assert_eq!(c.tool_calls.values().next().unwrap().field.as_deref(), Some("customer"));
 }
@@ -353,14 +353,14 @@ fn declaration_and_definition_sites_are_exported() {
 
 #[test]
 fn function_signatures_know_where_they_are_declared() {
-    let c = ok("# Function: five\n- out: int\n- effect: pure\n  - return 5\n\n# Function: g\n- out: int\n- effect: pure\n  - return five()\n");
+    let c = ok("# Function: five\n- out: int\n- touches: nothing\n- steps:\n  1. return 5\n\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return five()\n");
     assert_eq!(c.functions["five"].span.line, 1);
     assert_eq!(c.functions["g"].span.line, 6);
 }
 
 // ------------------------------------------------------------------ result of T (step 10, Q200)
 
-const FALLIBLE: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- effect: local\n  - try read file path as int -> n\n  - return n\n\n# Command: check\n- args: path: text\n\n## Run\n";
+const FALLIBLE: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- steps:\n  1. try read file path as int into n\n  2. return n\n\n# Command: check\n- in: path: text\n- steps:\n";
 
 #[test]
 fn a_result_function_accepts_a_plain_return_and_try_hands_back_the_plain_type() {
@@ -372,7 +372,7 @@ fn a_result_function_accepts_a_plain_return_and_try_hands_back_the_plain_type() 
 
 #[test]
 fn a_result_function_returning_the_wrong_type_is_still_an_error() {
-    let src = "# Function: f\n- in: path: text\n- out: result of int\n- effect: pure\n  - return \"x\"\n";
+    let src = "# Function: f\n- in: path: text\n- out: result of int\n- touches: nothing\n- steps:\n  1. return \"x\"\n";
     let e = first_error(src);
     assert!(e.contains("This returns text, but the function says it returns \"int\"."), "{e}");
 }

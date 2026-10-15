@@ -64,7 +64,7 @@ fn try_takes_a_library_call_with_or_without_do() {
 
 #[test]
 fn file_statements_take_expressions() {
-    let StmtKind::File { verb, path, arg, into } = first("- file rename path.join(p, \"a\") to path.join(p, \"b\")\n") else { panic!() };
+    let StmtKind::File { verb, path, arg, into, .. } = first("- file rename path.join(p, \"a\") to path.join(p, \"b\")\n") else { panic!() };
     assert_eq!(verb.name, "rename");
     assert!(matches!(path.kind, ExprKind::Call { .. }));
     assert!(matches!(arg, Some(FileArg::To(_))) && into.is_none());
@@ -87,7 +87,7 @@ fn read_input_stores_text() {
 
 #[test]
 fn the_formatter_keeps_the_spelling_and_is_idempotent() {
-    let src = "# Command: c\n- args: p: text\n\n## Run\n- try file read p -> content\n- try do csv.parse(content) as list of Sale -> rows\n- try number.parse(p) -> n\n- read input -> typed\n- file write path.join(p, \"o.txt\"): json.encode(rows)\n- file rename p to \"x\"\n- set d = json.parse(typed) as Note\n";
+    let src = "# Command: c\n- in: p: text\n- steps:\n  1. try file read p into content\n  2. try do csv.parse(content) as list of Sale into rows\n  3. try number.parse(p) into n\n  4. read input into typed\n  5. file write path.join(p, \"o.txt\"): json.encode(rows)\n  6. file rename p to \"x\"\n  7. json.parse(typed) as Note into d\n";
     let once = format_source(src, "t.agent.md").unwrap_or_else(|d| panic!("{}", render_all(&d, src)));
     assert_eq!(once, src, "already canonical");
     let messy = src.replace("- file rename p to \"x\"", "-   file   rename   p   to   \"x\"").replace("as list of Sale", "as list  of  Sale");

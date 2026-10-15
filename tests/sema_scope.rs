@@ -42,7 +42,7 @@ fn a_file_sees_only_what_it_imports() {
         vec![
             (
                 "app/main.agent.md",
-                "# Function: f\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n",
+                "# Function: f\n- in: i: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return i.id\n",
             ),
             ("app/invoice.agent.md", INVOICE),
         ],
@@ -56,8 +56,8 @@ fn imports_are_not_transitive() {
     let p = mem(
         "app/main.agent.md",
         vec![
-            ("app/main.agent.md", "# Import: ./mid.agent.md\n\n# Function: f\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n"),
-            ("app/mid.agent.md", "# Import: ./invoice.agent.md\n\n# Function: g\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n"),
+            ("app/main.agent.md", "# Uses\n- [mid](./mid.agent.md)\n\n# Function: f\n- in: i: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return i.id\n"),
+            ("app/mid.agent.md", "# Uses\n- [invoice](./invoice.agent.md)\n\n# Function: g\n- in: i: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return i.id\n"),
             ("app/invoice.agent.md", INVOICE),
         ],
     );
@@ -71,7 +71,7 @@ fn an_import_makes_names_visible() {
     let p = mem(
         "app/main.agent.md",
         vec![
-            ("app/main.agent.md", "# Import: ./invoice.agent.md\n\n# Function: f\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n\n# Function: g\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return f(i)\n"),
+            ("app/main.agent.md", "# Uses\n- [invoice](./invoice.agent.md)\n\n# Function: f\n- in: i: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return i.id\n\n# Function: g\n- in: i: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return f(i)\n"),
             ("app/invoice.agent.md", INVOICE),
         ],
     );
@@ -83,8 +83,8 @@ fn an_import_makes_names_visible() {
 fn an_alias_prefixes_every_name_of_the_module() {
     // (names in type positions cannot be written with a prefix, OPEN_QUESTIONS Q37, so the record
     // comes in through a plain import)
-    let main = "# Import: ./invoice.agent.md\n# Import: ./billing as billing\n\n# Function: f\n- in: i: Invoice\n- out: bool\n- effect: pure\n  - return billing.overdue(i)\n";
-    let fns = "# Import: ../invoice.agent.md\n\n# Function: overdue\n- in: i: Invoice\n- out: bool\n- effect: pure\n  - return i.amount > 5 EUR\n";
+    let main = "# Uses\n- [billing](./billing/) as billing\n- [invoice](./invoice.agent.md)\n\n# Function: f\n- in: i: Invoice\n- out: bool\n- touches: nothing\n- steps:\n  1. return billing.overdue(i)\n";
+    let fns = "# Uses\n- [invoice](../invoice.agent.md)\n\n# Function: overdue\n- in: i: Invoice\n- out: bool\n- touches: nothing\n- steps:\n  1. return i.amount > 5 EUR\n";
     let p = mem(
         "app/main.agent.md",
         vec![
@@ -115,10 +115,10 @@ fn a_glob_import_brings_every_matching_file() {
     let p = mem(
         "app/main.agent.md",
         vec![
-            ("app/main.agent.md", "# Import: ./rules/*.agent.md\n# Import: ./invoice.agent.md\n\n# Function: f\n- in: i: Invoice\n- out: bool\n- effect: pure\n  - return a(i) and b(i)\n"),
+            ("app/main.agent.md", "# Uses\n- [*](./rules/*.agent.md)\n- [invoice](./invoice.agent.md)\n\n# Function: f\n- in: i: Invoice\n- out: bool\n- touches: nothing\n- steps:\n  1. return a(i) and b(i)\n"),
             ("app/invoice.agent.md", INVOICE),
-            ("app/rules/a.agent.md", "# Import: ../invoice.agent.md\n\n# Function: a\n- in: i: Invoice\n- out: bool\n- effect: pure\n  - return true\n"),
-            ("app/rules/b.agent.md", "# Import: ../invoice.agent.md\n\n# Function: b\n- in: i: Invoice\n- out: bool\n- effect: pure\n  - return true\n"),
+            ("app/rules/a.agent.md", "# Uses\n- [invoice](../invoice.agent.md)\n\n# Function: a\n- in: i: Invoice\n- out: bool\n- touches: nothing\n- steps:\n  1. return true\n"),
+            ("app/rules/b.agent.md", "# Uses\n- [invoice](../invoice.agent.md)\n\n# Function: b\n- in: i: Invoice\n- out: bool\n- touches: nothing\n- steps:\n  1. return true\n"),
         ],
     );
     run(&p).unwrap_or_else(|e| panic!("{e}"));
@@ -131,11 +131,11 @@ fn an_import_cycle_is_an_error_that_prints_the_cycle() {
         vec![
             (
                 "app/a.agent.md",
-                "# Import: ./b.agent.md\n\n# Record: A\n- id: text\n",
+                "# Uses\n- [b](./b.agent.md)\n\n# Record: A\n- id: text\n",
             ),
             (
                 "app/b.agent.md",
-                "# Import: ./a.agent.md\n\n# Record: B\n- id: text\n",
+                "# Uses\n- [a](./a.agent.md)\n\n# Record: B\n- id: text\n",
             ),
         ],
     );
@@ -153,7 +153,7 @@ fn duplicate_declarations_across_files() {
         vec![
             (
                 "app/main.agent.md",
-                "# Import: ./invoice.agent.md\n\n# Record: Invoice\n- id: text\n",
+                "# Uses\n- [invoice](./invoice.agent.md)\n\n# Record: Invoice\n- id: text\n",
             ),
             ("app/invoice.agent.md", INVOICE),
         ],
@@ -172,7 +172,7 @@ fn unused_imports_are_warnings() {
     let p = mem(
         "app/main.agent.md",
         vec![
-            ("app/main.agent.md", "# Import: ./invoice.agent.md\n# Import: ./other.agent.md\n\n# Function: f\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n\n# Function: g\n- out: text\n- effect: pure\n  - return f(i)\n"),
+            ("app/main.agent.md", "# Uses\n- [invoice](./invoice.agent.md)\n- [other](./other.agent.md)\n\n# Function: f\n- in: i: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return i.id\n\n# Function: g\n- out: text\n- touches: nothing\n- steps:\n  1. return f(i)\n"),
             ("app/invoice.agent.md", INVOICE),
             ("app/other.agent.md", "# Record: Other\n- id: text\n"),
         ],
@@ -182,7 +182,7 @@ fn unused_imports_are_warnings() {
     let p = mem(
         "app/main.agent.md",
         vec![
-            ("app/main.agent.md", "# Import: ./invoice.agent.md\n# Import: ./other.agent.md\n\n# Function: f\n- in: i: Invoice\n- out: text\n- effect: pure\n  - return i.id\n"),
+            ("app/main.agent.md", "# Uses\n- [invoice](./invoice.agent.md)\n- [other](./other.agent.md)\n\n# Function: f\n- in: i: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return i.id\n"),
             ("app/invoice.agent.md", INVOICE),
             ("app/other.agent.md", "# Record: Other\n- id: text\n"),
         ],
@@ -203,7 +203,7 @@ fn unused_imports_are_warnings() {
 fn unused_declarations_are_warnings() {
     let p = Project::from_str(
         "t.agent.md",
-        "# Record: Lonely\n- id: text\n\n# Constant: unused_limit\n- value: 5\n\n# Function: idle\n- out: int\n- effect: pure\n  - return 1\n\n# Rule: r\n- for: Lonely\n- when: id = \"x\"\n",
+        "# Record: Lonely\n- id: text\n\n# Constant: unused_limit\n- value: 5\n\n# Function: idle\n- out: int\n- touches: nothing\n- steps:\n  1. return 1\n\n# Rule: r Lonely\n- when: id = \"x\"\n",
         TOOLS,
     );
     let w = warn(&p);
@@ -224,7 +224,7 @@ fn unused_declarations_are_warnings() {
 fn agents_services_and_commands_are_never_unused() {
     let p = Project::from_str(
         "t.agent.md",
-        "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n",
+        "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n",
         TOOLS,
     );
     assert_eq!(warn(&p), "");
@@ -236,7 +236,7 @@ fn agents_services_and_commands_are_never_unused() {
 fn a_crate_import_without_a_binding_file_is_known_but_unbound() {
     let p = Project::from_str(
         "t.agent.md",
-        "# Import: crate sha2\n\n# Function: host\n- in: s: text\n- out: text\n- effect: pure\n  - return f(s)\n\n## Rust: f -> text\n- in: s: text\n- effect: pure\n  ```rust\n  use sha2::{Digest, Sha256};\n  format!(\"{:x}\", Sha256::digest(s.as_bytes()))\n  ```\n",
+        "# Import: crate sha2\n\n# Function: host\n- in: s: text\n- out: text\n- touches: nothing\n- steps:\n  1. return f(s)\n\n## Rust: f -> text\n- in: s: text\n- touches: nothing\n\n```rust\nuse sha2::{Digest, Sha256};\nformat!(\"{:x}\", Sha256::digest(s.as_bytes()))\n```\n",
         TOOLS,
     );
     let w = warn(&p);
@@ -247,7 +247,7 @@ fn a_crate_import_without_a_binding_file_is_known_but_unbound() {
 
 #[test]
 fn a_crate_that_no_rust_block_mentions_is_unused() {
-    let p = Project::from_str("t.agent.md", "# Import: crate sha2\n\n# Record: A\n- id: text\n\n# Function: f\n- in: a: A\n- out: text\n- effect: pure\n  - return a.id\n", TOOLS);
+    let p = Project::from_str("t.agent.md", "# Import: crate sha2\n\n# Record: A\n- id: text\n\n# Function: f\n- in: a: A\n- out: text\n- touches: nothing\n- steps:\n  1. return a.id\n", TOOLS);
     let w = warn(&p);
     assert!(
         w.contains("Unused import: the crate \"sha2\" is not used in this file."),
@@ -259,9 +259,9 @@ fn a_crate_that_no_rust_block_mentions_is_unused() {
 
 #[test]
 fn run_items_must_be_imported_agents_services_or_commands() {
-    let main = "# Import: ./agent.agent.md\n\n# Run\n- invoice-chaser\n- ghost\n";
+    let main = "# Program: invoice-chaser\n\n# Uses\n- [agent](./agent.agent.md)\n";
     let agent =
-        "# Agent: invoice-chaser\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n";
+        "# Agent: invoice-chaser\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n";
     let p = mem(
         "app",
         vec![("app/main.agent.md", main), ("app/agent.agent.md", agent)],
@@ -276,9 +276,9 @@ fn run_items_must_be_imported_agents_services_or_commands() {
 
 #[test]
 fn run_suggests_close_names() {
-    let main = "# Import: ./agent.agent.md\n\n# Run\n- invoice-chaser\n";
+    let main = "# Program: invoice-chaser\n\n# Uses\n- [agent](./agent.agent.md)\n";
     let agent =
-        "# Agent: invoice-chasr\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n";
+        "# Agent: invoice-chasr\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n";
     let p = mem(
         "app",
         vec![("app/main.agent.md", main), ("app/agent.agent.md", agent)],
@@ -320,7 +320,7 @@ fn a_syntax_error_in_an_imported_file_is_reported_with_that_file() {
         vec![
             (
                 "app/main.agent.md",
-                "# Import: ./b.agent.md\n\n# Record: A\n- id: text\n",
+                "# Uses\n- [b](./b.agent.md)\n\n# Record: A\n- id: text\n",
             ),
             ("app/b.agent.md", "# Record: B\n\t- id: text\n"),
         ],
@@ -333,7 +333,7 @@ fn a_syntax_error_in_an_imported_file_is_reported_with_that_file() {
 fn a_missing_tools_toml_means_no_tools() {
     let p = Project::from_str(
         "t.agent.md",
-        "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n",
+        "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n",
         "",
     );
     let e = run(&p).unwrap_err();

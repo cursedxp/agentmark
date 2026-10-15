@@ -18,7 +18,7 @@ fn columns_are_utf16_units_after_umlauts_and_emoji() {
         ("records/lead.agent.md", "# Record: Lead\n- name: text\n"),
         (
             "main.agent.md",
-            "# Import: ./records/lead.agent.md\n\n> Greets.\n# Agent: greeter\n- model: mock\n- tools: log, crm\n\n## When crm receives lead\n- log: \"Grüße 😀 {lead.nme}\"\n",
+            "# Uses\n- [lead](./records/lead.agent.md)\n\n# Agent: greeter\nGreets.\n\n- model: mock\n- tools: log, crm\n\n## When crm receives lead\n1. log: \"Grüße 😀 {lead.nme}\"\n",
         ),
     ]);
     let file = root.join("main.agent.md");
@@ -77,7 +77,7 @@ fn diagnostics_reach_files_that_are_not_open_and_are_cleared_when_fixed() {
 fn a_file_without_an_agentmark_toml_is_a_single_file_project() {
     let (_dir, root) = project(&[("tools.toml", "[log]\nverbs = []\neffect = \"local\"\n")]);
     let file = root.join("solo.agent.md");
-    let text = "> Says hi.\n# Agent: solo\n- model: mock\n- tools: log\n\n## On start\n- log: \"hi\"\n";
+    let text = "# Agent: solo\nSays hi.\n\n- model: mock\n- tools: log\n\n## On start\n1. log: \"hi\"\n";
     let mut c = Client::start(None);
     // the file does not exist on disk at all: it is only a buffer
     c.open(&file, text, 1);
@@ -155,7 +155,7 @@ fn hover_and_definition_survive_an_error_in_the_file_being_edited() {
         // line N broken in place (a syntax error), later lines keep their numbers
         (2, good.replace("- guard: reminder length < max_reminder_length", "- guard: reminder length <")),
         // a line inserted at the top, and a semantic error further down: every line moves by one
-        (3, format!("> a new first line\n{}", good.replace("- email send customer:", "- email send custmer:"))),
+        (3, format!("> {}", good.replace("- email send customer:", "- email send custmer:"))),
     ] {
         c.change(&agent, &broken, version);
         assert!(!c.diagnostics(&agent, Some(version)).is_empty());

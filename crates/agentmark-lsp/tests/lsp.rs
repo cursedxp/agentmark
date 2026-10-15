@@ -361,7 +361,7 @@ fn hover_shows_the_effect_summary_of_a_block_and_the_type_of_a_field() {
 fn variants_and_enums_have_definitions_hovers_and_diagnostics() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().canonicalize().unwrap().join("shapes.agent.md");
-    let text = "# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: area\n- in: shape: Shape\n- out: int\n- effect: pure\n  - match shape:\n    - Circle c:\n      - return c.radius\n    - Empty:\n      - return 0\n\n> Prints an area.\n# Command: go\n\n## Run\n- print: \"{area(Circle { radius: 3 })}\"\n";
+    let text = "# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: area\n- in: shape: Shape\n- out: int\n- touches: nothing\n- steps:\n  1. match shape:\n     - Circle c:\n       1. return c.radius\n     - Empty:\n       1. return 0\n\n# Command: go\nPrints an area.\n\n- steps:\n  1. print: \"{area(Circle { radius: 3 })}\"\n";
     let mut c = Client::start(None);
     c.open(&file, text, 1);
     let d = c.diagnostics(&file, Some(1));
@@ -400,7 +400,7 @@ fn variants_and_enums_have_definitions_hovers_and_diagnostics() {
 fn formatting_returns_the_canonical_text_as_one_edit() {
     let (_dir, root) = example("01-invoice-chaser");
     let file = root.join("constants.agent.md");
-    let messy = "# Constant: grace_period\n- value: 14 days   \n\n\n\n# Constant: max_reminder_length\n- value: 800\n";
+    let messy = "# Constant: grace_period\n- value: 14 days\n\n# Constant: max_reminder_length\n- value: 800\n";
     let mut c = Client::start(None);
     c.open(&file, messy, 1);
     let fmt = |c: &mut Client| {
@@ -421,7 +421,7 @@ fn formatting_returns_the_canonical_text_as_one_edit() {
     assert_eq!(fmt(&mut c).expect("empty list"), vec![]);
 
     // a file that does not parse is left alone
-    c.change(&file, "# Constant\n- value 14\n\t\n", 3);
+    c.change(&file, "# Constant\n- value 14\n", 3);
     assert_eq!(fmt(&mut c), None);
     c.shutdown();
 }

@@ -8,23 +8,9 @@ use agentmark::fmt::format_source;
 use agentmark::project::Project;
 use agentmark::sema::{self, BlockKind};
 
-const SLUGGER: &str = "# Tool: slugger
-- effect: pure
+const SLUGGER: &str = "# Tool: slugger\n- touches: nothing\n\n## slug(title: text) -> text\n1. text.lower(title) into lowered\n2. return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")\n";
 
-## slug(title: text) -> text
-- set lowered = text.lower(title)
-- return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")
-";
-
-const LEDGER: &str = "# Tool: ledger
-- effect: local
-
-## add(entry: text)
-- file append \"ledger.txt\": entry
-
-## size(entry: text) -> int
-- return text.length(entry)
-";
+const LEDGER: &str = "# Tool: ledger\n- touches: local\n\n## add(entry: text)\n1. file append \"ledger.txt\": entry\n\n## size(entry: text) -> int\n1. return text.length(entry)\n";
 
 /// `SLUGGER` and `LEDGER` followed by a command whose `## Run` is `body`.
 fn with_command(body: &str) -> String {
@@ -81,18 +67,7 @@ fn a_tool_is_called_as_a_statement_and_a_pure_one_as_an_expression() {
 
 #[test]
 fn a_tool_that_declares_more_than_its_body_does_still_has_its_declared_effect_at_the_call() {
-    let src = "# Tool: audit
-- effect: network
-
-## note(entry: text)
-- print: entry
-
-# Command: c
-- args: title: text
-
-## Run
-- audit note title
-";
+    let src = "# Tool: audit\n- touches: network\n\n## note(entry: text)\n1. print: entry\n\n# Command: c\n- in: title: text\n- steps:\n  1. audit note title\n";
     let c = ok(src);
     assert_eq!(c.unit_effect("c").to_string(), "network(audit), local(print)");
 }
@@ -100,18 +75,7 @@ fn a_tool_that_declares_more_than_its_body_does_still_has_its_declared_effect_at
 #[test]
 fn a_library_module_name_still_means_the_library_unless_the_tool_has_that_verb() {
     // a tool called `text` with a verb `shout`: `text.lower` is the library's
-    let src = "# Tool: text
-- effect: pure
-
-## shout(word: text) -> text
-- return text.upper(word)
-
-# Command: c
-- args: title: text
-
-## Run
-- print: \"{text.lower(title)} {text.shout(title)}\"
-";
+    let src = "# Tool: text\n- touches: nothing\n\n## shout(word: text) -> text\n1. return text.upper(word)\n\n# Command: c\n- in: title: text\n- steps:\n  1. print: \"{text.lower(title)} {text.shout(title)}\"\n";
     ok(src);
 }
 
@@ -120,7 +84,7 @@ fn a_pure_tool_of_an_imported_folder_is_called_with_its_module_name() {
     let p = Project::from_memory(
         "app/main.agent.md",
         vec![
-            ("app/main.agent.md", "# Import: ./tools as tools\n\n# Command: c\n- args: title: text\n\n## Run\n- print: \"{tools.slugger.slug(title)}\"\n"),
+            ("app/main.agent.md", "# Uses\n- [tools](./tools/) as tools\n\n# Command: c\n- in: title: text\n- steps:\n  1. print: \"{tools.slugger.slug(title)}\"\n"),
             ("app/tools/slugger.agent.md", SLUGGER),
             ("app/tools/ledger.agent.md", LEDGER),
         ],
@@ -133,19 +97,7 @@ fn a_pure_tool_of_an_imported_folder_is_called_with_its_module_name() {
 
 #[test]
 fn an_agent_lists_a_user_tool_like_any_other() {
-    let src = "# Tool: ledger
-- effect: local
-
-## add(entry: text)
-- file append \"ledger.txt\": entry
-
-# Agent: scribe
-- model: claude
-- tools: ledger
-
-## On start
-- ledger add \"started\"
-";
+    let src = "# Tool: ledger\n- touches: local\n\n## add(entry: text)\n1. file append \"ledger.txt\": entry\n\n# Agent: scribe\n- model: claude\n- tools: ledger\n\n## On start\n1. ledger add \"started\"\n";
     ok(src);
     let unlisted = src.replace("- tools: ledger", "- tools: log");
     expect(&unlisted, "E208", &["The tool \"ledger\" is not listed in the tools of agent \"scribe\"."]);
@@ -163,7 +115,7 @@ fn e380_a_tool_name_taken_by_tools_toml_or_file() {
 
 #[test]
 fn e381_the_same_verb_twice() {
-    let src = "# Tool: t\n- effect: pure\n\n## x() -> int\n- return 1\n\n## x() -> int\n- return 2\n";
+    let src = "# Tool: t\n- touches: nothing\n\n## x() -> int\n1. return 1\n\n## x() -> int\n1. return 2\n";
     expect(src, "E381", &["The tool \"t\" has the verb \"x\" twice.", "t.agent.md:7"]);
 }
 
@@ -194,24 +146,19 @@ fn e384_a_tool_takes_values_not_assignments() {
 #[test]
 fn e385_a_verb_without_a_result_has_no_value() {
     expect(&with_command("- ledger add title -> r"), "E385", &["The verb \"add\" of \"ledger\" returns nothing, so there is no result to store."]);
-    let src = "# Tool: t\n- effect: pure\n\n## x()\n- stop\n\n# Command: c\n\n## Run\n- print: \"{t.x()}\"\n";
+    let src = "# Tool: t\n- touches: nothing\n\n## x()\n1. stop\n\n# Command: c\n- steps:\n  1. print: \"{t.x()}\"\n";
     expect(src, "E385", &["The verb \"t.x\" returns nothing, so it cannot be used as a value."]);
 }
 
 #[test]
 fn e386_a_verb_that_says_it_returns_a_value_must_return_one() {
-    let src = "# Tool: t\n- effect: pure\n\n## x(a: int) -> int\n- set b = a + 1\n";
+    let src = "# Tool: t\n- touches: nothing\n\n## x(a: int) -> int\n1. a + 1 into b\n";
     expect(src, "E386", &["The verb \"x\" of the tool \"t\" says it returns a value but never does.", "t.agent.md:4"]);
 }
 
 #[test]
 fn a_verb_body_may_not_exceed_the_effect_of_its_tool() {
-    let src = "# Tool: t
-- effect: pure
-
-## write(entry: text)
-- print: entry
-";
+    let src = "# Tool: t\n- touches: nothing\n\n## write(entry: text)\n1. print: entry\n";
     expect(
         src,
         "E206",
@@ -234,7 +181,7 @@ fn values_are_checked_against_the_parameters_of_the_verb() {
 
 #[test]
 fn a_verb_that_can_fail_needs_try_and_cannot_be_used_in_an_expression() {
-    let tool = "# Tool: conv\n- effect: pure\n\n## double(word: text) -> result of int\n- try number.parse(word) -> n\n- return n * 2\n\n";
+    let tool = "# Tool: conv\n- touches: nothing\n\n## double(word: text) -> result of int\n1. try number.parse(word) into n\n2. return n * 2\n\n";
     let bare = format!("{tool}# Command: c\n- args: w: text\n\n## Run\n- conv double w -> n\n- print: \"{{n}}\"\n");
     expect(&bare, "E209", &["can fail (it returns \"result of int\"), so it has to be called with \"try\"."]);
     let inline = format!("{tool}# Command: c\n- args: w: text\n\n## Run\n- print: \"{{conv.double(w)}}\"\n");
@@ -245,13 +192,13 @@ fn a_verb_that_can_fail_needs_try_and_cannot_be_used_in_an_expression() {
 
 #[test]
 fn parse_errors_name_what_is_missing() {
-    let e = errors("# Tool: t\n\n## x()\n- stop\n");
+    let e = errors("# Tool: t\n\n## x()\n1. stop\n");
     assert!(e.contains("The tool \"t\" does not say what effect it has."), "{e}");
-    let e = errors("# Tool: t\n- effect: pure\n");
+    let e = errors("# Tool: t\n- touches: nothing\n");
     assert!(e.contains("The tool \"t\" has no verbs."), "{e}");
-    let e = errors("# Tool: t\n- effect: pure\n- model: claude\n\n## x()\n- stop\n");
+    let e = errors("# Tool: t\n- touches: nothing\n- model: claude\n\n## x()\n1. stop\n");
     assert!(e.contains("model"), "{e}");
-    let e = errors("# Tool: t\n- effect: pure\n\n## x(a: text) -> text\n- stop\n```rust\na\n```\n");
+    let e = errors("# Tool: t\n- touches: nothing\n\n## x(a: text) -> text\n1. stop\n```rust\na\n```\n");
     assert!(e.contains("A verb is either statements or one fenced rust block, not both."), "{e}");
 }
 
@@ -263,32 +210,12 @@ fn an_unused_tool_is_a_warning_like_an_unused_function() {
 
 // ------------------------------------------------------------------ formatting and linting
 
-const CANONICAL: &str = "> Words for file names.
-# Tool: slugger
-- effect: pure
-
-> Lower case, dashes between words.
-## slug(title: text) -> text
-- set lowered = text.lower(title)
-- return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")
-
-## shout(word: text) -> text
-  ```rust
-  word.to_uppercase()
-  ```
-
-> Adds a line.
-# Tool: ledger
-- effect: local
-
-## add(entry: text, mark: text = \"-\")
-- file append \"ledger.txt\": \"{mark} {entry}\"
-";
+const CANONICAL: &str = "# Tool: slugger\nWords for file names.\n\n- touches: nothing\n\n## slug(title: text) -> text\nLower case, dashes between words.\n\n1. text.lower(title) into lowered\n2. return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\nAdds a line.\n\n- touches: local\n\n## add(entry: text, mark: text = \"-\")\n1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
 
 #[test]
 fn fmt_keeps_a_canonical_tool_and_makes_a_messy_one_canonical() {
     assert_eq!(format_source(CANONICAL, "t.agent.md").unwrap(), CANONICAL);
-    let messy = "> Words for file names.\n#   Tool:   slugger\n-   effect:    pure\n\n\n> Lower case, dashes between words.\n##   slug( title: text )   ->   text\n-   set lowered = text.lower( title )\n-   return regex.replace( lowered,\"[^a-z0-9]+\",   \"-\" )\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n\n> Adds a line.\n# Tool: ledger\n- effect: local\n## add(entry: text, mark: text = \"-\")\n- file append \"ledger.txt\": \"{mark} {entry}\"\n";
+    let messy = "#   Tool:   slugger\nWords for file names.\n\n-   effect:    pure\n\n##   slug( title: text )   ->   text\nLower case, dashes between words.\n\n1. text.lower( title ) into lowered\n2. return regex.replace( lowered,\"[^a-z0-9]+\",   \"-\" )\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\nAdds a line.\n\n- touches: local\n\n## add(entry: text, mark: text = \"-\")\n1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
     let once = format_source(messy, "t.agent.md").unwrap();
     assert_eq!(format_source(&once, "t.agent.md").unwrap(), once, "fmt twice is fmt once");
     assert_eq!(once, CANONICAL);
@@ -296,12 +223,7 @@ fn fmt_keeps_a_canonical_tool_and_makes_a_messy_one_canonical() {
 
 #[test]
 fn lint_looks_inside_the_verbs_of_a_tool() {
-    let src = "# Tool: t
-- effect: pure
-
-## shape(data: text) -> text
-- return data
-";
+    let src = "# Tool: t\n- touches: nothing\n\n## shape(data: text) -> text\n1. return data\n";
     let diags = agentmark::lint::lint_source("t.agent.md", src, &agentmark::lint::LintConfig::default()).unwrap();
     assert!(diags.iter().any(|d| d.message.contains("data")), "{diags:#?}");
 }
@@ -333,11 +255,11 @@ fn every_verb_is_a_function_of_the_ir_and_shows_in_the_effect_summary() {
 
 #[test]
 fn e387_the_default_command_cannot_have_an_argument_named_like_a_program_flag() {
-    let one = "# Command: c\n- args: mock: bool = false, fixtures: text\n\n## Run\n- print: \"x\"\n\n# Run\n- c\n";
+    let one = "# Program: c\n\n# Command: c\n- in: mock: bool = false, fixtures: text\n- steps:\n  1. print: \"x\"\n";
     expect(one, "E387", &["The argument \"mock\" would be the flag \"--mock\"", "Rename the argument"]);
     assert_eq!(codes(one), ["E387", "E387"]);
     // not the default (two commands): the names are subcommand arguments
-    let two = "# Command: c\n- args: mock: bool = false\n\n## Run\n- print: \"x\"\n\n# Command: d\n\n## Run\n- print: \"y\"\n\n# Run\n- c\n- d\n";
+    let two = "# Program: c\n\n# Command: c\n- in: mock: bool = false\n- steps:\n  1. print: \"x\"\n\n# Command: d\n- steps:\n  1. print: \"y\"\n";
     ok(two);
 }
 
@@ -352,7 +274,7 @@ fn check_lists_a_rust_verb_with_the_trusted_code() {
 #[test]
 fn a_tool_of_an_aliased_import_is_called_with_its_module_in_a_statement() {
     let files = vec![
-        ("app/main.agent.md", "# Import: ./tools as tools\n\n# Command: c\n- args: title: text\n\n## Run\n- tools.ledger add title\n- tools.ledger size title -> n\n- print: \"{n}\"\n"),
+        ("app/main.agent.md", "# Uses\n- [tools](./tools/) as tools\n\n# Command: c\n- in: title: text\n- steps:\n  1. tools.ledger add title\n  2. tools.ledger size title into n\n  3. print: \"{n}\"\n"),
         ("app/tools/ledger.agent.md", LEDGER),
     ];
     let p = Project::from_memory("app/main.agent.md", files.clone());
@@ -365,16 +287,16 @@ fn a_tool_of_an_aliased_import_is_called_with_its_module_in_a_statement() {
     let text = p.render(&d);
     assert!(text.contains("Unknown tool \"tools.ledgr\"") && text.contains("Did you mean \"tools.ledger\"?"), "{text}");
     // and it formats as written
-    let src = "# Command: c\n- args: title: text\n\n## Run\n- tools.ledger add title\n";
+    let src = "# Command: c\n- in: title: text\n- steps:\n  1. tools.ledger add title\n";
     assert_eq!(format_source(src, "t.agent.md").unwrap(), src);
 }
 
 #[test]
 fn a_tool_cannot_share_its_name_with_an_agent_command_or_service() {
     for (kind, decl) in [
-        ("agent", "# Agent: ledger\n- model: claude\n\n## On start\n- stop\n"),
-        ("command", "# Command: ledger\n\n## Run\n- stop\n"),
-        ("service", "# Service: ledger\n- listen: 0.0.0.0:80\n\n## GET /x\n- respond 200\n"),
+        ("agent", "# Agent: ledger\n- model: claude\n\n## On start\n1. stop\n"),
+        ("command", "# Command: ledger\n- steps:\n  1. stop\n"),
+        ("service", "# Service: ledger\n- listen: 0.0.0.0:80\n\n## GET /x\n1. respond 200\n"),
     ] {
         let src = format!("{LEDGER}\n{decl}");
         expect(&src, "E380", &[&format!("The tool \"ledger\" has the same name as the {kind} \"ledger\"")]);
@@ -383,28 +305,15 @@ fn a_tool_cannot_share_its_name_with_an_agent_command_or_service() {
 
 #[test]
 fn a_tool_named_like_a_library_module_gets_a_warning() {
-    let w = warnings("# Tool: json\n- effect: pure\n\n## shout(word: text) -> text\n- return text.upper(word)\n\n# Command: c\n- args: w: text\n\n## Run\n- print: \"{json.shout(w)}\"\n");
+    let w = warnings("# Tool: json\n- touches: nothing\n\n## shout(word: text) -> text\n1. return text.upper(word)\n\n# Command: c\n- in: w: text\n- steps:\n  1. print: \"{json.shout(w)}\"\n");
     assert!(w.contains("The tool \"json\" has the name of a library module"), "{w}");
 }
 
-const MINI_HASH: &str = "# Binding: sha2
-- crate: sha2
-- effect: pure
-
-## sha256_new() -> handle of sha2.Sha256
-  ```rust
-  Ok(<sha2::Sha256 as sha2::Digest>::new())
-  ```
-
-## finalize(self: consume handle of sha2.Sha256) -> bytes
-  ```rust
-  Ok(<sha2::Sha256 as sha2::Digest>::finalize(self_).to_vec())
-  ```
-";
+const MINI_HASH: &str = "# Binding: sha2\n- crate: sha2\n- effect: pure\n\n## sha256_new() -> handle of sha2.Sha256\n```rust\nOk(<sha2::Sha256 as sha2::Digest>::new())\n```\n\n## finalize(self: consume handle of sha2.Sha256) -> bytes\n```rust\nOk(<sha2::Sha256 as sha2::Digest>::finalize(self_).to_vec())\n```\n";
 
 #[test]
 fn a_verb_may_take_a_handle_it_uses_up_and_the_trace_leaves_it_out() {
-    let tool = "# Import: crate sha2\n\n# Tool: hashing\n- effect: pure\n\n## drain(hasher: handle of sha2.Sha256, label: text) -> bytes\n- hasher finalize -> digest\n- return digest\n\n";
+    let tool = "# Import: crate sha2\n\n# Tool: hashing\n- touches: nothing\n\n## drain(hasher: handle of sha2.Sha256, label: text) -> bytes\n1. hasher finalize into digest\n2. return digest\n\n";
     let cmd = |body: &str| format!("{tool}# Command: c\n- args: w: text\n\n## Run\n{body}");
     let load = |src: &str| {
         Project::from_memory(

@@ -249,7 +249,7 @@ fn guard_names(body: &[ir::Stmt]) -> Vec<String> {
 
 // ------------------------------------------------------------ targeted
 
-const HEAD: &str = "# Record: Invoice\n- id: text\n- customer: text\n- customer_email: text\n- amount: money\n- due: date\n- status: text\n\n# Rule: open\n- for: Invoice\n- when: status != \"paid\"\n\n# Constant: limit\n- value: 10\n\n";
+const HEAD: &str = "# Record: Invoice\n- id: text\n- customer: text\n- customer_email: text\n- amount: money\n- due: date\n- status: text\n\n# Rule: open Invoice\n- when: status != \"paid\"\n\n# Constant: limit\n- value: 10\n\n";
 
 #[test]
 fn guard_lowers_to_let_trace_if_with_constants_inlined() {
@@ -340,7 +340,7 @@ fn count_of_rule_keeps_the_filter_name() {
 
 #[test]
 fn rule_named_like_a_function_does_not_collide() {
-    let src = "# Record: Invoice\n- id: text\n- status: text\n\n# Rule: check\n- for: Invoice\n- when: status != \"paid\"\n\n# Function: check\n- in: x: int\n- out: int\n- effect: pure\n  - return x\n";
+    let src = "# Record: Invoice\n- id: text\n- status: text\n\n# Rule: check Invoice\n- when: status != \"paid\"\n\n# Function: check\n- in: x: int\n- out: int\n- touches: nothing\n- steps:\n  1. return x\n";
     let (p, c) = mem(src);
     let prog = ir::lower(&p, &c);
     let mut names: Vec<_> = prog.functions.iter().map(|f| f.name.clone()).collect();
@@ -402,8 +402,8 @@ fn sema_rejects_a_do_call_without_the_record() {
 
 #[test]
 fn a_text_argument_to_a_bytes_binding_becomes_text_to_bytes() {
-    let binding = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```\n";
-    let main = "# Import: crate hashing\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: pure\n  - hashing digest t -> b\n  - return b\n";
+    let binding = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n```rust\nOk(data)\n```\n";
+    let main = "# Import: crate hashing\n\n# Function: make\n- in: t: text\n- out: bytes\n- touches: nothing\n- steps:\n  1. hashing digest t into b\n  2. return b\n";
     let p = Project::from_memory(
         "app/main.agent.md",
         vec![("app/main.agent.md", main), ("app/bindings/hashing.agent.md", binding)],
@@ -421,8 +421,8 @@ fn a_text_argument_to_a_bytes_binding_becomes_text_to_bytes() {
 
 #[test]
 fn an_interpolated_string_argument_to_a_bytes_binding_becomes_text_to_bytes() {
-    let binding = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```\n";
-    let main = "# Import: crate hashing\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: pure\n  - hashing digest \"id-{t}\" -> b\n  - return b\n";
+    let binding = "# Binding: hashing\n- crate: hashing\n- effect: pure\n\n## digest(data: bytes) -> bytes\n```rust\nOk(data)\n```\n";
+    let main = "# Import: crate hashing\n\n# Function: make\n- in: t: text\n- out: bytes\n- touches: nothing\n- steps:\n  1. hashing digest \"id-{t}\" into b\n  2. return b\n";
     let p = Project::from_memory(
         "app/main.agent.md",
         vec![("app/main.agent.md", main), ("app/bindings/hashing.agent.md", binding)],

@@ -29,23 +29,24 @@ Compiler architecture must reflect this: `agent_lower.rs` (L3→L2) is a separat
 
 ## 1. File structure
 
-A file is a sequence of **declarations**. Each declaration starts with a level-1 heading.
+A file is a sequence of **declarations** (parts). Each declaration starts with a level-1 heading.
 
 ```
 # Agent: <name>
 # Record: <name>
-# Rule: <name>
+# Rule: <name> <Record>
 ```
 
-Inside a declaration:
-- `- key: value` lines are **properties**.
+Inside a declaration (section 23 has the full mapping):
+- The paragraph directly under the heading is its **description**.
+- `- key: value` bullets are **properties** (and fields).
 - `## <heading>` lines start **blocks** (triggers or named actions).
-- Indented lines under a block are **statements**.
+- Numbered lines (`1.`, `2.`, …) are **steps**; steps under a step are indented to its text.
 
 Rules:
-- Indentation is exactly 2 spaces per level. Tabs are an error.
+- A step under a numbered item is indented to its text (3 spaces under `1.`), a line under a bullet by 2 spaces. Tabs are an error.
 - Blank lines are ignored.
-- Lines starting with `>` are comments.
+- Lines starting with `>` are notes for people.
 - Headings are case-insensitive; identifiers are case-sensitive.
 - Identifiers: letters, digits, `-`, `_`. Must start with a letter.
 
@@ -75,11 +76,12 @@ Inference failure is a **compile warning**, not an error. The compiler prints th
 
 ### 2.2 Rule
 
-A named, pure boolean expression over a record. Rules have no side effects and the compiler must reject any effectful statement inside one.
+A named, pure boolean expression over a record. Rules have no side effects and the compiler must reject any effectful statement inside one. The record is the last word of the heading (23.8).
 
 ```
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
+Unpaid and more than 14 days past due.
+
 - when: today > due + 14 days
 ```
 
@@ -115,7 +117,7 @@ Blocks execute sequentially within an agent. Two triggers firing at once are que
 
 ## 4. Statements
 
-Statements are list items (`- `) or control lines ending in `:`.
+Statements are steps: numbered list items (`1. `). A step with steps under it ends in `:` (section 23.3).
 
 ### 4.1 Control
 
@@ -131,9 +133,9 @@ do <action-name>                           > call a "## Do" block
 ### 4.2 Model
 
 ```
-- ask model: "<prompt>" -> <var>
-- ask model: "<prompt>" as <Record> -> <var>     > structured output, validated against Record
-- ask model with <var>: "<prompt>" -> <var>     > pass a value as context
+ask model: "<prompt>" into <var>
+ask model: "<prompt>" as <Record> into <var>     > structured output, validated against Record
+ask model with <var>: "<prompt>" into <var>      > pass a value as context
 ```
 
 `ask model` is effectful (network). The result is `text` unless `as <Record>` is given.
@@ -141,15 +143,15 @@ do <action-name>                           > call a "## Do" block
 ### 4.3 Tool calls
 
 ```
-- <tool> <verb> [<target>]: "<text or data>"
+<tool> <verb> [<target>]: "<text or data>"
 ```
 
 Examples:
 ```
-- email send customer: "Your invoice {amount} is overdue."
-- crm update invoice: status = "reminded"
-- http post "https://api.example.com/hook": { id: invoice.id }
-- log: "Processed {customer}"
+1. email send customer: "Your invoice {amount} is overdue."
+2. crm update invoice: status = "reminded"
+3. http post "https://api.example.com/hook": { id: invoice.id }
+4. log: "Processed {customer}"
 ```
 
 Available verbs are defined per tool in the tool manifest (section 7). Unknown verb is a compile error.
@@ -157,8 +159,8 @@ Available verbs are defined per tool in the tool manifest (section 7). Unknown v
 ### 4.4 Guards
 
 ```
-- guard: <condition>
-- guard: <condition> else <statement>
+guard: <condition>
+guard: <condition> else <statement>
 ```
 
 A guard is a pure check. If it fails and no `else` is given, the current block stops and the failure is logged with the guard's source line. Guards may reference model output; this is how you constrain what the LLM produced before acting on it.
@@ -169,11 +171,13 @@ Built-in guard helpers:
 - `<var> matches <Record>`
 - `<var> length < <int>`
 
-### 4.5 Assignment
+### 4.5 Naming a value
 
 ```
-- set <var> = <expression>
+<expression> into <var>
 ```
+
+The only way to name a result (section 23.9); a name that already exists gets the new value.
 
 ---
 
@@ -239,11 +243,11 @@ The generated Rust code defines one trait per tool. The runtime ships a `MockToo
 
 ## 8. Effects
 
-Every statement has an effect class: `pure`, `local`, `network`, `model`.
+Every statement has an effect class: `pure`, `local`, `network`, `model`. People read it as what the statement touches (section 23.7): `nothing`, `files`, `AI`, the tools by name.
 
-- `# Rule` bodies and `guard` conditions must be `pure`.
+- `# Rule` bodies and `guard` conditions must touch nothing.
 - The compiler emits an **effect summary** per block at the top of the generated file, e.g. `// Effects: model, network(email, crm)`.
-- `agentmark check` prints the same summary so a reviewer can see what an agent can touch without reading the code.
+- `agentmark check` prints what each part touches (`invoice-chaser / Every day at 09:00: touches AI, crm, email, log`) so a reviewer can see what an agent can touch without reading the code.
 
 ---
 
@@ -316,15 +320,18 @@ For every file in `examples/`, there is a matching `fixtures/<name>/` folder con
 
 ```
 # Function: net_amount
-- in: invoice: Invoice, vat: int
+The invoice amount after taking off VAT.
+
+- in: invoice, vat: int
 - out: money
-- effect: pure
-  - set gross = invoice.amount
-  - return gross - gross * vat / 100
+- touches: nothing
+- steps:
+  1. invoice.amount into gross
+  2. return gross - gross * vat / 100
 ```
 
-- `effect` is mandatory: `pure`, `local`, `network`, or `model`. The compiler verifies the body does not exceed it.
-- Functions are called as `net_amount(invoice, 19)` in expressions, or `- do net_amount(invoice, 19) -> n` as a statement.
+- `touches` is optional (23.7): without it the checker works out what the function touches; written, it is a promise the checker verifies.
+- Functions are called as `net_amount(invoice, 19)` in expressions, or `do net_amount(invoice, 19) into n` as a step.
 - Recursion is allowed. Closures are not (v0.1).
 
 ### 13.2 Module and import
@@ -332,7 +339,9 @@ For every file in `examples/`, there is a matching `fixtures/<name>/` folder con
 One file = one module. Files in subfolders are nested modules.
 
 ```
-# Import: ./billing/rules.agent.md as billing
+# Uses
+- [billing rules](./billing/rules.agent.md) as billing
+
 # Import: crate serde_json
 # Import: crate reqwest as http_client
 ```
@@ -345,30 +354,33 @@ Two more top-level declarations turn AgentMark into a general application langua
 
 ```
 # Service: api
+Serves invoices over HTTP.
+
 - listen: 0.0.0.0:8080
 - state: AppState
 
 ## GET /invoices/{id}
-- do crm get invoice id -> inv
-- guard: inv is not empty else respond 404
-- respond 200 inv
+1. do crm get invoice id into inv
+2. guard: inv is not empty else respond 404
+3. respond 200 inv
 
 ## POST /invoices
-- read body as Invoice -> inv
-- do crm update invoice: inv
-- respond 201 inv
+1. read body as Invoice into inv
+2. do crm update invoice: inv
+3. respond 201 inv
 ```
 
 ```
 # Command: import-csv
-- args: path: text, dry_run: bool = false
+Loads invoices from a CSV file into the CRM.
 
-## Run
-- read file path as list of Invoice -> rows
-- for each row in rows:
-  - if not dry_run:
-    - crm update invoice: row
-- print: "Imported {count of rows} rows"
+- in: path: text, dry_run: bool = false
+- steps:
+  1. try read file path as list of Invoice into invoices
+  2. for each invoice in invoices:
+     1. if not dry_run:
+        1. crm update invoice: invoice
+  3. print: "Imported {count of invoices} rows"
 ```
 
 `Service` lowers to an axum router; `Command` lowers to a clap subcommand. Both are Layer 2 — no model involved unless the author adds `ask model`.
@@ -378,10 +390,10 @@ Two more top-level declarations turn AgentMark into a general application langua
 There is no exception mechanism. Any statement that can fail is written with `try`:
 
 ```
-- try http get "https://api.example.com/rates" -> rates
-  otherwise:
-    - log: "Rates unavailable, using cached"
-    - set rates = cached_rates
+1. try http get "https://api.example.com/rates" into rates
+   otherwise:
+   1. log: "Rates unavailable, using cached"
+   2. cached_rates into rates
 ```
 
 Without `otherwise`, a failed `try` stops the current block and records the error in the trace. A function whose `out` is `result of <T>` returns `Result<T, AgentError>` in Rust; callers must use `try`.
@@ -389,15 +401,15 @@ Without `otherwise`, a failed `try` stops the current block and records the erro
 `maybe` values are unwrapped the same way:
 
 ```
-- if invoice.score is some s:
-  - log: "{s}"
-- else:
-  - log: "unscored"
+1. if invoice.score is some s:
+   1. log: "{s}"
+   else:
+   1. log: "unscored"
 ```
 
 ## 15. Library access — automatic bindings
 
-**Principle: using a library must never require writing target-language code.** A user who writes `# Import: crate printpdf` gets `- pdf render doc -> bytes` with nothing else to do. The compiler generates and caches the binding itself.
+**Principle: using a library must never require writing target-language code.** A user who writes `# Import: crate printpdf` gets `pdf render doc into bytes` with nothing else to do. The compiler generates and caches the binding itself.
 
 ### 15.1 Flow
 
@@ -420,7 +432,7 @@ Three tiers, applied in order to every public function/method of the crate:
 | **direct** | every parameter and the return type map 1:1 onto AgentMark types (section 6), no generics, no closures | binding written by rules, no model call |
 | **assisted** | builder patterns, generics with a single obvious instantiation, closures with one argument, `Result`/`Option` wrapping | binder calls `ModelClient` with the signature, the crate's docs for that item, and the AgentMark style guide; the model returns the Rust body of the binding; binder type-checks it against the declared signature before accepting |
 | **skipped** | traits with associated types, lifetimes in the public API, unsafe functions, anything the assisted tier fails to type-check | listed in the binding file under `## Not bound` with the reason, so the user knows to use a `## Rust` block for those |
-| **on-demand** (v0.2) | the user writes a plain statement against a skipped item, e.g. `- pdf render doc to "invoice.pdf"` | at compile time the binder asks `ModelClient` to write the Rust body from the user's statement plus the item's rustdoc, type-checks it, saves it to `bindings/` as `unverified`, and continues the build. The user never sees Rust; `check` shows the line to approve. If the model's code fails type-check twice, the build stops with a clear error naming the item — never silently wrong code. |
+| **on-demand** (v0.2) | the user writes a plain statement against a skipped item, e.g. `pdf render doc to "invoice.pdf"` | at compile time the binder asks `ModelClient` to write the Rust body from the user's statement plus the item's rustdoc, type-checks it, saves it to `bindings/` as `unverified`, and continues the build. The user never sees Rust; `check` shows the line to approve. If the model's code fails type-check twice, the build stops with a clear error naming the item — never silently wrong code. |
 
 The binder never silently drops an item: everything is either bound or listed as not bound. With the on-demand tier, "not bound" becomes "not bound yet".
 
@@ -438,26 +450,29 @@ This keeps the guarantee from section 8: a reviewer can still see exactly what a
 
 A binding is a Layer-2 declaration. Hand-written and generated ones look identical:
 
-```
+````
 # Binding: pdf
 - crate: printpdf
 - effect: local
 
 ## render(doc: Document) -> bytes
+Renders the document as a PDF.
+
   ```rust
   let mut pdf = printpdf::PdfDocument::new(&doc.title, Mm(210.0), Mm(297.0), "L1");
   // ...
   Ok(pdf.save_to_bytes()?)
   ```
+````
+
+A binding is a Layer-2 declaration whose bodies are Layer-1 Rust. After declaring it, `pdf render doc into bytes` is an ordinary tool-style statement with a checked effect. This is how the language reaches "anything Rust can do" without the core growing: the binder wraps it once, everyone uses it everywhere.
+
+Generated files carry a header the binder uses for staleness, as the description under the heading (23.2):
+
 ```
-
-A binding is a Layer-2 declaration whose bodies are Layer-1 Rust. After declaring it, `- pdf render doc -> bytes` is an ordinary tool-style statement with a checked effect. This is how the language reaches "anything Rust can do" without the core growing: the binder wraps it once, everyone uses it everywhere.
-
-Generated files carry a header the binder uses for staleness:
-
-```
-> generated by agentmark bind — printpdf 0.7.0 — 2026-10-13
-> edit freely; re-run `agentmark bind printpdf --force` to regenerate
+# Binding: printpdf
+generated by agentmark bind — printpdf 0.7.0 — 2026-10-13
+edit freely; re-run `agentmark bind printpdf --force` to regenerate
 ```
 
 ### 15.5 Sharing
@@ -471,9 +486,9 @@ v0.1 keeps blocks sequential, but the IR must already carry an effect graph so t
 Explicit opt-in is available now:
 
 ```
-- parallel:
-  - do fetch_rates -> rates
-  - do fetch_invoices -> invoices
+1. parallel:
+   1. do fetch_rates into rates
+   2. do fetch_invoices into invoices
 ```
 
 Statements inside `parallel` must not write the same variable. The compiler checks this.
@@ -482,18 +497,19 @@ Statements inside `parallel` must not write the same variable. The compiler chec
 
 Any agent, service, command, or function may contain a block whose heading is `## Rust: <name>` and whose body is a fenced `rust` code block. Variables in scope are available by name; the block must end with a value of the declared type.
 
-```
+````
 ## Rust: hash_payload -> text
 - in: payload: text
-- effect: pure
-  ```rust
-  use sha2::{Digest, Sha256};
-  format!("{:x}", Sha256::digest(payload.as_bytes()))
-  ```
+- touches: nothing
+
+```rust
+use sha2::{Digest, Sha256};
+format!("{:x}", Sha256::digest(payload.as_bytes()))
 ```
+````
 
 Rules:
-- The effect declaration is mandatory and trusted (the compiler cannot verify arbitrary Rust). `agentmark check` lists every Rust block in its summary so reviewers see where trust is being extended.
+- The `- touches:` line is mandatory and trusted (the compiler cannot verify arbitrary Rust). `agentmark check` lists every Rust block in its summary so reviewers see where trust is being extended.
 - Generated code wraps the block in its own `fn` with `#[allow(unused)]`, so a mistake inside it produces a Rust error pointing at the `.agent.md` line via `#[track_caller]`-style source mapping comments.
 - Rust blocks may `use` any crate declared with `# Import: crate`.
 
@@ -509,7 +525,7 @@ A project is a folder. The compiler reads `agentmark.toml` at its root; everythi
 my-project/
   agentmark.toml          name, version, targets, lint settings
   tools.toml              tool manifest (section 7)
-  main.agent.md           entry point: imports + a single `# Run` listing what this binary starts
+  main.agent.md           entry point: `# Program` (title, description, `- start:`) and `# Uses`
   records/                one # Record per file:  records/invoice.agent.md
   rules/                  one # Rule per file:     rules/overdue.agent.md
   agents/                 one # Agent per file:    agents/invoice-chaser.agent.md
@@ -519,25 +535,32 @@ my-project/
   docs/                   optional prose; not compiled
 ```
 
-`# Run` is the only declaration allowed in `main.agent.md` besides imports:
+`# Program` and `# Uses` are the only parts of `main.agent.md` (section 23.4):
 
 ```
-# Run
-- invoice-chaser
-- api
+# Program: billing
+Chases unpaid invoices and serves them over HTTP.
+
+# Uses
+- [invoice-chaser agent](./agents/invoice-chaser.agent.md)
+- [api service](./services/api.agent.md)
 ```
 
-Each item is an imported `# Agent`, `# Service`, or `# Command`. The binary starts all listed agents and services; commands become subcommands. A project with no `# Run` compiles to a library, not a binary.
+Each file it uses brings its `# Agent`, `# Service`, or `# Command`. The binary starts all agents and services; commands become subcommands. A project with no `# Program` compiles to a library, not a binary.
 
 ### 18.2 Imports
 
 ```
-# Import: ./records/invoice.agent.md
-# Import: ./rules/overdue.agent.md
-# Import: ./rules/*.agent.md                > glob, imports every rule
-# Import: ./billing as billing              > folder = module; names become billing.<name>
-# Import: crate printpdf                    > library (section 15)
+# Uses
+- [Invoice](./records/invoice.agent.md)
+- [overdue rule](./rules/overdue.agent.md)
+- [every rule](./rules/*.agent.md)
+- [billing](./billing/) as billing
+
+# Import: crate printpdf
 ```
+
+A glob uses every file it matches; a folder is a module, its names become `billing.<name>`; `# Import: crate` is a library (section 15).
 
 - A file sees only what it imports. There is no global scope.
 - Import cycles are a compile error, with the cycle printed.
@@ -563,10 +586,10 @@ Warnings by default; `agentmark.toml` can promote any to errors (`[lint] deny = 
 
 - `long-file` — file over 150 lines
 - `magic-value` — a literal money, duration, or URL used inline more than once; suggest a `# Constant`
-- `unnamed-guard` — a guard whose condition is longer than 60 chars without a `> comment` line above it
+- `unnamed-guard` — a guard whose condition is longer than 60 chars that nothing explains: no description on its block or part, no `> note` line above it
 - `duplicate-rule` — two `# Rule`s with identical `when:` expressions
 - `prompt-in-loop` — `ask model` inside `for each` without a `guard` on its result
-- `missing-doc` — an `# Agent`, `# Service`, or `# Command` with no `> description` comment as its first line
+- `missing-doc` — an `# Agent`, `# Service`, or `# Command` with no description paragraph under its heading
 - `vague-name` — identifiers `data`, `tmp`, `x`, `result`, `thing`
 
 ### 18.5 Constants
@@ -585,15 +608,15 @@ Constants are pure, imported like anything else, and inlined at compile time.
 
 ### 18.6 Formatter
 
-`agentmark fmt` rewrites a file into canonical form: 2-space indent, one blank line between declarations, properties before blocks, imports sorted (local files first, then folders, then crates), trailing whitespace removed. `fmt --check` fails CI if a file is not canonical. There are no formatting options — one style, so every AgentMark file in the world looks the same.
+`agentmark fmt` rewrites a file into canonical form: `# Program`, then `# Uses` (sorted), then crate imports, then the other parts; one blank line between declarations; descriptions under their headings; properties before blocks; steps numbered 1, 2, 3 at every level and indented to their parent's text; trailing whitespace removed (section 23). `fmt --check` fails CI if a file is not canonical. There are no formatting options — one style, so every AgentMark file in the world looks the same.
 
-### 18.7 Documentation comments
+### 18.7 Descriptions
 
-A `>` comment immediately before a declaration or block is its documentation. `agentmark doc` collects these into a single readable page per project, so the explanation an operations manager reads is the same text the author wrote next to the code — they cannot drift apart.
+The paragraph directly under a heading is its documentation (section 23.2). `agentmark doc` collects these into a single readable page per project, so the explanation an operations manager reads is the same text the author wrote next to the code — they cannot drift apart.
 
 ```
-> Chases unpaid invoices once a day. Never changes amounts; only sends reminders.
 # Agent: invoice-chaser
+Chases unpaid invoices once a day. Never changes amounts; only sends reminders.
 ```
 
 ## 19. Model providers
@@ -649,32 +672,32 @@ From v0.3 AgentMark is first a general-purpose programming language written as M
 - `match` branches over an enum, a `maybe`, or a `result`:
 
 ```
-- match shape:
-  - Circle c:
-    - print: "circle {c.radius}"
-  - Rect r:
-    - print: "rect {r.width}x{r.height}"
-  - Empty:
-    - print: "nothing"
+1. match shape:
+   - Circle c:
+     1. print: "circle {c.radius}"
+   - Rect r:
+     1. print: "rect {r.width}x{r.height}"
+   - Empty:
+     1. print: "nothing"
 
-- match found:          > maybe T
-  - some row:
-    - print: "{row.id}"
-  - none:
-    - stop
+2. match found:          > maybe T
+   - some row:
+     1. print: "{row.id}"
+   - none:
+     1. stop
 
-- match parsed:         > result of T
-  - ok value:
-    - set total = value
-  - error problem:
-    - print: "{problem}"
+3. match parsed:         > result of T
+   - ok value:
+     1. value into total
+   - error problem:
+     1. print: "{problem}"
 ```
 
 Records are built the same way as variants: `Sale { region: "EU", amount: 120.00 EUR }`. Every field that is not `maybe` must be given.
 
 A `maybe` value is written `some x` or `none`. In a branch the name after the variant is optional (`- error:` when the problem is not used).
 
-Every variant must be handled or an `- otherwise:` branch given; a missing variant is a compile error naming it. `match` is a statement; it is pure unless its branches are not.
+Every variant must be handled or a `- otherwise:` branch given; a missing variant is a compile error naming it. `match` is a statement; it is pure unless its branches are not.
 
 ### 22.2 Collection words
 
@@ -698,7 +721,7 @@ Collections are `list of T` and `map of K to V`. Everything below is an expressi
 | `totals at "EU"` | `maybe V` |
 | `keys of totals` · `values of totals` | list (keys sorted) |
 
-Statements: `- append x to list`, `- put v at k in m`, `- remove k from m`, and loops `for each row in rows with index i:` and `for each region, total in totals:` (map entries in key order). Collection words are pure; they never take a function value (closures stay out of scope, section 21).
+Statements: `add x to list`, `put v at k in m`, `remove k from m`, and loops `for each row in rows with index i:` and `for each region, total in totals:` (map entries in key order). Collection words are pure; they never take a function value (closures stay out of scope, section 21).
 
 ### 22.3 Built-in library
 
@@ -715,35 +738,35 @@ The library is part of the language, not a binding; every function has a fixed e
 | `json` | `parse(t) as T` → `result of T`, `encode(v)` → text |
 | `csv` | `parse(t) as list of T` → `result of list of T` (header row maps to field names), `encode(rows)` → text |
 
-A function that returns `result of T` (such as `csv.parse` or `date.parse`) is used in one of two ways: `- try <call> -> var` (the `do` of section 14, `- try do <call> -> var`, is accepted and means the same) with an optional `otherwise:` block (section 14), after which `var` has type `T`; or `- match <call>:` with `ok`/`error` branches. `if <expr> is some x:` works on any `maybe` expression, including a call.
+A function that returns `result of T` (such as `csv.parse` or `date.parse`) is used in one of two ways: `try <call> into var` (the `do` of section 14, `try do <call> into var`, is accepted and means the same) with an optional `otherwise:` line and steps (section 14), after which `var` has type `T`; or `match <call>:` with `ok`/`error` branches. `if <expr> is some x:` works on any `maybe` expression, including a call.
 
 Files are a built-in tool `file` with effect `local`; it needs no `tools.toml` entry:
 
 ```
-- file read path -> content              > result of text; use try
-- file write path: content
-- file append path: line
-- file list folder -> names              > list of text, sorted
-- file rename old to new
-- file exists path -> present            > bool
-- file delete path
+file read path into content              > result of text; use try (23.10: a list of records reads CSV)
+file write path: content
+file append path: line
+file list folder into names              > list of text, sorted
+file rename old to new
+file exists path into present            > bool
+file delete path
 ```
 
-Every `file` call is traced (`{"kind":"file","verb":…,"path":…}`) so tests see what a program touched. Reading standard input is `- read input -> text`; `- print:` writes a line to standard output.
+Every `file` call is traced (`{"kind":"file","verb":…,"path":…}`) so tests see what a program touched. Reading standard input is `read input into text`; `print:` writes a line to standard output.
 
 ### 22.4 Opaque library types
 
 When the binder (section 15) meets a Rust type that has no AgentMark equivalent, it no longer skips the API around it: it declares the type as `handle of <crate>.<Type>` and binds its constructors and methods.
 
 ```
-- sha2 sha256_new -> hasher              > hasher: handle of sha2.Sha256
-- hasher update data                     > &mut self method, data: bytes (text accepted, Q151)
-- hasher finalize -> digest              > self method: consumes hasher
+1. sha2 sha256_new into hasher           > hasher: handle of sha2.Sha256
+2. hasher update data                    > &mut self method, data: bytes (text accepted, Q151)
+3. hasher finalize into digest           > self method: consumes hasher
 ```
 
 - A handle can be stored in variables and passed to functions; it cannot be printed, compared, put in a record that is serialized, or traced.
 - A method that takes `self` by value consumes the handle; using it afterwards is a compile error that names the line where it was consumed.
-- A method call is an ordinary tool-style statement `- <handle> <method> <arguments> [-> var]` with the binding's checked effect.
+- A method call is an ordinary tool-style statement `<handle> <method> <arguments> [into var]` with the binding's checked effect.
 - A handle owns whatever the Rust value borrows: types with lifetimes, and generic types whose parameters have a single instantiation in the crate as configured (for example `sqlx::query` with the `sqlite` feature, `DB = Sqlite`), are bound as handles through the assisted tier instead of being skipped. Rust integers wider than `int` (`u64`) convert with a checked conversion that fails the call on overflow.
 - Crate features come from `agentmark.toml`: `[crates] sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }`. The binder and the generated `Cargo.toml` both use them; without an entry the crate's defaults apply.
 - Target: for `sha2`, at least half of the items that v0.2 listed under `## Not bound` become bound.
@@ -754,18 +777,18 @@ A tool can be written in AgentMark itself:
 
 ```
 # Tool: slugger
-- effect: pure
+- touches: nothing
 
 ## slug(title: text) -> text
-- set lowered = text.lower(title)
-- return regex.replace(lowered, "[^a-z0-9]+", "-")
+1. text.lower(title) into lowered
+2. return regex.replace(lowered, "[^a-z0-9]+", "-")
 ```
 
-Each `## verb(params) -> type` block is a verb; its body is AgentMark statements or a fenced `rust` block (Layer 1). The tool is called like any tool, `- slugger slug title -> s`, or as an expression `slugger.slug(title)` when it is pure. The declared effect is checked against the body exactly like a `# Function`. `tools.toml` and `rust/connect.rs` remain for tools implemented outside the program (a real CRM, an email provider); a project that only uses `# Tool` declarations and the built-in `file` tool needs neither.
+Each `## verb(params) -> type` block is a verb; its body is numbered AgentMark steps or a fenced `rust` block (Layer 1). The tool is called like any tool, `slugger slug title into s`, or as an expression `slugger.slug(title)` when it touches nothing. A written `- touches:` is checked against the body exactly like a `# Function` (and is required when a verb is Rust). `tools.toml` and `rust/connect.rs` remain for tools implemented outside the program (a real CRM, an email provider); a project that only uses `# Tool` declarations and the built-in `file` tool needs neither.
 
 ### 22.6 Programs
 
-A project whose `# Run` lists a single `# Command` makes that command the binary's default: `my-tool <args>` runs it without a subcommand name. Command arguments are positional in the order declared, or `--name value`.
+A program (section 23.4) whose only runnable part is a single `# Command` makes that command the binary's default: `my-tool <args>` runs it without a subcommand name. Command arguments are positional in the order declared, or `--name value`.
 
 ### 22.7 v0.3 examples and testing contract
 

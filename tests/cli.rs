@@ -118,7 +118,7 @@ fn check_shows_inferred_field_types() {
     assert!(!out(&o).contains("Order.note"), "written types are not guessed");
 }
 
-const BAD_AGENT: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- lgo: \"hi\"\n";
+const BAD_AGENT: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. 1. lgo: \"hi\"\n";
 
 #[test]
 fn check_errors_exit_1_with_did_you_mean_and_no_rust() {
@@ -199,7 +199,7 @@ fn check_json_has_the_documented_keys() {
 
 /// A project that has every kind of nested entry docs/check-json.md describes: a warning (an unused
 /// import), an inferred field, a Rust block. Self-contained, so it does not depend on `examples/`.
-const JSON_DOC_PROJECT: &str = "# Import: ./spare.agent.md\n\n# Record: Order\n- amount\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: order: Order\n- effect: pure\n  ```rust\n  order.id.to_uppercase()\n  ```\n\n## On start\n- set loud = shout({ id: \"a\", amount: 5 EUR })\n- log: \"hi {loud}\"\n";
+const JSON_DOC_PROJECT: &str = "# Uses\n- [spare](./spare.agent.md)\n\n# Record: Order\n- amount\n- id: text\n\n# Agent: shouter\n- model: claude\n- tools: log\n\n## Rust: shout -> text\n- in: order: Order\n- touches: nothing\n\n```rust\norder.id.to_uppercase()\n```\n\n## On start\n1. shout({ id: \"a\", amount: 5 EUR }) into loud\n2. log: \"hi {loud}\"\n";
 
 #[test]
 fn check_json_nested_entries_have_the_documented_keys() {
@@ -305,7 +305,7 @@ fn fmt_of_a_missing_path_is_a_usage_error() {
 
 // ---------------------------------------------------------------------------------- lint
 
-const UNDOCUMENTED: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"hi\"\n";
+const UNDOCUMENTED: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. 1. log: \"hi\"\n";
 
 fn lint_project(tag: &str, toml: &str) -> Tmp {
     let d = temp(tag);
@@ -394,12 +394,12 @@ fn bind(project: &Path, extra: &[&str]) -> Output {
         .unwrap()
 }
 
-const USES_SHA2: &str = "# Import: crate sha2\n\n> Prints a fingerprint.\n# Command: fingerprint\n- args: payload: bytes\n\n## Run\n- sha2 sha256_digest payload -> digest\n- print: \"done\"\n";
+const USES_SHA2: &str = "# Import: crate sha2\n\n# Command: fingerprint\n- in: payload: bytes\n- steps:\n";
 
 fn sha2_project(tag: &str) -> Tmp {
     let d = temp(tag);
     write(&d, "agentmark.toml", "name = \"p\"\n");
-    write(&d, "main.agent.md", "# Import: ./fingerprint.agent.md\n\n# Run\n- fingerprint\n");
+    write(&d, "main.agent.md", "# Program: fingerprint\n\n# Uses\n- [fingerprint](./fingerprint.agent.md)\n");
     write(&d, "fingerprint.agent.md", USES_SHA2);
     d
 }
@@ -590,7 +590,7 @@ fn review_fixes_text_layout() {
     // the author's doc comes before the generated line of a rule
     let d = temp("ruledoc");
     write(&d, "records/order.agent.md", "# Record: Order\n- amount: money\n");
-    write(&d, "rules/big.agent.md", "# Import: ../records/order.agent.md\n\n> Big orders.\n# Rule: big\n- for: Order\n- when: amount > 5 EUR\n");
+    write(&d, "rules/big.agent.md", "# Uses\n- [order](../records/order.agent.md)\n\n# Rule: big Order\nBig orders.\n\n- when: amount > 5 EUR\n");
     let o = run(&["doc", s(&d)]);
     assert!(out(&o).contains("### big\n\nBig orders.\n\nApplies to Order. Always pure."), "{}{}", out(&o), err(&o));
 }
@@ -634,7 +634,7 @@ fn unverified_library_is_reported_once_in_text_and_kept_in_json_diagnostics() {
     assert!(v["diagnostics"].as_array().unwrap().iter().any(|x| x["code"] == "W005"));
 }
 
-const PURE_FN_SHA2: &str = "# Import: crate sha2\n\n> Hashes text.\n# Function: fingerprint\n- in: s: text\n- out: bytes\n- effect: pure\n  - sha2 sha256_digest s -> d\n  - return d\n";
+const PURE_FN_SHA2: &str = "# Import: crate sha2\n\n# Function: fingerprint\n- in: s: text\n- out: bytes\n- touches: nothing\n- steps:\n- steps:\n";
 
 #[test]
 fn allow_unverified_checks_effects_with_the_proposed_effect_and_warns_once() {
@@ -767,7 +767,7 @@ fn dot_is_a_project_folder_for_check_and_lint() {
     let d = temp("dot");
     write(&d, "agentmark.toml", "name = \"p\"\nversion = \"0.1.0\"\ntargets = [\"rust\"]\n");
     write(&d, "tools.toml", "[log]\nverbs = []\neffect = \"local\"\n");
-    write(&d, "records/a.agent.md", "> A.\n# Record: A\n- id: text\n");
+    write(&d, "records/a.agent.md", "# Record: A\nA.\n- id: text\n");
     for cmd in ["check", "lint"] {
         let mut c = agentmark(&[cmd, "."]);
         let o = c.current_dir(&d).output().unwrap();

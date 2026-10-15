@@ -67,24 +67,7 @@ fn magic_value_fires_for_a_repeated_amount_duration_or_url() {
 
 #[test]
 fn magic_value_is_quiet_for_single_uses_zero_and_constants() {
-    let src = "\
-# Constant: limit
-- value: 100 EUR
-
-# Constant: limit2
-- value: 100 EUR
-
-> Test agent.
-# Agent: a
-- model: claude
-- tools: log
-
-## Do go
-- guard: invoice.amount > 100 EUR
-- guard: invoice.amount > 0 EUR
-- guard: invoice.total > 0 EUR
-- http get \"https://api.example.com/rates\" -> r
-";
+    let src = "# Constant: limit\n- value: 100 EUR\n\n# Constant: limit2\n- value: 100 EUR\n\n# Agent: a\nTest agent.\n\n- model: claude\n- tools: log\n\n## Do go\n1. guard: invoice.amount > 100 EUR\n2. guard: invoice.amount > 0 EUR\n3. guard: invoice.total > 0 EUR\n4. http get \"https://api.example.com/rates\" into r\n";
     assert!(findings(src, "magic-value").is_empty());
 }
 
@@ -168,24 +151,7 @@ fn prompt_in_loop_is_quiet_with_a_guard_or_outside_a_loop() {
 
 #[test]
 fn missing_doc_fires_for_agent_service_and_command_without_description() {
-    let src = "\
-# Agent: a
-- model: claude
-
-## Do go
-- stop
-
-# Service: s
-- listen: 0.0.0.0:80
-
-## GET /x
-- respond 200
-
-# Command: c
-
-## Run
-- stop
-";
+    let src = "# Agent: a\n- model: claude\n\n## Do go\n1. stop\n\n# Service: s\n- listen: 0.0.0.0:80\n\n## GET /x\n1. respond 200\n\n# Command: c\n- steps:\n  1. stop\n";
     let d = findings(src, "missing-doc");
     assert_eq!(d.len(), 3, "{d:?}");
     assert!(d[0].message.contains("agent \"a\""));
@@ -195,17 +161,7 @@ fn missing_doc_fires_for_agent_service_and_command_without_description() {
 
 #[test]
 fn missing_doc_is_quiet_with_a_description_and_for_other_declarations() {
-    let src = "\
-> Does things.
-# Agent: a
-- model: claude
-
-## Do go
-- stop
-
-# Record: R
-- x: text
-";
+    let src = "# Agent: a\nDoes things.\n\n- model: claude\n\n## Do go\n1. stop\n\n# Record: R\n- x: text\n";
     assert!(findings(src, "missing-doc").is_empty());
 }
 
@@ -213,17 +169,7 @@ fn missing_doc_is_quiet_with_a_description_and_for_other_declarations() {
 
 #[test]
 fn vague_name_fires_once_per_name_per_declaration() {
-    let src = "\
-# Record: thing
-- data: text
-
-# Function: f
-- in: x: int
-- effect: pure
-  - set result = x
-  - set result = result + 1
-  - return result
-";
+    let src = "# Record: thing\n- data: text\n\n# Function: f\n- in: x: int\n- touches: nothing\n- steps:\n  1. x into result\n  2. result + 1 into result\n  3. return result\n";
     let d = findings(src, "vague-name");
     let names: Vec<&str> = d.iter().map(|d| d.message.split('"').nth(1).unwrap()).collect();
     assert_eq!(names, vec!["thing", "data", "x", "result"], "{d:?}");
@@ -239,7 +185,7 @@ fn vague_name_is_quiet_for_descriptive_names() {
 
 #[test]
 fn denied_rules_become_errors_and_the_rest_stay_warnings() {
-    let src = "# Agent: a\n- model: claude\n\n## Do go\n- set data = 1\n";
+    let src = "# Agent: a\n- model: claude\n\n## Do go\n1. 1 into data\n";
     let file = parse("t.agent.md", src);
     let cfg = LintConfig::new(["missing-doc"]);
     let d = lint_file(&file, &cfg);
@@ -292,7 +238,7 @@ fn every_rule_id_is_known() {
 
 #[test]
 fn a_finding_is_rendered_in_the_spec_10_shape_with_its_rule_id() {
-    let src = "# Agent: a\n- model: claude\n\n## Do go\n- stop\n";
+    let src = "# Agent: a\n- model: claude\n\n## Do go\n1. stop\n";
     let file = parse("agents/a.agent.md", src);
     let d = lint_file(&file, &LintConfig::default());
     let text = render_all(&d, src);
@@ -333,15 +279,7 @@ fn the_support_triage_example_guards_its_model_answer_inside_the_loop() {
 
 #[test]
 fn vague_name_checks_first_in_variables_and_route_parameters() {
-    let src = "\
-> Svc.
-# Service: s
-- listen: 0.0.0.0:80
-
-## GET /things/{x}
-- set found = first thing in state.things where thing.id = x
-- respond 200 found
-";
+    let src = "# Service: s\nSvc.\n\n- listen: 0.0.0.0:80\n\n## GET /things/{x}\n1. first thing in state.things where thing.id = x into found\n2. respond 200 found\n";
     let d = findings(src, "vague-name");
     let at: Vec<(String, u32, u32)> =
         d.iter().map(|d| (d.message.split('\"').nth(1).unwrap().to_string(), d.span.line, d.span.col)).collect();

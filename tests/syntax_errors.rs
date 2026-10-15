@@ -15,7 +15,7 @@ fn render(src: &str) -> String {
 /// One statement inside `## On start` of a small agent (so the statement is on line 5).
 fn stmt(line: &str) -> String {
     render(&format!(
-        "# Agent: a\n- model: claude\n\n## On start\n{line}\n"
+        "# Agent: a\n- model: claude\n\n## On start\n1. {line}\n"
     ))
 }
 
@@ -132,7 +132,7 @@ fn control_lines_need_their_colon() {
     let help =
         "A line that has statements under it ends with a colon, like \"for each row in rows:\".";
     assert_eq!(
-        render("# Agent: a\n- model: claude\n\n## On start\nfor each x in y\n  - stop\n"),
+        render("# Agent: a\n- model: claude\n\n## On start\n1. for each x in y\n   1. stop\n"),
         format!("t.agent.md:5\n  for each x in y\n                 ^\n  This line is missing the \":\" at its end.\n  {help}")
     );
     assert_eq!(
@@ -229,7 +229,7 @@ fn misspelled_words_inside_statements() {
 #[test]
 fn closed_word_properties_suggest() {
     assert_eq!(
-        render("# Function: f\n- effect: pur\n"),
+        render("# Function: f\n- steps:\n"),
         "t.agent.md:2\n  - effect: pur\n            ^^^\n  Unknown effect \"pur\". Did you mean \"pure\"?"
     );
     assert_eq!(
@@ -255,7 +255,7 @@ fn dates_must_exist_on_the_calendar() {
 
 #[test]
 fn diagnostics_are_sorted_by_position() {
-    let src = "# Agent: a\n- modle: claude\n\n## On start\n- sett x = 1\n- set _y = 2\n# Record: R\n- x: lst of int\n";
+    let src = "# Agent: a\n- modle: claude\n\n## On start\n1. sett x = 1\n2. 2 into _y\n\n# Record: R\n- x: lst of int\n";
     let diags = parse_file("t.agent.md", src).unwrap_err();
     let pos: Vec<(u32, u32)> = diags.iter().map(|d| (d.span.line, d.span.col)).collect();
     let mut sorted = pos.clone();

@@ -63,7 +63,7 @@ fn nested_statements_count_too() {
 fn a_function_with_too_many_statements_is_told_to_split_into_functions() {
     let body: String = (0..26).map(|i| format!("  - set v{i} = {i}\n")).collect();
     let e = errors(&format!(
-        "# Function: f\n- out: int\n- effect: pure\n{body}  - return 1\n"
+        "# Function: f\n- out: int\n- touches: nothing\n- steps:\n"
     ));
     assert!(
         e.contains("The function \"f\" has 27 statements; the limit is 25."),
@@ -116,14 +116,14 @@ fn else_and_try_otherwise_count_as_the_same_or_one_more_level() {
 
 #[test]
 fn a_single_file_is_exempt_but_flagged_once() {
-    let src = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n\n# Service: s\n\n## GET /x\n- respond 200 \"ok\"\n\n# Command: c\n\n## Run\n- print: \"x\"\n";
+    let src = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n\n# Service: s\n\n## GET /x\n1. respond 200 \"ok\"\n\n# Command: c\n- steps:\n  1. print: \"x\"\n";
     let c = ok(src);
     let w: Vec<_> = c.warnings.iter().filter(|w| w.code == "W006").collect();
     assert_eq!(w.len(), 1);
     assert!(w[0].message.contains("holds 3 runnable declarations"), "{}", w[0].message);
     assert!(w[0].help.as_deref().unwrap().contains("project folder"));
     // two agents are exempt too
-    let two = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n\n# Agent: b\n- model: claude\n- tools: log\n\n## On start\n- log: \"y\"\n";
+    let two = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n\n# Agent: b\n- model: claude\n- tools: log\n\n## On start\n1. log: \"y\"\n";
     ok(two);
 }
 
@@ -156,7 +156,7 @@ fn in_a_folder_project_one_runnable_declaration_per_file_in_total() {
 
 #[test]
 fn records_and_rules_may_share_a_single_file_project() {
-    ok("# Record: A\n- id: text\n\n# Record: B\n- id: text\n\n# Rule: r\n- for: A\n- when: id = \"x\"\n\n# Rule: s\n- for: B\n- when: id = \"y\"\n");
+    ok("# Record: A\n- id: text\n\n# Record: B\n- id: text\n\n# Rule: r A\n- when: id = \"x\"\n\n# Rule: s B\n- when: id = \"y\"\n");
 }
 
 #[test]
@@ -167,8 +167,8 @@ fn in_a_folder_project_records_and_rules_need_their_folders() {
         vec![
             ("app/records/all.agent.md", &format!("{}\n{}", rec("A"), rec("B"))),
             ("app/other/two.agent.md", &format!("{}\n{}", rec("C"), rec("D"))),
-            ("app/rules/both.agent.md", "# Import: ../records/all.agent.md\n\n# Rule: r\n- for: A\n- when: id = \"x\"\n\n# Rule: s\n- for: A\n- when: id = \"y\"\n"),
-            ("app/mixed.agent.md", "# Import: ./records/all.agent.md\n\n# Record: E\n- id: text\n\n# Rule: t\n- for: B\n- when: id = \"x\"\n"),
+            ("app/rules/both.agent.md", "# Uses\n- [all](../records/all.agent.md)\n\n# Rule: r A\n- when: id = \"x\"\n\n# Rule: s A\n- when: id = \"y\"\n"),
+            ("app/mixed.agent.md", "# Uses\n- [all](./records/all.agent.md)\n\n# Record: E\n- id: text\n\n# Rule: t B\n- when: id = \"x\"\n"),
         ],
     );
     let e = render_errors(&p);
@@ -239,7 +239,7 @@ fn an_empty_block_is_an_error() {
 
 #[test]
 fn an_empty_function_and_an_empty_route_are_errors_too() {
-    let e = errors("# Function: f\n- effect: pure\n");
+    let e = errors("# Function: f\n- touches: nothing\n- steps:\n");
     assert!(e.contains("The function \"f\" has no statements."), "{e}");
     let e = errors("# Service: s\n\n## GET /x\n");
     assert!(e.contains("The route \"GET /x\" has no statements."), "{e}");
@@ -266,7 +266,7 @@ fn a_comment_with_quotes_is_not_exempt() {
 fn the_caret_marks_the_first_counted_character_past_the_limit() {
     // a long string, then code that runs past column 120 only when the string is not counted
     let src = format!(
-        "# Function: f\n- out: int\n- effect: pure\n  - set a = \"{}\" = \"y\"{}\n  - return 1\n# Function: g\n- out: int\n- effect: pure\n  - return f()\n",
+        "# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. \"{}\" = \"y\"{} into a\n  2. return 1\n\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return f()\n",
         "x".repeat(300),
         " and \"a\" = \"a\"".repeat(14)
     );

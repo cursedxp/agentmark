@@ -14,11 +14,13 @@ use crate::text::{char_pos, line_text};
 use crate::workspace::{Analysis, Docs, OverlayFs, Doc};
 
 const BUILTIN_TYPES: [&str; 8] = ["text", "int", "money", "date", "datetime", "duration", "bool", "bytes"];
-const STATEMENTS: [&str; 12] = [
-    "guard:", "set ", "ask model", "for each ", "if ", "else:", "stop", "do ", "try ", "return ", "parallel:", "respond ",
+const STATEMENTS: [&str; 14] = [
+    "guard:", "ask model", "for each ", "if ", "else:", "stop", "do ", "try ", "return ", "parallel:", "respond ", "add ",
+    "print:", "otherwise:",
 ];
-const HEADINGS: [&str; 9] = [
-    "Agent: ", "Record: ", "Rule: ", "Function: ", "Constant: ", "Import: ", "Service: ", "Command: ", "Binding: ",
+const HEADINGS: [&str; 13] = [
+    "Program: ", "Uses", "Agent: ", "Record: ", "Enum: ", "Type: ", "Rule: ", "Function: ", "Constant: ", "Import: crate ",
+    "Service: ", "Command: ", "Tool: ",
 ];
 const BLOCKS: [&str; 5] = ["Every ", "Every day at ", "When ", "On start", "Do "];
 
@@ -221,15 +223,19 @@ fn binding_names(a: &Analysis) -> Vec<(String, Vec<String>)> {
     v
 }
 
-/// The tools written in AgentMark (SPEC 22.5): name, effect word, verbs.
-fn user_tools(a: &Analysis) -> Vec<(String, &'static str, Vec<String>)> {
+/// The tools written in AgentMark (SPEC 22.5): name, what they say they touch, verbs.
+fn user_tools(a: &Analysis) -> Vec<(String, String, Vec<String>)> {
     let mut v = Vec::new();
     for f in &a.project.files {
         for d in &f.ast.decls {
             if let Decl::Tool(t) = d {
+                let touches = t
+                    .touches
+                    .as_ref()
+                    .map(|x| x.words.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", "));
                 v.push((
                     t.name.name.clone(),
-                    agentmark::sema::effects::effect_name(t.effect.value),
+                    touches.map(|w| format!("touches {w}")).unwrap_or_else(|| "tool".to_string()),
                     t.verbs.iter().map(|x| x.name.name.clone()).collect(),
                 ));
             }
@@ -244,7 +250,7 @@ fn tool_items(a: &Analysis, _path: &str) -> Vec<CompletionItem> {
         .manifest
         .tools
         .values()
-        .map(|t| item(t.name.clone(), CompletionItemKind::MODULE, Some(format!("tool, {}", agentmark::sema::effects::effect_name(t.effect))), None))
+        .map(|t| item(t.name.clone(), CompletionItemKind::MODULE, Some(format!("tool, touches {}", agentmark::sema::effects::touch_word(&t.name))), None))
         .collect();
     out.push(item("file", CompletionItemKind::MODULE, Some("built-in tool, local".to_string()), None));
     for (b, _) in binding_names(a) {
@@ -334,9 +340,12 @@ fn statement_items(a: &Analysis, path: &str) -> Vec<CompletionItem> {
 fn property_items(decl: Option<&str>) -> Vec<CompletionItem> {
     let keys: &[&str] = match decl {
         Some("agent") => &["model:", "tools:", "memory:", "timeout:"],
-        Some("rule") => &["for:", "when:"],
+        Some("rule") => &["when:"],
         Some("constant") => &["value:"],
-        Some("function") => &["in:", "out:", "effect:"],
+        Some("function") => &["in:", "out:", "touches:", "steps:"],
+        Some("command") => &["in:", "steps:"],
+        Some("tool") => &["touches:"],
+        Some("program") => &["start:"],
         Some("service") => &["listen:", "state:"],
         _ => &[],
     };
@@ -531,6 +540,7 @@ fn type_text(t: &agentmark::syntax::ast::TypeExpr) -> String {
             Some(w) => format!("{w} handle of {name}"),
             None => format!("handle of {name}"),
         },
+        TypeKind::Infer(words) => words.join(" "),
     }
 }
 

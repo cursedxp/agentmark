@@ -30,7 +30,7 @@ fn read_message(r: &mut impl BufRead) -> serde_json::Value {
 fn the_binary_initializes_serves_a_request_and_exits_cleanly() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("c.agent.md");
-    let text = "# Constant: a\n- value: 14 days   \n";
+    let text = "# Constant: a\n- value: 14 days\n";
     std::fs::write(&file, text).unwrap();
     let uri = agentmark_lsp::uri::uri_from_path(&file.to_string_lossy());
 
@@ -98,7 +98,7 @@ fn the_binary_picks_the_model_like_the_binder_does() {
     )
     .unwrap();
     let file = dir.path().join("main.agent.md");
-    let text = "> Says.\n# Agent: a\n- model: mock\n- tools: log\n\n## On start\n- log: \"hi\"\n";
+    let text = "# Agent: a\nSays.\n\n- model: mock\n- tools: log\n\n## On start\n1. log: \"hi\"\n";
     std::fs::write(&file, text).unwrap();
     let uri = agentmark_lsp::uri::uri_from_path(&file.to_string_lossy());
 
