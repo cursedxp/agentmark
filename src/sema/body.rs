@@ -466,7 +466,7 @@ impl Checker<'_> {
                         ),
                     );
                     self.diags.last_mut().unwrap().help = Some(
-                        "End the body with \"- return <value>\", or remove the \"- out:\" line."
+                        "End the steps with a \"return <value>\" step, or remove the \"- out:\" line."
                             .into(),
                     );
                 }

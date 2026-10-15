@@ -539,7 +539,7 @@ impl Checker<'_> {
             format!("Unknown name \"{}\".", first.name),
         )
         .with_did_you_mean(super::scope::suggest(&first.name, &cands))
-        .with_help("Names come from \"set\" and \"->\" lines above, loop variables, constants and imported declarations.");
+        .with_help("Names come from \"into\" steps above, loop variables, constants and imported declarations.");
         self.diags.push(d);
         Type::Unknown
     }
@@ -879,7 +879,7 @@ impl Checker<'_> {
                             e.span,
                             format!("The function \"{name}\" can fail (it returns \"result of {t}\"), so it cannot be used inside an expression."),
                         )
-                        .with_help(format!("Call it as a statement: \"- try {name}(...) -> value\"."));
+                        .with_help(format!("Call it as a step: \"try {name}(...) into value\"."));
                         self.diags.push(d);
                         (**t).clone()
                     }
@@ -891,7 +891,7 @@ impl Checker<'_> {
                             e.span,
                             format!("The function \"{name}\" returns nothing, so it cannot be used as a value."),
                         )
-                        .with_help(format!("Call it as a statement instead: \"- do {name}(...)\"."));
+                        .with_help(format!("Call it as a step instead: \"do {name}(...)\"."));
                         self.diags.push(d);
                         Type::Unknown
                     }

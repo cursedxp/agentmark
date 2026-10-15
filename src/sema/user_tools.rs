@@ -252,7 +252,7 @@ impl<'a> Checker<'a> {
                         ),
                     );
                     self.diags.last_mut().unwrap().help =
-                        Some("End the body with \"- return <value>\", or remove the \"-> type\" from the heading.".into());
+                        Some("End the body with a \"return <value>\" step, or remove the \"-> type\" from the heading.".into());
                 }
                 cx.acc.clone()
             }
