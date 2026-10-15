@@ -460,7 +460,9 @@ What one region brought in: how many orders and how much money.
 
 A sale of 100 EUR or more.
 
-Applies to Sale. big: touches nothing
+Applies to Sale.
+
+big: touches nothing
 
 
 ## Functions

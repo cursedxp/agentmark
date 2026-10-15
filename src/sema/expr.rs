@@ -5,7 +5,7 @@ use crate::diag::{Diagnostic, Span};
 use crate::syntax::ast::{BinOp, Expr, ExprKind, Ident, InterpPart};
 
 use super::body::{Cx, PureKind};
-use super::effects::{effect_name, EffectSet};
+use super::effects::EffectSet;
 use super::scope::Kind;
 use super::types::Type;
 use super::{CallKind, Checker, NodeKey, Resolution};

@@ -1,8 +1,8 @@
 > tests/errors/effect-violation-in-rule.agent.md:23
 >   - when: live_status(invoice) = "open"
 >           ^^^^^^^^^^^^^^^^^^^^
->   A rule must be pure, but "live_status" has the effect network.
->   Rules are pure checks: they may only read the record's own fields and call pure functions.
+>   A rule may touch nothing, but "live_status" touches crm.
+>   Rules are plain checks: they may only read the record's own fields and call functions that touch nothing.
 
 # Record: Invoice
 - id: text
