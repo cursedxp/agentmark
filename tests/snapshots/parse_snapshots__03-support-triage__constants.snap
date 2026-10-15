@@ -11,7 +11,7 @@ decls:
         line: 1
         col: 3
         len: 23
-      doc: ~
+      doc: What the model is asked to decide for each ticket.
       name:
         name: triage_prompt
         span:
@@ -20,7 +20,7 @@ decls:
           len: 13
       value:
         span:
-          line: 2
+          line: 4
           col: 10
           len: 87
         kind:

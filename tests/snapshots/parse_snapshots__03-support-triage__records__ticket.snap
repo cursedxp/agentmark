@@ -8,76 +8,76 @@ imports: []
 decls:
   - Record:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 14
       doc: A support ticket as stored in the CRM.
       name:
         name: Ticket
         span:
-          line: 2
+          line: 1
           col: 11
           len: 6
       fields:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 8
           name:
             name: id
             span:
-              line: 3
+              line: 4
               col: 3
               len: 2
           ty:
             kind:
               Named: text
             span:
-              line: 3
+              line: 4
               col: 7
               len: 4
         - span:
-            line: 4
+            line: 5
             col: 3
             len: 13
           name:
             name: subject
             span:
-              line: 4
+              line: 5
               col: 3
               len: 7
           ty:
             kind:
               Named: text
             span:
-              line: 4
+              line: 5
               col: 12
               len: 4
         - span:
-            line: 5
+            line: 6
             col: 3
             len: 10
           name:
             name: body
             span:
-              line: 5
+              line: 6
               col: 3
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 6
               col: 9
               len: 4
         - span:
-            line: 6
+            line: 7
             col: 3
             len: 20
           name:
             name: priority
             span:
-              line: 6
+              line: 7
               col: 3
               len: 8
           ty:
@@ -86,10 +86,10 @@ decls:
                 kind:
                   Named: text
                 span:
-                  line: 6
+                  line: 7
                   col: 19
                   len: 4
             span:
-              line: 6
+              line: 7
               col: 13
               len: 10

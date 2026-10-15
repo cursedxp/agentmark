@@ -6,29 +6,31 @@ path: examples/01-invoice-chaser/rules/overdue.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
   - span:
-      line: 2
+      line: 3
       col: 3
-      len: 35
+      len: 38
     doc: ~
     kind:
       File:
         path: "../records/invoice.agent.md"
         alias: ~
+    label: Invoice
 decls:
   - Rule:
       span:
         line: 5
         col: 3
-        len: 13
+        len: 21
       doc: Unpaid and more than the grace period past due.
       name:
         name: overdue
@@ -39,12 +41,12 @@ decls:
       for_record:
         name: Invoice
         span:
-          line: 6
-          col: 8
+          line: 5
+          col: 17
           len: 7
       when:
         span:
-          line: 7
+          line: 8
           col: 9
           len: 47
         kind:
@@ -52,7 +54,7 @@ decls:
             op: And
             lhs:
               span:
-                line: 7
+                line: 8
                 col: 9
                 len: 26
               kind:
@@ -60,13 +62,13 @@ decls:
                   op: Gt
                   lhs:
                     span:
-                      line: 7
+                      line: 8
                       col: 9
                       len: 5
                     kind: Today
                   rhs:
                     span:
-                      line: 7
+                      line: 8
                       col: 17
                       len: 18
                     kind:
@@ -74,31 +76,31 @@ decls:
                         op: Add
                         lhs:
                           span:
-                            line: 7
+                            line: 8
                             col: 17
                             len: 3
                           kind:
                             Path:
                               - name: due
                                 span:
-                                  line: 7
+                                  line: 8
                                   col: 17
                                   len: 3
                         rhs:
                           span:
-                            line: 7
+                            line: 8
                             col: 23
                             len: 12
                           kind:
                             Path:
                               - name: grace_period
                                 span:
-                                  line: 7
+                                  line: 8
                                   col: 23
                                   len: 12
             rhs:
               span:
-                line: 7
+                line: 8
                 col: 40
                 len: 16
               kind:
@@ -106,19 +108,19 @@ decls:
                   op: Ne
                   lhs:
                     span:
-                      line: 7
+                      line: 8
                       col: 40
                       len: 6
                     kind:
                       Path:
                         - name: status
                           span:
-                            line: 7
+                            line: 8
                             col: 40
                             len: 6
                   rhs:
                     span:
-                      line: 7
+                      line: 8
                       col: 50
                       len: 6
                     kind:

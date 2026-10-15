@@ -6,32 +6,35 @@ path: examples/01-invoice-chaser/agents/invoice-chaser.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
   - span:
-      line: 2
+      line: 3
       col: 3
-      len: 35
+      len: 38
     doc: ~
     kind:
       File:
         path: "../records/invoice.agent.md"
         alias: ~
+    label: Invoice
   - span:
-      line: 3
+      line: 4
       col: 3
-      len: 33
+      len: 41
     doc: ~
     kind:
       File:
         path: "../rules/overdue.agent.md"
         alias: ~
+    label: overdue rule
 decls:
   - Agent:
       span:
@@ -48,33 +51,33 @@ decls:
       model:
         value: claude
         span:
-          line: 7
+          line: 9
           col: 10
           len: 6
       tools:
         - name: email
           span:
-            line: 8
+            line: 10
             col: 10
             len: 5
         - name: crm
           span:
-            line: 8
+            line: 10
             col: 17
             len: 3
         - name: log
           span:
-            line: 8
+            line: 10
             col: 22
             len: 3
       memory: ~
       timeout: ~
       blocks:
         - span:
-            line: 10
+            line: 12
             col: 4
             len: 18
-          doc: ~
+          doc: Finds every overdue invoice and reminds its customer.
           trigger:
             DailyAt:
               hour: 9
@@ -82,91 +85,91 @@ decls:
           label: "Every day at 09:00"
           body:
             - span:
-                line: 11
-                col: 3
+                line: 15
+                col: 4
                 len: 41
               kind:
                 ForEach:
                   filter_rule:
                     name: overdue
                     span:
-                      line: 11
-                      col: 12
+                      line: 15
+                      col: 13
                       len: 7
                   var:
                     name: invoice
                     span:
-                      line: 11
-                      col: 20
+                      line: 15
+                      col: 21
                       len: 7
                   source:
                     span:
-                      line: 11
-                      col: 31
+                      line: 15
+                      col: 32
                       len: 12
                     kind:
                       Path:
                         - name: crm
                           span:
-                            line: 11
-                            col: 31
+                            line: 15
+                            col: 32
                             len: 3
                         - name: invoices
                           span:
-                            line: 11
-                            col: 35
+                            line: 15
+                            col: 36
                             len: 8
                   body:
                     - span:
-                        line: 12
-                        col: 5
+                        line: 16
+                        col: 7
                         len: 9
                       kind:
                         Do:
                           name:
                             name: remind
                             span:
-                              line: 12
-                              col: 8
+                              line: 16
+                              col: 10
                               len: 6
                           args: []
                           into: ~
         - span:
-            line: 14
+            line: 18
             col: 4
             len: 9
-          doc: ~
+          doc: "Has the model write one reminder, checks it, sends it and marks the invoice as reminded."
           trigger:
             Do:
               name: remind
               span:
-                line: 14
+                line: 18
                 col: 7
                 len: 6
           label: Do remind
           body:
             - span:
-                line: 15
-                col: 3
-                len: 111
+                line: 21
+                col: 4
+                len: 113
               kind:
                 AskModel:
                   with:
                     span:
-                      line: 15
-                      col: 18
+                      line: 21
+                      col: 19
                       len: 7
                     kind:
                       Path:
                         - name: invoice
                           span:
-                            line: 15
-                            col: 18
+                            line: 21
+                            col: 19
                             len: 7
                   prompt:
                     span:
-                      line: 15
-                      col: 27
+                      line: 21
+                      col: 28
                       len: 75
                     kind:
                       Str: "Write a short, polite payment reminder. Keep the amount exactly as given."
@@ -174,215 +177,215 @@ decls:
                   into:
                     name: reminder
                     span:
-                      line: 15
-                      col: 106
+                      line: 21
+                      col: 109
                       len: 8
             - span:
-                line: 16
-                col: 3
+                line: 22
+                col: 4
                 len: 37
               kind:
                 Guard:
                   cond:
                     span:
-                      line: 16
-                      col: 10
+                      line: 22
+                      col: 11
                       len: 30
                     kind:
                       NoAmountsChanged:
                         span:
-                          line: 16
-                          col: 32
+                          line: 22
+                          col: 33
                           len: 8
                         kind:
                           Path:
                             - name: reminder
                               span:
-                                line: 16
-                                col: 32
+                                line: 22
+                                col: 33
                                 len: 8
                   else_: ~
             - span:
-                line: 17
-                col: 3
+                line: 23
+                col: 4
                 len: 44
               kind:
                 Guard:
                   cond:
                     span:
-                      line: 17
-                      col: 10
+                      line: 23
+                      col: 11
                       len: 37
                     kind:
                       Binary:
                         op: Lt
                         lhs:
                           span:
-                            line: 17
-                            col: 10
+                            line: 23
+                            col: 11
                             len: 15
                           kind:
                             Length:
                               span:
-                                line: 17
-                                col: 10
+                                line: 23
+                                col: 11
                                 len: 8
                               kind:
                                 Path:
                                   - name: reminder
                                     span:
-                                      line: 17
-                                      col: 10
+                                      line: 23
+                                      col: 11
                                       len: 8
                         rhs:
                           span:
-                            line: 17
-                            col: 28
+                            line: 23
+                            col: 29
                             len: 19
                           kind:
                             Path:
                               - name: max_reminder_length
                                 span:
-                                  line: 17
-                                  col: 28
+                                  line: 23
+                                  col: 29
                                   len: 19
                   else_: ~
             - span:
-                line: 18
-                col: 3
+                line: 24
+                col: 4
                 len: 33
               kind:
                 ToolCall:
                   tool:
                     name: email
                     span:
-                      line: 18
-                      col: 3
+                      line: 24
+                      col: 4
                       len: 5
                   verb:
                     name: send
                     span:
-                      line: 18
-                      col: 9
+                      line: 24
+                      col: 10
                       len: 4
                   target:
                     - Word:
                         name: customer
                         span:
-                          line: 18
-                          col: 14
+                          line: 24
+                          col: 15
                           len: 8
                   payload:
                     Value:
                       span:
-                        line: 18
-                        col: 24
+                        line: 24
+                        col: 25
                         len: 12
                       kind:
                         Interp:
                           - Expr:
                               span:
-                                line: 18
-                                col: 26
+                                line: 24
+                                col: 27
                                 len: 8
                               kind:
                                 Path:
                                   - name: reminder
                                     span:
-                                      line: 18
-                                      col: 26
+                                      line: 24
+                                      col: 27
                                       len: 8
                   into: ~
                   via_do: false
             - span:
-                line: 19
-                col: 3
+                line: 25
+                col: 4
                 len: 39
               kind:
                 ToolCall:
                   tool:
                     name: crm
                     span:
-                      line: 19
-                      col: 3
+                      line: 25
+                      col: 4
                       len: 3
                   verb:
                     name: update
                     span:
-                      line: 19
-                      col: 7
+                      line: 25
+                      col: 8
                       len: 6
                   target:
                     - Word:
                         name: invoice
                         span:
-                          line: 19
-                          col: 14
+                          line: 25
+                          col: 15
                           len: 7
                   payload:
                     Assign:
                       - field:
                           name: status
                           span:
-                            line: 19
-                            col: 23
+                            line: 25
+                            col: 24
                             len: 6
                         value:
                           span:
-                            line: 19
-                            col: 32
+                            line: 25
+                            col: 33
                             len: 10
                           kind:
                             Str: reminded
                   into: ~
                   via_do: false
             - span:
-                line: 20
-                col: 3
+                line: 26
+                col: 4
                 len: 41
               kind:
                 ToolCall:
                   tool:
                     name: log
                     span:
-                      line: 20
-                      col: 3
+                      line: 26
+                      col: 4
                       len: 3
                   verb: ~
                   target: []
                   payload:
                     Value:
                       span:
-                        line: 20
-                        col: 8
+                        line: 26
+                        col: 9
                         len: 36
                       kind:
                         Interp:
                           - Text: "Reminded "
                           - Expr:
                               span:
-                                line: 20
-                                col: 19
+                                line: 26
+                                col: 20
                                 len: 8
                               kind:
                                 Path:
                                   - name: customer
                                     span:
-                                      line: 20
-                                      col: 19
+                                      line: 26
+                                      col: 20
                                       len: 8
                           - Text: " about "
                           - Expr:
                               span:
-                                line: 20
-                                col: 36
+                                line: 26
+                                col: 37
                                 len: 6
                               kind:
                                 Path:
                                   - name: amount
                                     span:
-                                      line: 20
-                                      col: 36
+                                      line: 26
+                                      col: 37
                                       len: 6
                   into: ~
                   via_do: false

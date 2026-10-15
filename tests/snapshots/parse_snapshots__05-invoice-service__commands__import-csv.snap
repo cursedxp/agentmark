@@ -6,14 +6,15 @@ path: examples/05-invoice-service/commands/import-csv.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 35
+      len: 38
     doc: ~
     kind:
       File:
         path: "../records/invoice.agent.md"
         alias: ~
+    label: Invoice
 decls:
   - Command:
       span:
@@ -31,62 +32,62 @@ decls:
         - name:
             name: path
             span:
-              line: 5
-              col: 9
+              line: 7
+              col: 7
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 5
-              col: 15
+              line: 7
+              col: 13
               len: 4
           default: ~
         - name:
             name: dry_run
             span:
-              line: 5
-              col: 21
+              line: 7
+              col: 19
               len: 7
           ty:
             kind:
               Named: bool
             span:
-              line: 5
-              col: 30
+              line: 7
+              col: 28
               len: 4
           default:
             span:
-              line: 5
-              col: 37
+              line: 7
+              col: 35
               len: 5
             kind:
               Bool: false
       body:
         - span:
-            line: 8
-            col: 3
-            len: 45
+            line: 9
+            col: 6
+            len: 51
           kind:
             Try:
               stmt:
                 span:
-                  line: 8
-                  col: 7
-                  len: 41
+                  line: 9
+                  col: 10
+                  len: 47
                 kind:
                   ReadFile:
                     path:
                       span:
-                        line: 8
-                        col: 17
+                        line: 9
+                        col: 20
                         len: 4
                       kind:
                         Path:
                           - name: path
                             span:
-                              line: 8
-                              col: 17
+                              line: 9
+                              col: 20
                               len: 4
                     ty:
                       kind:
@@ -94,169 +95,169 @@ decls:
                           kind:
                             Named: Invoice
                           span:
-                            line: 8
-                            col: 33
+                            line: 9
+                            col: 36
                             len: 7
                       span:
-                        line: 8
-                        col: 25
+                        line: 9
+                        col: 28
                         len: 15
                     into:
-                      name: rows
+                      name: invoices
                       span:
-                        line: 8
-                        col: 44
-                        len: 4
+                        line: 9
+                        col: 49
+                        len: 8
               otherwise:
                 - span:
-                    line: 10
-                    col: 7
+                    line: 11
+                    col: 9
                     len: 30
                   kind:
                     Print:
                       span:
-                        line: 10
-                        col: 14
+                        line: 11
+                        col: 16
                         len: 23
                       kind:
                         Interp:
                           - Text: "Could not read "
                           - Expr:
                               span:
-                                line: 10
-                                col: 31
+                                line: 11
+                                col: 33
                                 len: 4
                               kind:
                                 Path:
                                   - name: path
                                     span:
-                                      line: 10
-                                      col: 31
+                                      line: 11
+                                      col: 33
                                       len: 4
                 - span:
-                    line: 11
-                    col: 7
+                    line: 12
+                    col: 9
                     len: 4
                   kind: Stop
         - span:
-            line: 12
-            col: 3
-            len: 21
+            line: 13
+            col: 6
+            len: 29
           kind:
             ForEach:
               filter_rule: ~
               var:
-                name: row
+                name: invoice
                 span:
-                  line: 12
-                  col: 12
-                  len: 3
+                  line: 13
+                  col: 15
+                  len: 7
               source:
                 span:
-                  line: 12
-                  col: 19
-                  len: 4
+                  line: 13
+                  col: 26
+                  len: 8
                 kind:
                   Path:
-                    - name: rows
+                    - name: invoices
                       span:
-                        line: 12
-                        col: 19
-                        len: 4
+                        line: 13
+                        col: 26
+                        len: 8
               body:
                 - span:
-                    line: 13
-                    col: 5
+                    line: 14
+                    col: 9
                     len: 15
                   kind:
                     If:
                       cond:
                         span:
-                          line: 13
-                          col: 8
+                          line: 14
+                          col: 12
                           len: 11
                         kind:
                           Not:
                             span:
-                              line: 13
-                              col: 12
+                              line: 14
+                              col: 16
                               len: 7
                             kind:
                               Path:
                                 - name: dry_run
                                   span:
-                                    line: 13
-                                    col: 12
+                                    line: 14
+                                    col: 16
                                     len: 7
                       then:
                         - span:
-                            line: 14
-                            col: 7
-                            len: 28
+                            line: 15
+                            col: 12
+                            len: 29
                           kind:
                             Append:
                               value:
                                 span:
-                                  line: 14
-                                  col: 14
-                                  len: 3
+                                  line: 15
+                                  col: 16
+                                  len: 7
                                 kind:
                                   Path:
-                                    - name: row
+                                    - name: invoice
                                       span:
-                                        line: 14
-                                        col: 14
-                                        len: 3
+                                        line: 15
+                                        col: 16
+                                        len: 7
                               list:
                                 span:
-                                  line: 14
-                                  col: 21
+                                  line: 15
+                                  col: 27
                                   len: 14
                                 kind:
                                   Path:
                                     - name: state
                                       span:
-                                        line: 14
-                                        col: 21
+                                        line: 15
+                                        col: 27
                                         len: 5
                                     - name: invoices
                                       span:
-                                        line: 14
-                                        col: 27
+                                        line: 15
+                                        col: 33
                                         len: 8
                       else_: []
         - span:
-            line: 15
-            col: 3
-            len: 38
+            line: 16
+            col: 6
+            len: 42
           kind:
             Print:
               span:
-                line: 15
-                col: 10
-                len: 31
+                line: 16
+                col: 13
+                len: 35
               kind:
                 Interp:
                   - Text: "Imported "
                   - Expr:
                       span:
-                        line: 15
-                        col: 21
-                        len: 13
+                        line: 16
+                        col: 24
+                        len: 17
                       kind:
                         CountOf:
                           rule: ~
                           noun: ~
                           source:
                             span:
-                              line: 15
-                              col: 30
-                              len: 4
+                              line: 16
+                              col: 33
+                              len: 8
                             kind:
                               Path:
-                                - name: rows
+                                - name: invoices
                                   span:
-                                    line: 15
-                                    col: 30
-                                    len: 4
+                                    line: 16
+                                    col: 33
+                                    len: 8
                   - Text: " rows"

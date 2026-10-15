@@ -6,14 +6,15 @@ path: examples/05-invoice-service/records/app-state.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 26
+      len: 29
     doc: ~
     kind:
       File:
         path: "./invoice.agent.md"
         alias: ~
+    label: Invoice
 decls:
   - Record:
       span:
@@ -29,13 +30,13 @@ decls:
           len: 8
       fields:
         - span:
-            line: 5
+            line: 7
             col: 3
             len: 25
           name:
             name: invoices
             span:
-              line: 5
+              line: 7
               col: 3
               len: 8
           ty:
@@ -44,10 +45,10 @@ decls:
                 kind:
                   Named: Invoice
                 span:
-                  line: 5
+                  line: 7
                   col: 21
                   len: 7
             span:
-              line: 5
+              line: 7
               col: 13
               len: 15
