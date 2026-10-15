@@ -168,6 +168,7 @@ h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor, .anchor:
 .tk-kw2, .tk-op2, .hljs-built_in, .hljs-literal, .tk-lit { color: var(--t-kw2); }
 .tk-str, .hljs-string, .hljs-regexp, .hljs-meta .hljs-string { color: var(--t-str); }
 .tk-esc { color: var(--t-num); }
+.tk-link { color: var(--t-fn); text-decoration: underline; text-decoration-color: var(--line); }
 .tk-interp { color: var(--t-interp); }
 .tk-num, .hljs-number, .hljs-symbol { color: var(--t-num); }
 .tk-fn, .hljs-title.function_, .hljs-title { color: var(--t-fn); }

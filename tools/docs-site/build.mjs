@@ -96,7 +96,7 @@ function renderCode(text, info) {
   let body;
   if (o.lang === 'agentmark') body = highlightAgentMark(text);
   else if (LANG[o.lang]) body = hljs.highlight(text, { language: LANG[o.lang] }).value;
-  else { body = esc(text); if (o.lang && !warned.has(o.lang)) { warned.add(o.lang); console.warn('plain language:', o.lang); } }
+  else { body = esc(text); if (o.lang && o.lang !== 'text' && !warned.has(o.lang)) { warned.add(o.lang); console.warn('plain language:', o.lang); } }
   const cap = [o.caption && `<span class="cap-name">${esc(o.caption)}</span>`, ...o.tags.map((t) => `<span class="cap-tag">${esc(t)}</span>`)]
     .filter(Boolean).join('');
   const label = o.lang === 'agentmark' ? 'agentmark' : o.lang;
