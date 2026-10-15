@@ -13,7 +13,10 @@
     "decreaseIndentPattern": "^\\s*else:\\s*$"
   },
   "onEnterRules": [
-    { "beforeText": "^\\s*-\\s+.*:\\s*$", "action": { "indent": "indent", "appendText": "- " } },
-    { "beforeText": "^\\s*-\\s+\\S.*$", "action": { "indent": "none", "appendText": "- " } }
+    { "beforeText": "^\\s*\\d+\\.\\s+add\\s.*:\\s*$", "action": { "indent": "indent", "appendText": "- " } },
+    { "beforeText": "^\\s*\\d+\\.\\s+.*:\\s*$", "action": { "indent": "indent", "appendText": "1. " } },
+    { "beforeText": "^\\s*[-*+]\\s+[^:]*:\\s*$", "action": { "indent": "indent", "appendText": "1. " } },
+    { "beforeText": "^\\s*\\d+\\.\\s+\\S.*$", "action": { "indent": "none", "appendText": "1. " } },
+    { "beforeText": "^\\s*[-*+]\\s+\\S.*$", "action": { "indent": "none", "appendText": "- " } }
   ]
 }

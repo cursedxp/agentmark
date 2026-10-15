@@ -8,48 +8,48 @@ imports: []
 decls:
   - Record:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 21
       doc: How many errors one service logged.
       name:
         name: ServiceErrors
         span:
-          line: 2
+          line: 1
           col: 11
           len: 13
       fields:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 13
           name:
             name: service
             span:
-              line: 3
+              line: 4
               col: 3
               len: 7
           ty:
             kind:
               Named: text
             span:
-              line: 3
+              line: 4
               col: 12
               len: 4
         - span:
-            line: 4
+            line: 5
             col: 3
             len: 11
           name:
             name: errors
             span:
-              line: 4
+              line: 5
               col: 3
               len: 6
           ty:
             kind:
               Named: int
             span:
-              line: 4
+              line: 5
               col: 11
               len: 3

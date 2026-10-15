@@ -8,7 +8,10 @@
     { "include": "#rust-fence" },
     { "include": "#declaration" },
     { "include": "#block-heading" },
+    { "include": "#uses-item" },
     { "include": "#property" },
+    { "include": "#description" },
+    { "include": "#link" },
     { "include": "#statement" }
   ],
   "repository": {
@@ -35,11 +38,45 @@
                 "2": { "name": "entity.name.function.agentmark" }
               }
             },
+            {
+              "match": "^(\\s*)([-*+])\\s+(crate|effect|proposed-effect)(:)",
+              "captures": {
+                "2": { "name": "punctuation.definition.list.agentmark" },
+                "3": { "name": "variable.other.property.agentmark" },
+                "4": { "name": "punctuation.separator.agentmark" }
+              }
+            },
             { "include": "$self" }
           ]
         },
         {
-          "match": "^(#)\\s+(Agent|Record|Enum|Type|Rule|Function|Service|Command|Constant|Binding|Tool)(:)\\s*([A-Za-z][\\w-]*)?",
+          "match": "^(#)\\s+(Program)(:)\\s*([A-Za-z][\\w-]*)?",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.declaration.agentmark" },
+            "3": { "name": "punctuation.separator.agentmark" },
+            "4": { "name": "entity.name.type.agentmark" }
+          }
+        },
+        {
+          "match": "^(#)\\s+(Uses)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.declaration.agentmark" }
+          }
+        },
+        {
+          "match": "^(#)\\s+(Rule)(:)\\s*((?:[A-Za-z][\\w-]*\\s+)*)([A-Za-z][\\w-]*)\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.agentmark" },
+            "2": { "name": "keyword.declaration.agentmark" },
+            "3": { "name": "punctuation.separator.agentmark" },
+            "4": { "name": "entity.name.type.agentmark" },
+            "5": { "name": "support.type.record.agentmark" }
+          }
+        },
+        {
+          "match": "^(#)\\s+(Agent|Record|Enum|Type|Function|Service|Command|Constant|Tool)(:)\\s*([A-Za-z][\\w-]*)?",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },
             "2": { "name": "keyword.declaration.agentmark" },
@@ -57,13 +94,6 @@
             "5": { "name": "string.unquoted.path.agentmark" },
             "6": { "name": "keyword.control.as.agentmark" },
             "7": { "name": "entity.name.namespace.agentmark" }
-          }
-        },
-        {
-          "match": "^(#)\\s+(Run)\\s*$",
-          "captures": {
-            "1": { "name": "punctuation.definition.heading.agentmark" },
-            "2": { "name": "keyword.declaration.agentmark" }
           }
         }
       ]
@@ -108,7 +138,7 @@
           }
         },
         {
-          "match": "^(##)\\s+(On start|Run)\\s*$",
+          "match": "^(##)\\s+(On start)\\s*$",
           "captures": {
             "1": { "name": "punctuation.definition.heading.agentmark" },
             "2": { "name": "keyword.control.trigger.agentmark" }
@@ -159,6 +189,36 @@
         }
       ]
     },
+    "uses-item": {
+      "match": "^(\\s*)([-*+])\\s+(\\[)([^\\]\\n]*)(\\])(\\()([^)\\n]*)(\\))(?:\\s+(as)\\s+([A-Za-z][\\w-]*))?\\s*$",
+      "captures": {
+        "2": { "name": "punctuation.definition.list.agentmark" },
+        "3": { "name": "punctuation.definition.link.agentmark" },
+        "4": { "name": "string.other.link.title.agentmark" },
+        "5": { "name": "punctuation.definition.link.agentmark" },
+        "6": { "name": "punctuation.definition.link.agentmark" },
+        "7": { "name": "markup.underline.link.agentmark" },
+        "8": { "name": "punctuation.definition.link.agentmark" },
+        "9": { "name": "keyword.control.as.agentmark" },
+        "10": { "name": "entity.name.namespace.agentmark" }
+      }
+    },
+    "link": {
+      "match": "(\\[)([^\\]\\n]*)(\\])(\\()([^)\\n]*)(\\))",
+      "captures": {
+        "1": { "name": "punctuation.definition.link.agentmark" },
+        "2": { "name": "string.other.link.title.agentmark" },
+        "3": { "name": "punctuation.definition.link.agentmark" },
+        "4": { "name": "punctuation.definition.link.agentmark" },
+        "5": { "name": "markup.underline.link.agentmark" },
+        "6": { "name": "punctuation.definition.link.agentmark" }
+      }
+    },
+    "description": {
+      "comment": "The paragraph under a heading (SPEC 23.2) is plain text: any line that is not blank, a bullet, a numbered step, a heading, a note, a fence, or one of the plain lines else: / otherwise:.",
+      "name": "text.description.agentmark",
+      "match": "^(?!\\s*$)(?!\\s*(?:[-*+]\\s|\\d+\\.(?:\\s|$)|#|>|`{3}))(?!\\s*(?:else|otherwise)\\s*:\\s*$).+$"
+    },
     "typed-names": {
       "patterns": [
         {
@@ -190,7 +250,7 @@
       ]
     },
     "property": {
-      "match": "^(\\s*)(-)\\s+(model|tools|memory|timeout|for|when|value|in|out|effect|listen|state|args|crate|doc|is)(:)",
+      "match": "^(\\s*)([-*+])\\s+(model|tools|memory|timeout|when|value|in|out|touches|steps|start|listen|state|is)(:)",
       "captures": {
         "2": { "name": "punctuation.definition.list.agentmark" },
         "3": { "name": "variable.other.property.agentmark" },
@@ -200,14 +260,14 @@
     "statement": {
       "patterns": [
         {
-          "match": "^(\\s*)(-)\\s+(match)\\b",
+          "match": "^(\\s*)([-*+]|\\d+\\.)\\s+(match)\\b",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "keyword.control.agentmark" }
           }
         },
         {
-          "match": "^(\\s*)(-)\\s+(some|ok|error)(?:\\s+([A-Za-z_]\\w*))?\\s*(:)\\s*$",
+          "match": "^(\\s*)([-*+])\\s+(some|ok|error)(?:\\s+([A-Za-z_]\\w*))?\\s*(:)\\s*$",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "keyword.control.pattern.agentmark" },
@@ -216,7 +276,7 @@
           }
         },
         {
-          "match": "^(\\s*)(-)\\s+(none)\\s*(:)\\s*$",
+          "match": "^(\\s*)([-*+])\\s+(none)\\s*(:)\\s*$",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "keyword.control.pattern.agentmark" },
@@ -224,7 +284,7 @@
           }
         },
         {
-          "match": "^(\\s*)(-)\\s+(?!(?:if|for|match|else|otherwise|parallel|try)\\b)([A-Za-z][\\w-]*(?:\\.[A-Za-z][\\w-]*)*)(?:\\s+([A-Za-z_]\\w*))?\\s*(:)\\s*$",
+          "match": "^(\\s*)([-*+])\\s+(?!(?:if|for|match|else|otherwise|parallel|try)\\b)([A-Za-z][\\w-]*(?:\\.[A-Za-z][\\w-]*)*)(?:\\s+([A-Za-z_]\\w*))?\\s*(:)\\s*$",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "entity.name.type.variant.agentmark" },
@@ -233,7 +293,7 @@
           }
         },
         {
-          "match": "^(\\s*)(-)\\s+(guard)(:)",
+          "match": "^(\\s*)([-*+]|\\d+\\.)\\s+(guard)(:)",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "keyword.control.guard.agentmark" },
@@ -241,7 +301,7 @@
           }
         },
         {
-          "match": "^(\\s*)(-)\\s+(ask model)(?:\\s+(with)\\s+([A-Za-z][\\w.-]*))?(:)",
+          "match": "^(\\s*)([-*+]|\\d+\\.)\\s+(ask model)(?:\\s+(with)\\s+([A-Za-z][\\w.-]*))?(:)",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "keyword.other.model.agentmark" },
@@ -251,7 +311,7 @@
           }
         },
         {
-          "match": "^(\\s*)(-)\\s+([a-z][\\w-]*)\\s+([a-z][\\w-]*)(?:\\s+([a-z][\\w-]*))?(?=\\s*(?::|\"|->|$))",
+          "match": "^(\\s*)([-*+]|\\d+\\.)\\s+(?!(?:do|stop|return|add|put|remove|respond|read|print|for|if|else|otherwise|parallel|try|match|guard|ask|sort|group|keys|values|sum|min|max|first|last|count|take|skip|unique|join|list|map|empty|none|true|false|today|now|some|not)\\b)([a-z][\\w-]*)\\s+(?!(?:into|of|by|to|from|with|where|in|at|as|and|or|is|matches)\\b)([a-z][\\w-]*)(?:\\s+([a-z][\\w-]*))?(?=\\s*(?::|\"|\\binto\\b|$))",
           "captures": {
             "2": { "name": "punctuation.definition.list.agentmark" },
             "3": { "name": "support.class.tool.agentmark" },
@@ -259,17 +319,16 @@
             "5": { "name": "entity.name.tag.target.agentmark" }
           }
         },
-        { "match": "^(\\s*)(-)", "captures": { "2": { "name": "punctuation.definition.list.agentmark" } } },
+        { "match": "^(\\s*)([-*+]|\\d+\\.)", "captures": { "2": { "name": "punctuation.definition.list.agentmark" } } },
         { "include": "#control" },
         { "include": "#expression" }
       ]
     },
     "control": {
       "patterns": [
-        { "match": "\\b(for each|if|else|otherwise|stop|do|set|return|respond|read|print|match|append|put|remove)\\b", "name": "keyword.control.agentmark" },
-        { "match": "\\b(in|as|with|from|and|or|not|is|matches|else|index)\\b", "name": "keyword.operator.word.agentmark" },
-        { "match": "\\b(?:(?:list|map|keys|values|sum|min|max|first|last|count) of|empty (?:list|map) of|sort|group|take|skip|unique|join|where|by|descending|at|to)\\b", "name": "support.function.collection.agentmark" },
-        { "match": "->", "name": "keyword.operator.arrow.agentmark" }
+        { "match": "\\b(for each|if|else|otherwise|parallel|try|stop|do|return|respond|read|print|match|add|put|remove)\\b", "name": "keyword.control.agentmark" },
+        { "match": "\\b(in|into|as|with|from|and|or|not|is|matches|else|index)\\b", "name": "keyword.operator.word.agentmark" },
+        { "match": "\\b(?:(?:list|map|keys|values|sum|min|max|first|last|count) of|empty (?:list|map) of|sort|group|take|skip|unique|join|where|by|descending|at|to)\\b", "name": "support.function.collection.agentmark" }
       ]
     },
     "expression": {

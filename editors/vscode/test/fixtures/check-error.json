@@ -7,7 +7,7 @@
       "code": "W003",
       "severity": "warning",
       "file": "proj/effect-violation-in-rule.agent.md",
-      "line": 17,
+      "line": 16,
       "column": 9,
       "length": 7,
       "message": "Unused rule: nothing refers to \"is_open\".",
@@ -21,7 +21,7 @@
       "line": 19,
       "column": 9,
       "length": 20,
-      "message": "A rule must be pure, but \"live_status\" has the effect network.",
+      "message": "A rule must be pure, but \"live_status\" has the effect local.",
       "did_you_mean": null,
       "help": "Rules are pure checks: they may only read the record's own fields and call pure functions."
     }

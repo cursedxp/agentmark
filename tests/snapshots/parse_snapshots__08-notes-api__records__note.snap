@@ -8,65 +8,65 @@ imports: []
 decls:
   - Record:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 12
       doc: A note as the API returns it.
       name:
         name: Note
         span:
-          line: 2
+          line: 1
           col: 11
           len: 4
       fields:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 7
           name:
             name: id
             span:
-              line: 3
+              line: 4
               col: 3
               len: 2
           ty:
             kind:
               Named: int
             span:
-              line: 3
+              line: 4
               col: 7
               len: 3
         - span:
-            line: 4
+            line: 5
             col: 3
             len: 11
           name:
             name: title
             span:
-              line: 4
+              line: 5
               col: 3
               len: 5
           ty:
             kind:
               Named: text
             span:
-              line: 4
+              line: 5
               col: 10
               len: 4
         - span:
-            line: 5
+            line: 6
             col: 3
             len: 10
           name:
             name: body
             span:
-              line: 5
+              line: 6
               col: 3
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 6
               col: 9
               len: 4

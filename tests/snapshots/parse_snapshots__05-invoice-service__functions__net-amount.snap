@@ -6,14 +6,15 @@ path: examples/05-invoice-service/functions/net-amount.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 35
+      len: 38
     doc: ~
     kind:
       File:
         path: "../records/invoice.agent.md"
         alias: ~
+    label: Invoice
 decls:
   - Function:
       span:
@@ -31,124 +32,130 @@ decls:
         - name:
             name: invoice
             span:
-              line: 5
+              line: 7
               col: 7
               len: 7
           ty:
             kind:
-              Named: Invoice
+              Infer:
+                - invoice
             span:
-              line: 5
-              col: 16
+              line: 7
+              col: 7
               len: 7
           default: ~
         - name:
             name: vat
             span:
-              line: 5
-              col: 25
+              line: 7
+              col: 16
               len: 3
           ty:
             kind:
               Named: int
             span:
-              line: 5
-              col: 30
+              line: 7
+              col: 21
               len: 3
           default: ~
       out:
         kind:
           Named: money
         span:
-          line: 6
+          line: 8
           col: 8
           len: 5
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 7
-          col: 11
-          len: 4
+          line: 9
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 9
+              col: 12
+              len: 7
       body:
         - span:
-            line: 8
-            col: 5
+            line: 11
+            col: 6
             len: 50
           kind:
             Return:
               span:
-                line: 8
-                col: 12
+                line: 11
+                col: 13
                 len: 43
               kind:
                 Binary:
                   op: Sub
                   lhs:
                     span:
-                      line: 8
-                      col: 12
+                      line: 11
+                      col: 13
                       len: 14
                     kind:
                       Path:
                         - name: invoice
                           span:
-                            line: 8
-                            col: 12
+                            line: 11
+                            col: 13
                             len: 7
                         - name: amount
                           span:
-                            line: 8
-                            col: 20
+                            line: 11
+                            col: 21
                             len: 6
                   rhs:
                     span:
-                      line: 8
-                      col: 29
+                      line: 11
+                      col: 30
                       len: 26
                     kind:
                       Binary:
                         op: Div
                         lhs:
                           span:
-                            line: 8
-                            col: 29
+                            line: 11
+                            col: 30
                             len: 20
                           kind:
                             Binary:
                               op: Mul
                               lhs:
                                 span:
-                                  line: 8
-                                  col: 29
+                                  line: 11
+                                  col: 30
                                   len: 14
                                 kind:
                                   Path:
                                     - name: invoice
                                       span:
-                                        line: 8
-                                        col: 29
+                                        line: 11
+                                        col: 30
                                         len: 7
                                     - name: amount
                                       span:
-                                        line: 8
-                                        col: 37
+                                        line: 11
+                                        col: 38
                                         len: 6
                               rhs:
                                 span:
-                                  line: 8
-                                  col: 46
+                                  line: 11
+                                  col: 47
                                   len: 3
                                 kind:
                                   Path:
                                     - name: vat
                                       span:
-                                        line: 8
-                                        col: 46
+                                        line: 11
+                                        col: 47
                                         len: 3
                         rhs:
                           span:
-                            line: 8
-                            col: 52
+                            line: 11
+                            col: 53
                             len: 3
                           kind:
                             Int: 100

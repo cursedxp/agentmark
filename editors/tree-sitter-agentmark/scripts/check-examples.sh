@@ -82,9 +82,9 @@ grep -q 'injection.content' "$WORK/query-injections.out" || { echo "check-exampl
 echo "check-examples: highlight and injection queries compile"
 
 # 3b. The collection words (SPEC 22.2) are highlighted as keywords.
-printf '# Function: f\n- effect: local\n  - set ranked = sort rows by amount descending\n  - put 1 at "EU" in totals\n  - for each row in ranked with index i:\n    - stop\n' > "$WORK/collections.agent.md"
+printf '# Function: f\n- touches: nothing\n- steps:\n  1. sort rows by amount descending into ranked\n  2. put 1 at "EU" in totals\n  3. add 1 to totals\n  4. for each row in ranked with index i:\n     1. stop\n' > "$WORK/collections.agent.md"
 "${TS[@]}" query queries/highlights.scm "$WORK/collections.agent.md" > "$WORK/query-collections.out" 2>&1 || true
-for w in sort by descending put at index; do
+for w in sort by descending put at index into add; do
   grep -qE "capture: [0-9]+ - keyword, .*text: .$w." "$WORK/query-collections.out" \
     || { echo "check-examples: FAILED, \"$w\" is not highlighted as a keyword" >&2; exit 1; }
 done

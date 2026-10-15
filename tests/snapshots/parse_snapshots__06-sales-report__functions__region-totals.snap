@@ -6,16 +6,17 @@ path: examples/06-sales-report/functions/region-totals.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 40
+      len: 47
     doc: ~
     kind:
       File:
         path: "../records/region-total.agent.md"
         alias: ~
+    label: RegionTotal
   - span:
-      line: 2
+      line: 3
       col: 3
       len: 32
     doc: ~
@@ -23,6 +24,7 @@ imports:
       File:
         path: "../records/sale.agent.md"
         alias: ~
+    label: Sale
 decls:
   - Function:
       span:
@@ -40,103 +42,99 @@ decls:
         - name:
             name: sales
             span:
-              line: 6
+              line: 8
               col: 7
               len: 5
           ty:
             kind:
-              List:
-                kind:
-                  Named: Sale
-                span:
-                  line: 6
-                  col: 22
-                  len: 4
+              Infer:
+                - sales
             span:
-              line: 6
-              col: 14
-              len: 12
+              line: 8
+              col: 7
+              len: 5
           default: ~
       out:
         kind:
-          List:
-            kind:
-              Named: RegionTotal
-            span:
-              line: 7
-              col: 16
-              len: 11
+          Infer:
+            - region
+            - totals
         span:
-          line: 7
+          line: 9
           col: 8
-          len: 19
-      effect:
-        value: Pure
+          len: 13
+      touches:
         span:
-          line: 8
-          col: 11
-          len: 4
+          line: 10
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 10
+              col: 12
+              len: 7
       body:
         - span:
-            line: 9
-            col: 5
-            len: 37
+            line: 12
+            col: 6
+            len: 36
           kind:
             Set:
               var:
                 name: by_region
                 span:
-                  line: 9
-                  col: 9
+                  line: 12
+                  col: 33
                   len: 9
               expr:
                 span:
-                  line: 9
-                  col: 21
+                  line: 12
+                  col: 6
                   len: 21
                 kind:
                   Coll:
                     GroupBy:
                       source:
                         span:
-                          line: 9
-                          col: 27
+                          line: 12
+                          col: 12
                           len: 5
                         kind:
                           Path:
                             - name: sales
                               span:
-                                line: 9
-                                col: 27
+                                line: 12
+                                col: 12
                                 len: 5
                       key:
                         span:
-                          line: 9
-                          col: 36
+                          line: 12
+                          col: 21
                           len: 6
                         kind:
                           Path:
                             - name: region
                               span:
-                                line: 9
-                                col: 36
+                                line: 12
+                                col: 21
                                 len: 6
         - span:
-            line: 10
-            col: 5
-            len: 38
+            line: 13
+            col: 6
+            len: 37
           kind:
             Set:
               var:
                 name: totals
                 span:
-                  line: 10
-                  col: 9
+                  line: 13
+                  col: 37
                   len: 6
               expr:
                 span:
-                  line: 10
-                  col: 18
+                  line: 13
+                  col: 6
                   len: 25
                 kind:
                   Coll:
@@ -144,192 +142,192 @@ decls:
                       kind:
                         Named: RegionTotal
                       span:
-                        line: 10
-                        col: 32
+                        line: 13
+                        col: 20
                         len: 11
         - span:
-            line: 11
-            col: 5
-            len: 35
+            line: 14
+            col: 6
+            len: 43
           kind:
             Coll:
               ForEachEntry:
                 key:
                   name: region
                   span:
-                    line: 11
-                    col: 14
+                    line: 14
+                    col: 15
                     len: 6
                 value:
-                  name: rows
+                  name: region_sales
                   span:
-                    line: 11
-                    col: 22
-                    len: 4
+                    line: 14
+                    col: 23
+                    len: 12
                 source:
                   span:
-                    line: 11
-                    col: 30
+                    line: 14
+                    col: 39
                     len: 9
                   kind:
                     Path:
                       - name: by_region
                         span:
-                          line: 11
-                          col: 30
+                          line: 14
+                          col: 39
                           len: 9
                 body:
                   - span:
-                      line: 12
-                      col: 7
-                      len: 102
+                      line: 15
+                      col: 9
+                      len: 26
                     kind:
                       Append:
                         value:
                           span:
-                            line: 12
-                            col: 14
-                            len: 85
+                            line: 15
+                            col: 13
+                            len: 11
                           kind:
                             Variant:
                               qualifier: ~
                               name:
                                 name: RegionTotal
                                 span:
-                                  line: 12
-                                  col: 14
+                                  line: 15
+                                  col: 13
                                   len: 11
                               fields:
                                 - name:
                                     name: region
                                     span:
-                                      line: 12
-                                      col: 28
+                                      line: 16
+                                      col: 11
                                       len: 6
                                   value:
                                     span:
-                                      line: 12
-                                      col: 36
+                                      line: 16
+                                      col: 11
                                       len: 6
                                     kind:
                                       Path:
                                         - name: region
                                           span:
-                                            line: 12
-                                            col: 36
+                                            line: 16
+                                            col: 11
                                             len: 6
                                 - name:
                                     name: orders
                                     span:
-                                      line: 12
-                                      col: 44
+                                      line: 17
+                                      col: 11
                                       len: 6
                                   value:
                                     span:
-                                      line: 12
-                                      col: 52
-                                      len: 13
+                                      line: 17
+                                      col: 19
+                                      len: 21
                                     kind:
                                       CountOf:
                                         rule: ~
                                         noun: ~
                                         source:
                                           span:
-                                            line: 12
-                                            col: 61
-                                            len: 4
+                                            line: 17
+                                            col: 28
+                                            len: 12
                                           kind:
                                             Path:
-                                              - name: rows
+                                              - name: region_sales
                                                 span:
-                                                  line: 12
-                                                  col: 61
-                                                  len: 4
+                                                  line: 17
+                                                  col: 28
+                                                  len: 12
                                 - name:
                                     name: revenue
                                     span:
-                                      line: 12
-                                      col: 67
+                                      line: 18
+                                      col: 11
                                       len: 7
                                   value:
                                     span:
-                                      line: 12
-                                      col: 76
-                                      len: 21
+                                      line: 18
+                                      col: 20
+                                      len: 29
                                     kind:
                                       Coll:
                                         Sum:
                                           expr:
                                             span:
-                                              line: 12
-                                              col: 83
+                                              line: 18
+                                              col: 27
                                               len: 6
                                             kind:
                                               Path:
                                                 - name: amount
                                                   span:
-                                                    line: 12
-                                                    col: 83
+                                                    line: 18
+                                                    col: 27
                                                     len: 6
                                           source:
                                             span:
-                                              line: 12
-                                              col: 93
-                                              len: 4
+                                              line: 18
+                                              col: 37
+                                              len: 12
                                             kind:
                                               Path:
-                                                - name: rows
+                                                - name: region_sales
                                                   span:
-                                                    line: 12
-                                                    col: 93
-                                                    len: 4
+                                                    line: 18
+                                                    col: 37
+                                                    len: 12
                         list:
                           span:
-                            line: 12
-                            col: 103
+                            line: 15
+                            col: 28
                             len: 6
                           kind:
                             Path:
                               - name: totals
                                 span:
-                                  line: 12
-                                  col: 103
+                                  line: 15
+                                  col: 28
                                   len: 6
         - span:
-            line: 13
-            col: 5
+            line: 19
+            col: 6
             len: 40
           kind:
             Return:
               span:
-                line: 13
-                col: 12
+                line: 19
+                col: 13
                 len: 33
               kind:
                 Coll:
                   Sort:
                     source:
                       span:
-                        line: 13
-                        col: 17
+                        line: 19
+                        col: 18
                         len: 6
                       kind:
                         Path:
                           - name: totals
                             span:
-                              line: 13
-                              col: 17
+                              line: 19
+                              col: 18
                               len: 6
                     key:
                       span:
-                        line: 13
-                        col: 27
+                        line: 19
+                        col: 28
                         len: 7
                       kind:
                         Path:
                           - name: revenue
                             span:
-                              line: 13
-                              col: 27
+                              line: 19
+                              col: 28
                               len: 7
                     descending: true

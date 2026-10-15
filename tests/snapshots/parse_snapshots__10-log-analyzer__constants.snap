@@ -8,19 +8,19 @@ imports: []
 decls:
   - Constant:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 21
       doc: "One log line: date, time, level, service and message, separated by single spaces."
       name:
         name: log_pattern
         span:
-          line: 2
+          line: 1
           col: 13
           len: 11
       value:
         span:
-          line: 3
+          line: 4
           col: 10
           len: 46
         kind:
@@ -39,64 +39,64 @@ decls:
           len: 12
       value:
         span:
-          line: 7
+          line: 9
           col: 10
           len: 21
         kind:
           Str: "^[^ ]+ [^ ]+ ERROR "
   - Constant:
       span:
-        line: 9
+        line: 11
         col: 3
         len: 21
-      doc: ~
+      doc: The start of a warning line.
       name:
         name: warn_prefix
         span:
-          line: 9
+          line: 11
           col: 13
           len: 11
       value:
         span:
-          line: 10
+          line: 14
           col: 10
           len: 20
         kind:
           Str: "^[^ ]+ [^ ]+ WARN "
   - Constant:
       span:
-        line: 12
+        line: 16
         col: 3
         len: 21
-      doc: ~
+      doc: The start of an info line.
       name:
         name: info_prefix
         span:
-          line: 12
+          line: 16
           col: 13
           len: 11
       value:
         span:
-          line: 13
+          line: 19
           col: 10
           len: 20
         kind:
           Str: "^[^ ]+ [^ ]+ INFO "
   - Constant:
       span:
-        line: 16
+        line: 21
         col: 3
         len: 23
       doc: "Date and time at the start of a line, caught as one piece."
       name:
         name: stamp_pattern
         span:
-          line: 16
+          line: 21
           col: 13
           len: 13
       value:
         span:
-          line: 17
+          line: 24
           col: 10
           len: 21
         kind:

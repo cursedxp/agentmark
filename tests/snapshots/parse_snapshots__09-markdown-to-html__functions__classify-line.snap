@@ -6,14 +6,15 @@ path: examples/09-markdown-to-html/functions/classify-line.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 33
+      len: 34
     doc: ~
     kind:
       File:
         path: "../records/block.agent.md"
         alias: ~
+    label: Block
 decls:
   - Function:
       span:
@@ -31,14 +32,14 @@ decls:
         - name:
             name: line
             span:
-              line: 5
+              line: 7
               col: 7
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 7
               col: 13
               len: 4
           default: ~
@@ -46,162 +47,167 @@ decls:
         kind:
           Named: Block
         span:
-          line: 6
+          line: 8
           col: 8
           len: 5
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 7
-          col: 11
-          len: 4
+          line: 9
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 9
+              col: 12
+              len: 7
       body:
         - span:
-            line: 8
-            col: 5
-            len: 27
+            line: 11
+            col: 6
+            len: 26
           kind:
             Set:
               var:
                 name: clean
                 span:
-                  line: 8
-                  col: 9
+                  line: 11
+                  col: 27
                   len: 5
               expr:
                 span:
-                  line: 8
-                  col: 17
+                  line: 11
+                  col: 6
                   len: 15
                 kind:
                   Call:
                     func:
                       - name: text
                         span:
-                          line: 8
-                          col: 17
+                          line: 11
+                          col: 6
                           len: 4
                       - name: trim
                         span:
-                          line: 8
-                          col: 22
+                          line: 11
+                          col: 11
                           len: 4
                     args:
                       - span:
-                          line: 8
-                          col: 27
+                          line: 11
+                          col: 16
                           len: 4
                         kind:
                           Path:
                             - name: line
                               span:
-                                line: 8
-                                col: 27
+                                line: 11
+                                col: 16
                                 len: 4
         - span:
-            line: 9
-            col: 5
+            line: 12
+            col: 6
             len: 14
           kind:
             If:
               cond:
                 span:
-                  line: 9
-                  col: 8
+                  line: 12
+                  col: 9
                   len: 10
                 kind:
                   Binary:
                     op: Eq
                     lhs:
                       span:
-                        line: 9
-                        col: 8
+                        line: 12
+                        col: 9
                         len: 5
                       kind:
                         Path:
                           - name: clean
                             span:
-                              line: 9
-                              col: 8
+                              line: 12
+                              col: 9
                               len: 5
                     rhs:
                       span:
-                        line: 9
-                        col: 16
+                        line: 12
+                        col: 17
                         len: 2
                       kind:
                         Str: ""
               then:
                 - span:
-                    line: 10
-                    col: 7
+                    line: 13
+                    col: 9
                     len: 12
                   kind:
                     Return:
                       span:
-                        line: 10
-                        col: 14
+                        line: 13
+                        col: 16
                         len: 5
                       kind:
                         Path:
                           - name: Blank
                             span:
-                              line: 10
-                              col: 14
+                              line: 13
+                              col: 16
                               len: 5
               else_: []
         - span:
-            line: 11
-            col: 5
+            line: 14
+            col: 6
             len: 34
           kind:
             If:
               cond:
                 span:
-                  line: 11
-                  col: 8
+                  line: 14
+                  col: 9
                   len: 30
                 kind:
                   Call:
                     func:
                       - name: text
                         span:
-                          line: 11
-                          col: 8
+                          line: 14
+                          col: 9
                           len: 4
                       - name: starts_with
                         span:
-                          line: 11
-                          col: 13
+                          line: 14
+                          col: 14
                           len: 11
                     args:
                       - span:
-                          line: 11
-                          col: 25
+                          line: 14
+                          col: 26
                           len: 5
                         kind:
                           Path:
                             - name: clean
                               span:
-                                line: 11
-                                col: 25
+                                line: 14
+                                col: 26
                                 len: 5
                       - span:
-                          line: 11
-                          col: 32
+                          line: 14
+                          col: 33
                           len: 5
                         kind:
                           Str: "## "
               then:
                 - span:
-                    line: 12
-                    col: 7
+                    line: 15
+                    col: 9
                     len: 70
                   kind:
                     Return:
                       span:
-                        line: 12
-                        col: 14
+                        line: 15
+                        col: 16
                         len: 63
                       kind:
                         Variant:
@@ -209,124 +215,124 @@ decls:
                           name:
                             name: Heading
                             span:
-                              line: 12
-                              col: 14
+                              line: 15
+                              col: 16
                               len: 7
                           fields:
                             - name:
                                 name: level
                                 span:
-                                  line: 12
-                                  col: 24
+                                  line: 15
+                                  col: 26
                                   len: 5
                               value:
                                 span:
-                                  line: 12
-                                  col: 31
+                                  line: 15
+                                  col: 33
                                   len: 1
                                 kind:
                                   Int: 2
                             - name:
                                 name: content
                                 span:
-                                  line: 12
-                                  col: 34
+                                  line: 15
+                                  col: 36
                                   len: 7
                               value:
                                 span:
-                                  line: 12
-                                  col: 43
+                                  line: 15
+                                  col: 45
                                   len: 32
                                 kind:
                                   Call:
                                     func:
                                       - name: regex
                                         span:
-                                          line: 12
-                                          col: 43
+                                          line: 15
+                                          col: 45
                                           len: 5
                                       - name: replace
                                         span:
-                                          line: 12
-                                          col: 49
+                                          line: 15
+                                          col: 51
                                           len: 7
                                     args:
                                       - span:
-                                          line: 12
-                                          col: 57
+                                          line: 15
+                                          col: 59
                                           len: 5
                                         kind:
                                           Path:
                                             - name: clean
                                               span:
-                                                line: 12
-                                                col: 57
+                                                line: 15
+                                                col: 59
                                                 len: 5
                                       - span:
-                                          line: 12
-                                          col: 64
+                                          line: 15
+                                          col: 66
                                           len: 6
                                         kind:
                                           Str: "^## "
                                       - span:
-                                          line: 12
-                                          col: 72
+                                          line: 15
+                                          col: 74
                                           len: 2
                                         kind:
                                           Str: ""
               else_: []
         - span:
-            line: 13
-            col: 5
+            line: 16
+            col: 6
             len: 33
           kind:
             If:
               cond:
                 span:
-                  line: 13
-                  col: 8
+                  line: 16
+                  col: 9
                   len: 29
                 kind:
                   Call:
                     func:
                       - name: text
                         span:
-                          line: 13
-                          col: 8
+                          line: 16
+                          col: 9
                           len: 4
                       - name: starts_with
                         span:
-                          line: 13
-                          col: 13
+                          line: 16
+                          col: 14
                           len: 11
                     args:
                       - span:
-                          line: 13
-                          col: 25
+                          line: 16
+                          col: 26
                           len: 5
                         kind:
                           Path:
                             - name: clean
                               span:
-                                line: 13
-                                col: 25
+                                line: 16
+                                col: 26
                                 len: 5
                       - span:
-                          line: 13
-                          col: 32
+                          line: 16
+                          col: 33
                           len: 4
                         kind:
                           Str: "# "
               then:
                 - span:
-                    line: 14
-                    col: 7
+                    line: 17
+                    col: 9
                     len: 69
                   kind:
                     Return:
                       span:
-                        line: 14
-                        col: 14
+                        line: 17
+                        col: 16
                         len: 62
                       kind:
                         Variant:
@@ -334,124 +340,124 @@ decls:
                           name:
                             name: Heading
                             span:
-                              line: 14
-                              col: 14
+                              line: 17
+                              col: 16
                               len: 7
                           fields:
                             - name:
                                 name: level
                                 span:
-                                  line: 14
-                                  col: 24
+                                  line: 17
+                                  col: 26
                                   len: 5
                               value:
                                 span:
-                                  line: 14
-                                  col: 31
+                                  line: 17
+                                  col: 33
                                   len: 1
                                 kind:
                                   Int: 1
                             - name:
                                 name: content
                                 span:
-                                  line: 14
-                                  col: 34
+                                  line: 17
+                                  col: 36
                                   len: 7
                               value:
                                 span:
-                                  line: 14
-                                  col: 43
+                                  line: 17
+                                  col: 45
                                   len: 31
                                 kind:
                                   Call:
                                     func:
                                       - name: regex
                                         span:
-                                          line: 14
-                                          col: 43
+                                          line: 17
+                                          col: 45
                                           len: 5
                                       - name: replace
                                         span:
-                                          line: 14
-                                          col: 49
+                                          line: 17
+                                          col: 51
                                           len: 7
                                     args:
                                       - span:
-                                          line: 14
-                                          col: 57
+                                          line: 17
+                                          col: 59
                                           len: 5
                                         kind:
                                           Path:
                                             - name: clean
                                               span:
-                                                line: 14
-                                                col: 57
+                                                line: 17
+                                                col: 59
                                                 len: 5
                                       - span:
-                                          line: 14
-                                          col: 64
+                                          line: 17
+                                          col: 66
                                           len: 5
                                         kind:
                                           Str: "^# "
                                       - span:
-                                          line: 14
-                                          col: 71
+                                          line: 17
+                                          col: 73
                                           len: 2
                                         kind:
                                           Str: ""
               else_: []
         - span:
-            line: 15
-            col: 5
+            line: 18
+            col: 6
             len: 33
           kind:
             If:
               cond:
                 span:
-                  line: 15
-                  col: 8
+                  line: 18
+                  col: 9
                   len: 29
                 kind:
                   Call:
                     func:
                       - name: text
                         span:
-                          line: 15
-                          col: 8
+                          line: 18
+                          col: 9
                           len: 4
                       - name: starts_with
                         span:
-                          line: 15
-                          col: 13
+                          line: 18
+                          col: 14
                           len: 11
                     args:
                       - span:
-                          line: 15
-                          col: 25
+                          line: 18
+                          col: 26
                           len: 5
                         kind:
                           Path:
                             - name: clean
                               span:
-                                line: 15
-                                col: 25
+                                line: 18
+                                col: 26
                                 len: 5
                       - span:
-                          line: 15
-                          col: 32
+                          line: 18
+                          col: 33
                           len: 4
                         kind:
                           Str: "- "
               then:
                 - span:
-                    line: 16
-                    col: 7
+                    line: 19
+                    col: 9
                     len: 60
                   kind:
                     Return:
                       span:
-                        line: 16
-                        col: 14
+                        line: 19
+                        col: 16
                         len: 53
                       kind:
                         Variant:
@@ -459,68 +465,68 @@ decls:
                           name:
                             name: ListItem
                             span:
-                              line: 16
-                              col: 14
+                              line: 19
+                              col: 16
                               len: 8
                           fields:
                             - name:
                                 name: content
                                 span:
-                                  line: 16
-                                  col: 25
+                                  line: 19
+                                  col: 27
                                   len: 7
                               value:
                                 span:
-                                  line: 16
-                                  col: 34
+                                  line: 19
+                                  col: 36
                                   len: 31
                                 kind:
                                   Call:
                                     func:
                                       - name: regex
                                         span:
-                                          line: 16
-                                          col: 34
+                                          line: 19
+                                          col: 36
                                           len: 5
                                       - name: replace
                                         span:
-                                          line: 16
-                                          col: 40
+                                          line: 19
+                                          col: 42
                                           len: 7
                                     args:
                                       - span:
-                                          line: 16
-                                          col: 48
+                                          line: 19
+                                          col: 50
                                           len: 5
                                         kind:
                                           Path:
                                             - name: clean
                                               span:
-                                                line: 16
-                                                col: 48
+                                                line: 19
+                                                col: 50
                                                 len: 5
                                       - span:
-                                          line: 16
-                                          col: 55
+                                          line: 19
+                                          col: 57
                                           len: 5
                                         kind:
                                           Str: "^- "
                                       - span:
-                                          line: 16
-                                          col: 62
+                                          line: 19
+                                          col: 64
                                           len: 2
                                         kind:
                                           Str: ""
               else_: []
         - span:
-            line: 17
-            col: 5
+            line: 20
+            col: 6
             len: 35
           kind:
             Return:
               span:
-                line: 17
-                col: 12
+                line: 20
+                col: 13
                 len: 28
               kind:
                 Variant:
@@ -528,25 +534,25 @@ decls:
                   name:
                     name: Paragraph
                     span:
-                      line: 17
-                      col: 12
+                      line: 20
+                      col: 13
                       len: 9
                   fields:
                     - name:
                         name: content
                         span:
-                          line: 17
-                          col: 24
+                          line: 20
+                          col: 25
                           len: 7
                       value:
                         span:
-                          line: 17
-                          col: 33
+                          line: 20
+                          col: 34
                           len: 5
                         kind:
                           Path:
                             - name: clean
                               span:
-                                line: 17
-                                col: 33
+                                line: 20
+                                col: 34
                                 len: 5

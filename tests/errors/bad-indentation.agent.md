@@ -1,12 +1,14 @@
-> tests/errors/bad-indentation.agent.md:12
->      - log: "hello"
->   ^^^
->   Indentation must be 2 spaces per level, but this line is indented 3 spaces.
->   Use 2 or 4 spaces.
+> tests/errors/bad-indentation.agent.md:14
+>       2. print: "bye"
+>   ^^^^
+>   This line is indented 4 spaces, less than the 5 of the lines above it at this level.
+>   Lines of one list start at the same column.
 
-# Agent: greeter
-- model: claude
-- tools: email, log
+# Command: greet
+Says hello to each name twice.
 
-## On start
-   - log: "hello"
+- in: names: list of text
+- steps:
+  1. for each name in names:
+     1. print: "hello"
+    2. print: "bye"

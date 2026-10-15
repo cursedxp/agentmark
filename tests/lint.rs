@@ -18,9 +18,15 @@ fn findings(src: &str, rule: &str) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// Wrap statements in a block of a documented agent, so only the rule under test can fire.
+/// Wrap numbered steps in a block of a documented agent, so only the rule under test can fire.
+/// The block itself has no description (see `agent_with_block_doc`).
 fn agent(body: &str) -> String {
-    format!("> Test agent.\n# Agent: a\n- model: claude\n- tools: log, crm\n\n## Do go\n{body}\n")
+    format!("# Agent: a\nTest agent.\n\n- model: claude\n- tools: log, crm\n\n## Do go\n{body}\n")
+}
+
+/// The same, with a description paragraph under the `## Do go` heading.
+fn agent_with_block_doc(body: &str) -> String {
+    format!("# Agent: a\nTest agent.\n\n- model: claude\n- tools: log, crm\n\n## Do go\nWhat this block does.\n\n{body}\n")
 }
 
 // ------------------------------------------------------------------ long-file
@@ -56,7 +62,7 @@ fn long_file_is_quiet_at_150_lines() {
 #[test]
 fn magic_value_fires_for_a_repeated_amount_duration_or_url() {
     let src = agent(
-        "- guard: invoice.amount > 100 EUR\n- guard: invoice.total < 100 EUR\n- guard: today > due + 14 days\n- guard: today > paid + 14 days\n- http get \"https://api.example.com/rates\" -> a\n- http get \"https://api.example.com/rates\" -> b",
+        "1. guard: invoice.amount > 100 EUR\n2. guard: invoice.total < 100 EUR\n3. guard: today > due + 14 days\n4. guard: today > paid + 14 days\n5. http get \"https://api.example.com/rates\" into a\n6. http get \"https://api.example.com/rates\" into b",
     );
     let d = findings(&src, "magic-value");
     assert_eq!(d.len(), 3, "{d:?}");
@@ -73,7 +79,7 @@ fn magic_value_is_quiet_for_single_uses_zero_and_constants() {
 
 // ------------------------------------------------------------------ unnamed-guard
 
-const LONG_GUARD: &str = "- guard: invoice.customer is not empty and invoice.amount > 0 EUR and invoice.status != \"paid\"";
+const LONG_GUARD: &str = "1. guard: invoice.customer is not empty and invoice.amount > 0 EUR and invoice.status != \"paid\"";
 
 #[test]
 fn unnamed_guard_fires_for_a_long_guard_without_comment() {
@@ -81,21 +87,37 @@ fn unnamed_guard_fires_for_a_long_guard_without_comment() {
     assert_eq!(d.len(), 1);
     assert!(d[0].message.contains("characters long"));
     // also behind `try`, once
-    let src = agent(&LONG_GUARD.replace("- guard", "- try guard"));
+    let src = agent(&LONG_GUARD.replace("1. guard", "1. try guard"));
     assert_eq!(findings(&src, "unnamed-guard").len(), 1);
 }
 
 #[test]
-fn unnamed_guard_is_quiet_with_a_comment_or_a_short_condition() {
-    let commented = agent(&format!("> only bill customers with a real, open amount\n{LONG_GUARD}"));
-    assert!(findings(&commented, "unnamed-guard").is_empty());
-    assert!(findings(&agent("- guard: invoice.amount > 5 EUR"), "unnamed-guard").is_empty());
+fn unnamed_guard_is_quiet_with_a_note_a_description_or_a_short_condition() {
+    // a `>` note above the guard
+    let noted = agent(&format!("> only bill customers with a real, open amount\n{LONG_GUARD}"));
+    assert!(findings(&noted, "unnamed-guard").is_empty());
+    // a description on the block (Q447)
+    assert!(findings(&agent_with_block_doc(LONG_GUARD), "unnamed-guard").is_empty());
+    // a short condition needs neither
+    assert!(findings(&agent("1. guard: invoice.amount > 5 EUR"), "unnamed-guard").is_empty());
+}
+
+#[test]
+fn unnamed_guard_is_satisfied_by_the_description_of_a_function_or_command() {
+    let long = "invoice.customer is not empty and invoice.amount > 0 EUR and invoice.status != \"paid\"";
+    for kind in ["Function", "Command"] {
+        let body = |doc: &str| {
+            format!("# {kind}: check\n{doc}- in: invoice: Invoice\n- steps:\n  1. guard: {long}\n")
+        };
+        assert_eq!(findings(&body(""), "unnamed-guard").len(), 1, "{kind} without description");
+        assert!(findings(&body("Checks one invoice.\n\n"), "unnamed-guard").is_empty(), "{kind} with description");
+    }
 }
 
 // ------------------------------------------------------------------ duplicate-rule
 
 fn rule_file(path: &str, name: &str, when: &str) -> File {
-    parse(path, &format!("# Rule: {name}\n- for: Invoice\n- when: {when}\n"))
+    parse(path, &format!("# Rule: {name} Invoice\n- when: {when}\n"))
 }
 
 #[test]
@@ -125,14 +147,14 @@ fn duplicate_rule_is_quiet_for_different_conditions() {
 #[test]
 fn prompt_in_loop_fires_without_a_guard_on_the_result() {
     let src = agent(
-        "- for each t in crm.tickets:\n  - ask model with t: \"Classify\" -> c\n  - log: \"{c}\"",
+        "1. for each t in crm.tickets:\n   1. ask model with t: \"Classify\" into c\n   2. log: \"{c}\"",
     );
     let d = findings(&src, "prompt-in-loop");
     assert_eq!(d.len(), 1);
     assert!(d[0].message.contains("\"c\""));
     // a guard on something else does not count, and a nested ask is reported once
     let nested = agent(
-        "- for each t in crm.tickets:\n  - guard: t.id is not empty\n  - if t.open:\n    - for each u in t.items:\n      - ask model: \"x\" -> c",
+        "1. for each t in crm.tickets:\n   1. guard: t.id is not empty\n   2. if t.open:\n      1. for each u in t.items:\n         1. ask model: \"x\" into c",
     );
     assert_eq!(findings(&nested, "prompt-in-loop").len(), 1);
 }
@@ -140,10 +162,10 @@ fn prompt_in_loop_fires_without_a_guard_on_the_result() {
 #[test]
 fn prompt_in_loop_is_quiet_with_a_guard_or_outside_a_loop() {
     let guarded = agent(
-        "- for each t in crm.tickets:\n  - ask model with t: \"Classify\" -> c\n  - guard: c is not empty\n  - log: \"{c}\"",
+        "1. for each t in crm.tickets:\n   1. ask model with t: \"Classify\" into c\n   2. guard: c is not empty\n   3. log: \"{c}\"",
     );
     assert!(findings(&guarded, "prompt-in-loop").is_empty());
-    let outside = agent("- ask model: \"Summarise\" -> s\n- for each t in crm.tickets:\n  - log: \"{s}\"");
+    let outside = agent("1. ask model: \"Summarise\" into s\n2. for each t in crm.tickets:\n   1. log: \"{s}\"");
     assert!(findings(&outside, "prompt-in-loop").is_empty());
 }
 
@@ -157,6 +179,16 @@ fn missing_doc_fires_for_agent_service_and_command_without_description() {
     assert!(d[0].message.contains("agent \"a\""));
     assert!(d[1].message.contains("service \"s\""));
     assert!(d[2].message.contains("command \"c\""));
+}
+
+#[test]
+fn missing_doc_wants_a_paragraph_under_the_heading_not_a_note_above_it() {
+    // a `>` line is a note, not a description
+    let src = "# Agent: a\n> This is only a note.\n\n- model: claude\n\n## Do go\n1. stop\n";
+    assert_eq!(findings(src, "missing-doc").len(), 1);
+    // several paragraphs under the heading are one description
+    let src = "# Agent: a\nDoes things.\n\nAnd more things.\n\n- model: claude\n\n## Do go\n1. stop\n";
+    assert!(findings(src, "missing-doc").is_empty());
 }
 
 #[test]
@@ -177,7 +209,7 @@ fn vague_name_fires_once_per_name_per_declaration() {
 
 #[test]
 fn vague_name_is_quiet_for_descriptive_names() {
-    let src = agent("- set invoice_rows = 1\n- for each ticket in crm.tickets:\n  - log: \"{ticket}\"");
+    let src = agent("1. 1 into invoice_rows\n2. for each ticket in crm.tickets:\n   1. log: \"{ticket}\"");
     assert!(findings(&src, "vague-name").is_empty());
 }
 
@@ -244,7 +276,7 @@ fn a_finding_is_rendered_in_the_spec_10_shape_with_its_rule_id() {
     let text = render_all(&d, src);
     assert_eq!(
         text,
-        "agents/a.agent.md:1\n  # Agent: a\n    ^^^^^^^^\n  The agent \"a\" has no description. [missing-doc]\n  Put a \"> description\" comment on the line directly above its heading."
+        "agents/a.agent.md:1\n  # Agent: a\n    ^^^^^^^^\n  The agent \"a\" has no description. [missing-doc]\n  Write what it does as a plain paragraph directly under its heading."
     );
 }
 
@@ -283,7 +315,7 @@ fn vague_name_checks_first_in_variables_and_route_parameters() {
     let d = findings(src, "vague-name");
     let at: Vec<(String, u32, u32)> =
         d.iter().map(|d| (d.message.split('\"').nth(1).unwrap().to_string(), d.span.line, d.span.col)).collect();
-    assert_eq!(at, vec![("x".to_string(), 5, 17), ("thing".to_string(), 6, 21)], "{d:?}");
+    assert_eq!(at, vec![("x".to_string(), 6, 17), ("thing".to_string(), 7, 10)], "{d:?}");
 }
 
 #[test]

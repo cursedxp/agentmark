@@ -25,7 +25,8 @@ test("invoice-chaser panel names the agent and what it reaches", () => {
   );
   const html = renderPanel(r);
   assert.match(html, /invoice-chaser/);
-  assert.match(html, /model, network\(crm, email\), local\(log\)/);
+  assert.match(html, /touches AI, crm, email, log/);
+  assert.doesNotMatch(html, /network\(|local\(|badge/, "no effect class names for people");
   assert.match(html, /Check passed/);
   assert.match(html, /chip network">crm</);
 });
@@ -36,7 +37,7 @@ test("a failing project shows its errors and still renders", () => {
   const html = renderPanel(r);
   assert.match(html, /Check failed/);
   assert.match(html, /E205/);
-  assert.match(html, /no effect summary is available/);
+  assert.match(html, /no summary of what it touches is available/);
 });
 
 test("unverified bindings and rust blocks are called out; text is escaped", () => {
@@ -67,13 +68,9 @@ import { describeEffects } from "../src/panel";
 test("plain-language wording for an operations manager", () => {
   const r = parseCheckJson(fx("check-01-invoice-chaser.json"));
   const agent = r.units.find((u) => u.kind === "agent")!;
-  assert.deepEqual(describeEffects(agent.effects), [
-    "can reach the network: crm, email",
-    "asks the AI model",
-    "uses this machine: log",
-  ]);
+  assert.deepEqual(describeEffects(agent.effects), ["touches AI, crm, email, log"]);
   const pure = parseCheckJson(JSON.stringify({ schema_version: 1, ok: true, units: [{ name: "f", kind: "function", effects: { class: "pure", summary: "pure", tools: {} }, blocks: [] }] }));
-  assert.deepEqual(describeEffects(pure.units[0].effects), ["pure: touches nothing outside itself"]);
+  assert.deepEqual(describeEffects(pure.units[0].effects), ["touches nothing"]);
 });
 
 test("strict CSP: nonce only, no remote sources", () => {
@@ -84,7 +81,7 @@ test("strict CSP: nonce only, no remote sources", () => {
   assert.match(html, /<style nonce="abc123">/);
 });
 
-test("unverified and machine wording; unknown effect class is treated as unverified", () => {
+test("touches wording; unknown effect class is treated as unverified", () => {
   const r = parseCheckJson(
     JSON.stringify({
       schema_version: 1,
@@ -96,10 +93,27 @@ test("unverified and machine wording; unknown effect class is treated as unverif
   );
   assert.equal(r.units[0].effects.class, "unverified");
   assert.deepEqual(describeEffects(r.units[0].effects), [
-    "uses this machine: log",
+    "touches log, sha2",
     "uses libraries nobody approved yet: sha2",
   ]);
   const html = renderPanel(r);
-  assert.match(html, /badge unverified/);
+  assert.match(html, /chip unverified/);
   assert.doesNotMatch(html, /teleport/);
+});
+
+test("touches wording: AI first, then alphabetical, the file tool is files", () => {
+  const r = parseCheckJson(
+    JSON.stringify({
+      schema_version: 1,
+      ok: true,
+      units: [{ name: "c", kind: "command", effects: { class: "model", summary: "x", tools: { model: true, local: ["log", "file"], network: ["crm"] } }, blocks: [] }],
+    }),
+  );
+  assert.deepEqual(describeEffects(r.units[0].effects), ["touches AI, crm, files, log"]);
+});
+
+test("a Rust block says what it touches", () => {
+  const r = parseCheckJson(fx("check-05-invoice-service.json"));
+  const html = renderPanel(r);
+  assert.match(html, /says it touches nothing/);
 });

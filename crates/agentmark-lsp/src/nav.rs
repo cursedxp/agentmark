@@ -69,6 +69,9 @@ pub fn definition(a: &Analysis, path: &str, text: &str, pos: Position) -> Vec<Lo
     if let Some(loc) = import_target(a, path, line, line_s, col) {
         return vec![loc];
     }
+    if let Some(loc) = start_target(a, path, line, line_s, col) {
+        return vec![loc];
+    }
     let Some(word) = dotted_word_at(line_s, col) else { return Vec::new() };
     let (_, _, seg) = &word.segs[word.at];
     let facts = a.facts(path).and_then(|(ck, map)| {
@@ -277,9 +280,12 @@ fn location_current(a: &Analysis, path: &str, span: Span) -> Option<Location> {
     Some(Location::new(uri_from_path(path), span_range(text, span)))
 }
 
-/// `# Import: ./records/invoice.agent.md` -> the top of the imported file.
+/// A `# Uses` link (`- [Invoice](../records/invoice.agent.md)`) or a `# Import: crate x` line
+/// -> the top of the file it names.
 fn import_target(a: &Analysis, path: &str, line: usize, line_s: &str, col: usize) -> Option<Location> {
-    if !line_s.trim_start().starts_with("# Import:") || col < line_s.find(':')? + 1 {
+    let t = line_s.trim_start();
+    let on_uses_link = t.starts_with("- [") || t.starts_with("* [");
+    if !on_uses_link && !(t.starts_with("# Import:") && col > line_s.find(':')?) {
         return None;
     }
     let fid = a.file_id(path)?;
@@ -297,7 +303,98 @@ fn import_target(a: &Analysis, path: &str, line: usize, line_s: &str, col: usize
     }
 }
 
+/// `- start: [sales-report](#command-sales-report)` -> the heading of that command. The target is
+/// the anchor of the heading, the file that declares the command, or the plain name.
+fn start_target(a: &Analysis, path: &str, line: usize, line_s: &str, col: usize) -> Option<Location> {
+    use agentmark::syntax::ast::{Command, Decl, ImportKind};
+    if !line_s.trim_start().starts_with("- start:") || col < line_s.find(':')? + 1 {
+        return None;
+    }
+    let fid = a.file_id(path)?;
+    let f = &a.project.files[fid];
+    let start = f.ast.decls.iter().find_map(|d| match d {
+        Decl::Program(p) => p.start.as_ref().filter(|s| s.span.line as usize == line + 1),
+        _ => None,
+    })?;
+    let target = start.target.as_str();
+    let commands = |only: Option<usize>| -> Vec<(usize, &Command)> {
+        a.project
+            .files
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| only.is_none_or(|o| o == *i))
+            .flat_map(|(i, f)| {
+                f.ast.decls.iter().filter_map(move |d| match d {
+                    Decl::Command(c) => Some((i, c)),
+                    _ => None,
+                })
+            })
+            .collect()
+    };
+    let anchor_of = |name: &str| {
+        let kept: String = name.to_lowercase().chars().filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_')).collect();
+        format!("command-{kept}")
+    };
+    let heading = |(i, c): (usize, &Command)| location_current(a, &a.project.files[i].path, c.name.span);
+    if let Some(anchor) = target.strip_prefix('#') {
+        let anchor = anchor.to_lowercase();
+        return commands(None).into_iter().find(|(_, c)| anchor_of(&c.name.name) == anchor).and_then(heading);
+    }
+    let (file_part, anchor) = match target.split_once('#') {
+        Some((p, an)) => (p, Some(an.to_lowercase())),
+        None => (target, None),
+    };
+    if file_part.ends_with(".agent.md") {
+        let wanted = agentmark::project::normalize(file_part);
+        let idx = f
+            .ast
+            .imports
+            .iter()
+            .position(|i| matches!(&i.kind, ImportKind::File { path: w, .. } if agentmark::project::normalize(w) == wanted))?;
+        let ResolvedImport::Files(list) = f.imports.get(idx)? else { return None };
+        let target_file = list.first()?.file;
+        let cmds = commands(Some(target_file));
+        let pick = match &anchor {
+            Some(an) => cmds.into_iter().find(|(_, c)| anchor_of(&c.name.name) == *an),
+            None => cmds.into_iter().next(),
+        };
+        return match pick {
+            Some(c) => heading(c),
+            None => Some(Location::new(uri_from_path(&a.project.files[target_file].path), Range::default())),
+        };
+    }
+    commands(None).into_iter().find(|(_, c)| c.name.name == target).and_then(heading)
+}
+
 // ---------------------------------------------------------------------------------- hover
+
+/// The description under the heading at `line1` (1-based) of `path`: of a part, or of a `##` block.
+fn heading_doc(a: &Analysis, path: &str, line1: u32) -> Option<String> {
+    let f = &a.project.files[a.file_id(path)?];
+    for d in &f.ast.decls {
+        if let Some((_, n, doc)) = decl_name(d) {
+            if n.span.line == line1 && doc.is_some() {
+                return doc.cloned();
+            }
+        }
+        if let agentmark::syntax::ast::Decl::Agent(ag) = d {
+            if let Some(b) = ag.blocks.iter().find(|b| b.span.line == line1) {
+                return b.doc.clone();
+            }
+        }
+    }
+    None
+}
+
+/// `**title**`, the description of the part, then what it touches.
+fn heading_text(a: &Analysis, path: &str, title: &str, line1: u32, touches: &str) -> String {
+    let mut s = format!("**{title}**");
+    if let Some(doc) = heading_doc(a, path, line1) {
+        s.push_str(&format!("\n\n{doc}"));
+    }
+    s.push_str(&format!("\n\nTouches: `{touches}`"));
+    s
+}
 
 fn md(text: String, range: Option<Range>) -> Hover {
     Hover { contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value: text }), range }
@@ -322,18 +419,26 @@ pub fn hover(a: &Analysis, path: &str, text: &str, pos: Position) -> Option<Hove
     let line1 = line as u32 + 1;
     let mut parts: Vec<String> = Vec::new();
 
-    // 1. a heading: the effect summary of the block (SPEC 8)
+    // 1. a heading: what the part is for (its description) and what it touches (SPEC 23.7)
     for b in ck.blocks.iter().filter(|b| b.file == fid && b.span.line == line1) {
-        parts.push(format!("**{}**\n\nEffects: `{}`", block_title(b), b.effect));
+        parts.push(heading_text(a, path, &block_title(b), b.span.line, &b.effect.touches()));
     }
     if parts.is_empty() {
         // a unit heading (`# Agent: x`): the union of its blocks
         if let Some(d) = ck.declarations.iter().find(|d| d.file == fid && d.span.line == line1 && matches!(d.kind, agentmark::sema::Kind::Agent | agentmark::sema::Kind::Service | agentmark::sema::Kind::Command)) {
-            let mut s = format!("**{} {}**\n\nEffects: `{}`", d.kind.noun(), d.name, ck.unit_effect(&d.name));
+            let mut s = heading_text(a, path, &format!("{} {}", d.kind.noun(), d.name), d.span.line, &ck.unit_effect(&d.name).touches());
             for b in ck.blocks.iter().filter(|b| b.unit == d.name) {
-                s.push_str(&format!("\n- {}: `{}`", b.label, b.effect));
+                s.push_str(&format!("\n- {}: touches {}", b.label, b.effect.touches()));
             }
             parts.push(s);
+        }
+    }
+    if parts.is_empty() {
+        // any other heading with a description (a record, an enum, a constant ...)
+        if let Some(d) = ck.declarations.iter().find(|d| d.file == fid && d.span.line == line1) {
+            if let Some(doc) = heading_doc(a, path, d.span.line) {
+                parts.push(format!("**{} {}**\n\n{doc}", d.kind.noun(), d.name));
+            }
         }
     }
     // 2. a field declaration
@@ -353,8 +458,8 @@ pub fn hover(a: &Analysis, path: &str, text: &str, pos: Position) -> Option<Hove
     }
     // 4. what the statement on this line touches
     if let Some((_, eff)) = smallest(ck.stmt_effects.iter(), fid, line, col) {
-        if !eff.is_pure() && !parts.iter().any(|p| p.contains("Effects:")) {
-            parts.push(format!("Effects: `{eff}`"));
+        if !eff.is_pure() && !parts.iter().any(|p| p.contains("Touches:")) {
+            parts.push(format!("Touches: `{}`", eff.touches()));
         }
     }
     if parts.is_empty() {
@@ -404,19 +509,25 @@ fn expression_hover(a: &Analysis, ck: &Checked, fid: usize, line: usize, col: us
             format!("constant `{name}`: `{}`", c.ty)
         }
         Resolution::Source { tool, source, record } => match record {
-            Some(r) => format!("`{tool}.{source}`: `list of {r}`\n\nEffects: `network({tool})`"),
+            Some(r) => format!("`{tool}.{source}`: `list of {r}`\n\nTouches: `{tool}`"),
             None => format!("`{tool}.{source}`"),
         },
         Resolution::Call { kind, decl } => {
-            let eff = match kind {
-                CallKind::Function => ck.functions.get(decl).map(|s| agentmark::sema::effects::effect_name(s.effect)),
-                CallKind::RustBlock => ck.rust_blocks.iter().find(|r| r.name == *decl).map(|r| agentmark::sema::effects::effect_name(r.sig.effect)),
+            let touches: Option<String> = match kind {
+                CallKind::Function => ck
+                    .blocks
+                    .iter()
+                    .find(|b| b.kind == BlockKind::Function && b.unit == *decl)
+                    .map(|b| b.effect.touches()),
+                CallKind::RustBlock => a.project.files.iter().flat_map(|f| f.ast.decls.iter()).find_map(|d| match d {
+                    agentmark::syntax::ast::Decl::RustBlock(r) if r.name.name == *decl => Some(r.touches.words.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", ")),
+                    _ => None,
+                }),
                 _ => None,
             };
-            let _ = a;
-            match (eff, ty) {
-                (Some(e), Some(t)) => format!("`{decl}(...)`: `{t}`\n\nEffects: `{e}`"),
-                (Some(e), None) => format!("`{decl}`\n\nEffects: `{e}`"),
+            match (touches, ty) {
+                (Some(e), Some(t)) => format!("`{decl}(...)`: `{t}`\n\nTouches: `{e}`"),
+                (Some(e), None) => format!("`{decl}`\n\nTouches: `{e}`"),
                 (None, Some(t)) => format!("`{decl}`: `{t}`"),
                 _ => format!("`{decl}`"),
             }
