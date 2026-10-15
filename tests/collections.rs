@@ -318,65 +318,65 @@ const MAP_HELP: &str = "A map is written like: map of \"EU\" to 1, \"US\" to 2 (
 #[test]
 fn mistakes_are_explained_in_plain_language() {
     says(
-        "  - set xs = list of 1, \"a\"\n",
+        "  1. list of 1, \"a\" into xs\n",
         1,
         "\"a\"",
         "Every list item must be the same kind of value: the first is a number, but this is text.",
     );
-    says("  - set n = 5\n  - set m = n where item = 1\n", 2, "n", "\"where\" needs a list, but this is a number.");
+    says("  1. 5 into n\n  2. n where item = 1 into m\n", 2, "n", "\"where\" needs a list, but this is a number.");
     says(
-        "  - set ranked = sort sales by item\n",
+        "  1. sort sales by item into ranked\n",
         1,
         "item",
         "\"sort … by\" needs values it can put in order, but this is Sale.\nNumbers, money, text, dates and durations have an order; records and lists do not.",
     );
     says(
-        "  - set names = list of \"a\", \"b\"\n  - set total = sum of names\n",
+        "  1. list of \"a\", \"b\" into names\n  2. sum of names into total\n",
         2,
         "names",
         "\"sum of\" adds numbers or money, but these are text.\nSum the numbers or amounts of a field: \"sum of amount in rows\".",
     );
     says(
-        "  - set text = join (list of 1, 2) with \",\"\n",
+        "  1. join (list of 1, 2) with \",\" into text\n",
         1,
         "list of 1, 2",
         "\"join\" glues a list of text, but this is a list of int.\nTurn the values into text first, for example: map rows to \"{item.id}\"",
     );
     says(
-        "  - set m = empty map of money to int\n",
+        "  1. empty map of money to int into m\n",
         1,
         "money",
         "A map cannot be keyed by money.\nMap keys are text, numbers, dates, datetimes or yes/no values.",
     );
     says(
-        "  - set xs = list of 1, 2\n  - put 1 at \"a\" in xs\n",
+        "  1. list of 1, 2 into xs\n  2. put 1 at \"a\" in xs\n",
         2,
         "xs",
         &format!("\"put … in\" needs a map, but this is list of int.\n{MAP_HELP}"),
     );
     says(
-        "  - set eu = sales where regoin = \"EU\"\n",
+        "  1. sales where regoin = \"EU\" into eu\n",
         1,
         "regoin",
         "Unknown field \"regoin\" on Sale. Did you mean \"region\"?",
     );
     says(
-        "  - set g = group sales by amount\n",
+        "  1. group sales by amount into g\n",
         1,
         "amount",
         "\"group … by\" needs a key that is text, a number, a date or a yes/no value, but this is money.",
     );
     says(
-        "  - set xs = list of 1, 2\n  - for each k, v in xs:\n    - set z = k\n",
+        "  1. list of 1, 2 into xs\n  2. for each k, v in xs:\n     1. k into z\n",
         2,
         "xs",
         &format!("\"for each … , … in\" needs a map, but this is list of int.\n{MAP_HELP}"),
     );
-    says("  - set xs = list of 1, 2\n  - set zs = xs at 1\n", 2, "xs", &format!("\"at\" needs a map, but this is list of int.\n{MAP_HELP}"));
-    says("  - set xs = list of 1, 2\n  - set ys = take \"a\" from xs\n", 2, "\"a\"", "\"take\" needs a whole number, but this is text.");
+    says("  1. list of 1, 2 into xs\n  2. xs at 1 into zs\n", 2, "xs", &format!("\"at\" needs a map, but this is list of int.\n{MAP_HELP}"));
+    says("  1. list of 1, 2 into xs\n  2. take \"a\" from xs into ys\n", 2, "\"a\"", "\"take\" needs a whole number, but this is text.");
 
     // two mistakes in one statement list are both reported, in order
-    let both = explain("  - set ages = map of \"ann\" to 31\n  - put 1 at 5 in ages\n  - put \"old\" at \"bob\" in ages\n");
+    let both = explain("  1. map of \"ann\" to 31 into ages\n  2. put 1 at 5 in ages\n  3. put \"old\" at \"bob\" in ages\n");
     assert_eq!(
         both,
         vec![
@@ -387,13 +387,13 @@ fn mistakes_are_explained_in_plain_language() {
 }
 
 #[test]
-fn the_expression_of_a_word_must_be_pure() {
+fn the_expression_of_a_word_must_touch_nothing() {
     let src = "# Function: shout\n- in: word: text\n- out: text\n- steps:\n  1. print: word\n  2. return word\n\n# Function: f\n- touches: nothing\n- steps:\n  1. list of \"a\", \"b\" into names\n  2. names where shout(item) = \"a\" into loud\n";
     let e = errors_of(src);
-    assert!(e.contains("An expression inside a collection word must be pure, but \"shout\" has the effect local."), "{e}");
-    assert!(e.contains("Do the effectful step in a \"for each\" loop instead."), "{e}");
-    // the same call outside a word is fine in a local function
-    let ok = src.replace("- effect: pure\n  - set names", "- effect: local\n  - set names").replace("names where shout(item) = \"a\"", "list of shout(\"a\")");
+    assert!(e.contains("An expression inside a collection word may touch nothing, but \"shout\" touches print."), "{e}");
+    assert!(e.contains("Do the step that touches something in a \"for each\" loop instead."), "{e}");
+    // the same call outside a word is fine in a function that says it prints
+    let ok = src.replace("- touches: nothing\n- steps:\n  1. list", "- touches: print\n- steps:\n  1. list").replace("names where shout(item) = \"a\" into loud", "list of shout(\"a\") into loud");
     assert_eq!(errors_of(&ok), "");
 }
 
@@ -410,7 +410,7 @@ fn a_bare_field_and_item_are_the_same_element() {
 }
 
 #[test]
-fn collection_words_do_not_make_a_function_impure() {
+fn collection_words_do_not_make_a_function_touch_anything() {
     let src = "# Function: total\n- in: xs: list of int\n- out: int\n- touches: nothing\n- steps:\n  1. map xs to item * 2 into doubled\n  2. empty list of int into ys\n  3. add 1 to ys\n  4. return sum of doubled + sum of ys\n";
     assert_eq!(errors_of(src), "");
 }
@@ -473,26 +473,26 @@ fn the_service_checks_with_its_effects() {
 #[test]
 fn a_variable_may_not_hide_a_field_of_the_element() {
     // before: the variable silently won and `count of sales where region = "EU"` counted nothing
-    let (line, under, msg) = one("  - set region = \"US\"\n  - set n = count of sales where region = \"EU\"\n");
+    let (line, under, msg) = one("  1. \"US\" into region\n  2. count of sales where region = \"EU\" into n\n");
     assert_eq!((line, under.as_str()), (2, "region"));
     assert_eq!(
         msg,
         "\"region\" is a variable here and also a field of Sale, so it is unclear which one is meant.\nWrite \"item.region\" for the field, or rename the variable."
     );
     // both ways out are fine
-    assert_eq!(explain("  - set region = \"US\"\n  - set n = count of sales where item.region = \"EU\"\n"), vec![]);
-    assert_eq!(explain("  - set country = \"US\"\n  - set n = count of sales where region = country\n"), vec![]);
+    assert_eq!(explain("  1. \"US\" into region\n  2. count of sales where item.region = \"EU\" into n\n"), vec![]);
+    assert_eq!(explain("  1. \"US\" into country\n  2. count of sales where region = country into n\n"), vec![]);
     // outside a word the variable is simply the variable
-    assert_eq!(explain("  - set region = \"US\"\n  - for each sale in sales:\n    - set where_from = region\n"), vec![]);
+    assert_eq!(explain("  1. \"US\" into region\n  2. for each sale in sales:\n     1. region into where_from\n"), vec![]);
 }
 
 #[test]
 fn append_put_and_remove_need_a_variable() {
     let note = "Name the value first with \"set\", change that, and use it afterwards.";
-    says("  - put 1 at \"a\" in (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"put\" changes a variable, but this is not one.\n{note}"));
-    says("  - remove \"a\" from (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"remove\" changes a variable, but this is not one.\n{note}"));
-    says("  - append 1 to (list of 2)\n", 1, "list of 2", &format!("\"append\" changes a variable, but this is not one.\n{note}"));
-    assert_eq!(explain("  - set xs = list of 2\n  - append 1 to xs\n"), vec![]);
+    says("  1. put 1 at \"a\" in (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"put\" changes a variable, but this is not one.\n{note}"));
+    says("  1. remove \"a\" from (map of \"b\" to 2)\n", 1, "map of \"b\" to 2", &format!("\"remove\" changes a variable, but this is not one.\n{note}"));
+    says("  1. add 1 to (list of 2)\n", 1, "list of 2", &format!("\"append\" changes a variable, but this is not one.\n{note}"));
+    assert_eq!(explain("  1. list of 2 into xs\n  2. add 1 to xs\n"), vec![]);
 }
 
 /// Parse only (the 120-character line limit is a check, not a parse, rule).
@@ -508,7 +508,7 @@ fn a_line_nested_too_deep_is_refused_not_a_crash() {
     let deep = format!("{}1{}", "(".repeat(150), ")".repeat(150));
     let e = parse_errors(&format!("# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. return {deep}\n"));
     assert!(e.contains("This line nests more than 100 levels of parentheses or braces."), "{e}");
-    assert!(e.contains("Name the inner part with \"set\" on a line of its own."), "{e}");
+    assert!(e.contains("Name the inner part on a step of its own: \"<value> into <name>\"."), "{e}");
     // 90 levels still parse
     let ok = format!("{}1{}", "(".repeat(90), ")".repeat(90));
     assert_eq!(parse_errors(&format!("# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. return {ok}\n")), "");
@@ -519,13 +519,13 @@ fn nested_words_parse_in_linear_time() {
     // regression: `unique (…)`, `sum of (…)` and `count of (…)` parsed their operand twice per level (2^depth)
     let nest = |word: &str, depth: usize| (0..depth).fold("rows".to_string(), |e, _| format!("{word} ({e})"));
     for src in [
-        format!("  - return {}", nest("unique", 20)),
-        format!("  - return {}", nest("sum of", 20)),
-        format!("  - return {}", nest("count of", 20)),
-        format!("  - return {}", nest("min of", 20)),
+        format!("  1. return {}", nest("unique", 20)),
+        format!("  1. return {}", nest("sum of", 20)),
+        format!("  1. return {}", nest("count of", 20)),
+        format!("  1. return {}", nest("min of", 20)),
     ] {
         let t = std::time::Instant::now();
-        assert_eq!(parse_errors(&format!("# Function: f\n- touches: nothing\n- steps:\n")), "");
+        assert_eq!(parse_errors(&format!("# Function: f\n- out: int\n- touches: nothing\n- steps:\n{src}\n")), "");
         assert!(t.elapsed().as_secs() < 10, "{src}: took {:?}", t.elapsed());
     }
 }

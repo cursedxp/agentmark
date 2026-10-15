@@ -103,7 +103,7 @@ const MAX_NESTING: usize = 100;
 fn too_deep(path: &str, lines: &[Line]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for l in lines {
-        if !matches!(l.kind, LineKind::Item | LineKind::Control | LineKind::Heading1 | LineKind::Heading2) {
+        if !matches!(l.kind, LineKind::Item | LineKind::Numbered(_) | LineKind::Control | LineKind::Heading1 | LineKind::Heading2) {
             continue;
         }
         let (mut depth, mut chars) = (0usize, 0u32);

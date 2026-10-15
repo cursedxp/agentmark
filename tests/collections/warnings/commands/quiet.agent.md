@@ -1,15 +1,15 @@
-> Every loop variable and element name below is unused on purpose.
 # Command: quiet
+Every loop variable and element name below is unused on purpose.
 
-## Run
-- set xs = list of 1, 2, 3
-- set ones = map xs to 1
-- set n = count of xs where true
-- set m = map of "a" to 1
-- for each x in xs with index i:
-  - print: "row"
-- for each k, v in m:
-  - print: "entry {k}"
-- for each y in xs:
-  - print: "again"
-- print: "{count of ones} {n} {sum of 1 in xs} {count of (unique 7 in xs)}"
+- steps:
+  1. list of 1, 2, 3 into xs
+  2. map xs to 1 into ones
+  3. count of xs where true into n
+  4. map of "a" to 1 into m
+  5. for each x in xs with index i:
+     1. print: "row"
+  6. for each k, v in m:
+     1. print: "entry {k}"
+  7. for each y in xs:
+     1. print: "again"
+  8. print: "{count of ones} {n} {sum of 1 in xs} {count of (unique 7 in xs)}"

@@ -1,5 +1,5 @@
-# Import: ./commands/label.agent.md
+# Program: label
+Entry point. The program is one command, so `shop <title> [<count>]` runs it directly.
 
-> Entry point. The program is one command, so `shop <title> [<count>]` runs it directly.
-# Run
-- label
+# Uses
+- [label](./commands/label.agent.md)

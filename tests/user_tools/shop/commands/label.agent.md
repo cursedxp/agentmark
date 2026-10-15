@@ -1,15 +1,16 @@
-# Import: ../tools/ledger.agent.md
-# Import: ../tools/slugger.agent.md
+# Uses
+- [ledger](../tools/ledger.agent.md)
+- [slugger](../tools/slugger.agent.md)
 
-> Writes a title to the ledger as a file-name word, repeated `count` times.
 # Command: label
-- args: title: text, count: int = 1, dry_run: bool = false
+Writes a title to the ledger as a file-name word, repeated `count` times.
 
-## Run
-- set slug = slugger.slug(title)
-- if dry_run:
-  - print: "would write {slug}"
-  - stop
-- ledger add "{slugger.shout(slug)} x{count}"
-- ledger add_twice slug "again"
-- print: "wrote {slug}"
+- in: title: text, count: int = 1, dry_run: bool = false
+- steps:
+  1. slugger.slug(title) into slug
+  2. if dry_run:
+     1. print: "would write {slug}"
+     2. stop
+  3. ledger add "{slugger.shout(slug)} x{count}"
+  4. ledger add_twice slug "again"
+  5. print: "wrote {slug}"
