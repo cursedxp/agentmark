@@ -3,39 +3,86 @@
 
 
 
+# Program:   billing-desk
+
+Chases unpaid invoices and imports invoice files.
+
+
+Runs from the command line and as a service.
+* start:   import-csv
+
 # Import:   crate   serde_json
-# Import: ./rules/*.agent.md                > glob, imports every rule
-# Import: ./billing   as   billing
-# Import: ./records/invoice.agent.md   
-> Money helpers.
-# Import: ../constants.agent.md as c
+# Uses
+- [every rule](./rules/*.agent.md)
+-   [billing rules](./billing/)   as   billing
+- [](./records/invoice.agent.md)
+- [constants](../constants.agent.md)
 # Import: crate reqwest as http_client
 
 # record:   Invoice   
-> the customer name
-- customer:   text
-- amount
+The thing we send out.
+* customer:   text
++ amount
 - due_date:date  
 - score:   maybe   int
 - lines: list   of   text
 > trailing note about the record, kept in place
 
-# RULE: overdue
+# RULE: overdue   Invoice
+Unpaid and more than two weeks late.
 - when:   today>due+14 days   and   status!="paid"
-- for:  Invoice
 
 # Constant: fee
 - value:   12.5  EUR
 
 # Function: net_amount
+The net amount without VAT.
 - out: money
 - in: invoice:Invoice,vat:int=19
-- effect: pure
-  > the net amount without VAT
-  - return (invoice.amount - invoice.amount*vat/100)*(1)
+-   touches:  nothing
+- steps:
+    1. return (invoice.amount - invoice.amount*vat/100)*(1)
 
-> Chases unpaid invoices.
+# Function: totals
+Adds up what was sold in each region.
+
+- in: sales
+- out: region totals
+- steps:
+ 1. group sales by region into   by_region
+ 1. empty list of RegionTotal into totals
+ 1. for each region, region_sales in by_region:
+       1. add RegionTotal { region: region, orders: count of region_sales } to totals
+       1. add RegionTotal to totals:
+         - region
+         - orders:   count of region_sales
+ 1. if count of totals > 0:
+     1. print: "some"
+ 1. else:
+     1. print: "none"
+ 1. return sort totals by revenue descending
+
+# Function: fetch_all
+- in: urls: list of text
+- touches: AI,crm
+- steps:
+  1. try http get "https://api.example.com/rates" into rates
+     otherwise:
+        > fall back to the cache
+        1. stop
+  1. match rates:
+      - ok v:
+          1. print: "{v}"
+      - error:
+          1. stop
+  1. parallel:
+     1. do fetch_rates into rates
+     1. do net_amount(invoice,  19)   into n
+  1. guard:   not (reminder   is empty   or reminder length > 800)   else stop
+
 # agent:  chaser
+Chases unpaid invoices.
+
 - tools:  email,crm,log
 - timeout:  1 minutes
 - memory:  file
@@ -43,69 +90,66 @@
 > trailing property note
 
 ## every   MONDAY at   08:00
-for each overdue invoice in crm.invoices:
-  if   invoice.score is some s:
-    - log: "Score {s}"
-  else:
-    > nothing to do for unscored invoices
-    - stop
-  - ask model with invoice: "Write a reminder for {invoice.customer}. Say \"thanks\" and use \{braces}." as Reminder -> reminder
-  - guard:   not (reminder   is empty   or reminder length > 800)   else stop
-  - email send customer: "{reminder}"
-  - crm update invoice: status="reminded",  score = 1
-  - parallel:
-    - do fetch_rates -> rates
-    - do net_amount(invoice,  19)   -> n
+Looks at every invoice.
 
+1. for each overdue invoice in crm.invoices:
+  1. if   invoice.score is some s:
+        1. log: "Score {s}"
+  1. else:
+        > nothing to do for unscored invoices
+        1. stop
+  1. ask model with invoice: "Write a reminder for {invoice.customer}. Say \"thanks\" and use \{braces}." as Reminder into reminder
+  1. email send customer: "{reminder}"
+  1. crm update invoice: status="reminded",  score = 1
 
 ## ON   START
 
-- set total = count of overdue invoices in crm.invoices
-- set found = first i in state.invoices where i.id = id
-- log: "started"
-- try   http get "https://api.example.com/rates" -> rates
-  otherwise:
-    > fall back to the cache
-    - set rates = cached
-- print:   "Done {total} {(total + 1) * 2}"
+1. count of overdue invoices in crm.invoices into total
+1. first i in state.invoices where i.id = id into found
+1. log: "started"
+1. print:   "Done {total} {(total + 1) * 2}"
 
 ## every 30   minutes
-- log: "tick"
+1. log: "tick"
 > a note that sits at the very end of the block
 
 ## Do remind
-- log: "remind"
+1. log: "remind"
 
 # Service:  api
+Serves invoices.
 - state:   AppState
 - listen:   0.0.0.0:8080
 
 ## get   /invoices/{id}
-- respond 200   found
-- respond 404
+1. respond 200   found
+1. respond 404
 
 # Command: import-csv
-- args:   path:text,dry_run:bool=false
-
-## run
-- read file path as list of Invoice -> rows
-- print: "n"
+Reads an invoice file.
+- in:   path:text,dry_run:bool=false
+- steps:
+  1. read file path as list of Invoice into rows
+  1. print: "n"
 
 ## Rust:   fingerprint   ->   text
-- effect:   pure
+Hashes an invoice.
+- touches:   nothing
 - in:   invoice: Invoice
-  ```rust
-  use sha2::{Digest, Sha256};
+```rust
+use sha2::{Digest, Sha256};
 
-      format!("{:x}", Sha256::digest(invoice.id.as_bytes()))
-  ```
+    format!("{:x}", Sha256::digest(invoice.id.as_bytes()))
+```
 
 # Binding:  pdf
+Renders documents.
 - proposed-effect:   network
 - effect:   unverified
 - crate:   printpdf
-> renders a document
+
 ## render(doc:Document)->bytes
+Draws a document.
 ```rust
 Ok(vec![])
 ```
@@ -113,7 +157,3 @@ Ok(vec![])
 ## Not  bound
 - save_to_stream: needs a lifetime
 - Page
-
-# Run
-- chaser
-- api
