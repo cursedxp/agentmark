@@ -74,15 +74,15 @@ Two levels, both chumsky:
 ```
 File { path, decls: Vec<Decl>, imports: Vec<Import> }
 Decl  = Record{name, fields:[Field{name, ty: Option<TypeExpr>}]}
-      | Rule{name, for_record, when: Expr}
+      | Rule{name, for_record (the last word of the heading), when: Expr}
       | Agent{name, model, tools, memory, timeout, blocks:[Block]}
-      | Function{name, params, out, effect, body:[Stmt]}
+      | Function{name, params, out, touches: Option<Touches>, body:[Stmt]}
       | Service{name, listen, state, routes:[Route{method, path, body}]}
-      | Command{name, args:[Arg{name, ty, default}], body}
+      | Command{name, args:[Arg{name, ty, default}] (the `- in:` line), body (the `- steps:`)}
       | Binding{name, crate_name, effect, proposed_effect, items:[BindingItem{sig, rust, doc}], not_bound}
       | Constant{name, value: Expr}
-      | Run{items:[Ident]}
-      | RustBlock{name, params, out, effect, code, code_line}   // `## Rust:` hoisted to module level
+      | Program{name, doc, start: Option<Start>}                  // `# Program` + `- start:`
+      | RustBlock{name, params, out, touches, code, code_line}   // `## Rust:` hoisted to module level
       | Entry{trigger, label, body}                              // L2-only, produced by agent_lower
 Trigger = Every(Duration) | DailyAt(h,m) | Weekly(Weekday,h,m) | OnEvent{tool,event} | OnStart | Do(name)
 Stmt  = ForEach{var, filter_rule: Option, source, body} | If{cond, then, else_} | IfSome{expr, bind, then, else_}
@@ -121,7 +121,7 @@ Errors are `Diagnostic { code, severity, span, message, help }` rendered as in S
 
 ```
 examples/invoice-chaser.agent.md:12
-  - email send custmer: "..."
+  1. email send custmer: "..."
                ^^^^^^^
   Unknown target "custmer" for tool email. Did you mean "customer"?
 ```
@@ -138,7 +138,7 @@ did-you-mean: Levenshtein distance ≤ 2 against every candidate name of that ca
 | `## Every …` / `## Every day at` / `## Every <weekday> at` / `## On start` | `Decl::Entry{ trigger: Schedule(..)/Start, label: "<heading text>" }` |
 | `## When <tool> receives <event>` | `Decl::Entry{ trigger: Event{tool, event}, param: <event> }` |
 | `## Do <name>` | `Decl::Function{ name: "<agent>__<name>", effect: inferred }`; `do <name>` → `Call` |
-| `# Rule: r` (`for: R`, `when: e`) | `Decl::Function{ name: r, params: [record of R, fields in scope], out: bool, effect: pure, body: [Return(e)] }` |
+| `# Rule: r` (`# Rule: r R`, `when: e`) | `Decl::Function{ name: r, params: [record of R, fields in scope], out: bool, effect: pure, body: [Return(e)] }` |
 | `for each r rec in src` | `ForEach{ var: rec, source: src, body: [If{ cond: Call(r, rec), then: body }] }` |
 | `ask model …` | `Call{ fn: rt::model_complete, args: [prompt, context, as_record] }` (effect `model`) |
 | `guard: c [else s]` | `Set tmp = c; Trace(guard, name, tmp); If{ cond: not tmp, then: [s or Stop] }` |
@@ -186,7 +186,7 @@ generated file path — never as a user error.
   `clock` (today/now; mock today comes from `model.json` `"today"`), and the current trace labels
   `unit` and `entry`.
 - Scheduler: `Every(Duration)`, `EveryDayAt(h,m)`, `Weekly(weekday,h,m)` on tokio; `--once` runs
-  every scheduled entry exactly once, in `# Run` order, then the event entries once per fixture item.
+  every scheduled entry exactly once, in program order, then the event entries once per fixture item.
 - `ModelClient` trait (`async fn complete(&self, req: ModelRequest) -> Result<String>`), with
   `AnthropicModel` (reqwest, Messages API) and `MockModel` (responses keyed by prompt prefix,
   longest-prefix match). v0.2 adds `OpenAiModel`, `LocalModel` (OpenAI-compatible base URL).
@@ -261,3 +261,19 @@ is the only L3-looking construct and lowers to `If(not …) { Respond(404) }`; `
 pure search expression; `# Command: import-csv` → clap subcommand with a `Try` around the
 `ReadFile` effect call; `net_amount` is a pure `Fn` doing `Money` arithmetic; `sha2` comes from a
 binder-generated `# Binding`, and the `## Rust: fingerprint` block only formats its output.
+
+## 7. v0.4 (SPEC 23)
+
+v0.4 changed the front end and the wording of reports, not the passes behind them.
+
+- **Lexer and parser.** The lexer knows numbered steps, description paragraphs and `>` notes. The tree builder
+  nests a step under its parent when it starts at the parent's text; `else:` and `otherwise:` are plain lines inside
+  their `if` or `try` step. Every removed v0.3 form is an error (E060 to E073) that quotes the new form.
+- **Program and Uses.** `# Program` and `# Uses` replace `# Run` and file `# Import`. The project loader resolves the
+  links of `# Uses`; sema checks that `- start:` names a command.
+- **Sema.** `in:` / `out:` types are inferred from names (`sema/decls.rs`). `- touches:` is checked by name
+  (`sema/decls.rs`, `sema/stmt.rs`, E206 and E232). The effect classes (`pure`, `local`, `network`, `model`) are
+  unchanged inside the compiler; only reports and the language say "touches".
+- **Typed file read.** `file read path into sales` reads CSV when `sales` is a list of a record: the type is decided
+  in `sema/stdlib.rs`, carried in `FileCall.records` through the IR, and read by `agentmark-rt` (`stdlib/file.rs`).
+- **Unchanged.** Lowering, the IR shape, code generation and the runtime trace are byte-for-byte what v0.3 produced.

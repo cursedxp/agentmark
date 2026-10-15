@@ -15,7 +15,7 @@
 | `ok` | no error diagnostics, **and** no unverified bindings unless `--allow-unverified` is given |
 | `diagnostics` | every error and warning, ordered by file and line; `severity` is `"error"` or `"warning"`; `line`/`column` are 1-based; `did_you_mean` and `help` may be `null` |
 | `units` | one entry per agent, service, command, function, rule and tool (`kind` = `agent`, `service`, `command`, `function`, `rule`, `tool`; the blocks of a tool are its verbs), in source order; `effects` is the union over its blocks; empty when the project has errors |
-| `units[].blocks[]` | one per trigger, `## Do`, route, command `## Run`, function or rule body, or tool verb; `label` is the heading text (for a function or rule the name) |
+| `units[].blocks[]` | one per trigger, `## Do`, route, command, function or rule body, or tool verb; `label` is the heading text (for a function or rule the name) |
 | `effects.class` | highest class: `pure`, `local`, `network`, `model`, or `unverified` (only unapproved library calls) |
 | `effects.summary` | the SPEC 8 text, e.g. `model, network(crm, email), local(log)` or `pure` |
 | `effects.tools` | `model` (bool) and the names behind `network`, `local`, `unverified`, in first-use order |

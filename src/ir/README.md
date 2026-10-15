@@ -8,7 +8,7 @@ agentmark::ir::effect_summary(&prog)  // [(unit, label, EffectSet)], Display = S
 
 The IR has no agent, rule, trigger, `ask model` or guard node. Constants are inlined. Every `Stmt` and
 `Expr` has an `effect: EffectSet` (from `Checked`; unioned from the children for nodes lowering made up).
-Types are `sema::Type`; `Type::Unknown` means "untyped JSON value" (e.g. `http post … -> x`).
+Types are `sema::Type`; `Type::Unknown` means "untyped JSON value" (e.g. `http post … into x`).
 `SourceRef { file, line }` on every statement is for the `// <file>.agent.md:<line>` comments.
 All names are the DECLARED names (functions, records, services, commands, `-` included); codegen maps them to Rust identifiers and dedups. Names lowering makes are `<agent>__<block>` (a rule that shares a name with a function becomes `<name>__rule`); a verb of a `# Tool` is the `Fn` `<tool>__<verb>` (`display` = `(tool, verb)`), and a Rust-bodied verb adds the `RustFn` `<tool>_<verb>_rust` that it calls (SPEC 22.5, Q380); `Fn.display` holds `(unit, label)` for a former `## Do` block so the effect summary does not show the internal name.
 
@@ -27,11 +27,11 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Entry` — `unit, label, trigger, param, timeout, memory_file, body, effect`; stop = return from the body.
 - `Trigger` — `Every(Duration) | DailyAt | Weekly | Event{tool,event} | Start`; `Duration {amount, unit}`.
 - `Service` / `Route` — `name, listen, state record`; route has `method, path, path_params (text vars), label ("GET /x"), body`. `state` is a variable of the state record.
-- `Command` — `name, args (with defaults), state (Q9: the project's service state record, variable `state`), body`; `source` = `# Command` heading, `run` = its `## Run` heading.
+- `Command` — `name, args (with defaults), state (Q9: the project's service state record, variable `state`), body`; `source` = `# Command` heading, `run` = its `- steps:` line.
 - `RustFn` — `## Rust` block: verbatim `code`, `code_line`, declared `effect`; `BindingFn` — one binding item, verbatim `code`, `effect` (`Unverified` until approved); `on` = the handle type when the item is a method (`ir::binding_key(item, on)` tells methods of different handles apart), `modes` = how each parameter holds a handle (`Shared` borrowed, `Mut`, `Consume` moved in; `Shared` for every non-handle).
 - `CrateImport` — `# Import: crate x` (`binding` = binding name if a binding file exists; versions live in the binding header).
 - `ToolDef` (re-export of `manifest::ToolDef`) — `tools.toml` entry, for one trait per tool.
-- `run` — names under `# Run`, in order.
+- `run` — the commands, agents and services the program starts (`# Program` and `# Uses`), in order.
 
 ## Statements (`StmtKind`)
 - `Let{name,ty,value}` declares; `Assign{name,ty,value}` changes an existing variable (`ty` = its declared type, wrap `T` into `maybe T` when `value.ty` differs).
@@ -50,11 +50,11 @@ context, so a former `## Do` block reports the *entry's* label. `Trace`/model/to
 - `Target::Literal{word,value}` — `email send address "x"` (word `address`) and the URL of `http post "…"` (word None).
 - `Payload::Assign(fields)` — `status = "x"` (trace `set` = these); `Payload::Value(e)` — text, record literal or record value.
 - `Model(ModelCall{prompt, context, schema, model})` — `ask model`: interpolated prompt; `context` = the `with` value (trace `{"id": v.id}`); `schema` = `as Record` (parse + validate); `model` = agent driver string (`claude:haiku`), None outside agents.
-- `Binding{binding,item,on,args}` — call of a `# Binding` item (`pdf render doc`); for a method call on a handle (`- hasher update data`) `on` is the handle type and `args[0]` is the handle variable (codegen lends it as `&h` / `&mut h` or moves it, by the item's `modes`); `Rust{name,args}` — `## Rust` block call; `Fn{name,args}` — function call statement (`do f(x) -> y`, former `do <action>`).
+- `Binding{binding,item,on,args}` — call of a `# Binding` item (`pdf render doc`); for a method call on a handle (`hasher update data`) `on` is the handle type and `args[0]` is the handle variable (codegen lends it as `&h` / `&mut h` or moves it, by the item's `modes`); `Rust{name,args}` — `## Rust` block call; `Fn{name,args}` — function call statement (`do f(x) into y`, former `do <action>`).
 - `Io(ReadFile{path,ty} | ReadBody{ty} | ReadInput | Print{message})` — `ReadInput`: all of standard input as `text`.
-- `File(FileCall{verb, path, arg})` — the built-in `file` tool (SPEC 22.3, Q344): `verb` is `read | write | append | list | rename | exists | delete`, `arg` the new path of `rename` or the content of `write`/`append`; `into` types: `read` text, `list` list of text, `exists` bool. Codegen emits `agentmark_rt::stdlib::file::<verb>(ctx, …)`, which traces `{"kind":"file",…}`.
+- `File(FileCall{verb, path, arg})` — the built-in `file` tool (SPEC 22.3, Q344): `verb` is `read | write | append | list | rename | exists | delete`, `arg` the new path of `rename` or the content of `write`/`append`; `records` is the record type of a typed read (`file read path into sales`, SPEC 23.10: the file is CSV); `into` types: `read` text, `list` list of text, `exists` bool. Codegen emits `agentmark_rt::stdlib::file::<verb>(ctx, …)`, which traces `{"kind":"file",…}`.
 - `Std(expr)` — a failing library call (`number.parse`, `csv.parse … as …`) whose value is stored by a `try`: `expr` is an `ExprKind::Std` whose `ty` is `Result(T)`; the statement's `into` has the plain `T`.
-- `Trace(ToolCall{tool, verb, args})` — the first statement of every tool verb's `Fn`: `{"kind":"tool","tool":…,"verb":…,"args":{param: value}}` (Q385). A statement `- slugger slug title -> s` is an `Effect{Fn{"slugger__slug", args}}`; the expression `slugger.slug(title)` is `Call{Fn, "slugger__slug"}`.
+- `Trace(ToolCall{tool, verb, args})` — the first statement of every tool verb's `Fn`: `{"kind":"tool","tool":…,"verb":…,"args":{param: value}}` (Q385). A step `slugger slug title into s` is an `Effect{Fn{"slugger__slug", args}}`; the expression `slugger.slug(title)` is `Call{Fn, "slugger__slug"}`.
 - `Trace(Guard{name, ok})` — one `guard` trace line; `name` is the guard source with constants inlined (`reminder length < 800`), `ok` a `bool` expression. Every guard, in agents, services, commands and functions alike, is `Let guard_ok_<line> = cond; Effect(Trace); If(not tmp){else | Stop}` (Q90).
 
 ## Expressions (`ExprKind`, each with `ty` and `effect`)
