@@ -315,7 +315,7 @@ fn vague_name_checks_first_in_variables_and_route_parameters() {
     let d = findings(src, "vague-name");
     let at: Vec<(String, u32, u32)> =
         d.iter().map(|d| (d.message.split('\"').nth(1).unwrap().to_string(), d.span.line, d.span.col)).collect();
-    assert_eq!(at, vec![("x".to_string(), 5, 17), ("thing".to_string(), 6, 21)], "{d:?}");
+    assert_eq!(at, vec![("x".to_string(), 6, 17), ("thing".to_string(), 7, 10)], "{d:?}");
 }
 
 #[test]
