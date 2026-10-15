@@ -1,4 +1,4 @@
-> tests/errors/unknown-field.agent.md:12
+> tests/errors/unknown-field.agent.md:13
 >   - when: amout > 100 EUR
 >           ^^^^^
 >   Unknown field "amout" on Invoice. Did you mean "amount"?
@@ -7,6 +7,7 @@
 - id: text
 - amount: money
 
-# Rule: big
-- for: Invoice
+# Rule: big Invoice
+A big invoice.
+
 - when: amout > 100 EUR
