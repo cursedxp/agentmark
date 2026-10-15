@@ -31,14 +31,14 @@ fn function(touches: &str, steps: &[&str]) -> String {
 // ------------------------------------------------------------------ rules and guards are pure
 
 #[test]
-fn a_rule_may_not_call_a_network_function() {
+fn a_rule_may_not_call_a_function_that_touches_crm() {
     let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- touches: crm\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: live(invoice) = \"open\"\n");
     let e = errors(&src);
     assert!(
-        e.contains("A rule must be pure, but \"live\" has the effect network."),
+        e.contains("A rule may touch nothing, but \"live\" touches crm."),
         "{e}"
     );
-    assert!(e.contains("Rules are pure checks: they may only read the record's own fields and call pure functions."), "{e}");
+    assert!(e.contains("Rules are plain checks: they may only read the record's own fields and call functions that touch nothing."), "{e}");
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn a_rule_may_not_call_a_local_function_either() {
     let src = format!("{PRE}# Function: noisy\n- in: invoice: Invoice\n- out: text\n- touches: log\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: noisy(invoice) = \"open\"\n");
     let e = first_error(&src);
     assert!(
-        e.contains("A rule must be pure, but \"noisy\" has the effect local."),
+        e.contains("A rule may touch nothing, but \"noisy\" touches log."),
         "{e}"
     );
 }
@@ -62,7 +62,7 @@ fn a_rule_may_not_read_a_tool_source() {
     let src = format!("{PRE}# Rule: r Invoice\n- when: count of crm.invoices > 3\n");
     let e = first_error(&src);
     assert!(
-        e.contains("A rule must be pure, but \"crm.invoices\" has the effect network."),
+        e.contains("A rule may touch nothing, but \"crm.invoices\" touches crm."),
         "{e}"
     );
 }
@@ -72,10 +72,10 @@ fn a_guard_must_be_pure() {
     let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- touches: crm\n- steps:\n  1. return invoice.status\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\n1. for each i in crm.invoices:\n   1. guard: live(i) = \"open\"\n");
     let e = first_error(&src);
     assert!(
-        e.contains("A guard must be pure, but \"live\" has the effect network."),
+        e.contains("A guard may touch nothing, but \"live\" touches crm."),
         "{e}"
     );
-    assert!(e.contains("Guards are pure checks"), "{e}");
+    assert!(e.contains("Guards are plain checks"), "{e}");
 }
 
 #[test]

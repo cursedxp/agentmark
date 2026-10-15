@@ -887,12 +887,18 @@ mod tests {
 
     #[test]
     fn single_file_reads_tools_next_to_it() {
-        let p = Project::load("tests/errors/unit-mismatch.agent.md");
+        let dir = std::env::temp_dir().join(format!("agentmark-single-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("odd.agent.md"), "# Record: Invoice\n- amount: money\n\n# Rule: odd Invoice\n- when: amount > 5 EUR\n").unwrap();
+        std::fs::copy("tests/errors/tools.toml", dir.join("tools.toml")).unwrap();
+        let file = dir.join("odd.agent.md");
+        let p = Project::load(file.to_str().unwrap());
         assert_eq!(p.kind, ProjectKind::SingleFile);
         assert!(p.load_diagnostics.is_empty(), "{:?}", p.load_diagnostics);
         assert_eq!(p.files.len(), 1);
         assert!(p.manifest.tool("crm").is_some());
-        assert_eq!(p.root, "tests/errors");
+        assert_eq!(p.root, dir.to_str().unwrap());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -1005,7 +1011,7 @@ mod tests {
         let out = p.render(&p.load_diagnostics);
         assert_eq!(
             out,
-            "app/main.agent.md:1\n  # Import: ./recrods.agent.md\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  Cannot find the file \"./recrods.agent.md\". Did you mean \"./records.agent.md\"?"
+            "app/main.agent.md:2\n  - [recrods](./recrods.agent.md)\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  Cannot find the file \"./recrods.agent.md\". Did you mean \"./records.agent.md\"?"
         );
     }
 
@@ -1030,7 +1036,7 @@ mod tests {
         );
         let out = p.render(&p.load_diagnostics);
         assert!(
-            out.starts_with("app/c.agent.md:1\n  # Import: ./a.agent.md\n"),
+            out.starts_with("app/c.agent.md:2\n  - [a](./a.agent.md)\n"),
             "{out}"
         );
         assert!(

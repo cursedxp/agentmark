@@ -68,20 +68,20 @@ pub fn neg_facts(e: &Expr) -> Vec<String> {
 fn pure_texts(k: PureKind) -> (&'static str, &'static str) {
     match k {
         PureKind::Rule => (
-            "A rule must be pure",
-            "Rules are pure checks: they may only read the record's own fields and call pure functions.",
+            "A rule may touch nothing",
+            "Rules are plain checks: they may only read the record's own fields and call functions that touch nothing.",
         ),
         PureKind::Guard => (
-            "A guard must be pure",
-            "Guards are pure checks: they may only compare values you already have and call pure functions.",
+            "A guard may touch nothing",
+            "Guards are plain checks: they may only compare values you already have and call functions that touch nothing.",
         ),
         PureKind::Constant => (
-            "A constant must be pure",
+            "A constant may touch nothing",
             "Constants are fixed values: they may only use literals and other constants.",
         ),
         PureKind::Element => (
-            "An expression inside a collection word must be pure",
-            "\"where\", \"sort\", \"sum of\" and the other collection words run their expression once per element, so it may only read values and call pure functions. Do the effectful step in a \"for each\" loop instead.",
+            "An expression inside a collection word may touch nothing",
+            "\"where\", \"sort\", \"sum of\" and the other collection words run their expression once per element, so it may only read values and call functions that touch nothing. Do the step that touches something in a \"for each\" loop instead.",
         ),
     }
 }
@@ -151,8 +151,8 @@ impl Checker<'_> {
                 self.path(cx.file),
                 span,
                 format!(
-                    "{head}, but \"{label}\" has the effect {}.",
-                    effect_name(eff.class())
+                    "{head}, but \"{label}\" touches {}.",
+                    eff.touches()
                 ),
             )
             .with_help(help);
