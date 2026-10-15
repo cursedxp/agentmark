@@ -6,34 +6,37 @@ path: examples/06-sales-report/commands/sales-report.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
   - span:
-      line: 2
+      line: 3
       col: 3
-      len: 43
+      len: 52
     doc: ~
     kind:
       File:
         path: "../functions/region-totals.agent.md"
         alias: ~
+    label: region_totals
   - span:
-      line: 3
+      line: 4
       col: 3
-      len: 39
+      len: 44
     doc: ~
     kind:
       File:
         path: "../functions/table-row.agent.md"
         alias: ~
+    label: table_row
   - span:
-      line: 4
+      line: 5
       col: 3
       len: 32
     doc: ~
@@ -41,6 +44,7 @@ imports:
       File:
         path: "../records/sale.agent.md"
         alias: ~
+    label: Sale
 decls:
   - Command:
       span:
@@ -58,358 +62,257 @@ decls:
         - name:
             name: path
             span:
-              line: 8
-              col: 9
+              line: 10
+              col: 7
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 8
-              col: 15
+              line: 10
+              col: 13
               len: 4
           default: ~
         - name:
             name: out
             span:
-              line: 8
-              col: 21
+              line: 10
+              col: 19
               len: 3
           ty:
             kind:
               Named: text
             span:
-              line: 8
-              col: 26
+              line: 10
+              col: 24
               len: 4
           default: ~
       body:
         - span:
-            line: 11
-            col: 3
+            line: 12
+            col: 6
             len: 29
           kind:
             Try:
               stmt:
                 span:
-                  line: 11
-                  col: 7
+                  line: 12
+                  col: 10
                   len: 25
                 kind:
                   File:
                     verb:
                       name: read
                       span:
-                        line: 11
-                        col: 12
+                        line: 12
+                        col: 15
                         len: 4
                     path:
                       span:
-                        line: 11
-                        col: 17
+                        line: 12
+                        col: 20
                         len: 4
                       kind:
                         Path:
                           - name: path
                             span:
-                              line: 11
-                              col: 17
+                              line: 12
+                              col: 20
                               len: 4
                     arg: ~
                     into:
-                      name: content
+                      name: sales
                       span:
-                        line: 11
-                        col: 25
-                        len: 7
+                        line: 12
+                        col: 30
+                        len: 5
               otherwise:
                 - span:
-                    line: 13
-                    col: 7
+                    line: 14
+                    col: 9
                     len: 30
                   kind:
                     Print:
                       span:
-                        line: 13
-                        col: 14
+                        line: 14
+                        col: 16
                         len: 23
                       kind:
                         Interp:
                           - Text: "Could not read "
                           - Expr:
                               span:
-                                line: 13
-                                col: 31
+                                line: 14
+                                col: 33
                                 len: 4
                               kind:
                                 Path:
                                   - name: path
                                     span:
-                                      line: 13
-                                      col: 31
+                                      line: 14
+                                      col: 33
                                       len: 4
                 - span:
-                    line: 14
-                    col: 7
+                    line: 15
+                    col: 9
                     len: 4
                   kind: Stop
         - span:
-            line: 15
-            col: 3
-            len: 47
-          kind:
-            Try:
-              stmt:
-                span:
-                  line: 15
-                  col: 7
-                  len: 43
-                kind:
-                  CallInto:
-                    call:
-                      span:
-                        line: 15
-                        col: 7
-                        len: 34
-                      kind:
-                        Decode:
-                          call:
-                            span:
-                              line: 15
-                              col: 7
-                              len: 18
-                            kind:
-                              Call:
-                                func:
-                                  - name: csv
-                                    span:
-                                      line: 15
-                                      col: 7
-                                      len: 3
-                                  - name: parse
-                                    span:
-                                      line: 15
-                                      col: 11
-                                      len: 5
-                                args:
-                                  - span:
-                                      line: 15
-                                      col: 17
-                                      len: 7
-                                    kind:
-                                      Path:
-                                        - name: content
-                                          span:
-                                            line: 15
-                                            col: 17
-                                            len: 7
-                          ty:
-                            kind:
-                              List:
-                                kind:
-                                  Named: Sale
-                                span:
-                                  line: 15
-                                  col: 37
-                                  len: 4
-                            span:
-                              line: 15
-                              col: 29
-                              len: 12
-                    into:
-                      name: sales
-                      span:
-                        line: 15
-                        col: 45
-                        len: 5
-                    via_do: false
-              otherwise:
-                - span:
-                    line: 17
-                    col: 7
-                    len: 41
-                  kind:
-                    Print:
-                      span:
-                        line: 17
-                        col: 14
-                        len: 34
-                      kind:
-                        Interp:
-                          - Expr:
-                              span:
-                                line: 17
-                                col: 16
-                                len: 4
-                              kind:
-                                Path:
-                                  - name: path
-                                    span:
-                                      line: 17
-                                      col: 16
-                                      len: 4
-                          - Text: " is not a valid sales file"
-                - span:
-                    line: 18
-                    col: 7
-                    len: 4
-                  kind: Stop
-        - span:
-            line: 19
-            col: 3
-            len: 33
+            line: 16
+            col: 6
+            len: 32
           kind:
             Set:
               var:
                 name: totals
                 span:
-                  line: 19
-                  col: 7
+                  line: 16
+                  col: 32
                   len: 6
               expr:
                 span:
-                  line: 19
-                  col: 16
+                  line: 16
+                  col: 6
                   len: 20
                 kind:
                   Call:
                     func:
                       - name: region_totals
                         span:
-                          line: 19
-                          col: 16
+                          line: 16
+                          col: 6
                           len: 13
                     args:
                       - span:
-                          line: 19
-                          col: 30
+                          line: 16
+                          col: 20
                           len: 5
                         kind:
                           Path:
                             - name: sales
                               span:
-                                line: 19
-                                col: 30
+                                line: 16
+                                col: 20
                                 len: 5
         - span:
-            line: 20
-            col: 3
-            len: 39
+            line: 17
+            col: 6
+            len: 38
           kind:
             Set:
               var:
                 name: rule
                 span:
-                  line: 20
-                  col: 7
+                  line: 17
+                  col: 40
                   len: 4
               expr:
                 span:
-                  line: 20
-                  col: 14
+                  line: 17
+                  col: 6
                   len: 28
                 kind:
                   Call:
                     func:
                       - name: text
                         span:
-                          line: 20
-                          col: 14
+                          line: 17
+                          col: 6
                           len: 4
                       - name: repeat
                         span:
-                          line: 20
-                          col: 19
+                          line: 17
+                          col: 11
                           len: 6
                     args:
                       - span:
-                          line: 20
-                          col: 26
+                          line: 17
+                          col: 18
                           len: 3
                         kind:
                           Str: "-"
                       - span:
-                          line: 20
-                          col: 31
+                          line: 17
+                          col: 23
                           len: 10
                         kind:
                           Path:
                             - name: rule_width
                               span:
-                                line: 20
-                                col: 31
+                                line: 17
+                                col: 23
                                 len: 10
         - span:
-            line: 21
-            col: 3
-            len: 82
+            line: 18
+            col: 6
+            len: 81
           kind:
             Set:
               var:
                 name: lines
                 span:
-                  line: 21
-                  col: 7
+                  line: 18
+                  col: 82
                   len: 5
               expr:
                 span:
-                  line: 21
-                  col: 15
+                  line: 18
+                  col: 6
                   len: 70
                 kind:
                   Coll:
                     ListLit:
                       - span:
-                          line: 21
-                          col: 23
+                          line: 18
+                          col: 14
                           len: 14
                         kind:
                           Str: Sales report
                       - span:
-                          line: 21
-                          col: 39
+                          line: 18
+                          col: 30
                           len: 4
                         kind:
                           Path:
                             - name: rule
                               span:
-                                line: 21
-                                col: 39
+                                line: 18
+                                col: 30
                                 len: 4
                       - span:
-                          line: 21
-                          col: 45
+                          line: 18
+                          col: 36
                           len: 40
                         kind:
                           Call:
                             func:
                               - name: table_row
                                 span:
-                                  line: 21
-                                  col: 45
+                                  line: 18
+                                  col: 36
                                   len: 9
                             args:
                               - span:
-                                  line: 21
-                                  col: 55
+                                  line: 18
+                                  col: 46
                                   len: 8
                                 kind:
                                   Str: Region
                               - span:
-                                  line: 21
-                                  col: 65
+                                  line: 18
+                                  col: 56
                                   len: 8
                                 kind:
                                   Str: Orders
                               - span:
-                                  line: 21
-                                  col: 75
+                                  line: 18
+                                  col: 66
                                   len: 9
                                 kind:
                                   Str: Revenue
         - span:
-            line: 22
-            col: 3
+            line: 19
+            col: 6
             len: 25
           kind:
             ForEach:
@@ -417,155 +320,155 @@ decls:
               var:
                 name: entry
                 span:
-                  line: 22
-                  col: 12
+                  line: 19
+                  col: 15
                   len: 5
               source:
                 span:
-                  line: 22
-                  col: 21
+                  line: 19
+                  col: 24
                   len: 6
                 kind:
                   Path:
                     - name: totals
                       span:
-                        line: 22
-                        col: 21
+                        line: 19
+                        col: 24
                         len: 6
               body:
                 - span:
-                    line: 23
-                    col: 5
-                    len: 76
+                    line: 20
+                    col: 9
+                    len: 73
                   kind:
                     Append:
                       value:
                         span:
-                          line: 23
-                          col: 12
+                          line: 20
+                          col: 13
                           len: 60
                         kind:
                           Call:
                             func:
                               - name: table_row
                                 span:
-                                  line: 23
-                                  col: 12
+                                  line: 20
+                                  col: 13
                                   len: 9
                             args:
                               - span:
-                                  line: 23
-                                  col: 22
+                                  line: 20
+                                  col: 23
                                   len: 12
                                 kind:
                                   Path:
                                     - name: entry
                                       span:
-                                        line: 23
-                                        col: 22
+                                        line: 20
+                                        col: 23
                                         len: 5
                                     - name: region
                                       span:
-                                        line: 23
-                                        col: 28
+                                        line: 20
+                                        col: 29
                                         len: 6
                               - span:
-                                  line: 23
-                                  col: 36
+                                  line: 20
+                                  col: 37
                                   len: 16
                                 kind:
                                   Interp:
                                     - Expr:
                                         span:
-                                          line: 23
-                                          col: 38
+                                          line: 20
+                                          col: 39
                                           len: 12
                                         kind:
                                           Path:
                                             - name: entry
                                               span:
-                                                line: 23
-                                                col: 38
+                                                line: 20
+                                                col: 39
                                                 len: 5
                                             - name: orders
                                               span:
-                                                line: 23
-                                                col: 44
+                                                line: 20
+                                                col: 45
                                                 len: 6
                               - span:
-                                  line: 23
-                                  col: 54
+                                  line: 20
+                                  col: 55
                                   len: 17
                                 kind:
                                   Interp:
                                     - Expr:
                                         span:
-                                          line: 23
-                                          col: 56
+                                          line: 20
+                                          col: 57
                                           len: 13
                                         kind:
                                           Path:
                                             - name: entry
                                               span:
-                                                line: 23
-                                                col: 56
+                                                line: 20
+                                                col: 57
                                                 len: 5
                                             - name: revenue
                                               span:
-                                                line: 23
-                                                col: 62
+                                                line: 20
+                                                col: 63
                                                 len: 7
                       list:
                         span:
-                          line: 23
-                          col: 76
+                          line: 20
+                          col: 77
                           len: 5
                         kind:
                           Path:
                             - name: lines
                               span:
-                                line: 23
-                                col: 76
+                                line: 20
+                                col: 77
                                 len: 5
         - span:
-            line: 24
-            col: 3
-            len: 20
+            line: 21
+            col: 6
+            len: 17
           kind:
             Append:
               value:
                 span:
-                  line: 24
+                  line: 21
                   col: 10
                   len: 4
                 kind:
                   Path:
                     - name: rule
                       span:
-                        line: 24
+                        line: 21
                         col: 10
                         len: 4
               list:
                 span:
-                  line: 24
+                  line: 21
                   col: 18
                   len: 5
                 kind:
                   Path:
                     - name: lines
                       span:
-                        line: 24
+                        line: 21
                         col: 18
                         len: 5
         - span:
-            line: 25
-            col: 3
-            len: 82
+            line: 22
+            col: 6
+            len: 79
           kind:
             Append:
               value:
                 span:
-                  line: 25
+                  line: 22
                   col: 10
                   len: 66
                 kind:
@@ -573,25 +476,25 @@ decls:
                     func:
                       - name: table_row
                         span:
-                          line: 25
+                          line: 22
                           col: 10
                           len: 9
                     args:
                       - span:
-                          line: 25
+                          line: 22
                           col: 20
                           len: 7
                         kind:
                           Str: Total
                       - span:
-                          line: 25
+                          line: 22
                           col: 29
                           len: 18
                         kind:
                           Interp:
                             - Expr:
                                 span:
-                                  line: 25
+                                  line: 22
                                   col: 31
                                   len: 14
                                 kind:
@@ -600,25 +503,25 @@ decls:
                                     noun: ~
                                     source:
                                       span:
-                                        line: 25
+                                        line: 22
                                         col: 40
                                         len: 5
                                       kind:
                                         Path:
                                           - name: sales
                                             span:
-                                              line: 25
+                                              line: 22
                                               col: 40
                                               len: 5
                       - span:
-                          line: 25
+                          line: 22
                           col: 49
                           len: 26
                         kind:
                           Interp:
                             - Expr:
                                 span:
-                                  line: 25
+                                  line: 22
                                   col: 51
                                   len: 22
                                 kind:
@@ -626,142 +529,142 @@ decls:
                                     Sum:
                                       expr:
                                         span:
-                                          line: 25
+                                          line: 22
                                           col: 58
                                           len: 6
                                         kind:
                                           Path:
                                             - name: amount
                                               span:
-                                                line: 25
+                                                line: 22
                                                 col: 58
                                                 len: 6
                                       source:
                                         span:
-                                          line: 25
+                                          line: 22
                                           col: 68
                                           len: 5
                                         kind:
                                           Path:
                                             - name: sales
                                               span:
-                                                line: 25
+                                                line: 22
                                                 col: 68
                                                 len: 5
               list:
                 span:
-                  line: 25
+                  line: 22
                   col: 80
                   len: 5
                 kind:
                   Path:
                     - name: lines
                       span:
-                        line: 25
+                        line: 22
                         col: 80
                         len: 5
         - span:
-            line: 26
-            col: 3
-            len: 33
+            line: 23
+            col: 6
+            len: 32
           kind:
             Set:
               var:
                 name: report
                 span:
-                  line: 26
-                  col: 7
+                  line: 23
+                  col: 32
                   len: 6
               expr:
                 span:
-                  line: 26
-                  col: 16
+                  line: 23
+                  col: 6
                   len: 20
                 kind:
                   Coll:
                     Join:
                       source:
                         span:
-                          line: 26
-                          col: 21
+                          line: 23
+                          col: 11
                           len: 5
                         kind:
                           Path:
                             - name: lines
                               span:
-                                line: 26
-                                col: 21
+                                line: 23
+                                col: 11
                                 len: 5
                       sep:
                         span:
-                          line: 26
-                          col: 32
+                          line: 23
+                          col: 22
                           len: 4
                         kind:
                           Str: "\n"
         - span:
-            line: 27
-            col: 3
+            line: 24
+            col: 6
             len: 28
           kind:
             File:
               verb:
                 name: write
                 span:
-                  line: 27
-                  col: 8
+                  line: 24
+                  col: 11
                   len: 5
               path:
                 span:
-                  line: 27
-                  col: 14
+                  line: 24
+                  col: 17
                   len: 3
                 kind:
                   Path:
                     - name: out
                       span:
-                        line: 27
-                        col: 14
+                        line: 24
+                        col: 17
                         len: 3
               arg:
                 Content:
                   span:
-                    line: 27
-                    col: 19
+                    line: 24
+                    col: 22
                     len: 12
                   kind:
                     Interp:
                       - Expr:
                           span:
-                            line: 27
-                            col: 21
+                            line: 24
+                            col: 24
                             len: 6
                           kind:
                             Path:
                               - name: report
                                 span:
-                                  line: 27
-                                  col: 21
+                                  line: 24
+                                  col: 24
                                   len: 6
                       - Text: "\n"
               into: ~
         - span:
-            line: 28
-            col: 3
+            line: 25
+            col: 7
             len: 49
           kind:
             Print:
               span:
-                line: 28
-                col: 10
+                line: 25
+                col: 14
                 len: 42
               kind:
                 Interp:
                   - Text: "Wrote "
                   - Expr:
                       span:
-                        line: 28
-                        col: 18
+                        line: 25
+                        col: 22
                         len: 15
                       kind:
                         CountOf:
@@ -769,26 +672,26 @@ decls:
                           noun: ~
                           source:
                             span:
-                              line: 28
-                              col: 27
+                              line: 25
+                              col: 31
                               len: 6
                             kind:
                               Path:
                                 - name: totals
                                   span:
-                                    line: 28
-                                    col: 27
+                                    line: 25
+                                    col: 31
                                     len: 6
                   - Text: " regions to "
                   - Expr:
                       span:
-                        line: 28
-                        col: 47
+                        line: 25
+                        col: 51
                         len: 3
                       kind:
                         Path:
                           - name: out
                             span:
-                              line: 28
-                              col: 47
+                              line: 25
+                              col: 51
                               len: 3

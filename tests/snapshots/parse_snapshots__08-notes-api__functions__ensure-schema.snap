@@ -6,16 +6,17 @@ path: examples/08-notes-api/functions/ensure-schema.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
   - span:
-      line: 2
+      line: 4
       col: 3
       len: 18
     doc: ~
@@ -24,7 +25,7 @@ imports:
         name:
           name: sqlx
           span:
-            line: 2
+            line: 4
             col: 17
             len: 4
         alias: ~
@@ -45,7 +46,7 @@ decls:
         - name:
             name: pool
             span:
-              line: 7
+              line: 10
               col: 7
               len: 4
           ty:
@@ -54,7 +55,7 @@ decls:
                 name: sqlx.SqlitePool
                 mode: Shared
             span:
-              line: 7
+              line: 10
               col: 13
               len: 25
           default: ~
@@ -64,98 +65,93 @@ decls:
             kind:
               Named: bool
             span:
-              line: 8
+              line: 11
               col: 18
               len: 4
         span:
-          line: 8
+          line: 11
           col: 8
           len: 14
-      effect:
-        value: Local
-        span:
-          line: 9
-          col: 11
-          len: 5
+      touches: ~
       body:
         - span:
-            line: 10
-            col: 5
-            len: 42
+            line: 13
+            col: 6
+            len: 44
           kind:
             ToolCall:
               tool:
                 name: sqlx
                 span:
-                  line: 10
-                  col: 5
+                  line: 13
+                  col: 6
                   len: 4
               verb:
                 name: query
                 span:
-                  line: 10
-                  col: 10
+                  line: 13
+                  col: 11
                   len: 5
               target:
                 - Word:
                     name: create_notes_table
                     span:
-                      line: 10
-                      col: 16
+                      line: 13
+                      col: 17
                       len: 18
               payload: ~
               into:
                 name: statement
                 span:
-                  line: 10
-                  col: 38
+                  line: 13
+                  col: 41
                   len: 9
               via_do: false
         - span:
-            line: 11
-            col: 5
+            line: 14
+            col: 6
             len: 26
           kind:
             Try:
               stmt:
                 span:
-                  line: 11
-                  col: 9
+                  line: 14
+                  col: 10
                   len: 22
                 kind:
                   ToolCall:
                     tool:
                       name: statement
                       span:
-                        line: 11
-                        col: 9
+                        line: 14
+                        col: 10
                         len: 9
                     verb:
                       name: execute
                       span:
-                        line: 11
-                        col: 19
+                        line: 14
+                        col: 20
                         len: 7
                     target:
                       - Word:
                           name: pool
                           span:
-                            line: 11
-                            col: 27
+                            line: 14
+                            col: 28
                             len: 4
                     payload: ~
                     into: ~
                     via_do: false
               otherwise: ~
         - span:
-            line: 12
-            col: 5
+            line: 15
+            col: 6
             len: 11
           kind:
             Return:
               span:
-                line: 12
-                col: 12
+                line: 15
+                col: 13
                 len: 4
               kind:
                 Bool: true

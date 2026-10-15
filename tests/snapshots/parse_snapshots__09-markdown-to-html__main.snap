@@ -6,24 +6,26 @@ path: examples/09-markdown-to-html/main.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 5
       col: 3
-      len: 38
+      len: 52
     doc: ~
     kind:
       File:
         path: "./commands/md-to-html.agent.md"
         alias: ~
+    label: md-to-html command
 decls:
-  - Run:
+  - Program:
       span:
-        line: 4
+        line: 1
         col: 3
-        len: 3
-      doc: "Entry point. The program is one command, so `md-to-html <source> <out>` runs it directly."
-      items:
-        - name: md-to-html
-          span:
-            line: 5
-            col: 3
-            len: 10
+        len: 25
+      doc: Turns a small Markdown file into an HTML page.
+      name:
+        name: markdown-to-html
+        span:
+          line: 1
+          col: 12
+          len: 16
+      start: ~

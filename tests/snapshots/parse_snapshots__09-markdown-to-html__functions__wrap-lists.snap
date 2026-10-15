@@ -6,14 +6,15 @@ path: examples/09-markdown-to-html/functions/wrap-lists.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
 decls:
   - Function:
       span:
@@ -31,14 +32,14 @@ decls:
         - name:
             name: body
             span:
-              line: 5
+              line: 7
               col: 7
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 7
               col: 13
               len: 4
           default: ~
@@ -46,97 +47,102 @@ decls:
         kind:
           Named: text
         span:
-          line: 6
+          line: 8
           col: 8
           len: 4
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 7
-          col: 11
-          len: 4
+          line: 9
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 9
+              col: 12
+              len: 7
       body:
         - span:
-            line: 8
-            col: 5
-            len: 21
+            line: 11
+            col: 6
+            len: 20
           kind:
             Set:
               var:
                 name: page
                 span:
-                  line: 8
-                  col: 9
+                  line: 11
+                  col: 22
                   len: 4
               expr:
                 span:
-                  line: 8
-                  col: 16
+                  line: 11
+                  col: 6
                   len: 10
                 kind:
                   Interp:
                     - Expr:
                         span:
-                          line: 8
-                          col: 18
+                          line: 11
+                          col: 8
                           len: 4
                         kind:
                           Path:
                             - name: body
                               span:
-                                line: 8
-                                col: 18
+                                line: 11
+                                col: 8
                                 len: 4
                     - Text: "\n"
         - span:
-            line: 9
-            col: 5
+            line: 12
+            col: 6
             len: 63
           kind:
             Return:
               span:
-                line: 9
-                col: 12
+                line: 12
+                col: 13
                 len: 56
               kind:
                 Call:
                   func:
                     - name: regex
                       span:
-                        line: 9
-                        col: 12
+                        line: 12
+                        col: 13
                         len: 5
                     - name: replace
                       span:
-                        line: 9
-                        col: 18
+                        line: 12
+                        col: 19
                         len: 7
                   args:
                     - span:
-                        line: 9
-                        col: 26
+                        line: 12
+                        col: 27
                         len: 4
                       kind:
                         Path:
                           - name: page
                             span:
-                              line: 9
-                              col: 26
+                              line: 12
+                              col: 27
                               len: 4
                     - span:
-                        line: 9
-                        col: 32
+                        line: 12
+                        col: 33
                         len: 16
                       kind:
                         Path:
                           - name: list_run_pattern
                             span:
-                              line: 9
-                              col: 32
+                              line: 12
+                              col: 33
                               len: 16
                     - span:
-                        line: 9
-                        col: 50
+                        line: 12
+                        col: 51
                         len: 17
                       kind:
                         Str: "<ul>\n$1</ul>\n"

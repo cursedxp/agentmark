@@ -11,7 +11,7 @@ decls:
         line: 1
         col: 3
         len: 22
-      doc: ~
+      doc: "How wide the first two columns of the report are, in characters."
       name:
         name: column_width
         span:
@@ -20,26 +20,26 @@ decls:
           len: 12
       value:
         span:
-          line: 2
+          line: 4
           col: 10
           len: 1
         kind:
           Int: 8
   - Constant:
       span:
-        line: 5
+        line: 6
         col: 3
         len: 20
       doc: "Tied to the columns: two columns of column_width plus 11 characters for the widest revenue (\"1005.50 EUR\")."
       name:
         name: rule_width
         span:
-          line: 5
+          line: 6
           col: 13
           len: 10
       value:
         span:
-          line: 6
+          line: 9
           col: 10
           len: 2
         kind:

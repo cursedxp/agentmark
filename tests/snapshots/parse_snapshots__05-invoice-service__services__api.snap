@@ -6,50 +6,55 @@ path: examples/05-invoice-service/services/api.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
   - span:
-      line: 2
+      line: 3
       col: 3
-      len: 49
+      len: 64
     doc: ~
     kind:
       File:
         path: "../functions/invoice-fingerprint.agent.md"
         alias: ~
+    label: invoice_fingerprint
   - span:
-      line: 3
+      line: 4
       col: 3
-      len: 40
+      len: 46
     doc: ~
     kind:
       File:
         path: "../functions/net-amount.agent.md"
         alias: ~
+    label: net_amount
   - span:
-      line: 4
+      line: 5
       col: 3
-      len: 37
+      len: 41
     doc: ~
     kind:
       File:
         path: "../records/app-state.agent.md"
         alias: ~
+    label: AppState
   - span:
-      line: 5
+      line: 6
       col: 3
-      len: 35
+      len: 38
     doc: ~
     kind:
       File:
         path: "../records/invoice.agent.md"
         alias: ~
+    label: Invoice
 decls:
   - Service:
       span:
@@ -66,452 +71,452 @@ decls:
       listen:
         value: "0.0.0.0:8080"
         span:
-          line: 9
+          line: 11
           col: 11
           len: 12
       state:
         name: AppState
         span:
-          line: 10
+          line: 12
           col: 10
           len: 8
       routes:
         - span:
-            line: 12
+            line: 14
             col: 4
             len: 18
-          doc: ~
+          doc: "One invoice, or 404 when there is none with that id."
           method: GET
           path: "/invoices/{id}"
           path_params:
             - id
           body:
             - span:
-                line: 13
-                col: 3
-                len: 65
+                line: 17
+                col: 4
+                len: 64
               kind:
                 Set:
                   var:
                     name: found
                     span:
-                      line: 13
-                      col: 7
+                      line: 17
+                      col: 63
                       len: 5
                   expr:
                     span:
-                      line: 13
-                      col: 15
+                      line: 17
+                      col: 4
                       len: 53
                     kind:
                       FirstIn:
                         var:
                           name: invoice
                           span:
-                            line: 13
-                            col: 21
+                            line: 17
+                            col: 10
                             len: 7
                         source:
                           span:
-                            line: 13
-                            col: 32
+                            line: 17
+                            col: 21
                             len: 14
                           kind:
                             Path:
                               - name: state
                                 span:
-                                  line: 13
-                                  col: 32
+                                  line: 17
+                                  col: 21
                                   len: 5
                               - name: invoices
                                 span:
-                                  line: 13
-                                  col: 38
+                                  line: 17
+                                  col: 27
                                   len: 8
                         cond:
                           span:
-                            line: 13
-                            col: 53
+                            line: 17
+                            col: 42
                             len: 15
                           kind:
                             Binary:
                               op: Eq
                               lhs:
                                 span:
-                                  line: 13
-                                  col: 53
+                                  line: 17
+                                  col: 42
                                   len: 10
                                 kind:
                                   Path:
                                     - name: invoice
                                       span:
-                                        line: 13
-                                        col: 53
+                                        line: 17
+                                        col: 42
                                         len: 7
                                     - name: id
                                       span:
-                                        line: 13
-                                        col: 61
+                                        line: 17
+                                        col: 50
                                         len: 2
                               rhs:
                                 span:
-                                  line: 13
-                                  col: 66
+                                  line: 17
+                                  col: 55
                                   len: 2
                                 kind:
                                   Path:
                                     - name: id
                                       span:
-                                        line: 13
-                                        col: 66
+                                        line: 17
+                                        col: 55
                                         len: 2
             - span:
-                line: 14
-                col: 3
+                line: 18
+                col: 4
                 len: 42
               kind:
                 Guard:
                   cond:
                     span:
-                      line: 14
-                      col: 10
+                      line: 18
+                      col: 11
                       len: 18
                     kind:
                       IsNotEmpty:
                         span:
-                          line: 14
-                          col: 10
+                          line: 18
+                          col: 11
                           len: 5
                         kind:
                           Path:
                             - name: found
                               span:
-                                line: 14
-                                col: 10
+                                line: 18
+                                col: 11
                                 len: 5
                   else_:
                     span:
-                      line: 14
-                      col: 34
+                      line: 18
+                      col: 35
                       len: 11
                     kind:
                       Respond:
                         status: 404
                         body: ~
             - span:
-                line: 15
-                col: 3
+                line: 19
+                col: 4
                 len: 17
               kind:
                 Respond:
                   status: 200
                   body:
                     span:
-                      line: 15
-                      col: 15
+                      line: 19
+                      col: 16
                       len: 5
                     kind:
                       Path:
                         - name: found
                           span:
-                            line: 15
-                            col: 15
+                            line: 19
+                            col: 16
                             len: 5
         - span:
-            line: 17
+            line: 21
             col: 4
             len: 22
-          doc: ~
+          doc: "An invoice's net amount and fingerprint, or 404 when there is none with that id."
           method: GET
           path: "/invoices/{id}/net"
           path_params:
             - id
           body:
             - span:
-                line: 18
-                col: 3
-                len: 65
+                line: 24
+                col: 4
+                len: 64
               kind:
                 Set:
                   var:
                     name: found
                     span:
-                      line: 18
-                      col: 7
+                      line: 24
+                      col: 63
                       len: 5
                   expr:
                     span:
-                      line: 18
-                      col: 15
+                      line: 24
+                      col: 4
                       len: 53
                     kind:
                       FirstIn:
                         var:
                           name: invoice
                           span:
-                            line: 18
-                            col: 21
+                            line: 24
+                            col: 10
                             len: 7
                         source:
                           span:
-                            line: 18
-                            col: 32
+                            line: 24
+                            col: 21
                             len: 14
                           kind:
                             Path:
                               - name: state
                                 span:
-                                  line: 18
-                                  col: 32
+                                  line: 24
+                                  col: 21
                                   len: 5
                               - name: invoices
                                 span:
-                                  line: 18
-                                  col: 38
+                                  line: 24
+                                  col: 27
                                   len: 8
                         cond:
                           span:
-                            line: 18
-                            col: 53
+                            line: 24
+                            col: 42
                             len: 15
                           kind:
                             Binary:
                               op: Eq
                               lhs:
                                 span:
-                                  line: 18
-                                  col: 53
+                                  line: 24
+                                  col: 42
                                   len: 10
                                 kind:
                                   Path:
                                     - name: invoice
                                       span:
-                                        line: 18
-                                        col: 53
+                                        line: 24
+                                        col: 42
                                         len: 7
                                     - name: id
                                       span:
-                                        line: 18
-                                        col: 61
+                                        line: 24
+                                        col: 50
                                         len: 2
                               rhs:
                                 span:
-                                  line: 18
-                                  col: 66
+                                  line: 24
+                                  col: 55
                                   len: 2
                                 kind:
                                   Path:
                                     - name: id
                                       span:
-                                        line: 18
-                                        col: 66
+                                        line: 24
+                                        col: 55
                                         len: 2
             - span:
-                line: 19
-                col: 3
+                line: 25
+                col: 4
                 len: 42
               kind:
                 Guard:
                   cond:
                     span:
-                      line: 19
-                      col: 10
+                      line: 25
+                      col: 11
                       len: 18
                     kind:
                       IsNotEmpty:
                         span:
-                          line: 19
-                          col: 10
+                          line: 25
+                          col: 11
                           len: 5
                         kind:
                           Path:
                             - name: found
                               span:
-                                line: 19
-                                col: 10
+                                line: 25
+                                col: 11
                                 len: 5
                   else_:
                     span:
-                      line: 19
-                      col: 34
+                      line: 25
+                      col: 35
                       len: 11
                     kind:
                       Respond:
                         status: 404
                         body: ~
             - span:
-                line: 20
-                col: 3
+                line: 26
+                col: 4
                 len: 103
               kind:
                 Respond:
                   status: 200
                   body:
                     span:
-                      line: 20
-                      col: 15
+                      line: 26
+                      col: 16
                       len: 91
                     kind:
                       Record:
                         - name:
                             name: id
                             span:
-                              line: 20
-                              col: 17
+                              line: 26
+                              col: 18
                               len: 2
                           value:
                             span:
-                              line: 20
-                              col: 21
+                              line: 26
+                              col: 22
                               len: 8
                             kind:
                               Path:
                                 - name: found
                                   span:
-                                    line: 20
-                                    col: 21
+                                    line: 26
+                                    col: 22
                                     len: 5
                                 - name: id
                                   span:
-                                    line: 20
-                                    col: 27
+                                    line: 26
+                                    col: 28
                                     len: 2
                         - name:
                             name: net
                             span:
-                              line: 20
-                              col: 31
+                              line: 26
+                              col: 32
                               len: 3
                           value:
                             span:
-                              line: 20
-                              col: 36
+                              line: 26
+                              col: 37
                               len: 27
                             kind:
                               Call:
                                 func:
                                   - name: net_amount
                                     span:
-                                      line: 20
-                                      col: 36
+                                      line: 26
+                                      col: 37
                                       len: 10
                                 args:
                                   - span:
-                                      line: 20
-                                      col: 47
+                                      line: 26
+                                      col: 48
                                       len: 5
                                     kind:
                                       Path:
                                         - name: found
                                           span:
-                                            line: 20
-                                            col: 47
+                                            line: 26
+                                            col: 48
                                             len: 5
                                   - span:
-                                      line: 20
-                                      col: 54
+                                      line: 26
+                                      col: 55
                                       len: 8
                                     kind:
                                       Path:
                                         - name: vat_rate
                                           span:
-                                            line: 20
-                                            col: 54
+                                            line: 26
+                                            col: 55
                                             len: 8
                         - name:
                             name: fingerprint
                             span:
-                              line: 20
-                              col: 65
+                              line: 26
+                              col: 66
                               len: 11
                           value:
                             span:
-                              line: 20
-                              col: 78
+                              line: 26
+                              col: 79
                               len: 26
                             kind:
                               Call:
                                 func:
                                   - name: invoice_fingerprint
                                     span:
-                                      line: 20
-                                      col: 78
+                                      line: 26
+                                      col: 79
                                       len: 19
                                 args:
                                   - span:
-                                      line: 20
-                                      col: 98
+                                      line: 26
+                                      col: 99
                                       len: 5
                                     kind:
                                       Path:
                                         - name: found
                                           span:
-                                            line: 20
-                                            col: 98
+                                            line: 26
+                                            col: 99
                                             len: 5
         - span:
-            line: 22
+            line: 28
             col: 4
             len: 14
-          doc: ~
+          doc: Adds the invoice in the request body. An amount of zero or less is refused with 400.
           method: POST
           path: /invoices
           path_params: []
           body:
             - span:
-                line: 23
-                col: 3
-                len: 27
+                line: 31
+                col: 4
+                len: 29
               kind:
                 ReadBody:
                   ty:
                     kind:
                       Named: Invoice
                     span:
-                      line: 23
-                      col: 16
+                      line: 31
+                      col: 17
                       len: 7
                   into:
                     name: inv
                     span:
-                      line: 23
-                      col: 27
+                      line: 31
+                      col: 30
                       len: 3
             - span:
-                line: 24
-                col: 3
+                line: 32
+                col: 4
                 len: 42
               kind:
                 Guard:
                   cond:
                     span:
-                      line: 24
-                      col: 10
+                      line: 32
+                      col: 11
                       len: 18
                     kind:
                       Binary:
                         op: Gt
                         lhs:
                           span:
-                            line: 24
-                            col: 10
+                            line: 32
+                            col: 11
                             len: 10
                           kind:
                             Path:
                               - name: inv
                                 span:
-                                  line: 24
-                                  col: 10
+                                  line: 32
+                                  col: 11
                                   len: 3
                               - name: amount
                                 span:
-                                  line: 24
-                                  col: 14
+                                  line: 32
+                                  col: 15
                                   len: 6
                         rhs:
                           span:
-                            line: 24
-                            col: 23
+                            line: 32
+                            col: 24
                             len: 5
                           kind:
                             Money:
@@ -519,64 +524,64 @@ decls:
                               currency: EUR
                   else_:
                     span:
-                      line: 24
-                      col: 34
+                      line: 32
+                      col: 35
                       len: 11
                     kind:
                       Respond:
                         status: 400
                         body: ~
             - span:
-                line: 25
-                col: 3
-                len: 28
+                line: 33
+                col: 4
+                len: 25
               kind:
                 Append:
                   value:
                     span:
-                      line: 25
-                      col: 10
+                      line: 33
+                      col: 8
                       len: 3
                     kind:
                       Path:
                         - name: inv
                           span:
-                            line: 25
-                            col: 10
+                            line: 33
+                            col: 8
                             len: 3
                   list:
                     span:
-                      line: 25
-                      col: 17
+                      line: 33
+                      col: 15
                       len: 14
                     kind:
                       Path:
                         - name: state
                           span:
-                            line: 25
-                            col: 17
+                            line: 33
+                            col: 15
                             len: 5
                         - name: invoices
                           span:
-                            line: 25
-                            col: 23
+                            line: 33
+                            col: 21
                             len: 8
             - span:
-                line: 26
-                col: 3
+                line: 34
+                col: 4
                 len: 15
               kind:
                 Respond:
                   status: 201
                   body:
                     span:
-                      line: 26
-                      col: 15
+                      line: 34
+                      col: 16
                       len: 3
                     kind:
                       Path:
                         - name: inv
                           span:
-                            line: 26
-                            col: 15
+                            line: 34
+                            col: 16
                             len: 3

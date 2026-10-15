@@ -308,6 +308,28 @@ mod tests {
     }
 
     #[test]
+    fn star_and_plus_bullets_are_items_and_two_digit_steps_start_their_text_at_four() {
+        let (lines, diags) = lex("t", "* a: 1\n+ b: 2\n- c: 3\n  10. stop\n     1. print: \"x\"\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let kinds: Vec<_> = lines.iter().map(|l| l.kind.clone()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                LineKind::Item,
+                LineKind::Item,
+                LineKind::Item,
+                LineKind::Numbered(10),
+                LineKind::Numbered(1),
+                LineKind::Blank
+            ]
+        );
+        assert_eq!(lines[3].indent, 2);
+        // the text of `  10. stop` starts at column 7: its children go 6 spaces in
+        assert_eq!(lines[3].col, 7);
+        assert_eq!(lines[4].indent, 5);
+    }
+
+    #[test]
     fn fences_are_verbatim_and_strip_the_fence_indent() {
         let src = "  ```rust\n  let x = 1;\n    nested\n\ttabbed\n  ```\n";
         let (lines, diags) = lex("t", src);

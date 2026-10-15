@@ -11,7 +11,7 @@ decls:
         line: 1
         col: 3
         len: 22
-      doc: ~
+      doc: How long after its due date an unpaid invoice counts as overdue.
       name:
         name: grace_period
         span:
@@ -20,7 +20,7 @@ decls:
           len: 12
       value:
         span:
-          line: 2
+          line: 4
           col: 10
           len: 7
         kind:
@@ -29,19 +29,19 @@ decls:
             unit: Day
   - Constant:
       span:
-        line: 4
+        line: 6
         col: 3
         len: 29
-      doc: ~
+      doc: "The longest reminder the agent may send, in characters."
       name:
         name: max_reminder_length
         span:
-          line: 4
+          line: 6
           col: 13
           len: 19
       value:
         span:
-          line: 5
+          line: 9
           col: 10
           len: 3
         kind:
