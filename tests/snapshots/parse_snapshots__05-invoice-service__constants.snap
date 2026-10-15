@@ -11,7 +11,7 @@ decls:
         line: 1
         col: 3
         len: 18
-      doc: ~
+      doc: "The VAT rate in percent, taken off to get an invoice's net amount."
       name:
         name: vat_rate
         span:
@@ -20,7 +20,7 @@ decls:
           len: 8
       value:
         span:
-          line: 2
+          line: 4
           col: 10
           len: 2
         kind:

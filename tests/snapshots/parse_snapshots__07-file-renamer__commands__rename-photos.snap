@@ -6,116 +6,117 @@ path: examples/07-file-renamer/commands/rename-photos.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 41
+      len: 48
     doc: ~
     kind:
       File:
         path: "../functions/photo-stamp.agent.md"
         alias: ~
+    label: photo_stamp
 decls:
   - Command:
       span:
-        line: 5
+        line: 4
         col: 3
         len: 22
       doc: "Renames camera photos like IMG_20261003_141500.jpg to 2026-10-03_photo-1.jpg. Other files are left alone.\nWith dry_run it only prints what would change."
       name:
         name: rename-photos
         span:
-          line: 5
+          line: 4
           col: 12
           len: 13
       args:
         - name:
             name: folder
             span:
-              line: 6
-              col: 9
+              line: 8
+              col: 7
               len: 6
           ty:
             kind:
               Named: text
             span:
-              line: 6
-              col: 17
+              line: 8
+              col: 15
               len: 4
           default: ~
         - name:
             name: dry_run
             span:
-              line: 6
-              col: 23
+              line: 8
+              col: 21
               len: 7
           ty:
             kind:
               Named: bool
             span:
-              line: 6
-              col: 32
+              line: 8
+              col: 30
               len: 4
           default:
             span:
-              line: 6
-              col: 39
+              line: 8
+              col: 37
               len: 5
             kind:
               Bool: false
       body:
         - span:
-            line: 9
-            col: 3
-            len: 25
+            line: 10
+            col: 6
+            len: 27
           kind:
             File:
               verb:
                 name: list
                 span:
-                  line: 9
-                  col: 8
+                  line: 10
+                  col: 11
                   len: 4
               path:
                 span:
-                  line: 9
-                  col: 13
+                  line: 10
+                  col: 16
                   len: 6
                 kind:
                   Path:
                     - name: folder
                       span:
-                        line: 9
-                        col: 13
+                        line: 10
+                        col: 16
                         len: 6
               arg: ~
               into:
                 name: names
                 span:
-                  line: 9
-                  col: 23
+                  line: 10
+                  col: 28
                   len: 5
         - span:
-            line: 10
-            col: 3
-            len: 15
+            line: 11
+            col: 6
+            len: 14
           kind:
             Set:
               var:
                 name: renamed
                 span:
-                  line: 10
-                  col: 7
+                  line: 11
+                  col: 13
                   len: 7
               expr:
                 span:
-                  line: 10
-                  col: 17
+                  line: 11
+                  col: 6
                   len: 1
                 kind:
                   Int: 0
         - span:
-            line: 11
-            col: 3
+            line: 12
+            col: 6
             len: 23
           kind:
             ForEach:
@@ -123,428 +124,428 @@ decls:
               var:
                 name: name
                 span:
-                  line: 11
-                  col: 12
+                  line: 12
+                  col: 15
                   len: 4
               source:
                 span:
-                  line: 11
-                  col: 20
+                  line: 12
+                  col: 23
                   len: 5
                 kind:
                   Path:
                     - name: names
                       span:
-                        line: 11
-                        col: 20
+                        line: 12
+                        col: 23
                         len: 5
               body:
                 - span:
-                    line: 12
-                    col: 5
+                    line: 13
+                    col: 9
                     len: 35
                   kind:
                     IfSome:
                       expr:
                         span:
-                          line: 12
-                          col: 8
+                          line: 13
+                          col: 12
                           len: 17
                         kind:
                           Call:
                             func:
                               - name: photo_stamp
                                 span:
-                                  line: 12
-                                  col: 8
+                                  line: 13
+                                  col: 12
                                   len: 11
                             args:
                               - span:
-                                  line: 12
-                                  col: 20
+                                  line: 13
+                                  col: 24
                                   len: 4
                                 kind:
                                   Path:
                                     - name: name
                                       span:
-                                        line: 12
-                                        col: 20
+                                        line: 13
+                                        col: 24
                                         len: 4
                       bind:
                         name: stamp
                         span:
-                          line: 12
-                          col: 34
+                          line: 13
+                          col: 38
                           len: 5
                       then:
                         - span:
-                            line: 13
-                            col: 7
-                            len: 25
+                            line: 14
+                            col: 12
+                            len: 24
                           kind:
                             Set:
                               var:
                                 name: renamed
                                 span:
-                                  line: 13
-                                  col: 11
+                                  line: 14
+                                  col: 29
                                   len: 7
                               expr:
                                 span:
-                                  line: 13
-                                  col: 21
+                                  line: 14
+                                  col: 12
                                   len: 11
                                 kind:
                                   Binary:
                                     op: Add
                                     lhs:
                                       span:
-                                        line: 13
-                                        col: 21
+                                        line: 14
+                                        col: 12
                                         len: 7
                                       kind:
                                         Path:
                                           - name: renamed
                                             span:
-                                              line: 13
-                                              col: 21
+                                              line: 14
+                                              col: 12
                                               len: 7
                                     rhs:
                                       span:
-                                        line: 13
-                                        col: 31
+                                        line: 14
+                                        col: 22
                                         len: 1
                                       kind:
                                         Int: 1
                         - span:
-                            line: 14
-                            col: 7
-                            len: 61
+                            line: 15
+                            col: 12
+                            len: 60
                           kind:
                             Set:
                               var:
                                 name: target
                                 span:
-                                  line: 14
-                                  col: 11
+                                  line: 15
+                                  col: 66
                                   len: 6
                               expr:
                                 span:
-                                  line: 14
-                                  col: 20
+                                  line: 15
+                                  col: 12
                                   len: 48
                                 kind:
                                   Interp:
                                     - Expr:
                                         span:
-                                          line: 14
-                                          col: 22
+                                          line: 15
+                                          col: 14
                                           len: 5
                                         kind:
                                           Path:
                                             - name: stamp
                                               span:
-                                                line: 14
-                                                col: 22
+                                                line: 15
+                                                col: 14
                                                 len: 5
                                     - Text: _photo-
                                     - Expr:
                                         span:
-                                          line: 14
-                                          col: 36
+                                          line: 15
+                                          col: 28
                                           len: 7
                                         kind:
                                           Path:
                                             - name: renamed
                                               span:
-                                                line: 14
-                                                col: 36
+                                                line: 15
+                                                col: 28
                                                 len: 7
                                     - Text: "."
                                     - Expr:
                                         span:
-                                          line: 14
-                                          col: 46
+                                          line: 15
+                                          col: 38
                                           len: 20
                                         kind:
                                           Call:
                                             func:
                                               - name: path
                                                 span:
-                                                  line: 14
-                                                  col: 46
+                                                  line: 15
+                                                  col: 38
                                                   len: 4
                                               - name: extension
                                                 span:
-                                                  line: 14
-                                                  col: 51
+                                                  line: 15
+                                                  col: 43
                                                   len: 9
                                             args:
                                               - span:
-                                                  line: 14
-                                                  col: 61
+                                                  line: 15
+                                                  col: 53
                                                   len: 4
                                                 kind:
                                                   Path:
                                                     - name: name
                                                       span:
-                                                        line: 14
-                                                        col: 61
+                                                        line: 15
+                                                        col: 53
                                                         len: 4
                         - span:
-                            line: 15
-                            col: 7
+                            line: 16
+                            col: 12
                             len: 27
                           kind:
                             Print:
                               span:
-                                line: 15
-                                col: 14
+                                line: 16
+                                col: 19
                                 len: 20
                               kind:
                                 Interp:
                                   - Expr:
                                       span:
-                                        line: 15
-                                        col: 16
+                                        line: 16
+                                        col: 21
                                         len: 4
                                       kind:
                                         Path:
                                           - name: name
                                             span:
-                                              line: 15
-                                              col: 16
+                                              line: 16
+                                              col: 21
                                               len: 4
                                   - Text: " -> "
                                   - Expr:
                                       span:
-                                        line: 15
-                                        col: 26
+                                        line: 16
+                                        col: 31
                                         len: 6
                                       kind:
                                         Path:
                                           - name: target
                                             span:
-                                              line: 15
-                                              col: 26
+                                              line: 16
+                                              col: 31
                                               len: 6
                         - span:
-                            line: 16
-                            col: 7
+                            line: 17
+                            col: 12
                             len: 15
                           kind:
                             If:
                               cond:
                                 span:
-                                  line: 16
-                                  col: 10
+                                  line: 17
+                                  col: 15
                                   len: 11
                                 kind:
                                   Not:
                                     span:
-                                      line: 16
-                                      col: 14
+                                      line: 17
+                                      col: 19
                                       len: 7
                                     kind:
                                       Path:
                                         - name: dry_run
                                           span:
-                                            line: 16
-                                            col: 14
+                                            line: 17
+                                            col: 19
                                             len: 7
                               then:
                                 - span:
-                                    line: 17
-                                    col: 9
+                                    line: 18
+                                    col: 15
                                     len: 64
                                   kind:
                                     File:
                                       verb:
                                         name: rename
                                         span:
-                                          line: 17
-                                          col: 14
+                                          line: 18
+                                          col: 20
                                           len: 6
                                       path:
                                         span:
-                                          line: 17
-                                          col: 21
+                                          line: 18
+                                          col: 27
                                           len: 23
                                         kind:
                                           Call:
                                             func:
                                               - name: path
                                                 span:
-                                                  line: 17
-                                                  col: 21
+                                                  line: 18
+                                                  col: 27
                                                   len: 4
                                               - name: join
                                                 span:
-                                                  line: 17
-                                                  col: 26
+                                                  line: 18
+                                                  col: 32
                                                   len: 4
                                             args:
                                               - span:
-                                                  line: 17
-                                                  col: 31
+                                                  line: 18
+                                                  col: 37
                                                   len: 6
                                                 kind:
                                                   Path:
                                                     - name: folder
                                                       span:
-                                                        line: 17
-                                                        col: 31
+                                                        line: 18
+                                                        col: 37
                                                         len: 6
                                               - span:
-                                                  line: 17
-                                                  col: 39
+                                                  line: 18
+                                                  col: 45
                                                   len: 4
                                                 kind:
                                                   Path:
                                                     - name: name
                                                       span:
-                                                        line: 17
-                                                        col: 39
+                                                        line: 18
+                                                        col: 45
                                                         len: 4
                                       arg:
                                         To:
                                           span:
-                                            line: 17
-                                            col: 48
+                                            line: 18
+                                            col: 54
                                             len: 25
                                           kind:
                                             Call:
                                               func:
                                                 - name: path
                                                   span:
-                                                    line: 17
-                                                    col: 48
+                                                    line: 18
+                                                    col: 54
                                                     len: 4
                                                 - name: join
                                                   span:
-                                                    line: 17
-                                                    col: 53
+                                                    line: 18
+                                                    col: 59
                                                     len: 4
                                               args:
                                                 - span:
-                                                    line: 17
-                                                    col: 58
+                                                    line: 18
+                                                    col: 64
                                                     len: 6
                                                   kind:
                                                     Path:
                                                       - name: folder
                                                         span:
-                                                          line: 17
-                                                          col: 58
+                                                          line: 18
+                                                          col: 64
                                                           len: 6
                                                 - span:
-                                                    line: 17
-                                                    col: 66
+                                                    line: 18
+                                                    col: 72
                                                     len: 6
                                                   kind:
                                                     Path:
                                                       - name: target
                                                         span:
-                                                          line: 17
-                                                          col: 66
+                                                          line: 18
+                                                          col: 72
                                                           len: 6
                                       into: ~
                               else_: []
                       else_:
                         - span:
-                            line: 19
-                            col: 7
+                            line: 20
+                            col: 12
                             len: 23
                           kind:
                             Print:
                               span:
-                                line: 19
-                                col: 14
+                                line: 20
+                                col: 19
                                 len: 16
                               kind:
                                 Interp:
                                   - Text: "skipped "
                                   - Expr:
                                       span:
-                                        line: 19
-                                        col: 24
+                                        line: 20
+                                        col: 29
                                         len: 4
                                       kind:
                                         Path:
                                           - name: name
                                             span:
-                                              line: 19
-                                              col: 24
+                                              line: 20
+                                              col: 29
                                               len: 4
         - span:
-            line: 20
-            col: 3
+            line: 21
+            col: 6
             len: 11
           kind:
             If:
               cond:
                 span:
-                  line: 20
-                  col: 6
+                  line: 21
+                  col: 9
                   len: 7
                 kind:
                   Path:
                     - name: dry_run
                       span:
-                        line: 20
-                        col: 6
+                        line: 21
+                        col: 9
                         len: 7
               then:
                 - span:
-                    line: 21
-                    col: 5
+                    line: 22
+                    col: 9
                     len: 50
                   kind:
                     Print:
                       span:
-                        line: 21
-                        col: 12
+                        line: 22
+                        col: 16
                         len: 43
                       kind:
                         Interp:
                           - Text: "Dry run: "
                           - Expr:
                               span:
-                                line: 21
-                                col: 23
+                                line: 22
+                                col: 27
                                 len: 7
                               kind:
                                 Path:
                                   - name: renamed
                                     span:
-                                      line: 21
-                                      col: 23
+                                      line: 22
+                                      col: 27
                                       len: 7
                           - Text: " files would be renamed"
               else_:
                 - span:
-                    line: 23
-                    col: 5
+                    line: 24
+                    col: 9
                     len: 32
                   kind:
                     Print:
                       span:
-                        line: 23
-                        col: 12
+                        line: 24
+                        col: 16
                         len: 25
                       kind:
                         Interp:
                           - Text: "Renamed "
                           - Expr:
                               span:
-                                line: 23
-                                col: 22
+                                line: 24
+                                col: 26
                                 len: 7
                               kind:
                                 Path:
                                   - name: renamed
                                     span:
-                                      line: 23
-                                      col: 22
+                                      line: 24
+                                      col: 26
                                       len: 7
                           - Text: " files"

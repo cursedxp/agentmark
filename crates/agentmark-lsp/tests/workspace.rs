@@ -82,7 +82,7 @@ fn a_file_without_an_agentmark_toml_is_a_single_file_project() {
     // the file does not exist on disk at all: it is only a buffer
     c.open(&file, text, 1);
     assert!(c.diagnostics(&file, Some(1)).is_empty());
-    c.change(&file, &text.replace("- log:", "- lug:"), 2);
+    c.change(&file, &text.replace("1. log:", "1. lug:"), 2);
     let d = c.diagnostics(&file, Some(2));
     assert!(d.iter().any(|d| d.message.contains("lug")), "{d:?}");
     c.shutdown();
@@ -110,7 +110,7 @@ fn answers_keep_coming_from_the_last_good_check_while_another_file_is_broken() {
             work_done_progress_params: WorkDoneProgressParams::default(),
         })
         .expect("hover still answers");
-    assert!(format!("{h:?}").contains("pure"));
+    assert!(format!("{h:?}").contains("Touches: `nothing`"));
     c.shutdown();
 }
 
@@ -153,9 +153,9 @@ fn hover_and_definition_survive_an_error_in_the_file_being_edited() {
 
     for (version, broken) in [
         // line N broken in place (a syntax error), later lines keep their numbers
-        (2, good.replace("- guard: reminder length < max_reminder_length", "- guard: reminder length <")),
+        (2, good.replace("3. guard: reminder length < max_reminder_length", "3. guard: reminder length <")),
         // a line inserted at the top, and a semantic error further down: every line moves by one
-        (3, format!("> {}", good.replace("- email send customer:", "- email send custmer:"))),
+        (3, format!("\n{}", good.replace("4. email send customer:", "4. email send custmer:"))),
     ] {
         c.change(&agent, &broken, version);
         assert!(!c.diagnostics(&agent, Some(version)).is_empty());
@@ -169,7 +169,7 @@ fn hover_and_definition_survive_an_error_in_the_file_being_edited() {
                 work_done_progress_params: WorkDoneProgressParams::default(),
             })
             .expect("hover on a heading while the file has an error");
-        assert!(format!("{h:?}").contains("model, network(email, crm), local(log)"), "{h:?}");
+        assert!(format!("{h:?}").contains("Touches: `AI, crm, email, log`"), "{h:?}");
 
         // a rule of another file, used in this one
         let def = |c: &mut Client, pos| {

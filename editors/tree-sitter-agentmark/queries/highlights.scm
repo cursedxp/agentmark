@@ -7,10 +7,24 @@
 ; ---- headings ---------------------------------------------------------------
 (declaration_kind) @keyword.type
 (declaration name: (identifier) @type.definition)
+(program_declaration "#" @punctuation.special)
+(program_declaration "program" @keyword.type)
+(program_declaration name: (identifier) @type.definition)
+(uses_declaration "#" @punctuation.special)
+(uses_declaration "uses" @keyword.type)
+(uses_item alias: (identifier) @module)
+(uses_item "as" @keyword.import)
+(link) @markup.link.url
+(rule_declaration "#" @punctuation.special)
+(rule_declaration "rule" @keyword.type)
+(rule_declaration name: (identifier) @type.definition)
+(rule_declaration record: (identifier) @type)
+(binding_declaration "#" @punctuation.special)
+(binding_declaration "binding" @keyword.type)
+(binding_declaration name: (identifier) @type.definition)
 (record_declaration "#" @punctuation.special)
 (record_declaration name: (identifier) @type.definition)
 (import_declaration "#" @punctuation.special)
-(run_declaration "#" @punctuation.special)
 (declaration "#" @punctuation.special)
 "##" @punctuation.special
 
@@ -19,10 +33,8 @@
 (enum_declaration "enum" @keyword.type)
 (enum_declaration name: (identifier) @type.definition)
 (import_declaration "import" @keyword.import)
-(import_target "crate" @keyword.import)
-(run_declaration "run" @keyword.type)
-(import_target path: (import_path) @string.special.path)
-(import_target crate: (identifier) @module)
+(import_declaration "crate" @keyword.import)
+(import_declaration crate: (identifier) @module)
 (import_alias alias: (identifier) @module)
 (import_alias "as" @keyword.import)
 
@@ -37,7 +49,6 @@
 (when_heading event: (identifier) @constant)
 (do_heading "do" @keyword)
 (do_heading name: (identifier) @function)
-(run_heading "run" @keyword)
 (route_heading method: (http_method) @keyword)
 (route_heading path: (route_path) @string.special.path)
 (rust_heading "rust" @keyword)
@@ -54,9 +65,11 @@
 
 ; ---- properties and fields --------------------------------------------------
 (property_key) @property
+(binding_property "-" @punctuation.list_marker)
+(field_bullet name: (identifier) @property)
+(name_phrase (identifier) @type)
 (record_field name: (identifier) @property)
 (enum_variant name: (identifier) @constructor)
-(run_item name: (identifier) @module)
 (parameter name: (identifier) @variable.parameter)
 (driver) @string.special
 (address) @string.special
@@ -70,7 +83,7 @@
 
 ; ---- statements -------------------------------------------------------------
 ["for" "each" "in" "if" "else" "otherwise" "parallel" "try" "return"
- "set" "guard" "do" "read" "append" "to" "respond" "print" "with" "as" "where"
+ "guard" "do" "read" "to" "respond" "print" "with" "as" "where"
  "first" "count" "of" "match"] @keyword
 ; collection words and statements (SPEC 22.2)
 (collection_expression
@@ -84,12 +97,14 @@
 (predicate ["is" "not" "empty" "some" "matches"] @keyword.operator)
 (length_expression "length" @keyword.operator)
 (stop_statement) @keyword
-(statement_line "-" @punctuation.list_marker)
-(property "-" @punctuation.list_marker)
-(record_field "-" @punctuation.list_marker)
-(enum_variant "-" @punctuation.list_marker)
-(run_item "-" @punctuation.list_marker)
-(not_bound_item "-" @punctuation.list_marker)
+(step_marker) @punctuation.list_marker
+(statement_line ["-" "*" "+"] @punctuation.list_marker)
+(property ["-" "*" "+"] @punctuation.list_marker)
+(record_field ["-" "*" "+"] @punctuation.list_marker)
+(enum_variant ["-" "*" "+"] @punctuation.list_marker)
+(uses_item ["-" "*" "+"] @punctuation.list_marker)
+(not_bound_item ["-" "*" "+"] @punctuation.list_marker)
+(add_statement "add" @keyword)
 
 ; Tool calls: `- <tool> <verb> [target]: payload`
 (tool_call tool: (identifier) @function.builtin)
@@ -107,7 +122,8 @@
 (count_expression rule: (identifier) @function)
 (first_expression item: (identifier) @variable)
 (bind variable: (identifier) @variable)
-(bind "->" @operator)
+(bind "into" @keyword)
+(bind type: (type (identifier) @type))
 (ask_statement record: (type (identifier) @type))
 (record_pair key: (identifier) @property)
 (field_expression field: (identifier) @property)

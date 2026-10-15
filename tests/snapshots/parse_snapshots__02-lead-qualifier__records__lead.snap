@@ -8,57 +8,40 @@ imports: []
 decls:
   - Record:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 12
       doc: An inbound lead as delivered by the CRM.
       name:
         name: Lead
         span:
-          line: 2
+          line: 1
           col: 11
           len: 4
       fields:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 8
           name:
             name: id
             span:
-              line: 3
+              line: 4
               col: 3
               len: 2
           ty:
             kind:
               Named: text
             span:
-              line: 3
+              line: 4
               col: 7
-              len: 4
-        - span:
-            line: 4
-            col: 3
-            len: 13
-          name:
-            name: company
-            span:
-              line: 4
-              col: 3
-              len: 7
-          ty:
-            kind:
-              Named: text
-            span:
-              line: 4
-              col: 12
               len: 4
         - span:
             line: 5
             col: 3
             len: 13
           name:
-            name: message
+            name: company
             span:
               line: 5
               col: 3
@@ -73,28 +56,45 @@ decls:
         - span:
             line: 6
             col: 3
+            len: 13
+          name:
+            name: message
+            span:
+              line: 6
+              col: 3
+              len: 7
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 6
+              col: 12
+              len: 4
+        - span:
+            line: 7
+            col: 3
             len: 11
           name:
             name: email
             span:
-              line: 6
+              line: 7
               col: 3
               len: 5
           ty:
             kind:
               Named: text
             span:
-              line: 6
+              line: 7
               col: 10
               len: 4
         - span:
-            line: 7
+            line: 8
             col: 3
             len: 16
           name:
             name: score
             span:
-              line: 7
+              line: 8
               col: 3
               len: 5
           ty:
@@ -103,10 +103,10 @@ decls:
                 kind:
                   Named: int
                 span:
-                  line: 7
+                  line: 8
                   col: 16
                   len: 3
             span:
-              line: 7
+              line: 8
               col: 10
               len: 9

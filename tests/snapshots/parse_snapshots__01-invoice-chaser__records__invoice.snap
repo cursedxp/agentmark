@@ -8,116 +8,116 @@ imports: []
 decls:
   - Record:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 15
       doc: An invoice as stored in the CRM.
       name:
         name: Invoice
         span:
-          line: 2
+          line: 1
           col: 11
           len: 7
       fields:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 8
           name:
             name: id
             span:
-              line: 3
+              line: 4
               col: 3
               len: 2
           ty:
             kind:
               Named: text
             span:
-              line: 3
+              line: 4
               col: 7
               len: 4
         - span:
-            line: 4
+            line: 5
             col: 3
             len: 14
           name:
             name: customer
             span:
-              line: 4
+              line: 5
               col: 3
               len: 8
           ty:
             kind:
               Named: text
             span:
-              line: 4
+              line: 5
               col: 13
               len: 4
         - span:
-            line: 5
+            line: 6
             col: 3
             len: 20
           name:
             name: customer_email
             span:
-              line: 5
+              line: 6
               col: 3
               len: 14
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 6
               col: 19
               len: 4
         - span:
-            line: 6
+            line: 7
             col: 3
             len: 13
           name:
             name: amount
             span:
-              line: 6
+              line: 7
               col: 3
               len: 6
           ty:
             kind:
               Named: money
             span:
-              line: 6
+              line: 7
               col: 11
               len: 5
         - span:
-            line: 7
+            line: 8
             col: 3
             len: 9
           name:
             name: due
             span:
-              line: 7
+              line: 8
               col: 3
               len: 3
           ty:
             kind:
               Named: date
             span:
-              line: 7
+              line: 8
               col: 8
               len: 4
         - span:
-            line: 8
+            line: 9
             col: 3
             len: 12
           name:
             name: status
             span:
-              line: 8
+              line: 9
               col: 3
               len: 6
           ty:
             kind:
               Named: text
             span:
-              line: 8
+              line: 9
               col: 11
               len: 4

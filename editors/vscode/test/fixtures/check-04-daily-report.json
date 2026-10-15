@@ -27,7 +27,7 @@
         {
           "label": "Every Monday at 08:00",
           "file": "examples/04-daily-report/agents/daily-report.agent.md",
-          "line": 10,
+          "line": 12,
           "effects": {
             "class": "model",
             "summary": "model, network(crm, email), local(log)",

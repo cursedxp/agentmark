@@ -6,24 +6,26 @@ path: examples/06-sales-report/main.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 5
       col: 3
-      len: 40
+      len: 56
     doc: ~
     kind:
       File:
         path: "./commands/sales-report.agent.md"
         alias: ~
+    label: sales-report command
 decls:
-  - Run:
+  - Program:
       span:
-        line: 4
+        line: 1
         col: 3
-        len: 3
-      doc: "Entry point. The program is one command, so `sales-report <path> <out>` runs it directly."
-      items:
-        - name: sales-report
-          span:
-            line: 5
-            col: 3
-            len: 12
+        len: 21
+      doc: "Reads a sales file and writes a revenue report, region by region."
+      name:
+        name: sales-report
+        span:
+          line: 1
+          col: 12
+          len: 12
+      start: ~

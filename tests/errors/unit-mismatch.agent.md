@@ -1,4 +1,4 @@
-> tests/errors/unit-mismatch.agent.md:13
+> tests/errors/unit-mismatch.agent.md:14
 >   - when: amount + 3 days > 5 EUR
 >           ^^^^^^^^^^^^^^^
 >   Cannot add a duration to money.
@@ -8,6 +8,7 @@
 - amount: money
 - due: date
 
-# Rule: odd
-- for: Invoice
+# Rule: odd Invoice
+Adds a duration to money.
+
 - when: amount + 3 days > 5 EUR

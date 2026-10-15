@@ -6,16 +6,17 @@ path: examples/02-lead-qualifier/agents/lead-qualifier.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
   - span:
-      line: 2
+      line: 3
       col: 3
       len: 32
     doc: ~
@@ -23,15 +24,17 @@ imports:
       File:
         path: "../records/lead.agent.md"
         alias: ~
+    label: Lead
   - span:
-      line: 3
+      line: 4
       col: 3
-      len: 41
+      len: 50
     doc: ~
     kind:
       File:
         path: "../records/qualification.agent.md"
         alias: ~
+    label: Qualification
 decls:
   - Agent:
       span:
@@ -48,373 +51,373 @@ decls:
       model:
         value: "claude:haiku"
         span:
-          line: 7
+          line: 9
           col: 10
           len: 12
       tools:
         - name: crm
           span:
-            line: 8
+            line: 10
             col: 10
             len: 3
         - name: email
           span:
-            line: 8
+            line: 10
             col: 15
             len: 5
         - name: log
           span:
-            line: 8
+            line: 10
             col: 22
             len: 3
       memory: ~
       timeout: ~
       blocks:
         - span:
-            line: 10
+            line: 12
             col: 4
             len: 22
-          doc: ~
+          doc: Scores the new lead. A hot lead goes to sales by email; any other lead is only logged.
           trigger:
             OnEvent:
               tool:
                 name: crm
                 span:
-                  line: 10
+                  line: 12
                   col: 9
                   len: 3
               event:
                 name: lead
                 span:
-                  line: 10
+                  line: 12
                   col: 22
                   len: 4
           label: When crm receives lead
           body:
             - span:
-                line: 11
-                col: 3
-                len: 57
+                line: 15
+                col: 4
+                len: 59
               kind:
                 AskModel:
                   with:
                     span:
-                      line: 11
-                      col: 18
+                      line: 15
+                      col: 19
                       len: 4
                     kind:
                       Path:
                         - name: lead
                           span:
-                            line: 11
-                            col: 18
+                            line: 15
+                            col: 19
                             len: 4
                   prompt:
                     span:
-                      line: 11
-                      col: 24
+                      line: 15
+                      col: 25
                       len: 14
                     kind:
                       Path:
                         - name: scoring_prompt
                           span:
-                            line: 11
-                            col: 24
+                            line: 15
+                            col: 25
                             len: 14
                   as_record:
                     name: Qualification
                     span:
-                      line: 11
-                      col: 42
+                      line: 15
+                      col: 43
                       len: 13
                   into:
                     name: q
                     span:
-                      line: 11
-                      col: 59
+                      line: 15
+                      col: 62
                       len: 1
             - span:
-                line: 12
-                col: 3
+                line: 16
+                col: 4
                 len: 30
               kind:
                 Guard:
                   cond:
                     span:
-                      line: 12
-                      col: 10
+                      line: 16
+                      col: 11
                       len: 23
                     kind:
                       Matches:
                         expr:
                           span:
-                            line: 12
-                            col: 10
+                            line: 16
+                            col: 11
                             len: 1
                           kind:
                             Path:
                               - name: q
                                 span:
-                                  line: 12
-                                  col: 10
+                                  line: 16
+                                  col: 11
                                   len: 1
                         record:
                           name: Qualification
                           span:
-                            line: 12
-                            col: 20
+                            line: 16
+                            col: 21
                             len: 13
                   else_: ~
             - span:
-                line: 13
-                col: 3
+                line: 17
+                col: 4
                 len: 32
               kind:
                 ToolCall:
                   tool:
                     name: crm
                     span:
-                      line: 13
-                      col: 3
+                      line: 17
+                      col: 4
                       len: 3
                   verb:
                     name: update
                     span:
-                      line: 13
-                      col: 7
+                      line: 17
+                      col: 8
                       len: 6
                   target:
                     - Word:
                         name: lead
                         span:
-                          line: 13
-                          col: 14
+                          line: 17
+                          col: 15
                           len: 4
                   payload:
                     Assign:
                       - field:
                           name: score
                           span:
-                            line: 13
-                            col: 20
+                            line: 17
+                            col: 21
                             len: 5
                         value:
                           span:
-                            line: 13
-                            col: 28
+                            line: 17
+                            col: 29
                             len: 7
                           kind:
                             Path:
                               - name: q
                                 span:
-                                  line: 13
-                                  col: 28
+                                  line: 17
+                                  col: 29
                                   len: 1
                               - name: score
                                 span:
-                                  line: 13
-                                  col: 30
+                                  line: 17
+                                  col: 31
                                   len: 5
                   into: ~
                   via_do: false
             - span:
-                line: 14
-                col: 3
+                line: 18
+                col: 4
                 len: 29
               kind:
                 If:
                   cond:
                     span:
-                      line: 14
-                      col: 6
+                      line: 18
+                      col: 7
                       len: 25
                     kind:
                       Binary:
                         op: Ge
                         lhs:
                           span:
-                            line: 14
-                            col: 6
+                            line: 18
+                            col: 7
                             len: 7
                           kind:
                             Path:
                               - name: q
                                 span:
-                                  line: 14
-                                  col: 6
+                                  line: 18
+                                  col: 7
                                   len: 1
                               - name: score
                                 span:
-                                  line: 14
-                                  col: 8
+                                  line: 18
+                                  col: 9
                                   len: 5
                         rhs:
                           span:
-                            line: 14
-                            col: 17
+                            line: 18
+                            col: 18
                             len: 14
                           kind:
                             Path:
                               - name: hot_lead_score
                                 span:
-                                  line: 14
-                                  col: 17
+                                  line: 18
+                                  col: 18
                                   len: 14
                   then:
                     - span:
-                        line: 15
-                        col: 5
+                        line: 19
+                        col: 7
                         len: 96
                       kind:
                         ToolCall:
                           tool:
                             name: email
                             span:
-                              line: 15
-                              col: 5
+                              line: 19
+                              col: 7
                               len: 5
                           verb:
                             name: send
                             span:
-                              line: 15
-                              col: 11
+                              line: 19
+                              col: 13
                               len: 4
                           target:
                             - Word:
                                 name: address
                                 span:
-                                  line: 15
-                                  col: 16
+                                  line: 19
+                                  col: 18
                                   len: 7
                             - Value:
                                 span:
-                                  line: 15
-                                  col: 24
+                                  line: 19
+                                  col: 26
                                   len: 22
                                 kind:
                                   Str: sales@optimotion.dev
                           payload:
                             Value:
                               span:
-                                line: 15
-                                col: 48
+                                line: 19
+                                col: 50
                                 len: 53
                               kind:
                                 Interp:
                                   - Text: "Hot lead: "
                                   - Expr:
                                       span:
-                                        line: 15
-                                        col: 60
+                                        line: 19
+                                        col: 62
                                         len: 12
                                       kind:
                                         Path:
                                           - name: lead
                                             span:
-                                              line: 15
-                                              col: 60
+                                              line: 19
+                                              col: 62
                                               len: 4
                                           - name: company
                                             span:
-                                              line: 15
-                                              col: 65
+                                              line: 19
+                                              col: 67
                                               len: 7
                                   - Text: " ("
                                   - Expr:
                                       span:
-                                        line: 15
-                                        col: 76
+                                        line: 19
+                                        col: 78
                                         len: 7
                                       kind:
                                         Path:
                                           - name: q
                                             span:
-                                              line: 15
-                                              col: 76
+                                              line: 19
+                                              col: 78
                                               len: 1
                                           - name: score
                                             span:
-                                              line: 15
-                                              col: 78
+                                              line: 19
+                                              col: 80
                                               len: 5
                                   - Text: "/10). "
                                   - Expr:
                                       span:
-                                        line: 15
-                                        col: 91
+                                        line: 19
+                                        col: 93
                                         len: 8
                                       kind:
                                         Path:
                                           - name: q
                                             span:
-                                              line: 15
-                                              col: 91
+                                              line: 19
+                                              col: 93
                                               len: 1
                                           - name: reason
                                             span:
-                                              line: 15
-                                              col: 93
+                                              line: 19
+                                              col: 95
                                               len: 6
                           into: ~
                           via_do: false
                   else_:
                     - span:
-                        line: 17
-                        col: 5
+                        line: 21
+                        col: 7
                         len: 54
                       kind:
                         ToolCall:
                           tool:
                             name: log
                             span:
-                              line: 17
-                              col: 5
+                              line: 21
+                              col: 7
                               len: 3
                           verb: ~
                           target: []
                           payload:
                             Value:
                               span:
-                                line: 17
-                                col: 10
+                                line: 21
+                                col: 12
                                 len: 49
                               kind:
                                 Interp:
                                   - Text: "Lead "
                                   - Expr:
                                       span:
-                                        line: 17
-                                        col: 17
+                                        line: 21
+                                        col: 19
                                         len: 12
                                       kind:
                                         Path:
                                           - name: lead
                                             span:
-                                              line: 17
-                                              col: 17
+                                              line: 21
+                                              col: 19
                                               len: 4
                                           - name: company
                                             span:
-                                              line: 17
-                                              col: 22
+                                              line: 21
+                                              col: 24
                                               len: 7
                                   - Text: " scored "
                                   - Expr:
                                       span:
-                                        line: 17
-                                        col: 39
+                                        line: 21
+                                        col: 41
                                         len: 7
                                       kind:
                                         Path:
                                           - name: q
                                             span:
-                                              line: 17
-                                              col: 39
+                                              line: 21
+                                              col: 41
                                               len: 1
                                           - name: score
                                             span:
-                                              line: 17
-                                              col: 41
+                                              line: 21
+                                              col: 43
                                               len: 5
                                   - Text: ", no action"
                           into: ~

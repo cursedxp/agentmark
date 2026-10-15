@@ -8,19 +8,19 @@ imports: []
 decls:
   - Constant:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 22
       doc: "The SQLite file that holds the notes. `mode=rwc` creates it on first use."
       name:
         name: database_url
         span:
-          line: 2
+          line: 1
           col: 13
           len: 12
       value:
         span:
-          line: 3
+          line: 4
           col: 10
           len: 28
         kind:
@@ -39,26 +39,26 @@ decls:
           len: 18
       value:
         span:
-          line: 7
+          line: 9
           col: 10
           len: 100
         kind:
           Str: "create table if not exists notes (id integer primary key, title text not null, body text not null)"
   - Constant:
       span:
-        line: 10
+        line: 11
         col: 3
         len: 19
       doc: "One note as a JSON object, the same shape the API returns."
       name:
         name: note_json
         span:
-          line: 10
+          line: 11
           col: 13
           len: 9
       value:
         span:
-          line: 11
+          line: 14
           col: 10
           len: 53
         kind:

@@ -6,39 +6,40 @@ path: examples/07-file-renamer/functions/photo-stamp.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
 decls:
   - Function:
       span:
-        line: 5
+        line: 4
         col: 3
         len: 21
       doc: "The date in a camera file name written as 2026-10-03; none when the name is not a camera photo\nor when its date does not exist."
       name:
         name: photo_stamp
         span:
-          line: 5
+          line: 4
           col: 13
           len: 11
       params:
         - name:
             name: name
             span:
-              line: 6
+              line: 8
               col: 7
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 6
+              line: 8
               col: 13
               len: 4
           default: ~
@@ -48,247 +49,252 @@ decls:
             kind:
               Named: text
             span:
-              line: 7
+              line: 9
               col: 14
               len: 4
         span:
-          line: 7
+          line: 9
           col: 8
           len: 10
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 8
-          col: 11
-          len: 4
+          line: 10
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 10
+              col: 12
+              len: 7
       body:
         - span:
-            line: 9
-            col: 5
+            line: 12
+            col: 6
             len: 55
           kind:
             IfSome:
               expr:
                 span:
-                  line: 9
-                  col: 8
+                  line: 12
+                  col: 9
                   len: 36
                 kind:
                   Call:
                     func:
                       - name: regex
                         span:
-                          line: 9
-                          col: 8
+                          line: 12
+                          col: 9
                           len: 5
                       - name: captures
                         span:
-                          line: 9
-                          col: 14
+                          line: 12
+                          col: 15
                           len: 8
                     args:
                       - span:
-                          line: 9
-                          col: 23
+                          line: 12
+                          col: 24
                           len: 4
                         kind:
                           Path:
                             - name: name
                               span:
-                                line: 9
-                                col: 23
+                                line: 12
+                                col: 24
                                 len: 4
                       - span:
-                          line: 9
-                          col: 29
+                          line: 12
+                          col: 30
                           len: 14
                         kind:
                           Path:
                             - name: camera_pattern
                               span:
-                                line: 9
-                                col: 29
+                                line: 12
+                                col: 30
                                 len: 14
               bind:
                 name: groups
                 span:
-                  line: 9
-                  col: 53
+                  line: 12
+                  col: 54
                   len: 6
               then:
                 - span:
-                    line: 10
-                    col: 7
-                    len: 32
+                    line: 13
+                    col: 9
+                    len: 31
                   kind:
                     Set:
                       var:
                         name: digits
                         span:
-                          line: 10
-                          col: 11
+                          line: 13
+                          col: 34
                           len: 6
                       expr:
                         span:
-                          line: 10
-                          col: 20
+                          line: 13
+                          col: 9
                           len: 19
                         kind:
                           Coll:
                             Join:
                               source:
                                 span:
-                                  line: 10
-                                  col: 25
+                                  line: 13
+                                  col: 14
                                   len: 6
                                 kind:
                                   Path:
                                     - name: groups
                                       span:
-                                        line: 10
-                                        col: 25
+                                        line: 13
+                                        col: 14
                                         len: 6
                               sep:
                                 span:
-                                  line: 10
-                                  col: 37
+                                  line: 13
+                                  col: 26
                                   len: 2
                                 kind:
                                   Str: ""
                 - span:
-                    line: 11
-                    col: 7
-                    len: 48
+                    line: 14
+                    col: 9
+                    len: 50
                   kind:
                     Try:
                       stmt:
                         span:
-                          line: 11
-                          col: 11
-                          len: 44
+                          line: 14
+                          col: 13
+                          len: 46
                         kind:
                           CallInto:
                             call:
                               span:
-                                line: 11
-                                col: 11
+                                line: 14
+                                col: 13
                                 len: 37
                               kind:
                                 Call:
                                   func:
                                     - name: date
                                       span:
-                                        line: 11
-                                        col: 11
+                                        line: 14
+                                        col: 13
                                         len: 4
                                     - name: parse
                                       span:
-                                        line: 11
-                                        col: 16
+                                        line: 14
+                                        col: 18
                                         len: 5
                                   args:
                                     - span:
-                                        line: 11
-                                        col: 22
+                                        line: 14
+                                        col: 24
                                         len: 6
                                       kind:
                                         Path:
                                           - name: digits
                                             span:
-                                              line: 11
-                                              col: 22
+                                              line: 14
+                                              col: 24
                                               len: 6
                                     - span:
-                                        line: 11
-                                        col: 30
+                                        line: 14
+                                        col: 32
                                         len: 17
                                       kind:
                                         Path:
                                           - name: digit_date_format
                                             span:
-                                              line: 11
-                                              col: 30
+                                              line: 14
+                                              col: 32
                                               len: 17
                             into:
                               name: day
                               span:
-                                line: 11
-                                col: 52
+                                line: 14
+                                col: 56
                                 len: 3
                             via_do: false
                       otherwise:
                         - span:
-                            line: 13
-                            col: 11
+                            line: 16
+                            col: 12
                             len: 11
                           kind:
                             Return:
                               span:
-                                line: 13
-                                col: 18
+                                line: 16
+                                col: 19
                                 len: 4
                               kind: None
                 - span:
-                    line: 14
-                    col: 7
+                    line: 17
+                    col: 9
                     len: 42
                   kind:
                     Return:
                       span:
-                        line: 14
-                        col: 14
+                        line: 17
+                        col: 16
                         len: 35
                       kind:
                         Some:
                           span:
-                            line: 14
-                            col: 19
+                            line: 17
+                            col: 21
                             len: 30
                           kind:
                             Call:
                               func:
                                 - name: date
                                   span:
-                                    line: 14
-                                    col: 19
+                                    line: 17
+                                    col: 21
                                     len: 4
                                 - name: format
                                   span:
-                                    line: 14
-                                    col: 24
+                                    line: 17
+                                    col: 26
                                     len: 6
                               args:
                                 - span:
-                                    line: 14
-                                    col: 31
+                                    line: 17
+                                    col: 33
                                     len: 3
                                   kind:
                                     Path:
                                       - name: day
                                         span:
-                                          line: 14
-                                          col: 31
+                                          line: 17
+                                          col: 33
                                           len: 3
                                 - span:
-                                    line: 14
-                                    col: 36
+                                    line: 17
+                                    col: 38
                                     len: 12
                                   kind:
                                     Path:
                                       - name: stamp_format
                                         span:
-                                          line: 14
-                                          col: 36
+                                          line: 17
+                                          col: 38
                                           len: 12
               else_: []
         - span:
-            line: 15
-            col: 5
+            line: 18
+            col: 6
             len: 11
           kind:
             Return:
               span:
-                line: 15
-                col: 12
+                line: 18
+                col: 13
                 len: 4
               kind: None

@@ -8,48 +8,48 @@ imports: []
 decls:
   - Record:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 15
       doc: What a client sends to create a note.
       name:
         name: NewNote
         span:
-          line: 2
+          line: 1
           col: 11
           len: 7
       fields:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 11
           name:
             name: title
             span:
-              line: 3
+              line: 4
               col: 3
               len: 5
           ty:
             kind:
               Named: text
             span:
-              line: 3
+              line: 4
               col: 10
               len: 4
         - span:
-            line: 4
+            line: 5
             col: 3
             len: 10
           name:
             name: body
             span:
-              line: 4
+              line: 5
               col: 3
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 4
+              line: 5
               col: 9
               len: 4

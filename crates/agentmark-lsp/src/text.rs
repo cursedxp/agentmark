@@ -9,6 +9,29 @@ pub fn line_text(text: &str, n: usize) -> &str {
     text.split('\n').nth(n).unwrap_or("").trim_end_matches('\r')
 }
 
+/// The text of a statement line without its list marker: `1. print: "x"` and `- print: "x"`
+/// both give `print: "x"`.
+pub fn strip_marker(s: &str) -> &str {
+    let t = s.trim_start();
+    if let Some(r) = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")).or_else(|| t.strip_prefix("+ ")) {
+        return r;
+    }
+    let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
+    if digits > 0 {
+        if let Some(r) = t[digits..].strip_prefix(". ") {
+            return r;
+        }
+    }
+    t
+}
+
+/// Is this line a numbered step (`1. print: "x"`)?
+pub fn is_numbered(s: &str) -> bool {
+    let t = s.trim_start();
+    let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
+    digits > 0 && t[digits..].starts_with(". ")
+}
+
 fn utf16(s: &str) -> u32 {
     s.chars().map(|c| c.len_utf16() as u32).sum()
 }

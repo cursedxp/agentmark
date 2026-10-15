@@ -6,24 +6,26 @@ path: examples/08-notes-api/main.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 5
       col: 3
-      len: 33
+      len: 42
     doc: ~
     kind:
       File:
         path: "./services/notes.agent.md"
         alias: ~
+    label: notes service
 decls:
-  - Run:
+  - Program:
       span:
-        line: 4
+        line: 1
         col: 3
-        len: 3
-      doc: Entry point. The notes API runs as a service.
-      items:
-        - name: notes
-          span:
-            line: 5
-            col: 3
-            len: 5
+        len: 18
+      doc: "A small notes API: create, list, read and delete notes, kept in SQLite."
+      name:
+        name: notes-api
+        span:
+          line: 1
+          col: 12
+          len: 9
+      start: ~

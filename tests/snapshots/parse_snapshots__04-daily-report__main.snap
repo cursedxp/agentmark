@@ -6,24 +6,26 @@ path: examples/04-daily-report/main.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 5
       col: 3
-      len: 38
+      len: 52
     doc: ~
     kind:
       File:
         path: "./agents/daily-report.agent.md"
         alias: ~
+    label: daily-report agent
 decls:
-  - Run:
+  - Program:
       span:
-        line: 4
+        line: 1
         col: 3
-        len: 3
-      doc: Entry point. Lists what runs in this binary.
-      items:
-        - name: daily-report
-          span:
-            line: 5
-            col: 3
-            len: 12
+        len: 21
+      doc: Sends a short summary of open and overdue invoices every Monday morning.
+      name:
+        name: daily-report
+        span:
+          line: 1
+          col: 12
+          len: 12
+      start: ~

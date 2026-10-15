@@ -11,7 +11,7 @@ decls:
         line: 1
         col: 3
         len: 24
-      doc: ~
+      doc: "From this score on, a lead counts as hot and sales hears about it."
       name:
         name: hot_lead_score
         span:
@@ -20,26 +20,26 @@ decls:
           len: 14
       value:
         span:
-          line: 2
+          line: 4
           col: 10
           len: 1
         kind:
           Int: 7
   - Constant:
       span:
-        line: 4
+        line: 6
         col: 3
         len: 24
-      doc: ~
+      doc: What the model is asked to do with each lead.
       name:
         name: scoring_prompt
         span:
-          line: 4
+          line: 6
           col: 13
           len: 14
       value:
         span:
-          line: 5
+          line: 9
           col: 10
           len: 88
         kind:

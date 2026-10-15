@@ -6,10 +6,10 @@ Every duration
 - model: claude
 
 ## Every 30 minutes
-- log: "tick"
+1. log: "tick"
 
 ## Every 1 hour
-- log: "tick"
+1. log: "tick"
 
 --------------------
 
@@ -25,6 +25,7 @@ Every duration
       (every_heading
         (duration))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -33,6 +34,7 @@ Every duration
       (every_heading
         (duration))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -46,7 +48,7 @@ Every day at
 - model: claude
 
 ## Every day at 09:00
-- log: "daily"
+1. log: "daily"
 
 --------------------
 
@@ -62,6 +64,7 @@ Every day at
       (every_heading
         (time))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -75,7 +78,7 @@ Every weekday at
 - model: claude
 
 ## Every Friday at 17:30
-- log: "weekly"
+1. log: "weekly"
 
 --------------------
 
@@ -92,6 +95,7 @@ Every weekday at
         (weekday)
         (time))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -105,7 +109,7 @@ On start
 - model: claude
 
 ## On start
-- log: "started"
+1. log: "started"
 
 --------------------
 
@@ -120,6 +124,7 @@ On start
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -133,7 +138,7 @@ When tool receives event
 - model: claude
 
 ## When crm receives ticket
-- log: "New {ticket.subject}"
+1. log: "New {ticket.subject}"
 
 --------------------
 
@@ -150,6 +155,7 @@ When tool receives event
         (identifier)
         (identifier))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -167,7 +173,7 @@ Do block
 - model: claude
 
 ## Do ping
-- log: "ping"
+1. log: "ping"
 
 --------------------
 
@@ -183,6 +189,7 @@ Do block
       (do_heading
         (identifier))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -196,10 +203,10 @@ Headings are case-insensitive
 - model: claude
 
 ## every day at 09:00
-- log: "x"
+1. log: "x"
 
 ## ON START
-- log: "y"
+1. log: "y"
 
 --------------------
 
@@ -215,6 +222,7 @@ Headings are case-insensitive
       (every_heading
         (time))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -222,6 +230,7 @@ Headings are case-insensitive
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string

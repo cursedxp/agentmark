@@ -109,7 +109,15 @@ pub fn head<'a>() -> P<'a, Head> {
                 .map(|((name, args), into)| StmtKind::Do { name, args, into, bare: false });
             let do_tool = name()
                 .then_ignore(sp1())
-                .then(name())
+                // `into` is reserved: `do five into n` names the result of a function, it is not
+                // the verb `into` of a tool called `five`.
+                .then(name().try_map(|v: Ident, span| {
+                    if v.name == "into" {
+                        Err(Rich::custom(span, "`into` is not a verb"))
+                    } else {
+                        Ok(v)
+                    }
+                }))
                 .then(targets_payload_into(expr.clone()))
                 .map(
                     |((tool, verb), (target, payload, into))| StmtKind::ToolCall {
@@ -663,7 +671,7 @@ mod tests {
         };
         assert_eq!(name.name, "remind");
         assert!(args.is_empty() && into.is_none());
-        let StmtKind::Do { args, into, .. } = kind("do net_amount(invoice, 19) -> n") else {
+        let StmtKind::Do { args, into, .. } = kind("do net_amount(invoice, 19) into n") else {
             panic!()
         };
         assert_eq!(args.len(), 2);
@@ -679,7 +687,7 @@ mod tests {
             into,
             via_do,
             ..
-        } = kind("do crm get invoice id -> inv")
+        } = kind("do crm get invoice id into inv")
         else {
             panic!()
         };
@@ -703,7 +711,7 @@ mod tests {
             as_record,
             into,
             ..
-        } = kind("ask model with lead: \"Score this lead.\" as Qualification -> q")
+        } = kind("ask model with lead: \"Score this lead.\" as Qualification into q")
         else {
             panic!()
         };
@@ -712,7 +720,7 @@ mod tests {
         assert_eq!(into.name, "q");
         let StmtKind::AskModel {
             with, as_record, ..
-        } = kind("ask model: \"Hi {x}\" -> summary")
+        } = kind("ask model: \"Hi {x}\" into summary")
         else {
             panic!()
         };
@@ -832,7 +840,7 @@ mod tests {
             payload,
             into,
             ..
-        } = kind("pdf render doc -> bytes")
+        } = kind("pdf render doc into bytes")
         else {
             panic!()
         };
@@ -844,7 +852,7 @@ mod tests {
     #[test]
     fn data_statements() {
         assert!(matches!(
-            kind("set open_count = count of open invoices in crm.invoices"),
+            kind("count of open invoices in crm.invoices into open_count"),
             StmtKind::Set { .. }
         ));
         assert!(matches!(
@@ -865,12 +873,12 @@ mod tests {
                 body: None
             }
         ));
-        let StmtKind::ReadBody { ty, into } = kind("read body as Invoice -> inv") else {
+        let StmtKind::ReadBody { ty, into } = kind("read body as Invoice into inv") else {
             panic!()
         };
         assert!(matches!(ty.kind, TypeKind::Named(n) if n == "Invoice"));
         assert_eq!(into.name, "inv");
-        let Head::Try(s) = h("try read file path as list of Invoice -> rows") else {
+        let Head::Try(s) = h("try read file path as list of Invoice into rows") else {
             panic!()
         };
         let StmtKind::ReadFile { ty, .. } = s.kind else {
@@ -878,7 +886,7 @@ mod tests {
         };
         assert!(matches!(ty.kind, TypeKind::List(_)));
         assert!(matches!(
-            kind("append inv to state.invoices"),
+            kind("add inv to state.invoices"),
             StmtKind::Append { .. }
         ));
         assert!(matches!(
@@ -889,7 +897,7 @@ mod tests {
 
     #[test]
     fn try_wraps_a_statement() {
-        let Head::Try(s) = h("try http get \"https://api.example.com/rates\" -> rates") else {
+        let Head::Try(s) = h("try http get \"https://api.example.com/rates\" into rates") else {
             panic!()
         };
         assert!(matches!(s.kind, StmtKind::ToolCall { .. }));
@@ -897,7 +905,7 @@ mod tests {
 
     #[test]
     fn statement_keywords_are_not_tool_names() {
-        assert!(fails("set"));
+        assert!(fails("add"));
         assert!(fails("guard: a else"));
         assert!(fails("if x is not"));
     }

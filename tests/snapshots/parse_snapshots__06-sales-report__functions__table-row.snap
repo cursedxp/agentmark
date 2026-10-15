@@ -6,14 +6,15 @@ path: examples/06-sales-report/functions/table-row.agent.md
 doc: ~
 imports:
   - span:
-      line: 1
+      line: 2
       col: 3
-      len: 29
+      len: 34
     doc: ~
     kind:
       File:
         path: "../constants.agent.md"
         alias: ~
+    label: constants
 decls:
   - Function:
       span:
@@ -31,42 +32,42 @@ decls:
         - name:
             name: left
             span:
-              line: 5
+              line: 7
               col: 7
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 7
               col: 13
               len: 4
           default: ~
         - name:
             name: middle
             span:
-              line: 5
+              line: 7
               col: 19
               len: 6
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 7
               col: 27
               len: 4
           default: ~
         - name:
             name: right
             span:
-              line: 5
+              line: 7
               col: 33
               len: 5
           ty:
             kind:
               Named: text
             span:
-              line: 5
+              line: 7
               col: 40
               len: 4
           default: ~
@@ -74,119 +75,124 @@ decls:
         kind:
           Named: text
         span:
-          line: 6
+          line: 8
           col: 8
           len: 4
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 7
-          col: 11
-          len: 4
+          line: 9
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 9
+              col: 12
+              len: 7
       body:
         - span:
-            line: 8
-            col: 5
+            line: 11
+            col: 6
             len: 78
           kind:
             Return:
               span:
-                line: 8
-                col: 12
+                line: 11
+                col: 13
                 len: 71
               kind:
                 Interp:
                   - Expr:
                       span:
-                        line: 8
-                        col: 14
+                        line: 11
+                        col: 15
                         len: 28
                       kind:
                         Call:
                           func:
                             - name: text
                               span:
-                                line: 8
-                                col: 14
+                                line: 11
+                                col: 15
                                 len: 4
                             - name: pad
                               span:
-                                line: 8
-                                col: 19
+                                line: 11
+                                col: 20
                                 len: 3
                           args:
                             - span:
-                                line: 8
-                                col: 23
+                                line: 11
+                                col: 24
                                 len: 4
                               kind:
                                 Path:
                                   - name: left
                                     span:
-                                      line: 8
-                                      col: 23
+                                      line: 11
+                                      col: 24
                                       len: 4
                             - span:
-                                line: 8
-                                col: 29
+                                line: 11
+                                col: 30
                                 len: 12
                               kind:
                                 Path:
                                   - name: column_width
                                     span:
-                                      line: 8
-                                      col: 29
+                                      line: 11
+                                      col: 30
                                       len: 12
                   - Expr:
                       span:
-                        line: 8
-                        col: 44
+                        line: 11
+                        col: 45
                         len: 30
                       kind:
                         Call:
                           func:
                             - name: text
                               span:
-                                line: 8
-                                col: 44
+                                line: 11
+                                col: 45
                                 len: 4
                             - name: pad
                               span:
-                                line: 8
-                                col: 49
+                                line: 11
+                                col: 50
                                 len: 3
                           args:
                             - span:
-                                line: 8
-                                col: 53
+                                line: 11
+                                col: 54
                                 len: 6
                               kind:
                                 Path:
                                   - name: middle
                                     span:
-                                      line: 8
-                                      col: 53
+                                      line: 11
+                                      col: 54
                                       len: 6
                             - span:
-                                line: 8
-                                col: 61
+                                line: 11
+                                col: 62
                                 len: 12
                               kind:
                                 Path:
                                   - name: column_width
                                     span:
-                                      line: 8
-                                      col: 61
+                                      line: 11
+                                      col: 62
                                       len: 12
                   - Expr:
                       span:
-                        line: 8
-                        col: 76
+                        line: 11
+                        col: 77
                         len: 5
                       kind:
                         Path:
                           - name: right
                             span:
-                              line: 8
-                              col: 76
+                              line: 11
+                              col: 77
                               len: 5
