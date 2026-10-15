@@ -131,7 +131,8 @@ impl Diagnostic {
         }
         if let Some(h) = &self.help {
             // a help that shows lines to write ("Write:" and the lines) indents them under it
-            out.push_str(&format!("\n  {}", h.replace('\n', "\n    ")));
+            let lines: Vec<String> = h.split('\n').map(|l| if l.is_empty() { String::new() } else { format!("    {l}") }).collect();
+            out.push_str(&format!("\n  {}", lines.join("\n").trim_start()));
         }
         out
     }

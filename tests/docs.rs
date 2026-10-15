@@ -37,16 +37,17 @@
 //!
 //! * starts with `# ` (a declaration or import): parsed as a whole file, no wrapper;
 //! * starts with `## GET|POST|PUT|PATCH|DELETE `: inside `# Service: doc-service`;
-//! * starts with `## Run`: inside `# Command: doc-command`;
 //! * starts with `## Rust`: inside `# Function: doc_host`;
 //! * starts with `## Not bound`: inside `# Binding: doc` (a library with one effect line);
 //! * starts with any other `## ` (a trigger or `## Do`): inside `# Agent: doc-agent`;
-//! * anything else (statements, `- ` lines, `for each`, `if`, `stop`): the body of `## Do doc` in
+//! * starts with `- ` (properties such as `- in: sales` or `- steps:`): the properties of
+//!   `# Function: doc_fn` (a `- steps:` with one step is added when the fragment has none);
+//! * anything else (numbered steps, `for each`, `if`, `stop`): the steps of `## Do doc` in
 //!   `# Agent: doc-agent`.
 //!
 //! A fragment that does not parse in its wrapper fails the test and the message shows the wrapped
-//! text, so the author sees what the parser saw. Expressions are shown as the statement that
-//! contains them (`- set x = ...`).
+//! text, so the author sees what the parser saw. Expressions are shown as the step that contains
+//! them (`1. ... into x`).
 
 mod support;
 
@@ -221,14 +222,16 @@ fn wrapped(fragment: &str) -> String {
         ""
     } else if ["## GET ", "## POST ", "## PUT ", "## PATCH ", "## DELETE "].iter().any(|m| first.starts_with(m)) {
         "# Service: doc-service\n\n"
-    } else if first.starts_with("## Run") {
-        "# Command: doc-command\n\n"
     } else if first.starts_with("## Rust") {
         "# Function: doc_host\n- out: text\n- touches: nothing\n- steps:\n  1. return \"x\"\n\n"
     } else if first.starts_with("## Not bound") {
         "# Binding: doc\n- crate: doc\n- effect: unverified\n\n"
     } else if first.starts_with("## ") {
         agent
+    } else if first.starts_with("- ") {
+        // properties (`- in: sales`, `- touches: nothing`, `- steps:` …): those of a function
+        let steps = if fragment.lines().any(|l| l.trim_end() == "- steps:") { "" } else { "- steps:\n  1. stop\n" };
+        return format!("# Function: doc_fn\n{fragment}\n{steps}");
     } else {
         return format!("{agent}## Do doc\n{fragment}\n");
     };
@@ -238,7 +241,7 @@ fn wrapped(fragment: &str) -> String {
 /// A quoted project file that imports its neighbours cannot be checked on its own (the folder
 /// projects are checked as projects by `tests/sema_examples.rs`).
 fn needs_other_files(b: &Block) -> bool {
-    b.modifier("file").is_some() && b.body.lines().any(|l| l.starts_with("# Uses\n- [.](./)"))
+    b.modifier("file").is_some() && b.body.lines().any(|l| l.trim_end() == "# Uses")
 }
 
 fn trim_end_lines(s: &str) -> String {
