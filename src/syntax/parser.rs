@@ -578,7 +578,7 @@ impl<'l> Builder<'l> {
             );
         }
         for n in &nodes {
-            if n.line.kind != LineKind::Item {
+            if n.line.kind != LineKind::Item || !n.line.text.trim_start().starts_with('[') {
                 self.error(
                     E_USES,
                     line_span(n.line),
