@@ -539,7 +539,7 @@ impl Checker<'_> {
             format!("Unknown name \"{}\".", first.name),
         )
         .with_did_you_mean(super::scope::suggest(&first.name, &cands))
-        .with_help("Names come from \"set\" and \"->\" lines above, loop variables, constants and imported declarations.");
+        .with_help("Names come from \"into\" names above, loop variables, constants and imported declarations.");
         self.diags.push(d);
         Type::Unknown
     }
