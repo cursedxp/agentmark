@@ -2,23 +2,25 @@
 Statement fragment without a declaration
 ====================
 
-- for each invoice in crm.invoices:
-  - log: "{invoice.id}"
-- stop
+1. for each invoice in crm.invoices:
+   1. log: "{invoice.id}"
+2. stop
 
 ## POST /invoices
-- respond 204
+1. respond 204
 
 --------------------
 
 (source_file
   (statement_line
+    (step_marker)
     (for_each
       (identifier)
       (field_expression
         (identifier)
         (identifier))))
   (statement_line
+    (step_marker)
     (tool_call
       (identifier)
       (string
@@ -27,12 +29,14 @@ Statement fragment without a declaration
             (identifier)
             (identifier))))))
   (statement_line
+    (step_marker)
     (stop_statement))
   (trigger_block
     (route_heading
       (http_method)
       (route_path))
     (statement_line
+      (step_marker)
       (respond_statement
         (number)))))
 
@@ -43,8 +47,9 @@ Keywords usable as variable and parameter names
 # Function: pair
 - in: first: text, count: int
 - out: text
-- effect: pure
-  - return checksum_parts(first, count)
+- touches: nothing
+- steps:
+  1. return checksum_parts(first, count)
 
 --------------------
 
@@ -71,7 +76,10 @@ Keywords usable as variable and parameter names
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
+      (step_marker)
       (return_statement
         (call_expression
           (identifier)
@@ -85,8 +93,9 @@ Prose line is an error
 
 # Agent: a
 ## On start
+1. log: "x"
 this is not a statement
-- log: "x"
+2. log: "y"
 
 --------------------
 

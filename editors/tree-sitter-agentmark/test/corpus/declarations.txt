@@ -43,20 +43,15 @@ Record with typed and untyped fields
 Rule
 ====================
 
-# Rule: overdue
-- for: Invoice
+# Rule: overdue Invoice
 - when: today > due + 14 days and status != "paid"
 
 --------------------
 
 (source_file
-  (declaration
-    (declaration_kind)
+  (rule_declaration
     (identifier)
-    (property
-      (property_key)
-      (property_value
-        (identifier)))
+    (identifier)
     (property
       (property_key)
       (property_value
@@ -164,8 +159,9 @@ Function with indented body
 # Function: net_amount
 - in: invoice: Invoice, vat: int
 - out: money
-- effect: pure
-  - return invoice.amount - invoice.amount * vat / 100
+- touches: nothing
+- steps:
+  1. return invoice.amount - invoice.amount * vat / 100
 
 --------------------
 
@@ -192,7 +188,10 @@ Function with indented body
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
+      (step_marker)
       (return_statement
         (binary_expression
           (field_expression
@@ -213,8 +212,9 @@ Function result type
 # Function: half
 - in: n: int
 - out: result of int
-- effect: pure
-  - return n / 2
+- touches: nothing
+- steps:
+  1. return n / 2
 
 --------------------
 
@@ -239,7 +239,10 @@ Function result type
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
+      (step_marker)
       (return_statement
         (binary_expression
           (identifier)
@@ -254,12 +257,12 @@ Service with routes
 - state: AppState
 
 ## GET /invoices/{id}
-- guard: found is not empty else respond 404
+1. guard: found is not empty else respond 404
 
 ## POST /invoices
-- read body as Invoice -> inv
-- append inv to state.invoices
-- respond 201 inv
+1. read body as Invoice into inv
+2. add inv to state.invoices
+3. respond 201 inv
 
 --------------------
 
@@ -280,6 +283,7 @@ Service with routes
         (http_method)
         (route_path))
       (statement_line
+        (step_marker)
         (guard_statement
           (predicate
             (identifier))
@@ -290,6 +294,7 @@ Service with routes
         (http_method)
         (route_path))
       (statement_line
+        (step_marker)
         (read_statement
           (identifier)
           (type
@@ -297,12 +302,14 @@ Service with routes
           (bind
             (identifier))))
       (statement_line
-        (append_statement
+        (step_marker)
+        (add_statement
           (identifier)
           (field_expression
             (identifier)
             (identifier))))
       (statement_line
+        (step_marker)
         (respond_statement
           (number)
           (identifier))))))
@@ -312,10 +319,9 @@ Command with args
 ====================
 
 # Command: import-csv
-- args: path: text, dry_run: bool = false
-
-## Run
-- print: "done"
+- in: path: text, dry_run: bool = false
+- steps:
+  1. print: "done"
 
 --------------------
 
@@ -335,12 +341,13 @@ Command with args
           (type
             (identifier))
           (boolean))))
-    (trigger_block
-      (run_heading)
-      (statement_line
-        (print_statement
-          (string
-            (string_content)))))))
+    (property
+      (property_key))
+    (statement_line
+      (step_marker)
+      (print_statement
+        (string
+          (string_content))))))
 
 ====================
 Binding
@@ -352,9 +359,9 @@ Binding
 - proposed-effect: network
 
 ## render(doc: Document) -> bytes
-  ```rust
-  Ok(vec![])
-  ```
+```rust
+Ok(vec![])
+```
 
 ## Not bound
 - save_to_file: takes a writer (printpdf::PdfDocument::save)
@@ -362,18 +369,17 @@ Binding
 --------------------
 
 (source_file
-  (declaration
-    (declaration_kind)
+  (binding_declaration
     (identifier)
-    (property
+    (binding_property
       (property_key)
       (property_value
         (identifier)))
-    (property
+    (binding_property
       (property_key)
       (property_value
         (identifier)))
-    (property
+    (binding_property
       (property_key)
       (property_value
         (identifier)))
@@ -404,31 +410,30 @@ Binding with handles
 - effect: pure
 
 ## sha256_new() -> handle of sha2.Sha256
-  ```rust
-  Ok(todo())
-  ```
+```rust
+Ok(todo())
+```
 
 ## update(self: mut handle of sha2.Sha256, data: bytes)
-  ```rust
-  Ok(())
-  ```
+```rust
+Ok(())
+```
 
 ## finalize(self: consume handle of sha2.Sha256) -> bytes
-  ```rust
-  Ok(vec![])
-  ```
+```rust
+Ok(vec![])
+```
 
 --------------------
 
 (source_file
-  (declaration
-    (declaration_kind)
+  (binding_declaration
     (identifier)
-    (property
+    (binding_property
       (property_key)
       (property_value
         (identifier)))
-    (property
+    (binding_property
       (property_key)
       (property_value
         (identifier)))
@@ -477,61 +482,50 @@ Binding with handles
 Run declaration
 ====================
 
-# Run
-- invoice-chaser
-- api
+# Program: invoice-chaser
 
 --------------------
 
 (source_file
-  (run_declaration
-    (run_item
-      (identifier))
-    (run_item
-      (identifier))))
+  (program_declaration
+    (identifier)))
 
 ====================
 Imports
 ====================
 
-# Import: ./billing/rules.agent.md as billing
-# Import: ./records/invoice.agent.md
-# Import: ./rules/*.agent.md
-# Import: ./billing as billing
-# Import: ../constants.agent.md
-# Import: crate serde_json
+# Uses
+- [*](./rules/*.agent.md)
+- [billing](./billing/) as billing
+- [constants](../constants.agent.md)
+- [invoice](./records/invoice.agent.md)
+- [rules](./billing/rules.agent.md) as billing
+
 # Import: crate reqwest as http_client
+# Import: crate serde_json
 
 --------------------
 
 (source_file
-  (import_declaration
-    (import_target
-      (import_path)
-      (import_alias
-        (identifier))))
-  (import_declaration
-    (import_target
-      (import_path)))
-  (import_declaration
-    (import_target
-      (import_path)))
-  (import_declaration
-    (import_target
-      (import_path)
-      (import_alias
-        (identifier))))
-  (import_declaration
-    (import_target
-      (import_path)))
-  (import_declaration
-    (import_target
+  (uses_declaration
+    (uses_item
+      (link))
+    (uses_item
+      (link)
+      (identifier))
+    (uses_item
+      (link))
+    (uses_item
+      (link))
+    (uses_item
+      (link)
       (identifier)))
   (import_declaration
-    (import_target
-      (identifier)
-      (import_alias
-        (identifier)))))
+    (identifier)
+    (import_alias
+      (identifier)))
+  (import_declaration
+    (identifier)))
 
 ====================
 Enum with variants that carry fields
@@ -591,16 +585,16 @@ Tool with a statement verb and a Rust verb
 ====================
 
 # Tool: slugger
-- effect: pure
+- touches: nothing
 
 ## slug(title: text) -> text
-- set lowered = text.lower(title)
-- return regex.replace(lowered, "[^a-z0-9]+", "-")
+1. text.lower(title) into lowered
+2. return regex.replace(lowered, "[^a-z0-9]+", "-")
 
 ## shout(word: text) -> text
-  ```rust
-  word.to_uppercase()
-  ```
+```rust
+word.to_uppercase()
+```
 
 --------------------
 
@@ -622,13 +616,16 @@ Tool with a statement verb and a Rust verb
         (type
           (identifier)))
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (module_call
             (identifier)
             (identifier)
+            (identifier))
+          (bind
             (identifier))))
       (statement_line
+        (step_marker)
         (return_statement
           (module_call
             (identifier)
@@ -667,10 +664,9 @@ Handle block of a binding gives the Rust type
 --------------------
 
 (source_file
-  (declaration
-    (declaration_kind)
+  (binding_declaration
     (identifier)
-    (property
+    (binding_property
       (property_key)
       (property_value
         (identifier)))
@@ -699,10 +695,9 @@ Binding item whose heading is written over several lines
 --------------------
 
 (source_file
-  (declaration
-    (declaration_kind)
+  (binding_declaration
     (identifier)
-    (property
+    (binding_property
       (property_key)
       (property_value
         (identifier)))

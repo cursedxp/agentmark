@@ -1,6 +1,6 @@
 [
   {
-    "type": "append_statement",
+    "type": "add_statement",
     "named": true,
     "fields": {
       "target": {
@@ -104,109 +104,109 @@
             "named": true
           }
         ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
+            "type": "count_expression",
+            "named": true
+          },
+          {
+            "type": "date",
+            "named": true
+          },
+          {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "field_expression",
+            "named": true
+          },
+          {
+            "type": "first_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
+            "named": true
+          },
+          {
+            "type": "money",
+            "named": true
+          },
+          {
+            "type": "no_amounts_changed",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "predicate",
+            "named": true
+          },
+          {
+            "type": "record_literal",
+            "named": true
+          },
+          {
+            "type": "some_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          },
+          {
+            "type": "variant_expression",
+            "named": true
+          }
+        ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "binary_expression",
-          "named": true
-        },
-        {
-          "type": "boolean",
-          "named": true
-        },
-        {
-          "type": "builtin",
-          "named": true
-        },
-        {
-          "type": "call_expression",
-          "named": true
-        },
-        {
-          "type": "collection_expression",
-          "named": true
-        },
-        {
-          "type": "count_expression",
-          "named": true
-        },
-        {
-          "type": "date",
-          "named": true
-        },
-        {
-          "type": "decode_expression",
-          "named": true
-        },
-        {
-          "type": "duration",
-          "named": true
-        },
-        {
-          "type": "field_expression",
-          "named": true
-        },
-        {
-          "type": "first_expression",
-          "named": true
-        },
-        {
-          "type": "identifier",
-          "named": true
-        },
-        {
-          "type": "length_expression",
-          "named": true
-        },
-        {
-          "type": "module_call",
-          "named": true
-        },
-        {
-          "type": "money",
-          "named": true
-        },
-        {
-          "type": "no_amounts_changed",
-          "named": true
-        },
-        {
-          "type": "number",
-          "named": true
-        },
-        {
-          "type": "parenthesized_expression",
-          "named": true
-        },
-        {
-          "type": "predicate",
-          "named": true
-        },
-        {
-          "type": "record_literal",
-          "named": true
-        },
-        {
-          "type": "some_expression",
-          "named": true
-        },
-        {
-          "type": "string",
-          "named": true
-        },
-        {
-          "type": "unary_expression",
-          "named": true
-        },
-        {
-          "type": "variant_expression",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -444,13 +444,9 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
-        {
-          "type": "bind",
-          "named": true
-        },
         {
           "type": "call_expression",
           "named": true
@@ -726,6 +722,16 @@
     "type": "bind",
     "named": true,
     "fields": {
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
       "variable": {
         "multiple": false,
         "required": true,
@@ -736,6 +742,64 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "binding_declaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "binding_property",
+          "named": true
+        },
+        {
+          "type": "code_block",
+          "named": true
+        },
+        {
+          "type": "code_fence",
+          "named": true
+        },
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "description_line",
+          "named": true
+        },
+        {
+          "type": "not_bound_block",
+          "named": true
+        },
+        {
+          "type": "property",
+          "named": true
+        },
+        {
+          "type": "statement_line",
+          "named": true
+        },
+        {
+          "type": "trigger_block",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -772,6 +836,32 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "binding_property",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "property_key",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "property_value",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -903,29 +993,6 @@
     }
   },
   {
-    "type": "call_statement",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "bind",
-          "named": true
-        },
-        {
-          "type": "decode_expression",
-          "named": true
-        },
-        {
-          "type": "module_call",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "code_block",
     "named": true,
     "fields": {},
@@ -943,6 +1010,10 @@
         },
         {
           "type": "comment",
+          "named": true
+        },
+        {
+          "type": "description_line",
           "named": true
         },
         {
@@ -1299,6 +1370,10 @@
           "named": true
         },
         {
+          "type": "description_line",
+          "named": true
+        },
+        {
           "type": "not_bound_block",
           "named": true
         },
@@ -1515,6 +1590,10 @@
           "named": true
         },
         {
+          "type": "description_line",
+          "named": true
+        },
+        {
           "type": "enum_variant",
           "named": true
         }
@@ -1568,6 +1647,124 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "field_bullet",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
+            "type": "count_expression",
+            "named": true
+          },
+          {
+            "type": "date",
+            "named": true
+          },
+          {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "field_expression",
+            "named": true
+          },
+          {
+            "type": "first_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
+            "named": true
+          },
+          {
+            "type": "money",
+            "named": true
+          },
+          {
+            "type": "no_amounts_changed",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "predicate",
+            "named": true
+          },
+          {
+            "type": "record_literal",
+            "named": true
+          },
+          {
+            "type": "some_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          },
+          {
+            "type": "variant_expression",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2043,15 +2240,11 @@
         "required": false,
         "types": [
           {
-            "type": "append_statement",
+            "type": "add_statement",
             "named": true
           },
           {
             "type": "ask_statement",
-            "named": true
-          },
-          {
-            "type": "call_statement",
             "named": true
           },
           {
@@ -2087,15 +2280,15 @@
             "named": true
           },
           {
-            "type": "set_statement",
-            "named": true
-          },
-          {
             "type": "stop_statement",
             "named": true
           },
           {
             "type": "tool_call",
+            "named": true
+          },
+          {
+            "type": "value_statement",
             "named": true
           }
         ]
@@ -2245,51 +2438,26 @@
   {
     "type": "import_declaration",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "comment",
-          "named": true
-        },
-        {
-          "type": "import_target",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "import_target",
-    "named": true,
     "fields": {
       "crate": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "identifier",
             "named": true
           }
         ]
-      },
-      "path": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "import_path",
-            "named": true
-          }
-        ]
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
         {
           "type": "import_alias",
           "named": true
@@ -2732,6 +2900,21 @@
         },
         {
           "type": "variant_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "name_phrase",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
           "named": true
         }
       ]
@@ -3284,6 +3467,48 @@
     }
   },
   {
+    "type": "program_declaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "code_fence",
+          "named": true
+        },
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "description_line",
+          "named": true
+        },
+        {
+          "type": "property",
+          "named": true
+        },
+        {
+          "type": "statement_line",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "property",
     "named": true,
     "fields": {
@@ -3299,7 +3524,7 @@
       },
       "value": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "property_value",
@@ -3383,11 +3608,19 @@
           "named": true
         },
         {
+          "type": "link",
+          "named": true
+        },
+        {
           "type": "module_call",
           "named": true
         },
         {
           "type": "money",
+          "named": true
+        },
+        {
+          "type": "name_phrase",
           "named": true
         },
         {
@@ -3750,6 +3983,10 @@
       "types": [
         {
           "type": "comment",
+          "named": true
+        },
+        {
+          "type": "description_line",
           "named": true
         },
         {
@@ -4340,34 +4577,20 @@
     }
   },
   {
-    "type": "run_declaration",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "comment",
-          "named": true
-        },
-        {
-          "type": "run_item",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "run_heading",
-    "named": true,
-    "fields": {}
-  },
-  {
-    "type": "run_item",
+    "type": "rule_declaration",
     "named": true,
     "fields": {
       "name": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "record": {
         "multiple": false,
         "required": true,
         "types": [
@@ -4377,6 +4600,44 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "code_block",
+          "named": true
+        },
+        {
+          "type": "code_fence",
+          "named": true
+        },
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "description_line",
+          "named": true
+        },
+        {
+          "type": "not_bound_block",
+          "named": true
+        },
+        {
+          "type": "property",
+          "named": true
+        },
+        {
+          "type": "statement_line",
+          "named": true
+        },
+        {
+          "type": "trigger_block",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -4399,176 +4660,6 @@
         "types": [
           {
             "type": "type",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "set_statement",
-    "named": true,
-    "fields": {
-      "target": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "boolean",
-            "named": true
-          },
-          {
-            "type": "builtin",
-            "named": true
-          },
-          {
-            "type": "call_expression",
-            "named": true
-          },
-          {
-            "type": "date",
-            "named": true
-          },
-          {
-            "type": "duration",
-            "named": true
-          },
-          {
-            "type": "field_expression",
-            "named": true
-          },
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "module_call",
-            "named": true
-          },
-          {
-            "type": "money",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "record_literal",
-            "named": true
-          },
-          {
-            "type": "some_expression",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          },
-          {
-            "type": "variant_expression",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "binary_expression",
-            "named": true
-          },
-          {
-            "type": "boolean",
-            "named": true
-          },
-          {
-            "type": "builtin",
-            "named": true
-          },
-          {
-            "type": "call_expression",
-            "named": true
-          },
-          {
-            "type": "collection_expression",
-            "named": true
-          },
-          {
-            "type": "count_expression",
-            "named": true
-          },
-          {
-            "type": "date",
-            "named": true
-          },
-          {
-            "type": "decode_expression",
-            "named": true
-          },
-          {
-            "type": "duration",
-            "named": true
-          },
-          {
-            "type": "field_expression",
-            "named": true
-          },
-          {
-            "type": "first_expression",
-            "named": true
-          },
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "length_expression",
-            "named": true
-          },
-          {
-            "type": "module_call",
-            "named": true
-          },
-          {
-            "type": "money",
-            "named": true
-          },
-          {
-            "type": "no_amounts_changed",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "predicate",
-            "named": true
-          },
-          {
-            "type": "record_literal",
-            "named": true
-          },
-          {
-            "type": "some_expression",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          },
-          {
-            "type": "unary_expression",
-            "named": true
-          },
-          {
-            "type": "variant_expression",
             "named": true
           }
         ]
@@ -4652,6 +4743,10 @@
       "required": false,
       "types": [
         {
+          "type": "binding_declaration",
+          "named": true
+        },
+        {
           "type": "code_block",
           "named": true
         },
@@ -4680,6 +4775,10 @@
           "named": true
         },
         {
+          "type": "program_declaration",
+          "named": true
+        },
+        {
           "type": "property",
           "named": true
         },
@@ -4688,7 +4787,7 @@
           "named": true
         },
         {
-          "type": "run_declaration",
+          "type": "rule_declaration",
           "named": true
         },
         {
@@ -4697,6 +4796,10 @@
         },
         {
           "type": "trigger_block",
+          "named": true
+        },
+        {
+          "type": "uses_declaration",
           "named": true
         }
       ]
@@ -4707,19 +4810,15 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
-          "type": "append_statement",
+          "type": "add_statement",
           "named": true
         },
         {
           "type": "ask_statement",
-          "named": true
-        },
-        {
-          "type": "call_statement",
           "named": true
         },
         {
@@ -4728,6 +4827,10 @@
         },
         {
           "type": "else_statement",
+          "named": true
+        },
+        {
+          "type": "field_bullet",
           "named": true
         },
         {
@@ -4783,7 +4886,7 @@
           "named": true
         },
         {
-          "type": "set_statement",
+          "type": "step_marker",
           "named": true
         },
         {
@@ -4796,6 +4899,10 @@
         },
         {
           "type": "try_statement",
+          "named": true
+        },
+        {
+          "type": "value_statement",
           "named": true
         }
       ]
@@ -5101,6 +5208,10 @@
           "named": true
         },
         {
+          "type": "description_line",
+          "named": true
+        },
+        {
           "type": "do_heading",
           "named": true
         },
@@ -5114,10 +5225,6 @@
         },
         {
           "type": "route_heading",
-          "named": true
-        },
-        {
-          "type": "run_heading",
           "named": true
         },
         {
@@ -5140,7 +5247,7 @@
       "required": true,
       "types": [
         {
-          "type": "append_statement",
+          "type": "add_statement",
           "named": true
         },
         {
@@ -5149,10 +5256,6 @@
         },
         {
           "type": "bare_call",
-          "named": true
-        },
-        {
-          "type": "call_statement",
           "named": true
         },
         {
@@ -5188,15 +5291,15 @@
           "named": true
         },
         {
-          "type": "set_statement",
-          "named": true
-        },
-        {
           "type": "stop_statement",
           "named": true
         },
         {
           "type": "tool_call",
+          "named": true
+        },
+        {
+          "type": "value_statement",
           "named": true
         }
       ]
@@ -5342,6 +5445,169 @@
         },
         {
           "type": "variant_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "uses_declaration",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "uses_item",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "uses_item",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "link",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "value_statement",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "collection_expression",
+            "named": true
+          },
+          {
+            "type": "count_expression",
+            "named": true
+          },
+          {
+            "type": "date",
+            "named": true
+          },
+          {
+            "type": "decode_expression",
+            "named": true
+          },
+          {
+            "type": "duration",
+            "named": true
+          },
+          {
+            "type": "field_expression",
+            "named": true
+          },
+          {
+            "type": "first_expression",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "length_expression",
+            "named": true
+          },
+          {
+            "type": "module_call",
+            "named": true
+          },
+          {
+            "type": "money",
+            "named": true
+          },
+          {
+            "type": "no_amounts_changed",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "predicate",
+            "named": true
+          },
+          {
+            "type": "record_literal",
+            "named": true
+          },
+          {
+            "type": "some_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          },
+          {
+            "type": "variant_expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "bind",
           "named": true
         }
       ]
@@ -5501,6 +5767,10 @@
     "named": false
   },
   {
+    "type": "add",
+    "named": false
+  },
+  {
     "type": "address",
     "named": true
   },
@@ -5514,14 +5784,6 @@
   },
   {
     "type": "and",
-    "named": false
-  },
-  {
-    "type": "append",
-    "named": false
-  },
-  {
-    "type": "args",
     "named": false
   },
   {
@@ -5589,6 +5851,10 @@
     "named": false
   },
   {
+    "type": "description_line",
+    "named": true
+  },
+  {
     "type": "do",
     "named": false
   },
@@ -5602,10 +5868,6 @@
   },
   {
     "type": "each",
-    "named": false
-  },
-  {
-    "type": "effect",
     "named": false
   },
   {
@@ -5697,15 +5959,15 @@
     "named": false
   },
   {
-    "type": "import_path",
-    "named": true
-  },
-  {
     "type": "in",
     "named": false
   },
   {
     "type": "index",
+    "named": false
+  },
+  {
+    "type": "into",
     "named": false
   },
   {
@@ -5727,6 +5989,10 @@
   {
     "type": "length",
     "named": false
+  },
+  {
+    "type": "link",
+    "named": true
   },
   {
     "type": "list",
@@ -5821,7 +6087,7 @@
     "named": false
   },
   {
-    "type": "proposed-effect",
+    "type": "program",
     "named": false
   },
   {
@@ -5869,10 +6135,6 @@
     "named": false
   },
   {
-    "type": "run",
-    "named": false
-  },
-  {
     "type": "rust",
     "named": false
   },
@@ -5882,10 +6144,6 @@
   },
   {
     "type": "service",
-    "named": false
-  },
-  {
-    "type": "set",
     "named": false
   },
   {
@@ -5906,6 +6164,14 @@
   },
   {
     "type": "state",
+    "named": false
+  },
+  {
+    "type": "step_marker",
+    "named": true
+  },
+  {
+    "type": "steps",
     "named": false
   },
   {
@@ -5957,6 +6223,10 @@
     "named": false
   },
   {
+    "type": "touches",
+    "named": false
+  },
+  {
     "type": "true",
     "named": false
   },
@@ -5974,6 +6244,10 @@
   },
   {
     "type": "unique",
+    "named": false
+  },
+  {
+    "type": "uses",
     "named": false
   },
   {

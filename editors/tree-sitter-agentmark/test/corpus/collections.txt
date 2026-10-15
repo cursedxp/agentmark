@@ -2,11 +2,12 @@
 Literals and empty collections
 ================================================================================
 # Function: f
-- effect: pure
-  - set a = list of 1, 2, 3
-  - set b = empty list of text
-  - set c = map of "EU" to 1, "US" to 2
-  - set d = empty map of text to int
+- touches: nothing
+- steps:
+  1. list of 1, 2, 3 into a
+  2. empty list of text into b
+  3. map of "EU" to 1, "US" to 2 into c
+  4. empty map of text to int into d
 
 --------------------------------------------------------------------------------
 
@@ -18,47 +19,58 @@ Literals and empty collections
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (number)
           (number)
-          (number))))
+          (number))
+        (bind
+          (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (type
-            (identifier)))))
+            (identifier)))
+        (bind
+          (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (string
             (string_content))
           (number)
           (string
             (string_content))
-          (number))))
+          (number))
+        (bind
+          (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (type
             (identifier))
           (type
-            (identifier)))))))
+            (identifier)))
+        (bind
+          (identifier))))))
 
 ================================================================================
 Filter, map, sort and group
 ================================================================================
 # Function: f
-- effect: pure
-  - set e = rows where region = "EU"
-  - set f = map rows to amount
-  - set g = sort rows by amount descending
-  - set h = group rows by region
+- touches: nothing
+- steps:
+  1. rows where region = "EU" into e
+  2. map rows to amount into f
+  3. sort rows by amount descending into g
+  4. group rows by region into h
 
 --------------------------------------------------------------------------------
 
@@ -70,46 +82,57 @@ Filter, map, sort and group
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
           (binary_expression
             (identifier)
             (string
-              (string_content))))))
-    (statement_line
-      (set_statement
-        (identifier)
-        (collection_expression
-          (identifier)
+              (string_content))))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
+          (identifier))
+        (bind
+          (identifier))))
+    (statement_line
+      (step_marker)
+      (value_statement
+        (collection_expression
+          (identifier)
+          (identifier))
+        (bind
           (identifier))))))
 
 ================================================================================
 Aggregates and picks
 ================================================================================
 # Function: f
-- effect: pure
-  - set a = sum of amount in rows
-  - set b = sum of numbers
-  - set c = count of rows where amount > 5 EUR
-  - set d = min of amount in rows
-  - set e = max of numbers
-  - set f = first of rows
-  - set g = last of rows
+- touches: nothing
+- steps:
+  1. sum of amount in rows into a
+  2. sum of numbers into b
+  3. count of rows where amount > 5 EUR into c
+  4. min of amount in rows into d
+  5. max of numbers into e
+  6. first of rows into f
+  7. last of rows into g
 
 --------------------------------------------------------------------------------
 
@@ -121,60 +144,77 @@ Aggregates and picks
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
           (binary_expression
             (identifier)
-            (money)))))
+            (money)))
+        (bind
+          (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
+          (identifier))
+        (bind
           (identifier))))))
 
 ================================================================================
 Slices, unique, join, lookups
 ================================================================================
 # Function: f
-- effect: pure
-  - set a = take 10 from rows
-  - set b = skip 2 from rows
-  - set c = unique rows
-  - set d = unique region in rows
-  - set e = join names with ", "
-  - set f = totals at "EU"
-  - set g = keys of totals
-  - set h = values of totals
+- touches: nothing
+- steps:
+  1. take 10 from rows into a
+  2. skip 2 from rows into b
+  3. unique rows into c
+  4. unique region in rows into d
+  5. join names with ", " into e
+  6. totals at "EU" into f
+  7. keys of totals into g
+  8. values of totals into h
 
 --------------------------------------------------------------------------------
 
@@ -186,62 +226,80 @@ Slices, unique, join, lookups
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (number)
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (number)
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
+          (identifier))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
           (string
-            (string_content)))))
+            (string_content)))
+        (bind
+          (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
           (identifier)
           (string
-            (string_content)))))
-    (statement_line
-      (set_statement
-        (identifier)
-        (collection_expression
+            (string_content)))
+        (bind
           (identifier))))
     (statement_line
-      (set_statement
-        (identifier)
+      (step_marker)
+      (value_statement
         (collection_expression
+          (identifier))
+        (bind
+          (identifier))))
+    (statement_line
+      (step_marker)
+      (value_statement
+        (collection_expression
+          (identifier))
+        (bind
           (identifier))))))
 
 ================================================================================
 Map and list statements
 ================================================================================
 # Function: f
-- effect: local
-  - append row to rows
-  - put 1 at "EU" in totals
-  - remove "US" from totals
+- steps:
+  1. add row to rows
+  2. put 1 at "EU" in totals
+  3. remove "US" from totals
 
 --------------------------------------------------------------------------------
 
@@ -250,20 +308,21 @@ Map and list statements
     (declaration_kind)
     (identifier)
     (property
-      (property_key)
-      (property_value
-        (identifier)))
+      (property_key))
     (statement_line
-      (append_statement
+      (step_marker)
+      (add_statement
         (identifier)
         (identifier)))
     (statement_line
+      (step_marker)
       (put_statement
         (number)
         (string
           (string_content))
         (identifier)))
     (statement_line
+      (step_marker)
       (remove_statement
         (string
           (string_content))
@@ -273,11 +332,11 @@ Map and list statements
 Loops with an index and over a map
 ================================================================================
 # Function: f
-- effect: local
-  - for each row in rows with index i:
-    - print: "{i}"
-  - for each region, total in totals:
-    - print: "{region}"
+- steps:
+  1. for each row in rows with index i:
+     1. print: "{i}"
+  2. for each region, total in totals:
+     1. print: "{region}"
 
 --------------------------------------------------------------------------------
 
@@ -286,25 +345,27 @@ Loops with an index and over a map
     (declaration_kind)
     (identifier)
     (property
-      (property_key)
-      (property_value
-        (identifier)))
+      (property_key))
     (statement_line
+      (step_marker)
       (for_each
         (identifier)
         (identifier)
         (identifier)))
     (statement_line
+      (step_marker)
       (print_statement
         (string
           (interpolation
             (identifier)))))
     (statement_line
+      (step_marker)
       (for_each
         (identifier)
         (identifier)
         (identifier)))
     (statement_line
+      (step_marker)
       (print_statement
         (string
           (interpolation
@@ -316,9 +377,10 @@ Collection words as names, and map types
 # Function: f
 - in: values: list of int, last: int, totals: map of text to money
 - out: map of text to list of int
-- effect: pure
-  - set keys = values
-  - return map of "a" to values
+- touches: nothing
+- steps:
+  1. values into keys
+  2. return map of "a" to values
 
 --------------------------------------------------------------------------------
 
@@ -361,11 +423,16 @@ Collection words as names, and map types
       (property_key)
       (property_value
         (identifier)))
+    (property
+      (property_key))
     (statement_line
-      (set_statement
+      (step_marker)
+      (value_statement
         (identifier)
-        (identifier)))
+        (bind
+          (identifier))))
     (statement_line
+      (step_marker)
       (return_statement
         (collection_expression
           (string
@@ -376,10 +443,10 @@ Collection words as names, and map types
 Parenthesised sources and is empty on a lookup
 ================================================================================
 # Function: f
-- effect: local
-  - return take 3 from (sort sales by amount descending)
-  - if totals at "EU" is empty:
-    - stop
+- steps:
+  1. return take 3 from (sort sales by amount descending)
+  2. if totals at "EU" is empty:
+     1. stop
 
 --------------------------------------------------------------------------------
 
@@ -388,10 +455,9 @@ Parenthesised sources and is empty on a lookup
     (declaration_kind)
     (identifier)
     (property
-      (property_key)
-      (property_value
-        (identifier)))
+      (property_key))
     (statement_line
+      (step_marker)
       (return_statement
         (collection_expression
           (number)
@@ -400,6 +466,7 @@ Parenthesised sources and is empty on a lookup
               (identifier)
               (identifier))))))
     (statement_line
+      (step_marker)
       (if_statement
         (predicate
           (collection_expression
@@ -407,4 +474,5 @@ Parenthesised sources and is empty on a lookup
             (string
               (string_content))))))
     (statement_line
+      (step_marker)
       (stop_statement))))
