@@ -1250,7 +1250,7 @@ impl<'l> Builder<'l> {
             self.error(
                 E_STRUCTURE,
                 Span::new(p.line, p.col.saturating_sub(7).max(1), 6),
-                "\"- steps:\" has no steps under it. Write them as a numbered list: \"  1. print: \\\"hello\\\"\".",
+                "\"- steps:\" has no steps under it. Write them as a numbered list, for example: 1. print: \"hello\"",
             );
         }
         self.stmts(&p.node.kids)
