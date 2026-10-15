@@ -981,3 +981,21 @@ Items marked OPEN were left open by the v0.4 brief: the current behavior is kept
 
 ## Q457 — `try <library call> into x` vs `<library call> into x`
 - Right after `try` (or after `do`), a built-in library call whose result can fail is taken apart (`try csv.parse(t) as list of Sale into sales`). Written alone, `json.parse(found) as Note into parsed` stores the `result` itself, to be matched later (example 08) — this is what `set parsed = json.parse(…)` did.
+
+## Q458 — `into` is never a tool verb
+- `do five into n` is a call of the function `five` whose result is named `n`, never the verb `into` of a tool called `five` (`into` is reserved, SPEC 23.9). Found by two helpers independently while converting tests.
+
+## Q459 — Wording of messages about touching
+- Every message people read says what something touches, never its class: E205 reads `A rule may touch nothing, but "live" touches crm.`, E206 names the sources a `- touches:` line leaves out, hover shows `Touches: \`AI, crm, email, log\``, the VS Code panel shows `touches …`. The classes stay in `check --json` (the panel uses them only for colours). An unapproved library shows as `sha2 (not approved yet)`.
+
+## Q460 — Texts the tools write for you
+- The language server's missing-doc fix writes `TODO: describe what this <kind> does.` as the paragraph under the heading; the magic-value fix writes a `# Constant` with the description "The amount 100.00 EUR, written once so it can be changed in one place." so the new part does not trip `missing-doc`; inserted guards are numbered steps, and the steps after them are renumbered.
+
+## Q461 — Library files in the guide
+- `docs/guide.md` says that library files keep the older word "effect" (Q430) and uses "touches" everywhere else. The tutorial's single-file program starts with `# Program` from Lesson 2 on; Lesson 1's file is a lone record (a library, no `# Program`).
+
+## Q462 — Editor grammars only highlight
+- tree-sitter and the TextMate grammar do not flag a bullet where a step belongs (E070) or `- touches:` in an odd place; they colour what they see and leave errors to `check`. tree-sitter accepts `- effect:` only inside `# Binding`. A description line that starts with `-`, `+` or `>` is a list or a note, as in Markdown.
+
+## Q463 — A `doc` line for rules
+- `doc` writes a rule as "Applies to Invoice." and, in its own paragraph, the `check` line `overdue: touches nothing`.
