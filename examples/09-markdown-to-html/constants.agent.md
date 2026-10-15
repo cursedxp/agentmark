@@ -4,6 +4,8 @@ Inline Markdown patterns. In each one, `[*]` is a literal star and `$1` is the t
 - value: "[*][*]([^*]+)[*][*]"
 
 # Constant: italic_pattern
+One star on each side makes the text italic.
+
 - value: "[*]([^*]+)[*]"
 
 # Constant: link_pattern

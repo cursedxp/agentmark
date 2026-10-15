@@ -12,16 +12,22 @@ Serves invoices over HTTP: look one up, see its net amount and fingerprint, add 
 - state: AppState
 
 ## GET /invoices/{id}
+One invoice, or 404 when there is none with that id.
+
 1. first invoice in state.invoices where invoice.id = id into found
 2. guard: found is not empty else respond 404
 3. respond 200 found
 
 ## GET /invoices/{id}/net
+An invoice's net amount and fingerprint, or 404 when there is none with that id.
+
 1. first invoice in state.invoices where invoice.id = id into found
 2. guard: found is not empty else respond 404
 3. respond 200 { id: found.id, net: net_amount(found, vat_rate), fingerprint: invoice_fingerprint(found) }
 
 ## POST /invoices
+Adds the invoice in the request body. An amount of zero or less is refused with 400.
+
 1. read body as Invoice into inv
 2. guard: inv.amount > 0 EUR else respond 400
 3. add inv to state.invoices

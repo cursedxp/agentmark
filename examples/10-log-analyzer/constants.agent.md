@@ -9,9 +9,13 @@ The start of a log line up to and including the level, so " ERROR " in a message
 - value: "^[^ ]+ [^ ]+ ERROR "
 
 # Constant: warn_prefix
+The start of a warning line.
+
 - value: "^[^ ]+ [^ ]+ WARN "
 
 # Constant: info_prefix
+The start of an info line.
+
 - value: "^[^ ]+ [^ ]+ INFO "
 
 # Constant: stamp_pattern

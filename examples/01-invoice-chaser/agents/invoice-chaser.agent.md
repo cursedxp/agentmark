@@ -10,10 +10,14 @@ Chases unpaid invoices once a day. Never changes amounts; only sends reminders.
 - tools: email, crm, log
 
 ## Every day at 09:00
+Finds every overdue invoice and reminds its customer.
+
 1. for each overdue invoice in crm.invoices:
    1. do remind
 
 ## Do remind
+Has the model write one reminder, checks it, sends it and marks the invoice as reminded.
+
 1. ask model with invoice: "Write a short, polite payment reminder. Keep the amount exactly as given." into reminder
 2. guard: no amounts changed in reminder
 3. guard: reminder length < max_reminder_length

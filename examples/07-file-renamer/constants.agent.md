@@ -9,4 +9,6 @@ The digits of a camera date, year first: 20261003.
 - value: "%Y%m%d"
 
 # Constant: stamp_format
+How a day is written in the new file name: 2026-10-03.
+
 - value: "%Y-%m-%d"

@@ -1,4 +1,6 @@
 # Constant: column_width
+How wide the first two columns of the report are, in characters.
+
 - value: 8
 
 # Constant: rule_width

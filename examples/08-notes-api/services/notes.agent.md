@@ -15,6 +15,8 @@ Rows are not read column by column: SQLite's json_object turns a row into JSON t
 - listen: 0.0.0.0:8081
 
 ## POST /notes
+Creates a note from the request body and answers with it.
+
 1. read body as NewNote into draft
 2. guard: draft.title is not empty else respond 400
 3. try sqlx sqlite_pool_connect database_url into pool
@@ -33,6 +35,8 @@ Rows are not read column by column: SQLite's json_object turns a row into JSON t
 10. respond 201 Note { id: id, title: draft.title, body: draft.body }
 
 ## GET /notes
+Every note, oldest first.
+
 1. try sqlx sqlite_pool_connect database_url into pool
    otherwise:
    1. respond 503
@@ -51,6 +55,8 @@ Rows are not read column by column: SQLite's json_object turns a row into JSON t
      1. respond 500
 
 ## GET /notes/{id}
+One note, or 404 when there is none with that id.
+
 1. try sqlx sqlite_pool_connect database_url into pool
    otherwise:
    1. respond 503
@@ -71,6 +77,8 @@ Rows are not read column by column: SQLite's json_object turns a row into JSON t
      1. respond 500
 
 ## DELETE /notes/{id}
+Deletes a note, or answers 404 when there was none.
+
 1. try sqlx sqlite_pool_connect database_url into pool
    otherwise:
    1. respond 503

@@ -10,6 +10,8 @@ Scores every inbound lead and alerts sales about the hot ones. Never contacts th
 - tools: crm, email, log
 
 ## When crm receives lead
+Scores the new lead. A hot lead goes to sales by email; any other lead is only logged.
+
 1. ask model with lead: scoring_prompt as Qualification into q
 2. guard: q matches Qualification
 3. crm update lead: score = q.score
