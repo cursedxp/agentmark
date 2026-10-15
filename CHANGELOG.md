@@ -2,9 +2,9 @@
 
 All notable changes to AgentMark are listed here. The format follows Keep a Changelog.
 
-Only 0.3.0 is a published release. 0.1.0 and 0.2.0 are the earlier milestones of the same history.
+Only 0.3.0 and 0.4.0 are published releases. 0.1.0 and 0.2.0 are the earlier milestones of the same history.
 
-## Unreleased - v0.4
+## [0.4.0] - 2026-10-15
 
 Plain sentences, real Markdown. Every line of a program now reads out loud as a sentence, and a rendered `.agent.md` file reads like a well-written document. What a program does is unchanged: only the syntax and the wording of `check` and `doc` change. There is no backward compatibility: each removed form is an error that shows the new form (E060 to E073). SPEC section 23 has the details.
 
@@ -23,6 +23,7 @@ Plain sentences, real Markdown. Every line of a program now reads out loud as a 
 - `- touches:` replaces `- effect:` on functions, tools and `## Rust` blocks, and it is optional on functions and tools (a written line is a checked promise). `check` and `doc` print "What each part touches" with lines like `sales-report: touches files, print`. `check --json` keeps the internal classes.
 - Bindings and `tools.toml` keep `effect` (OPEN_QUESTIONS Q430). Generated binding files put their header lines and each item's summary under the headings.
 - The guide, README, library and editor pages, the templates for AI assistants and the examples are rewritten in the new syntax.
+- Every toolchain crate and editor package is at version 0.4.0. Your own project versions in `agentmark.toml` are not affected.
 
 ### Added
 
