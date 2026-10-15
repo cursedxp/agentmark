@@ -2,20 +2,15 @@
 Literals
 ====================
 
-# Rule: r
-- for: Invoice
+# Rule: r Invoice
 - when: amount > 12.50 EUR or amount = 0 EUR or due = 2026-10-13 or active = true
 
 --------------------
 
 (source_file
-  (declaration
-    (declaration_kind)
+  (rule_declaration
     (identifier)
-    (property
-      (property_key)
-      (property_value
-        (identifier)))
+    (identifier)
     (property
       (property_key)
       (property_value
@@ -40,10 +35,11 @@ Duration and date arithmetic
 ====================
 
 # Agent: a
+
 ## On start
-- set next_check = today + 14 days
-- set a_month_ago = today - 1 month
-- set soon = now + 15 minutes
+1. today + 14 days into next_check
+2. today - 1 month into a_month_ago
+3. now + 15 minutes into soon
 
 --------------------
 
@@ -54,32 +50,39 @@ Duration and date arithmetic
     (trigger_block
       (on_start_heading)
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (builtin)
-            (duration))))
+            (duration))
+          (bind
+            (identifier))))
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (builtin)
-            (duration))))
+            (duration))
+          (bind
+            (identifier))))
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (builtin)
-            (duration)))))))
+            (duration))
+          (bind
+            (identifier)))))))
 
 ====================
 Logic and comparison
 ====================
 
 # Agent: a
+
 ## On start
-- set late = open_count > 3 or not open_count = 0
-- set both = a <= 1 and b >= 2 and c != 3
+1. open_count > 3 or not open_count = 0 into late
+2. a <= 1 and b >= 2 and c != 3 into both
 
 --------------------
 
@@ -90,8 +93,8 @@ Logic and comparison
     (trigger_block
       (on_start_heading)
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (binary_expression
               (identifier)
@@ -99,10 +102,12 @@ Logic and comparison
             (unary_expression
               (binary_expression
                 (identifier)
-                (number))))))
+                (number))))
+          (bind
+            (identifier))))
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (binary_expression
               (binary_expression
@@ -113,15 +118,18 @@ Logic and comparison
                 (number)))
             (binary_expression
               (identifier)
-              (number))))))))
+              (number)))
+          (bind
+            (identifier)))))))
 
 ====================
 Money arithmetic
 ====================
 
 # Agent: a
+
 ## On start
-- set net = 120.50 EUR - 20.50 EUR * 2 / 4
+1. 120.50 EUR - 20.50 EUR * 2 / 4 into net
 
 --------------------
 
@@ -132,25 +140,28 @@ Money arithmetic
     (trigger_block
       (on_start_heading)
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (money)
             (binary_expression
               (binary_expression
                 (money)
                 (number))
-              (number))))))))
+              (number)))
+          (bind
+            (identifier)))))))
 
 ====================
 Count and first
 ====================
 
 # Agent: a
+
 ## On start
-- set open_count = count of open invoices in crm.invoices
-- set n = count of rows
-- set first_late = first invoice in crm.invoices where invoice.status = "open"
+1. count of open invoices in crm.invoices into open_count
+2. count of rows into n
+3. first invoice in crm.invoices where invoice.status = "open" into first_late
 
 --------------------
 
@@ -161,22 +172,26 @@ Count and first
     (trigger_block
       (on_start_heading)
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (count_expression
             (identifier)
             (identifier)
             (field_expression
               (identifier)
-              (identifier)))))
-      (statement_line
-        (set_statement
-          (identifier)
-          (count_expression
+              (identifier)))
+          (bind
             (identifier))))
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
+          (count_expression
+            (identifier))
+          (bind
+            (identifier))))
+      (statement_line
+        (step_marker)
+        (value_statement
           (first_expression
             (identifier)
             (field_expression
@@ -187,16 +202,19 @@ Count and first
                 (identifier)
                 (identifier))
               (string
-                (string_content)))))))))
+                (string_content))))
+          (bind
+            (identifier)))))))
 
 ====================
 Calls and records
 ====================
 
 # Agent: a
+
 ## On start
-- log: "{net_amount(invoice, 19)}"
-- http post "https://example.com": { a: 1, b: f(x, y), c: { d: "e" } }
+1. log: "{net_amount(invoice, 19)}"
+2. http post "https://example.com": { a: 1, b: f(x, y), c: { d: "e" } }
 
 --------------------
 
@@ -207,6 +225,7 @@ Calls and records
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -216,6 +235,7 @@ Calls and records
                 (identifier)
                 (number))))))
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (identifier)
@@ -244,8 +264,9 @@ Interpolated strings and escapes
 ====================
 
 # Agent: a
+
 ## On start
-- log: "Hello {customer}, you owe {invoice.amount} \"now\""
+1. log: "Hello {customer}, you owe {invoice.amount} \"now\""
 
 --------------------
 
@@ -256,6 +277,7 @@ Interpolated strings and escapes
     (trigger_block
       (on_start_heading)
       (statement_line
+        (step_marker)
         (tool_call
           (identifier)
           (string
@@ -277,8 +299,9 @@ Parenthesised and negative
 ====================
 
 # Agent: a
+
 ## On start
-- set x = -(a + b) * 2
+1. -(a + b) * 2 into x
 
 --------------------
 
@@ -289,12 +312,14 @@ Parenthesised and negative
     (trigger_block
       (on_start_heading)
       (statement_line
-        (set_statement
-          (identifier)
+        (step_marker)
+        (value_statement
           (binary_expression
             (unary_expression
               (parenthesized_expression
                 (binary_expression
                   (identifier)
                   (identifier))))
-            (number)))))))
+            (number))
+          (bind
+            (identifier)))))))

@@ -1,5 +1,5 @@
 /// <reference types="tree-sitter-cli/dsl" />
-// tree-sitter grammar for AgentMark (.agent.md), SPEC sections 1-5 and 13-18.
+// tree-sitter grammar for AgentMark (.agent.md), SPEC sections 1-5, 13-18 and 23 (v0.4).
 //
 // The grammar is line oriented. Indentation is not modelled (every statement
 // line is a sibling inside its block); that is all highlighting needs, and it
@@ -54,6 +54,7 @@ module.exports = grammar({
     [$._expression, $.collection_expression],
     [$.type, $._atom],
     [$._atom, $.decode_expression],
+    [$._atom, $.tool_call],
   ],
 
   rules: {
@@ -74,25 +75,55 @@ module.exports = grammar({
 
     _declaration: ($) =>
       choice(
+        $.program_declaration,
+        $.uses_declaration,
         $.import_declaration,
         $.record_declaration,
         $.enum_declaration,
-        $.run_declaration,
+        $.rule_declaration,
+        $.binding_declaration,
         $.declaration,
       ),
 
-    import_declaration: ($) =>
-      seq('#', ci('import'), ':', $.import_target, $._newline, repeat($._filler)),
+    // `# Program: sales`, its description and `- start: [sales-report](#command-sales-report)`
+    program_declaration: ($) =>
+      seq(
+        '#',
+        ci('program'),
+        ':',
+        field('name', $.identifier),
+        $._newline,
+        lines($, $._body_item),
+      ),
 
-    import_target: ($) =>
-      choice(
-        seq(ci_crate(), field('crate', $.identifier), optional($.import_alias)),
-        seq(field('path', $.import_path), optional($.import_alias)),
+    // `# Uses` and one `- [label](path)` (optionally `as name`) per used file
+    uses_declaration: ($) =>
+      seq('#', ci('uses'), $._newline, repeat(choice($._filler, $.uses_item))),
+
+    uses_item: ($) =>
+      seq(
+        $._bullet,
+        $.link,
+        optional(seq('as', field('alias', $.identifier))),
+        $._newline,
+      ),
+
+    link: () => token(/\[[^\]\n]*\]\([^)\n]*\)/),
+
+    // `# Import: crate sha2` (libraries only; files are listed under `# Uses`)
+    import_declaration: ($) =>
+      seq(
+        '#',
+        ci('import'),
+        ':',
+        'crate',
+        field('crate', $.identifier),
+        optional($.import_alias),
+        $._newline,
+        repeat($._filler),
       ),
 
     import_alias: ($) => seq('as', field('alias', $.identifier)),
-
-    import_path: () => token(/\.\.?\/[^\s]*|\.\.?/),
 
     record_declaration: ($) =>
       seq(
@@ -101,12 +132,12 @@ module.exports = grammar({
         ':',
         field('name', $.identifier),
         $._newline,
-        repeat(choice($._filler, $.record_field)),
+        lines($, $.record_field),
       ),
 
     record_field: ($) =>
       seq(
-        '-',
+        $._bullet,
         field('name', $.identifier),
         optional(seq(':', field('type', $.type))),
         $._newline,
@@ -120,21 +151,41 @@ module.exports = grammar({
         ':',
         field('name', $.identifier),
         $._newline,
-        repeat(choice($._filler, $.enum_variant)),
+        lines($, $.enum_variant),
       ),
 
     enum_variant: ($) =>
       seq(
-        '-',
+        $._bullet,
         field('name', $.identifier),
         optional(seq(':', commaSep1($.parameter))),
         $._newline,
       ),
 
-    run_declaration: ($) =>
-      seq('#', ci('run'), $._newline, repeat(choice($._filler, $.run_item))),
+    // `# Rule: big Sale`: the last word names the record (SPEC 23.8)
+    rule_declaration: ($) =>
+      seq(
+        '#',
+        ci('rule'),
+        ':',
+        repeat(field('name', $.identifier)),
+        field('record', $.identifier),
+        $._newline,
+        lines($, $._body_item),
+        repeat($._block),
+      ),
 
-    run_item: ($) => seq('-', field('name', $.identifier), $._newline),
+    // `# Binding: sha2` keeps `- crate:`, `- effect:` and `- proposed-effect:` (SPEC 23.7)
+    binding_declaration: ($) =>
+      seq(
+        '#',
+        ci('binding'),
+        ':',
+        field('name', $.identifier),
+        $._newline,
+        lines($, choice($._body_item, $.binding_property)),
+        repeat($._block),
+      ),
 
     declaration: ($) =>
       seq(
@@ -143,26 +194,35 @@ module.exports = grammar({
         ':',
         field('name', $.identifier),
         $._newline,
-        repeat($._body_line),
+        lines($, $._body_item),
         repeat($._block),
       ),
 
     declaration_kind: () =>
       choice(
         ci('agent'),
-        ci('rule'),
         ci('function'),
         ci('service'),
         ci('command'),
         ci('constant'),
-        ci('binding'),
         ci('type'),
         ciTool(),
       ),
 
+    // A line that may appear in a declaration body or a block (not a blank line or a description).
+    _body_item: ($) =>
+      choice($.property, $.statement_line, $.code_fence),
+
     // A line that may appear in a declaration body or a block.
     _body_line: ($) =>
-      choice($._filler, $.property, $.statement_line, $.code_fence),
+      choice($._filler, $._body_item),
+
+    // The paragraph under a heading (SPEC 23.2): any line that is not a bullet, a step, a heading,
+    // a note or a fence. It is only recognised right after a heading, before the first list.
+    description_line: () =>
+      token(/([^\s#>\-*+`\d][^\n]*|\*[^\s][^\n]*|\d+[^\d.\n][^\n]*|\d+)/),
+
+    _bullet: () => choice('-', '*', '+'),
 
     // ---- blocks ---------------------------------------------------------
 
@@ -170,9 +230,7 @@ module.exports = grammar({
       choice($.trigger_block, $.code_block, $.not_bound_block),
 
     trigger_block: ($) =>
-      seq($._trigger_heading, repeat($._block_line)),
-
-    _block_line: ($) => choice($._filler, $.statement_line, $.code_fence),
+      seq($._trigger_heading, lines($, choice($.statement_line, $.code_fence))),
 
     _trigger_heading: ($) =>
       choice(
@@ -181,7 +239,6 @@ module.exports = grammar({
         $.when_heading,
         $.do_heading,
         $.route_heading,
-        $.run_heading,
       ),
 
     every_heading: ($) =>
@@ -236,14 +293,12 @@ module.exports = grammar({
 
     route_path: () => token(/\/[^\s]*/),
 
-    run_heading: ($) => seq('##', ci('run'), $._newline),
-
     // `## Rust: name -> type` and `## name(params) -> type` (binding
     // functions) carry properties and/or a fenced Rust body.
     code_block: ($) =>
       seq(
         choice($.rust_heading, $.binding_heading, $.wrapped_heading, $.handle_heading),
-        repeat($._body_line),
+        lines($, $._body_item),
       ),
 
     rust_heading: ($) =>
@@ -287,7 +342,7 @@ module.exports = grammar({
       ),
 
     not_bound_item: ($) =>
-      seq('-', field('name', $.identifier), ':', field('reason', $.reason), $._newline),
+      seq($._bullet, field('name', $.identifier), ':', field('reason', $.reason), $._newline),
 
     reason: () => token(/[^\n]+/),
 
@@ -311,10 +366,10 @@ module.exports = grammar({
 
     property: ($) =>
       seq(
-        '-',
+        $._bullet,
         field('key', $.property_key),
         ':',
-        field('value', $.property_value),
+        optional(field('value', $.property_value)),
         $._newline,
       ),
 
@@ -324,22 +379,33 @@ module.exports = grammar({
         'tools',
         'memory',
         'timeout',
-        'for',
         'when',
         'value',
         'in',
         'out',
-        'effect',
-        'args',
+        'touches',
+        'steps',
+        'start',
         'listen',
         'state',
-        'crate',
-        'proposed-effect',
         'is',
       ),
 
+    // Only in `# Binding` (generated files, SPEC 23.7)
+    binding_property: ($) =>
+      seq(
+        $._bullet,
+        field('key', alias(choice('crate', 'effect', 'proposed-effect'), $.property_key)),
+        ':',
+        field('value', $.property_value),
+        $._newline,
+      ),
+
     property_value: ($) =>
-      commaSep1(choice($.parameter, prec.dynamic(2, $.type_phrase), $._expression, $.driver, $.address)),
+      commaSep1(choice($.parameter, prec.dynamic(2, $.type_phrase), $.name_phrase, $._expression, $.driver, $.address, $.link)),
+
+    // `out: region totals`, `in: old sales, new sales`: a name of several words
+    name_phrase: ($) => prec.dynamic(1, seq($.identifier, repeat1($.identifier))),
 
     parameter: ($) =>
       seq(
@@ -375,34 +441,30 @@ module.exports = grammar({
 
     // ---- statements ------------------------------------------------------
 
-    // Without a leading dash only control lines are statements, so stray
-    // prose is an ERROR rather than a tool call.
+    // A step is a numbered item (`1. print: "x"`). The only plain lines are `else:` and `otherwise:`;
+    // `- Circle c:` is a match branch and `- region` / `- orders: count of rows` a field of `add`.
     statement_line: ($) =>
       seq(
         choice(
-          seq('-', $._statement),
-          choice(
-            $.for_each,
-            $.if_statement,
-            $.else_statement,
-            $.otherwise_statement,
-            $.parallel_statement,
-            $.match_statement,
-            $.try_statement,
-          ),
+          seq($.step_marker, $._statement),
+          seq($._bullet, choice($.match_arm, $.field_bullet)),
+          $.else_statement,
+          $.otherwise_statement,
         ),
         $._newline,
       ),
+
+    step_marker: () => token(/\d+\./),
+
+    field_bullet: ($) =>
+      seq(field('name', $.identifier), optional(seq(':', field('value', $._expression)))),
 
     _statement: ($) =>
       choice(
         $.for_each,
         $.if_statement,
-        $.else_statement,
-        $.otherwise_statement,
         $.parallel_statement,
         $.match_statement,
-        $.match_arm,
         $.try_statement,
         $._simple,
       ),
@@ -410,18 +472,17 @@ module.exports = grammar({
     _simple: ($) =>
       choice(
         $.stop_statement,
-        $.set_statement,
         $.return_statement,
         $.guard_statement,
         $.ask_statement,
         $.do_statement,
         $.read_statement,
-        $.append_statement,
+        $.add_statement,
         $.put_statement,
         $.remove_statement,
         $.respond_statement,
         $.print_statement,
-        $.call_statement,
+        $.value_statement,
         $.tool_call,
       ),
 
@@ -463,13 +524,10 @@ module.exports = grammar({
 
     try_statement: ($) => seq('try', choice($._simple, $.bare_call)),
 
-    // `try f(x) -> v`: a call of a function that can fail, without `do`
-    bare_call: ($) => seq($.call_expression, optional($.bind)),
+    // `try f(x) into v`: a call of a function that can fail, without `do`
+    bare_call: ($) => $.call_expression,
 
     stop_statement: () => 'stop',
-
-    set_statement: ($) =>
-      seq('set', field('target', $._atom), '=', field('value', $._expression)),
 
     return_statement: ($) => seq('return', $._expression),
 
@@ -501,7 +559,7 @@ module.exports = grammar({
         optional($.bind),
       ),
 
-    // `read file p as T -> x`, `read body as T -> x`, `read input -> x`
+    // `read body as T into x`, `read input into x`
     read_statement: ($) =>
       seq(
         'read',
@@ -510,15 +568,12 @@ module.exports = grammar({
         optional($.bind),
       ),
 
-    // `csv.parse(content) as list of Sale -> sales` (after `try` or `do`, SPEC 22.3)
-    call_statement: ($) =>
-      seq(
-        choice($.module_call, $.decode_expression),
-        $.bind,
-      ),
+    // `group sales by region into by_region`, `csv.parse(content) as list of Sale into sales` (SPEC 23.9)
+    value_statement: ($) => prec.dynamic(1, seq(field('value', $._expression), $.bind)),
 
-    append_statement: ($) =>
-      seq('append', $._expression, 'to', field('target', $._expression)),
+    // `add inv to state.invoices`, `add RegionTotal to totals:` (the fields follow as bullets, SPEC 23.11)
+    add_statement: ($) =>
+      seq('add', field('value', $._expression), 'to', field('target', $._expression), optional(':')),
 
     put_statement: ($) =>
       seq('put', $._expression, 'at', $._expression, 'in', field('target', $._expression)),
@@ -540,7 +595,9 @@ module.exports = grammar({
         optional($.bind),
       ),
 
-    bind: ($) => seq('->', field('variable', $.identifier)),
+    // `into sales`, `into content: text`
+    bind: ($) =>
+      seq('into', field('variable', $.identifier), optional(seq(':', field('type', $.type)))),
 
     // ---- expressions -----------------------------------------------------
 
@@ -772,4 +829,12 @@ module.exports = grammar({
 
 function ci_crate() {
   return 'crate';
+}
+
+/** What follows a heading: its description (a paragraph) and then its lines (SPEC 23.2). */
+function lines($, item) {
+  return seq(
+    repeat(choice($._filler, seq($.description_line, $._newline))),
+    repeat(seq(item, repeat($._filler))),
+  );
 }
