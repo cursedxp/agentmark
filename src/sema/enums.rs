@@ -580,7 +580,7 @@ impl Checker<'_> {
         Type::Unknown
     }
 
-    /// `none` whose type nothing decides (`set d = none`) would not compile.
+    /// `none` whose type nothing decides (`none into d`) would not compile.
     pub(super) fn untyped_none(&mut self, cx: &Cx, e: &Expr, t: &Type) {
         let span = e.span;
         if matches!(e.kind, ExprKind::None) && matches!(t, Type::Maybe(i) if i.is_unknown()) {

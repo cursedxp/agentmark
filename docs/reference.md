@@ -2366,13 +2366,17 @@ An invoice as stored in the CRM.
 
 Not paid yet, whether or not it is late.
 
-Applies to Invoice. open: touches nothing
+Applies to Invoice.
+
+open: touches nothing
 
 ### overdue
 
 Unpaid and more than the grace period past due.
 
-Applies to Invoice. overdue: touches nothing
+Applies to Invoice.
+
+overdue: touches nothing
 ```
 
 **Rules**
@@ -2965,7 +2969,7 @@ wrong.agent.md:6
     1. print: "{number.parse(answer)}"
                 ^^^^^^^^^^^^^^^^^^^^
   "number.parse" can fail (it returns "result of int"), so it has to be called with "try".
-  Write "- try number.parse(...) -> value", optionally with an "otherwise:" branch.
+  Write "try number.parse(...) into value", optionally with an "otherwise:" branch.
 ```
 
 #### Files and standard input

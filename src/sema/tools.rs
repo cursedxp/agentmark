@@ -212,7 +212,7 @@ impl Checker<'_> {
     }
 
     /// `email send customer: "..."`, `crm update invoice: status = "x"`, `log: "..."`,
-    /// `pdf render doc -> bytes`.
+    /// `pdf render doc into bytes`.
     pub(super) fn tool_call(&mut self, cx: &mut Cx, s: &Stmt) {
         let StmtKind::ToolCall {
             tool,

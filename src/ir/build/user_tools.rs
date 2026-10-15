@@ -94,7 +94,7 @@ impl Builder<'_> {
         }
     }
 
-    /// `- slugger slug title -> s`: a call of the function the verb became.
+    /// `slugger slug title into s`: a call of the function the verb became.
     pub(super) fn user_tool_stmt(
         &mut self,
         tr: &ToolResolution,

@@ -7,7 +7,7 @@ use crate::syntax::ast::{ExprKind, Stmt, StmtKind};
 
 pub const E_PARALLEL: &str = "E212";
 
-/// Variables a statement writes (results of `->`, `set`, `append`), with the span of the write.
+/// Variables a statement writes (results of `into`, `add`, ...), with the span of the write.
 pub fn writes(s: &Stmt, out: &mut Vec<(String, Span)>) {
     match &s.kind {
         StmtKind::Do { into: Some(i), .. }

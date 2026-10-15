@@ -141,7 +141,7 @@ pub struct FileVerb {
     pub verb: &'static str,
     pub shape: &'static str,
     pub extra: Extra,
-    /// What `-> name` holds; `None`: the verb gives nothing back.
+    /// What `into name` holds; `None`: the verb gives nothing back.
     pub result: Option<Ty>,
     /// The call is a `result` (use `try`).
     pub can_fail: bool,

@@ -1718,14 +1718,7 @@ impl<'l> Builder<'l> {
                         match run(&self.g.head, &n.line.text, n.line.line_no, n.line.col) {
                             Ok(h) => {
                                 let bare = matches!(h, Head::Else | Head::Otherwise);
-                                if n.line.kind == LineKind::Item && !bare {
-                                    self.error(
-                                        E_STEP_BULLET,
-                                        line_span(n.line),
-                                        format!("Steps are a numbered list. Write: 1. {}", n.line.text),
-                                    );
-                                    None
-                                } else if n.line.kind == LineKind::Control && !bare {
+                                if matches!(n.line.kind, LineKind::Item | LineKind::Control) && !bare {
                                     self.error(
                                         E_STEP_BULLET,
                                         line_span(n.line),

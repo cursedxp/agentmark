@@ -146,7 +146,7 @@ pub enum ToolKind {
     User,
 }
 
-/// Resolution of a tool-call statement (`email send customer: …`, `pdf render doc -> b`).
+/// Resolution of a tool-call statement (`email send customer: …`, `pdf render doc into b`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ToolResolution {
     pub tool: String,
@@ -256,7 +256,7 @@ pub enum BlockKind {
     Action,
     /// `## GET /path` of a service
     Route,
-    /// `## Run` of a command
+    /// The `- steps:` of a command
     Command,
     /// One verb of a `# Tool` (SPEC 22.5): `unit` is the tool, `label` the verb.
     Tool,

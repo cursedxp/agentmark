@@ -4,8 +4,8 @@
 //!
 //! Reading rules (OPEN_QUESTIONS Q320 to Q323):
 //! - `list of …` and `map of … to …` are literals in an expression and types in a type position;
-//!   the position decides, so `read file p as list of Sale -> rows` and
-//!   `set xs = list of 1, 2, 3` do not clash.
+//!   the position decides, so `read file p as list of Sale into rows` and
+//!   `list of 1, 2, 3 into xs` do not clash.
 //! - A literal takes every comma after it: write `f((list of 1, 2), 3)` to end one early.
 //! - The source of a word is a name, a call or a parenthesised expression: `sort (rows where
 //!   amount > 5) by amount`. `rows where cond` and `totals at key` hang off the same kind of

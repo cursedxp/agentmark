@@ -2,7 +2,7 @@
 //! `## verb(params) -> type` block.
 //!
 //! A verb is checked exactly like a `# Function` of its tool's effect (its body may not exceed
-//! the declared effect). It is called as a statement, `- slugger slug title -> s`, or, when the
+//! the declared effect). It is called as a statement, `slugger slug title into s`, or, when the
 //! tool is `pure`, as an expression, `slugger.slug(title)`. Both forms resolve to the function
 //! [`fn_name`] (`slugger__slug`) that the IR builds from the verb, so the later passes see an
 //! ordinary function call; the statement form is a [`ToolKind::User`](super::ToolKind::User).
@@ -272,7 +272,7 @@ impl<'a> Checker<'a> {
         eff
     }
 
-    /// `slugger slug title -> s` (a statement whose first word is a user tool).
+    /// `slugger slug title into s` (a statement whose first word is a user tool).
     #[allow(clippy::too_many_arguments)]
     pub(super) fn user_tool_call(
         &mut self,
