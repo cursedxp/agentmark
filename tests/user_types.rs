@@ -36,14 +36,16 @@ fn parse_errors(src: &str) -> String {
     }
 }
 
-/// A function body wrapped around `lines` (each already indented by two spaces).
-fn func(pre: &str, params: &str, effect: &str, body: &str) -> String {
-    format!("{pre}# Function: f\n- in: {params}\n- effect: {effect}\n{body}")
+/// A function `f` around `body` (numbered steps, each already indented by two spaces).
+/// `touches` is the text after `- touches:`; empty leaves the line out.
+fn func(pre: &str, params: &str, touches: &str, body: &str) -> String {
+    let line = if touches.is_empty() { String::new() } else { format!("- touches: {touches}\n") };
+    format!("{pre}# Function: f\n- in: {params}\n{line}- steps:\n{body}")
 }
 
 fn use_it(src: &str) -> String {
     // a command that calls `f`, so the check has no unused-declaration warning to talk about
-    format!("{src}\n# Command: go\n\n## Run\n- stop\n")
+    format!("{src}# Command: go\n- steps:\n  1. stop\n")
 }
 
 // ---------------------------------------------------------------------------------- parsing
@@ -76,7 +78,7 @@ fn match_branches_keep_their_order_qualifier_and_binding() {
         SH,
         "shape: Shape",
         "pure",
-        "  - match shape:\n    - Circle c:\n      - stop\n    - Shape.Empty:\n      - stop\n    - otherwise:\n      - stop\n",
+        "  1. match shape:\n     - Circle c:\n       1. stop\n     - Shape.Empty:\n       1. stop\n     - otherwise:\n       1. stop\n",
     );
     let f = parse(&src);
     let Decl::Function(func) = &f.decls[1] else { panic!() };
@@ -98,7 +100,7 @@ fn variant_values_are_a_name_with_braces_or_a_plain_path() {
         SH,
         "n: int",
         "pure",
-        "  - set a = Circle { radius: 3 }\n  - set b = Shape.Rect { width: 1, height: n }\n  - set c = Shape.Empty\n  - set d = Empty\n",
+        "  1. Circle { radius: 3 } into a\n  2. Shape.Rect { width: 1, height: n } into b\n  3. Shape.Empty into c\n  4. Empty into d\n",
     );
     let f = parse(&src);
     let Decl::Function(func) = &f.decls[1] else { panic!() };
@@ -126,7 +128,7 @@ fn the_fixture_parses_to_a_stable_tree() {
 
 #[test]
 fn syntax_mistakes_in_the_new_forms_say_what_to_write() {
-    let body = |m: &str| func(SH, "s: Shape", "local", &format!("  - {m}\n"));
+    let body = |m: &str| func(SH, "s: Shape", "", &format!("  1. {m}\n"));
     let e = parse_errors(&body("match s\n    - Empty:\n      - stop"));
     assert!(e.contains("This line is missing the \":\" at its end."), "{e}");
     let e = parse_errors(&body("match s:\n  - stop"));
@@ -213,12 +215,12 @@ fn type_declarations_that_make_no_sense_are_errors() {
 }
 
 fn in_function(body: &str) -> String {
-    func(SH, "s: Shape", "local", body)
+    func(SH, "s: Shape", "", body)
 }
 
 #[test]
 fn a_variant_value_names_the_mistake() {
-    let f = |expr: &str| format!("{SH}# Function: f\n- out: Shape\n- effect: pure\n  - return {expr}\n");
+    let f = |expr: &str| format!("{SH}# Function: f\n- out: Shape\n- touches: nothing\n- steps:\n  1. return {expr}\n");
     let e = sema_errors(&f("Circel { radius: 1 }"));
     assert!(e.contains("Unknown variant \"Circel\". Did you mean \"Circle\"?"), "{e}");
     let e = sema_errors(&f("Emtpy"));
@@ -244,14 +246,14 @@ fn a_variant_value_names_the_mistake() {
     let e = sema_errors(&f("Circle { radius: 1, radius: 2 }"));
     assert!(e.contains("The field \"radius\" is given twice."), "{e}");
     // a value of the wrong type for the function's `out`
-    let e = sema_errors(&format!("{SH}# Function: f\n- out: int\n- effect: pure\n  - return Shape.Empty\n"));
+    let e = sema_errors(&format!("{SH}# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. return Shape.Empty\n"));
     assert!(e.contains("This returns Shape, but the function says it returns \"int\"."), "{e}");
 }
 
 #[test]
 fn a_record_is_built_field_by_field() {
     let rec = "# Record: Sale\n- region: text\n- amount: money\n- note: maybe text\n\n";
-    let f = |expr: &str| format!("{rec}# Function: f\n- out: Sale\n- effect: pure\n  - return {expr}\n");
+    let f = |expr: &str| format!("{rec}# Function: f\n- out: Sale\n- touches: nothing\n- steps:\n  1. return {expr}\n");
     let c = common::ok(&use_it(&f("Sale { region: \"EU\", amount: 120.00 EUR }")));
     assert!(c.expr_types.values().any(|t| *t == Type::Record("Sale".into())));
     let e = sema_errors(&f("Sale { region: \"EU\" }"));
@@ -274,7 +276,7 @@ fn maybe_values_are_written_some_and_none() {
     assert!(e.contains("This returns"), "{e}");
     let (out, _) = run_command(
         "maybes",
-        &format!("{src}\n# Command: demo\n- args: n: int\n\n## Run\n- print: show(n)\n- print: show(0)\n"),
+        &format!("{src}# Command: demo\n- in: n: int\n- steps:\n  1. print: show(n)\n  2. print: show(0)\n"),
         &[],
         json!({"n": 4}),
     );
@@ -284,8 +286,8 @@ fn maybe_values_are_written_some_and_none() {
 #[test]
 fn try_works_with_and_without_do_and_branch_names_may_be_left_out() {
     let base = "# Function: half\n- in: n: int\n- out: result of int\n- touches: nothing\n- steps:\n  1. return n / 2\n\n";
-    for call in ["try half(n) -> h", "try do half(n) -> h"] {
-        let src = format!("{base}# Function: f\n- in: n: int\n- out: int\n- effect: pure\n  - {call}\n    otherwise:\n      - set h = 0\n  - return h\n");
+    for call in ["try half(n) into h", "try do half(n) into h"] {
+        let src = format!("{base}# Function: f\n- in: n: int\n- out: int\n- touches: nothing\n- steps:\n  1. {call}\n  2. return h\n");
         let c = common::ok(&use_it(&src));
         assert!(c.functions.contains_key("f"));
         // the formatter keeps the author's spelling
@@ -293,11 +295,11 @@ fn try_works_with_and_without_do_and_branch_names_may_be_left_out() {
     }
     // a result that is not used: `try f(x)` with nothing after it
     for call in ["try half(n)", "try do half(n)"] {
-        let src = format!("{base}# Function: f\n- in: n: int\n- effect: pure\n  - {call}\n");
+        let src = format!("{base}# Function: f\n- in: n: int\n- touches: nothing\n- steps:\n  1. {call}\n");
         common::ok(&use_it(&src));
         assert_eq!(format_source(&src, "t.agent.md").unwrap(), src);
     }
-    let src = format!("{base}# Function: g\n- effect: local\n  - match half(4):\n    - ok:\n      - print: \"fine\"\n    - error:\n      - print: \"broken\"\n\n# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: h\n- in: s: Shape\n- effect: local\n  - match s:\n    - Circle:\n      - print: \"round\"\n    - Empty:\n      - print: \"none\"\n");
+    let src = format!("{base}# Function: g\n- steps:\n  1. match half(4):\n     - ok:\n       1. print: \"fine\"\n     - error:\n       1. print: \"broken\"\n\n# Enum: Shape\n- Circle: radius: int\n- Empty\n\n# Function: h\n- in: s: Shape\n- steps:\n  1. match s:\n     - Circle:\n       1. print: \"round\"\n     - Empty:\n       1. print: \"none\"\n");
     common::ok(&use_it(&src));
     // `some:` needs no name either
     common::ok(&use_it("# Function: f\n- in: n: maybe int\n- steps:\n  1. match n:\n     - some:\n       1. print: \"x\"\n     - none:\n       1. print: \"y\"\n"));
@@ -307,7 +309,7 @@ const STORED: &str = "# Function: read_count\n- in: path: text\n- out: result of
 
 #[test]
 fn a_result_can_be_stored_and_matched() {
-    let src = format!("{STORED}> Reads a count.\n# Command: demo\n- args: path: text\n\n## Run\n- set parsed = read_count(path)\n- match parsed:\n  - ok total:\n    - print: \"count {{total}}\"\n  - error:\n    - print: \"unreadable\"\n");
+    let src = format!("{STORED}# Command: demo\nReads a count.\n\n- in: path: text\n- steps:\n  1. read_count(path) into parsed\n  2. match parsed:\n     - ok total:\n       1. print: \"count {{total}}\"\n     - error:\n       1. print: \"unreadable\"\n");
     let c = common::ok(&src);
     assert!(c.expr_types.values().any(|t| matches!(t, Type::Result(_))));
     assert!(is_canonical(&src, "t.agent.md").unwrap());
@@ -321,16 +323,16 @@ fn a_result_can_be_stored_and_matched() {
 
 #[test]
 fn a_stored_result_can_only_be_matched_once_and_nowhere_else() {
-    let head = format!("{STORED}# Command: demo\n- args: path: text\n\n## Run\n- set parsed = read_count(path)\n");
-    let e = sema_errors(&format!("{head}- set again = parsed\n- print: \"x\"\n"));
+    let head = format!("{STORED}# Command: demo\n- in: path: text\n- steps:\n  1. read_count(path) into parsed\n");
+    let e = sema_errors(&format!("{head}  2. parsed into again\n  3. print: \"x\"\n"));
     assert!(e.contains("\"parsed\" holds a result, which can only be matched."), "{e}");
     assert!(!e.contains("works on an enum"), "no cascade:\n{e}");
-    let e = sema_errors(&format!("{head}- print: \"{{parsed}}\"\n"));
+    let e = sema_errors(&format!("{head}  2. print: \"{{parsed}}\"\n"));
     assert!(e.contains("holds a result, which can only be matched."), "{e}");
-    let twice = "- match parsed:\n  - ok v:\n    - print: \"a\"\n  - error:\n    - print: \"b\"\n";
-    let e = sema_errors(&format!("{head}{twice}{twice}"));
+    let match_it = |n: u32| format!("  {n}. match parsed:\n     - ok v:\n       1. print: \"a\"\n     - error:\n       1. print: \"b\"\n");
+    let e = sema_errors(&format!("{head}{}{}", match_it(2), match_it(3)));
     assert!(e.contains("\"parsed\" was used up on line"), "{e}");
-    let e = sema_errors(&format!("{head}- match parsed:\n  - ok v:\n    - print: \"a\"\n"));
+    let e = sema_errors(&format!("{head}  2. match parsed:\n     - ok v:\n       1. print: \"a\"\n"));
     assert!(e.contains("does not handle the case \"error\" of a \"result\"."), "{e}");
 }
 
@@ -364,13 +366,13 @@ fn a_record_named_like_a_rust_type_still_builds_warning_free() {
 #[test]
 fn a_variant_name_that_two_enums_have_needs_its_enum() {
     let both = format!("{SH}# Enum: Menu\n- Empty\n- Item: name: text\n\n");
-    let src = |expr: &str| format!("{both}# Function: f\n- out: Shape\n- effect: pure\n  - return {expr}\n");
+    let src = |expr: &str| format!("{both}# Function: f\n- out: Shape\n- touches: nothing\n- steps:\n  1. return {expr}\n");
     let e = sema_errors(&src("Empty"));
     assert!(e.contains("\"Empty\" is a variant of several enums here: Menu.Empty, Shape.Empty."), "{e}");
     assert!(e.contains("Say which one you mean, for example \"Menu.Empty\"."), "{e}");
     common::ok(&use_it(&src("Shape.Empty")));
     // names that only one enum has stay bare
-    common::ok(&use_it(&format!("{both}# Function: f\n- out: Menu\n- effect: pure\n  - return Item {{ name: \"tea\" }}\n")));
+    common::ok(&use_it(&format!("{both}# Function: f\n- out: Menu\n- touches: nothing\n- steps:\n  1. return Item {{ name: \"tea\" }}\n")));
 }
 
 #[test]
@@ -390,13 +392,13 @@ fn variants_are_found_through_module_aliases() {
 
 #[test]
 fn a_variable_or_constant_wins_over_a_variant_of_the_same_name() {
-    let src = format!("{SH}# Constant: Empty\n- value: 7\n\n# Function: f\n- out: int\n- effect: pure\n  - return Empty\n");
+    let src = format!("{SH}# Constant: Empty\n- value: 7\n\n# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. return Empty\n");
     common::ok(&use_it(&src));
 }
 
 #[test]
 fn match_needs_an_enum_a_maybe_or_a_result() {
-    let e = sema_errors(&func("", "n: int", "local", "  - match n:\n    - Empty:\n      - print: \"x\"\n"));
+    let e = sema_errors(&func("", "n: int", "", "  1. match n:\n     - Empty:\n       1. print: \"x\"\n"));
     assert!(e.contains("\"match\" works on an enum, a \"maybe\" or a \"result\", but this is a number."), "{e}");
     // a result is made by a call: it cannot be passed in
     let src = "# Function: f\n- in: r: result of int\n- touches: nothing\n- steps:\n  1. stop\n";
@@ -406,14 +408,14 @@ fn match_needs_an_enum_a_maybe_or_a_result() {
 
 #[test]
 fn an_unhandled_variant_is_named() {
-    let e = sema_errors(&in_function("  - match s:\n    - Circle c:\n      - print: \"c\"\n    - Rect r:\n      - print: \"r\"\n"));
+    let e = sema_errors(&in_function("  1. match s:\n     - Circle c:\n       1. print: \"c\"\n     - Rect r:\n       1. print: \"r\"\n"));
     assert!(
-        e.contains("    - match s:\n      ^^^^^^^^\n  This \"match\" does not handle the variant \"Empty\" of Shape.\n  Add a branch for it (\"- Empty:\"), or an \"- otherwise:\" branch for everything else."),
+        e.contains("    1. match s:\n       ^^^^^^^^\n  This \"match\" does not handle the variant \"Empty\" of Shape.\n  Add a branch for it (\"- Empty:\"), or an \"- otherwise:\" branch for everything else."),
         "{e}"
     );
-    let e = sema_errors(&in_function("  - match s:\n    - Circle c:\n      - print: \"c\"\n"));
+    let e = sema_errors(&in_function("  1. match s:\n     - Circle c:\n       1. print: \"c\"\n"));
     assert!(e.contains("does not handle the variants \"Rect\" and \"Empty\" of Shape."), "{e}");
-    let e = sema_errors(&func("", "n: maybe int", "local", "  - match n:\n    - some v:\n      - print: \"x\"\n"));
+    let e = sema_errors(&func("", "n: maybe int", "", "  1. match n:\n     - some v:\n       1. print: \"x\"\n"));
     assert!(e.contains("does not handle the case \"none\" of a \"maybe\"."), "{e}");
     let src = "# Function: g\n- out: result of int\n- touches: nothing\n- steps:\n  1. return 1\n\n# Function: f\n- steps:\n  1. match g():\n     - ok v:\n       1. print: \"x\"\n";
     let e = sema_errors(src);
@@ -422,53 +424,53 @@ fn an_unhandled_variant_is_named() {
 
 #[test]
 fn otherwise_covers_the_rest_and_an_unreachable_one_is_a_warning() {
-    let covered = in_function("  - match s:\n    - Circle c:\n      - print: \"c\"\n    - otherwise:\n      - print: \"other\"\n");
+    let covered = in_function("  1. match s:\n     - Circle c:\n       1. print: \"c\"\n     - otherwise:\n       1. print: \"other\"\n");
     common::ok(&use_it(&covered));
-    let all = in_function("  - match s:\n    - Circle c:\n      - print: \"c\"\n    - Rect r:\n      - print: \"r\"\n    - Empty:\n      - print: \"e\"\n    - otherwise:\n      - print: \"x\"\n");
+    let all = in_function("  1. match s:\n     - Circle c:\n       1. print: \"c\"\n     - Rect r:\n       1. print: \"r\"\n     - Empty:\n       1. print: \"e\"\n     - otherwise:\n       1. print: \"x\"\n");
     let w = common::warnings(&use_it(&all));
     assert!(w.contains("Every case is handled above, so this \"otherwise:\" can never run."), "{w}");
 }
 
 #[test]
 fn a_branch_that_does_not_fit_is_named() {
-    let e = sema_errors(&in_function("  - match s:\n    - Circel c:\n      - print: \"c\"\n    - Rect r:\n      - print: \"r\"\n    - Empty:\n      - print: \"e\"\n"));
+    let e = sema_errors(&in_function("  1. match s:\n     - Circel c:\n       1. print: \"c\"\n     - Rect r:\n       1. print: \"r\"\n     - Empty:\n       1. print: \"e\"\n"));
     assert!(e.contains("Shape has no variant \"Circel\". Did you mean \"Circle\"?"), "{e}");
     assert!(e.contains("The variants of Shape are: Circle, Rect, Empty."), "{e}");
     assert!(!e.contains("does not handle"), "a misspelled branch is one error:\n{e}");
     let two = format!("{SH}# Enum: Menu\n- Item: name: text\n\n");
-    let e = sema_errors(&func(&two, "s: Shape", "local", "  - match s:\n    - Item i:\n      - print: \"c\"\n    - otherwise:\n      - print: \"e\"\n"));
+    let e = sema_errors(&func(&two, "s: Shape", "", "  1. match s:\n     - Item i:\n       1. print: \"c\"\n     - otherwise:\n       1. print: \"e\"\n"));
     assert!(e.contains("\"Item\" belongs to Menu, but this \"match\" is on Shape."), "{e}");
-    let e = sema_errors(&func(&two, "s: Shape", "local", "  - match s:\n    - Menu.Empty:\n      - print: \"c\"\n    - otherwise:\n      - print: \"e\"\n"));
+    let e = sema_errors(&func(&two, "s: Shape", "", "  1. match s:\n     - Menu.Empty:\n       1. print: \"c\"\n     - otherwise:\n       1. print: \"e\"\n"));
     assert!(e.contains("This \"match\" is on Shape, but the branch names \"Menu\"."), "{e}");
-    let e = sema_errors(&in_function("  - match s:\n    - Empty:\n      - print: \"c\"\n    - Empty:\n      - print: \"r\"\n    - otherwise:\n      - print: \"e\"\n"));
+    let e = sema_errors(&in_function("  1. match s:\n     - Empty:\n       1. print: \"c\"\n     - Empty:\n       1. print: \"r\"\n     - otherwise:\n       1. print: \"e\"\n"));
     assert!(e.contains("This \"match\" already has a branch for \"Empty\"."), "{e}");
-    let e = sema_errors(&func("", "n: maybe int", "local", "  - match n:\n    - ok v:\n      - print: \"x\"\n    - none:\n      - print: \"y\"\n"));
+    let e = sema_errors(&func("", "n: maybe int", "", "  1. match n:\n     - ok v:\n       1. print: \"x\"\n     - none:\n       1. print: \"y\"\n"));
     assert!(e.contains("\"ok\" is not a branch of a \"maybe\"."), "{e}");
     assert!(e.contains("The branches of a \"maybe\" are: some, none."), "{e}");
 }
 
 #[test]
 fn a_branch_names_its_value_only_when_it_has_one() {
-    let e = sema_errors(&in_function("  - match s:\n    - Circle c:\n      - print: \"c\"\n    - Rect r:\n      - print: \"r\"\n    - Empty e:\n      - print: \"e\"\n"));
+    let e = sema_errors(&in_function("  1. match s:\n     - Circle c:\n       1. print: \"c\"\n     - Rect r:\n       1. print: \"r\"\n     - Empty e:\n       1. print: \"e\"\n"));
     assert!(e.contains("The variant \"Empty\" has no fields, so there is nothing to name \"e\"."), "{e}");
-    let e = sema_errors(&func("", "n: maybe int", "local", "  - match n:\n    - some v:\n      - print: \"x\"\n    - none x:\n      - print: \"y\"\n"));
+    let e = sema_errors(&func("", "n: maybe int", "", "  1. match n:\n     - some v:\n       1. print: \"x\"\n     - none x:\n       1. print: \"y\"\n"));
     assert!(e.contains("\"none\" carries no value, so there is nothing to name \"x\"."), "{e}");
 }
 
 #[test]
 fn a_branch_name_gives_the_fields_of_its_variant_and_nothing_else() {
-    let e = sema_errors(&in_function("  - match s:\n    - Circle c:\n      - print: \"{c.radious}\"\n    - otherwise:\n      - stop\n"));
+    let e = sema_errors(&in_function("  1. match s:\n     - Circle c:\n       1. print: \"{c.radious}\"\n     - otherwise:\n       1. stop\n"));
     assert!(e.contains("The variant \"Circle\" has no field \"radious\". Did you mean \"radius\"?"), "{e}");
     // the whole payload is not an enum value
-    let src = format!("{SH}# Function: f\n- in: s: Shape\n- out: Shape\n- effect: pure\n  - match s:\n    - Circle c:\n      - return c\n    - otherwise:\n      - return s\n");
+    let src = format!("{SH}# Function: f\n- in: s: Shape\n- out: Shape\n- touches: nothing\n- steps:\n  1. match s:\n     - Circle c:\n       1. return c\n     - otherwise:\n       1. return s\n");
     let e = sema_errors(&src);
     assert!(e.contains("\"c\" stands for the fields of Circle, not for a value of Shape."), "{e}");
     assert!(e.contains("Read a field, like c.radius."), "{e}");
-    let e = sema_errors(&in_function("  - print: \"{s}\"\n"));
+    let e = sema_errors(&in_function("  1. print: \"{s}\"\n"));
     assert!(e.contains("A Shape cannot be written into text as a whole."), "{e}");
-    let e = sema_errors(&in_function("  - print: \"{s.radius}\"\n"));
+    let e = sema_errors(&in_function("  1. print: \"{s.radius}\"\n"));
     assert!(e.contains("\"s\" is a Shape, which has no fields of its own, so \".radius\" cannot be read."), "{e}");
-    assert!(e.contains("Use \"- match s:\" and read the fields inside the branch"), "{e}");
+    assert!(e.contains("Use \"match s:\" and read the fields inside the branch"), "{e}");
 }
 
 #[test]
@@ -482,10 +484,10 @@ fn the_names_of_a_matched_maybe_and_result_have_the_inner_types() {
 #[test]
 fn match_counts_for_the_hard_limits_as_one_level_and_a_branch_may_be_empty() {
     // for each -> if -> match -> if is 4 levels deep only when the match opens two; it opens one
-    let body = "  - for each x in items:\n    - if x > 0:\n      - match shape:\n        - Empty:\n          - print: \"e\"\n        - otherwise:\n";
-    let src = format!("{SH}# Function: f\n- in: items: list of int, shape: Shape\n- effect: local\n{body}");
+    let body = "  1. for each x in items:\n     1. if x > 0:\n        1. match shape:\n           - Empty:\n             1. print: \"e\"\n           - otherwise:\n";
+    let src = format!("{SH}# Function: f\n- in: items: list of int, shape: Shape\n- steps:\n{body}");
     common::ok(&use_it(&src));
-    let deeper = format!("{src}          - if x > 1:\n            - print: \"deep\"\n");
+    let deeper = format!("{src}             1. if x > 1:\n                1. print: \"deep\"\n");
     let e = sema_errors(&use_it(&deeper));
     assert!(e.contains("Statements are nested 4 levels deep; the limit is 3."), "{e}");
 }
@@ -493,25 +495,25 @@ fn match_counts_for_the_hard_limits_as_one_level_and_a_branch_may_be_empty() {
 #[test]
 fn match_is_pure_unless_its_branches_are_not() {
     let c = common::ok(&use_it(&format!(
-        "{SH}# Function: f\n- in: s: Shape\n- out: int\n- effect: pure\n  - match s:\n    - Circle c:\n      - return c.radius\n    - otherwise:\n      - return 0\n"
+        "{SH}# Function: f\n- in: s: Shape\n- out: int\n- touches: nothing\n- steps:\n  1. match s:\n     - Circle c:\n       1. return c.radius\n     - otherwise:\n       1. return 0\n"
     )));
     assert!(c.blocks.iter().find(|b| b.unit == "f").unwrap().effect.is_pure());
-    let e = sema_errors(&in_function_pure("  - match s:\n    - otherwise:\n      - print: \"x\"\n"));
-    assert!(e.contains("says \"- effect: pure\", but this line has the effect local (print)"), "{e}");
+    let e = sema_errors(&in_function_pure("  1. match s:\n     - otherwise:\n       1. print: \"x\"\n"));
+    assert!(e.contains("says \"- touches: nothing\", but this step touches print"), "{e}");
 }
 
 fn in_function_pure(body: &str) -> String {
-    func(SH, "s: Shape", "pure", body)
+    func(SH, "s: Shape", "nothing", body)
 }
 
 #[test]
 fn an_unused_enum_is_reported_like_an_unused_record() {
-    let w = common::warnings(&format!("{SH}# Command: go\n\n## Run\n- stop\n"));
+    let w = common::warnings(&format!("{SH}# Command: go\n- steps:\n  1. stop\n"));
     assert!(w.contains("Unused enum: nothing refers to \"Shape\"."), "{w}");
     let w = common::warnings("# Type: T\n- is: text\n\n# Command: go\n- steps:\n  1. stop\n");
     assert!(w.contains("Unused type: nothing refers to \"T\"."), "{w}");
     // a variant value is a use of its enum
-    let used = format!("{SH}# Command: go\n\n## Run\n- set s = Empty\n- print: \"x\"\n");
+    let used = format!("{SH}# Command: go\n- steps:\n  1. Empty into s\n  2. print: \"x\"\n");
     assert!(!common::warnings(&used).contains("Unused enum"));
 }
 
@@ -537,7 +539,7 @@ fn the_fixture_is_canonical_and_messy_new_forms_are_tidied() {
 #[test]
 fn the_ir_has_the_enums_and_resolved_matches() {
     let src = format!(
-        "{SH}# Type: Pic\n- is: Shape\n\n# Function: f\n- in: s: Pic, n: maybe int\n- out: int\n- effect: pure\n  - match s:\n    - Circle c:\n      - return c.radius\n    - Rect r:\n      - return r.width\n    - Empty:\n      - set e = Rect {{ width: 1, height: 2 }}\n      - return 0\n"
+        "{SH}# Type: Pic\n- is: Shape\n\n# Function: f\n- in: s: Pic, n: maybe int\n- out: int\n- touches: nothing\n- steps:\n  1. match s:\n     - Circle c:\n       1. return c.radius\n     - Rect r:\n       1. return r.width\n     - Empty:\n       1. Rect {{ width: 1, height: 2 }} into e\n       2. return 0\n"
     );
     let p = Project::from_str("t.agent.md", &src, "");
     let checked = sema::check(&p).unwrap_or_else(|d| panic!("{}", p.render(&d)));
@@ -670,7 +672,7 @@ fn enum_values_travel_as_tagged_json_through_a_service() {
 fn match_in_the_last_statement_of_a_function_returns_from_every_branch() {
     // every branch ends the function, and the generated code has no unreachable tail
     let src = format!(
-        "{SH}# Function: size\n- in: s: Shape\n- out: int\n- effect: pure\n  - match s:\n    - Circle c:\n      - return c.radius\n    - Rect r:\n      - return r.width * r.height\n    - Empty:\n      - return 0\n\n# Command: demo\n- args: width: int\n\n## Run\n- print: \"{{size(Rect {{ width: width, height: 3 }})}}\"\n"
+        "{SH}# Function: size\n- in: s: Shape\n- out: int\n- touches: nothing\n- steps:\n  1. match s:\n     - Circle c:\n       1. return c.radius\n     - Rect r:\n       1. return r.width * r.height\n     - Empty:\n       1. return 0\n\n# Command: demo\n- in: width: int\n- steps:\n  1. print: \"{{size(Rect {{ width: width, height: 3 }})}}\"\n"
     );
     let d = temp("shapes-tail");
     write(&d, "prog.agent.md", &src);
@@ -705,7 +707,7 @@ fn library_results_are_stored_and_matched_like_function_results() {
     let (out, _) = run_command("notes-bad", NOTES, &[], json!({"body": "12"}));
     assert_eq!(out, "bad json\nnumber 12\n");
     // the stored result can only be matched
-    let e = sema_errors(&NOTES.replace("- match parsed:", "- set copy = parsed\n- match parsed:"));
+    let e = sema_errors(&NOTES.replace("  2. match parsed:", "  2. parsed into copy\n  3. match parsed:"));
     assert!(e.contains("\"parsed\" holds a result, which can only be matched."), "{e}");
 }
 
@@ -726,24 +728,24 @@ fn map_aliases_and_matches_inside_collection_loops() {
 
 #[test]
 fn a_stored_result_must_be_matched_on_every_path() {
-    let head = format!("{STORED}# Command: demo\n- args: path: text, flag: bool\n\n## Run\n");
+    let head = format!("{STORED}# Command: demo\n- in: path: text, flag: bool\n- steps:\n");
     let never = "The result in \"n\" is never matched, so its failure would be lost.";
     // straight line
-    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- print: \"done\"\n"));
+    let e = sema_errors(&format!("{head}  1. read_count(path) into n\n  2. print: \"done\"\n"));
     assert!(e.contains(never), "{e}");
     // one branch matches, the other does not
-    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- if flag:\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n"));
+    let e = sema_errors(&format!("{head}  1. read_count(path) into n\n  2. if flag:\n     1. match n:\n        - ok:\n          1. print: \"a\"\n        - error:\n          1. print: \"b\"\n"));
     assert!(e.contains(never), "{e}");
     // a branch that leaves with the result unmatched
-    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- if flag:\n  - stop\n- match n:\n  - ok:\n    - print: \"a\"\n  - error:\n    - print: \"b\"\n"));
+    let e = sema_errors(&format!("{head}  1. read_count(path) into n\n  2. if flag:\n     1. stop\n  3. match n:\n     - ok:\n       1. print: \"a\"\n     - error:\n       1. print: \"b\"\n"));
     assert!(e.contains(never), "{e}");
     // made in a loop and never matched
-    let e = sema_errors(&format!("{head}- for each i in list of 1, 2:\n  - set n = read_count(path)\n  - print: \"x\"\n"));
+    let e = sema_errors(&format!("{head}  1. for each i in list of 1, 2:\n     1. read_count(path) into n\n     2. print: \"x\"\n"));
     assert!(e.contains(never), "{e}");
     // matched before the loop's second round: the loop message talks about results
-    let e = sema_errors(&format!("{head}- set n = read_count(path)\n- for each i in list of 1, 2:\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n"));
+    let e = sema_errors(&format!("{head}  1. read_count(path) into n\n  2. for each i in list of 1, 2:\n     1. match n:\n        - ok:\n          1. print: \"a\"\n        - error:\n          1. print: \"b\"\n"));
     assert!(e.contains("Match \"n\" inside the loop where it is made, or after the loop."), "{e}");
     // matched on every path is fine
-    common::ok(&format!("{head}- set n = read_count(path)\n- if flag:\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n- else:\n  - match n:\n    - ok:\n      - print: \"c\"\n    - error:\n      - print: \"d\"\n"));
-    common::ok(&format!("{head}- for each i in list of 1, 2:\n  - set n = read_count(path)\n  - match n:\n    - ok:\n      - print: \"a\"\n    - error:\n      - print: \"b\"\n"));
+    common::ok(&format!("{head}  1. read_count(path) into n\n  2. if flag:\n     1. match n:\n        - ok:\n          1. print: \"a\"\n        - error:\n          1. print: \"b\"\n     else:\n     1. match n:\n        - ok:\n          1. print: \"c\"\n        - error:\n          1. print: \"d\"\n"));
+    common::ok(&format!("{head}  1. for each i in list of 1, 2:\n     1. read_count(path) into n\n     2. match n:\n        - ok:\n          1. print: \"a\"\n        - error:\n          1. print: \"b\"\n"));
 }

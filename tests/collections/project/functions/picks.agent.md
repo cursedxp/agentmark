@@ -1,25 +1,27 @@
-# Import: ../records/sale.agent.md
+# Uses
+- [sale](../records/sale.agent.md)
 
-> Single picks out of a list: first, last, smallest, largest, distinct.
 # Function: pick_words
+Single picks out of a list: first, last, smallest, largest, distinct.
+
 - in: sales: list of Sale
-- effect: local
-  - set nothing = empty list of Sale
-  - if first of sales is some head:
-    - print: "first {head.region}"
-  - if last of sales is some tail:
-    - print: "last {tail.region}"
-  - if first of nothing is empty:
-    - print: "first of nothing is empty"
-  - if min of amount in sales is some low:
-    - print: "min {low}"
-  - if max of qty in sales is some most:
-    - print: "max qty {most}"
-  - if max of region in sales is some late:
-    - print: "max region {late}"
-  - if min of amount in nothing is empty:
-    - print: "min of nothing is empty"
-  - print: "sum of nothing {sum of amount in nothing}"
-  - print: "regions {join (unique region in sales) with ", "}"
-  - print: "distinct {count of (unique (map sales to qty))}"
-  - print: "no regions [{join (map nothing to region) with ","}]"
+- steps:
+  1. empty list of Sale into nothing
+  2. if first of sales is some head:
+     1. print: "first {head.region}"
+  3. if last of sales is some tail:
+     1. print: "last {tail.region}"
+  4. if first of nothing is empty:
+     1. print: "first of nothing is empty"
+  5. if min of amount in sales is some low:
+     1. print: "min {low}"
+  6. if max of qty in sales is some most:
+     1. print: "max qty {most}"
+  7. if max of region in sales is some late:
+     1. print: "max region {late}"
+  8. if min of amount in nothing is empty:
+     1. print: "min of nothing is empty"
+  9. print: "sum of nothing {sum of amount in nothing}"
+  10. print: "regions {join (unique region in sales) with ", "}"
+  11. print: "distinct {count of (unique (map sales to qty))}"
+  12. print: "no regions [{join (map nothing to region) with ","}]"

@@ -116,12 +116,12 @@ pub const MODULES: &[&str] = &["text", "regex", "number", "money", "date", "path
 
 /// The verbs of the built-in `file` tool with what each takes (SPEC 22.3).
 pub const FILE_VERBS: &[FileVerb] = &[
-    FileVerb { verb: "read", shape: "file read <path> -> <name>", extra: Extra::None, result: Some(Text), can_fail: true },
+    FileVerb { verb: "read", shape: "file read <path> into <name>", extra: Extra::None, result: Some(Text), can_fail: true },
     FileVerb { verb: "write", shape: "file write <path>: <text>", extra: Extra::Content, result: None, can_fail: false },
     FileVerb { verb: "append", shape: "file append <path>: <line>", extra: Extra::Content, result: None, can_fail: false },
-    FileVerb { verb: "list", shape: "file list <folder> -> <names>", extra: Extra::None, result: Some(ListText), can_fail: false },
+    FileVerb { verb: "list", shape: "file list <folder> into <names>", extra: Extra::None, result: Some(ListText), can_fail: false },
     FileVerb { verb: "rename", shape: "file rename <old> to <new>", extra: Extra::To, result: None, can_fail: false },
-    FileVerb { verb: "exists", shape: "file exists <path> -> <present>", extra: Extra::None, result: Some(Bool), can_fail: false },
+    FileVerb { verb: "exists", shape: "file exists <path> into <present>", extra: Extra::None, result: Some(Bool), can_fail: false },
     FileVerb { verb: "delete", shape: "file delete <path>", extra: Extra::None, result: None, can_fail: false },
 ];
 

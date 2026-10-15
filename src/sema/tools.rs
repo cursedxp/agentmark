@@ -576,7 +576,7 @@ impl Checker<'_> {
                                 self.path(cx.file),
                                 w.span,
                                 format!(
-                                    "\"{0}\" needs an {1} in scope (a loop over {2}, or a \"-> x\" result), or write its id: \"{3} update {0} x: ...\"",
+                                    "\"{0}\" needs an {1} in scope (a loop over {2}, or an \"into x\" result), or write its id: \"{3} update {0} x: ...\"",
                                     w.name, r, plural, tool.name
                                 ),
                             );

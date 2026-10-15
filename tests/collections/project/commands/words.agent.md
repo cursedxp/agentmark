@@ -1,15 +1,16 @@
-# Import: ../functions/lists.agent.md
-# Import: ../functions/literals.agent.md
-# Import: ../functions/maps.agent.md
-# Import: ../functions/picks.agent.md
-# Import: ../records/sale.agent.md
+# Uses
+- [lists](../functions/lists.agent.md)
+- [literals](../functions/literals.agent.md)
+- [maps](../functions/maps.agent.md)
+- [picks](../functions/picks.agent.md)
+- [sale](../records/sale.agent.md)
 
-> Prints the result of every collection word for the sales in sales.csv.
 # Command: words
+Prints the result of every collection word for the sales in sales.csv.
 
-## Run
-- read file "sales.csv" as list of Sale -> sales
-- do list_words(sales)
-- do pick_words(sales)
-- do literal_words
-- do map_words(sales)
+- steps:
+  1. read file "sales.csv" as list of Sale into sales
+  2. do list_words(sales)
+  3. do pick_words(sales)
+  4. do literal_words
+  5. do map_words(sales)

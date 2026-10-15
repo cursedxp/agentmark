@@ -103,7 +103,7 @@ const MAX_NESTING: usize = 100;
 fn too_deep(path: &str, lines: &[Line]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for l in lines {
-        if !matches!(l.kind, LineKind::Item | LineKind::Control | LineKind::Heading1 | LineKind::Heading2) {
+        if !matches!(l.kind, LineKind::Item | LineKind::Numbered(_) | LineKind::Control | LineKind::Heading1 | LineKind::Heading2) {
             continue;
         }
         let (mut depth, mut chars) = (0usize, 0u32);
@@ -1250,7 +1250,7 @@ impl<'l> Builder<'l> {
             self.error(
                 E_STRUCTURE,
                 Span::new(p.line, p.col.saturating_sub(7).max(1), 6),
-                "\"- steps:\" has no steps under it. Write them as a numbered list: \"  1. print: \\\"hello\\\"\".",
+                "\"- steps:\" has no steps under it. Write them as a numbered list, for example: 1. print: \"hello\"",
             );
         }
         self.stmts(&p.node.kids)

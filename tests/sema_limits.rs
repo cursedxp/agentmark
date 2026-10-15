@@ -11,7 +11,7 @@ use agentmark::sema;
 const HEAD: &str = "# Agent: a\n- model: claude\n- tools: log\n\n## On start\n";
 
 fn logs(n: usize) -> String {
-    (0..n).map(|i| format!("- log: \"line {i}\"\n")).collect()
+    (0..n).map(|i| format!("{}. log: \"line {i}\"\n", i + 1)).collect()
 }
 
 fn render_errors(p: &Project) -> String {
@@ -52,18 +52,18 @@ fn twenty_six_statements_are_an_error_with_the_fix() {
 fn nested_statements_count_too() {
     let mut body = String::from("for each i in crm.invoices:\n");
     for k in 0..25 {
-        body.push_str(&format!("  - log: \"{k}\"\n"));
+        body.push_str(&format!("   {}. log: \"{k}\"\n", k + 1));
     }
-    let src = format!("# Record: Invoice\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n{body}");
+    let src = format!("# Record: Invoice\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. {body}");
     let e = errors(&src);
     assert!(e.contains("has 26 statements; the limit is 25."), "{e}");
 }
 
 #[test]
 fn a_function_with_too_many_statements_is_told_to_split_into_functions() {
-    let body: String = (0..26).map(|i| format!("  - set v{i} = {i}\n")).collect();
+    let body: String = (0..26).map(|i| format!("  {}. {i} into v{i}\n", i + 1)).collect();
     let e = errors(&format!(
-        "# Function: f\n- out: int\n- touches: nothing\n- steps:\n"
+        "# Function: f\n- out: int\n- touches: nothing\n- steps:\n{body}  27. return 1\n"
     ));
     assert!(
         e.contains("The function \"f\" has 27 statements; the limit is 25."),
@@ -81,12 +81,12 @@ const REC: &str = "# Record: Invoice\n- id: text\n\n";
 
 #[test]
 fn for_each_if_if_is_the_deepest_allowed() {
-    ok(&format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - if i.id = \"b\":\n      - log: \"deep enough\"\n"));
+    ok(&format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. if i.id = \"b\":\n         1. log: \"deep enough\"\n"));
 }
 
 #[test]
 fn a_fourth_level_is_an_error_with_the_lines_to_move() {
-    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - if i.id = \"b\":\n      - if i.id = \"c\":\n        - log: \"too deep\"\n        - log: \"still\"\n");
+    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. if i.id = \"b\":\n         1. if i.id = \"c\":\n            1. log: \"too deep\"\n            2. log: \"still\"\n");
     let e = errors(&src);
     assert!(
         e.contains("Statements are nested 4 levels deep; the limit is 3."),
@@ -105,9 +105,9 @@ fn a_fourth_level_is_an_error_with_the_lines_to_move() {
 #[test]
 fn else_and_try_otherwise_count_as_the_same_or_one_more_level() {
     // if/else is one level; try … otherwise adds one
-    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - log: \"x\"\n  - else:\n    - if i.id = \"b\":\n      - log: \"y\"\n    - else:\n      - log: \"z\"\n");
+    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. log: \"x\"\n      else:\n      1. if i.id = \"b\":\n         1. log: \"y\"\n         else:\n         1. log: \"z\"\n");
     ok(&src);
-    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - if i.id = \"b\":\n      - try http get \"https://x.y\" -> r\n        otherwise:\n          - log: \"z\"\n");
+    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. if i.id = \"b\":\n         1. try http get \"https://x.y\" into r\n            otherwise:\n            1. log: \"z\"\n");
     let e = errors(&src);
     assert!(e.contains("nested 4 levels deep"), "{e}");
 }
@@ -129,15 +129,15 @@ fn a_single_file_is_exempt_but_flagged_once() {
 
 #[test]
 fn a_file_with_one_declaration_gets_no_warning() {
-    let c = ok(&format!("{HEAD}- log: \"x\"\n"));
+    let c = ok(&format!("{HEAD}1. log: \"x\"\n"));
     assert!(c.warnings.iter().all(|w| w.code != "W006"));
 }
 
 #[test]
 fn in_a_folder_project_one_runnable_declaration_per_file_in_total() {
-    let agent = |n: &str| format!("# Agent: {n}\n- model: claude\n- tools: log\n\n## On start\n- log: \"x\"\n");
+    let agent = |n: &str| format!("# Agent: {n}\n- model: claude\n- tools: log\n\n## On start\n1. log: \"x\"\n");
     let two_agents = format!("{}\n{}", agent("a"), agent("b"));
-    let mixed = format!("{}\n# Service: s\n\n## GET /x\n- respond 200 \"ok\"\n", agent("c"));
+    let mixed = format!("{}\n# Service: s\n\n## GET /x\n1. respond 200 \"ok\"\n", agent("c"));
     let p = Project::from_memory(
         "app",
         vec![
@@ -190,12 +190,12 @@ fn in_a_folder_project_records_and_rules_need_their_folders() {
 
 #[test]
 fn a_line_of_120_characters_is_fine_121_is_not() {
-    // "  - set a = " is 12 characters; digits and " + 1" groups fill the rest
-    let line = |digits: usize| format!("  - set a = {}{}", "1".repeat(digits), " + 1".repeat(26));
+    // "  1. " and " into a" are 12 characters; digits and " + 1" groups fill the rest
+    let line = |digits: usize| format!("  1. {}{} into a", "1".repeat(digits), " + 1".repeat(26));
     assert_eq!(line(4).chars().count(), 120);
     assert_eq!(line(5).chars().count(), 121);
     let wrap = |l: &str| {
-        format!("# Function: f\n- out: int\n- effect: pure\n{l}\n  - return a\n# Function: g\n- out: int\n- effect: pure\n  - return f()\n")
+        format!("# Function: f\n- out: int\n- touches: nothing\n- steps:\n{l}\n  2. return a\n\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return f()\n")
     };
     ok(&wrap(&line(4)));
     let e = errors(&wrap(&line(5)));
@@ -215,13 +215,13 @@ fn a_line_of_120_characters_is_fine_121_is_not() {
 #[test]
 fn the_text_of_a_string_literal_does_not_count() {
     let prose = "word ".repeat(40);
-    ok(&format!("{HEAD}- log: \"{prose}\"\n"));
+    ok(&format!("{HEAD}1. log: \"{prose}\"\n"));
 }
 
 #[test]
 fn long_comment_lines_count_in_full() {
     let comment = format!("> {}", "c".repeat(130));
-    let e = errors(&format!("{comment}\n\n{HEAD}- log: \"x\"\n"));
+    let e = errors(&format!("{comment}\n\n{HEAD}1. log: \"x\"\n"));
     assert!(e.contains("characters long; the limit is 120."), "{e}");
 }
 
@@ -240,7 +240,7 @@ fn an_empty_block_is_an_error() {
 #[test]
 fn an_empty_function_and_an_empty_route_are_errors_too() {
     let e = errors("# Function: f\n- touches: nothing\n- steps:\n");
-    assert!(e.contains("The function \"f\" has no statements."), "{e}");
+    assert!(e.contains("\"- steps:\" has no steps under it. Write them as a numbered list, for example: 1. print: \"hello\""), "{e}");
     let e = errors("# Service: s\n\n## GET /x\n");
     assert!(e.contains("The route \"GET /x\" has no statements."), "{e}");
 }
@@ -248,7 +248,7 @@ fn an_empty_function_and_an_empty_route_are_errors_too() {
 #[test]
 fn a_long_string_line_gets_a_warning_suggesting_a_constant() {
     let prose = "word ".repeat(40);
-    let c = ok(&format!("{HEAD}- log: \"{prose}\"\n"));
+    let c = ok(&format!("{HEAD}1. log: \"{prose}\"\n"));
     let w: Vec<_> = c.warnings.iter().filter(|w| w.code == "W007").collect();
     assert_eq!(w.len(), 1);
     assert!(w[0].help.as_deref().unwrap().contains("# Constant"));
@@ -258,7 +258,7 @@ fn a_long_string_line_gets_a_warning_suggesting_a_constant() {
 #[test]
 fn a_comment_with_quotes_is_not_exempt() {
     let comment = format!("> he said \"{}\"", "c".repeat(130));
-    let e = errors(&format!("{comment}\n\n{HEAD}- log: \"x\"\n"));
+    let e = errors(&format!("{comment}\n\n{HEAD}1. log: \"x\"\n"));
     assert!(e.contains("characters long; the limit is 120."), "{e}");
 }
 
@@ -270,7 +270,7 @@ fn the_caret_marks_the_first_counted_character_past_the_limit() {
         "x".repeat(300),
         " and \"a\" = \"a\"".repeat(14)
     );
-    let line = src.lines().nth(3).unwrap().to_string();
+    let line = src.lines().nth(4).unwrap().to_string();
     let e = errors(&src);
     assert!(e.contains("characters long; the limit is 120."), "{e}");
     let caret = e.lines().nth(2).unwrap();
@@ -281,11 +281,11 @@ fn the_caret_marks_the_first_counted_character_past_the_limit() {
 
 #[test]
 fn the_statement_fix_points_inside_a_huge_statement() {
-    let mut body = String::from("for each i in crm.invoices:\n");
+    let mut body = String::from("2. for each i in crm.invoices:\n");
     for k in 0..30 {
-        body.push_str(&format!("  - log: \"{k}\"\n"));
+        body.push_str(&format!("   {}. log: \"{k}\"\n", k + 1));
     }
-    let src = format!("# Record: Invoice\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n- log: \"first\"\n{body}");
+    let src = format!("# Record: Invoice\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. log: \"first\"\n{body}");
     let e = errors(&src);
     // the `for each` holds 31 statements itself: the fix names lines inside it, not the loop line
     assert!(e.contains("has 32 statements; the limit is 25."), "{e}");

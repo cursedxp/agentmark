@@ -8,227 +8,227 @@ imports: []
 decls:
   - Enum:
       span:
-        line: 2
+        line: 1
         col: 3
         len: 11
       doc: "Describes shapes and a menu: two enums, a type alias and every kind of match."
       name:
         name: Shape
         span:
-          line: 2
+          line: 1
           col: 9
           len: 5
       variants:
         - span:
-            line: 3
+            line: 4
             col: 3
             len: 19
           name:
             name: Circle
             span:
-              line: 3
+              line: 4
               col: 3
               len: 6
           fields:
             - span:
-                line: 3
+                line: 4
                 col: 11
                 len: 11
               name:
                 name: radius
                 span:
-                  line: 3
+                  line: 4
                   col: 11
                   len: 6
               ty:
                 kind:
                   Named: int
                 span:
-                  line: 3
+                  line: 4
                   col: 19
                   len: 3
         - span:
-            line: 4
+            line: 5
             col: 3
             len: 29
           name:
             name: Rect
             span:
-              line: 4
+              line: 5
               col: 3
               len: 4
           fields:
             - span:
-                line: 4
+                line: 5
                 col: 9
                 len: 10
               name:
                 name: width
                 span:
-                  line: 4
+                  line: 5
                   col: 9
                   len: 5
               ty:
                 kind:
                   Named: int
                 span:
-                  line: 4
+                  line: 5
                   col: 16
                   len: 3
             - span:
-                line: 4
+                line: 5
                 col: 21
                 len: 11
               name:
                 name: height
                 span:
-                  line: 4
+                  line: 5
                   col: 21
                   len: 6
               ty:
                 kind:
                   Named: int
                 span:
-                  line: 4
+                  line: 5
                   col: 29
                   len: 3
         - span:
-            line: 5
+            line: 6
             col: 3
             len: 5
           name:
             name: Empty
             span:
-              line: 5
+              line: 6
               col: 3
               len: 5
           fields: []
   - Enum:
       span:
-        line: 7
+        line: 8
         col: 3
         len: 10
       doc: ~
       name:
         name: Menu
         span:
-          line: 7
+          line: 8
           col: 9
           len: 4
       variants:
         - span:
-            line: 8
+            line: 9
             col: 3
             len: 5
           name:
             name: Empty
             span:
-              line: 8
+              line: 9
               col: 3
               len: 5
           fields: []
         - span:
-            line: 9
+            line: 10
             col: 3
             len: 30
           name:
             name: Item
             span:
-              line: 9
+              line: 10
               col: 3
               len: 4
           fields:
             - span:
-                line: 9
+                line: 10
                 col: 9
                 len: 10
               name:
                 name: name
                 span:
-                  line: 9
+                  line: 10
                   col: 9
                   len: 4
               ty:
                 kind:
                   Named: text
                 span:
-                  line: 9
+                  line: 10
                   col: 15
                   len: 4
             - span:
-                line: 9
+                line: 10
                 col: 21
                 len: 12
               name:
                 name: price
                 span:
-                  line: 9
+                  line: 10
                   col: 21
                   len: 5
               ty:
                 kind:
                   Named: money
                 span:
-                  line: 9
+                  line: 10
                   col: 28
                   len: 5
   - Record:
       span:
-        line: 11
+        line: 12
         col: 3
         len: 13
       doc: ~
       name:
         name: Entry
         span:
-          line: 11
+          line: 12
           col: 11
           len: 5
       fields:
         - span:
-            line: 12
+            line: 13
             col: 3
             len: 11
           name:
             name: label
             span:
-              line: 12
+              line: 13
               col: 3
               len: 5
           ty:
             kind:
               Named: text
             span:
-              line: 12
+              line: 13
               col: 10
               len: 4
         - span:
-            line: 13
+            line: 14
             col: 3
             len: 12
           name:
             name: shape
             span:
-              line: 13
+              line: 14
               col: 3
               len: 5
           ty:
             kind:
               Named: Shape
             span:
-              line: 13
+              line: 14
               col: 10
               len: 5
   - TypeAlias:
       span:
-        line: 15
+        line: 16
         col: 3
         len: 13
       doc: ~
       name:
         name: Entries
         span:
-          line: 15
+          line: 16
           col: 9
           len: 7
       target:
@@ -237,37 +237,37 @@ decls:
             kind:
               Named: Entry
             span:
-              line: 16
+              line: 17
               col: 15
               len: 5
         span:
-          line: 16
+          line: 17
           col: 7
           len: 13
   - Function:
       span:
-        line: 18
+        line: 19
         col: 3
         len: 18
       doc: ~
       name:
         name: describe
         span:
-          line: 18
+          line: 19
           col: 13
           len: 8
       params:
         - name:
             name: shape
             span:
-              line: 19
+              line: 20
               col: 7
               len: 5
           ty:
             kind:
               Named: Shape
             span:
-              line: 19
+              line: 20
               col: 14
               len: 5
           default: ~
@@ -275,199 +275,204 @@ decls:
         kind:
           Named: text
         span:
-          line: 20
+          line: 21
           col: 8
           len: 4
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 21
-          col: 11
-          len: 4
+          line: 22
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 22
+              col: 12
+              len: 7
       body:
         - span:
-            line: 22
-            col: 5
+            line: 24
+            col: 6
             len: 12
           kind:
             Match:
               scrutinee:
                 span:
-                  line: 22
-                  col: 11
+                  line: 24
+                  col: 12
                   len: 5
                 kind:
                   Path:
                     - name: shape
                       span:
-                        line: 22
-                        col: 11
+                        line: 24
+                        col: 12
                         len: 5
               arms:
                 - span:
-                    line: 23
-                    col: 7
+                    line: 25
+                    col: 8
                     len: 9
                   qualifier: ~
                   pattern:
                     name: Circle
                     span:
-                      line: 23
-                      col: 7
+                      line: 25
+                      col: 8
                       len: 6
                   bind:
                     name: c
                     span:
-                      line: 23
-                      col: 14
+                      line: 25
+                      col: 15
                       len: 1
                   body:
                     - span:
-                        line: 24
-                        col: 9
+                        line: 26
+                        col: 11
                         len: 28
                       kind:
                         Return:
                           span:
-                            line: 24
-                            col: 16
+                            line: 26
+                            col: 18
                             len: 21
                           kind:
                             Interp:
                               - Text: circle r=
                               - Expr:
                                   span:
-                                    line: 24
-                                    col: 27
+                                    line: 26
+                                    col: 29
                                     len: 8
                                   kind:
                                     Path:
                                       - name: c
                                         span:
-                                          line: 24
-                                          col: 27
+                                          line: 26
+                                          col: 29
                                           len: 1
                                       - name: radius
                                         span:
-                                          line: 24
-                                          col: 29
+                                          line: 26
+                                          col: 31
                                           len: 6
                 - span:
-                    line: 25
-                    col: 7
+                    line: 27
+                    col: 8
                     len: 7
                   qualifier: ~
                   pattern:
                     name: Rect
                     span:
-                      line: 25
-                      col: 7
+                      line: 27
+                      col: 8
                       len: 4
                   bind:
                     name: r
                     span:
-                      line: 25
-                      col: 12
+                      line: 27
+                      col: 13
                       len: 1
                   body:
                     - span:
-                        line: 26
-                        col: 9
+                        line: 28
+                        col: 11
                         len: 34
                       kind:
                         Return:
                           span:
-                            line: 26
-                            col: 16
+                            line: 28
+                            col: 18
                             len: 27
                           kind:
                             Interp:
                               - Text: "rect "
                               - Expr:
                                   span:
-                                    line: 26
-                                    col: 23
+                                    line: 28
+                                    col: 25
                                     len: 7
                                   kind:
                                     Path:
                                       - name: r
                                         span:
-                                          line: 26
-                                          col: 23
+                                          line: 28
+                                          col: 25
                                           len: 1
                                       - name: width
                                         span:
-                                          line: 26
-                                          col: 25
+                                          line: 28
+                                          col: 27
                                           len: 5
                               - Text: x
                               - Expr:
                                   span:
-                                    line: 26
-                                    col: 33
+                                    line: 28
+                                    col: 35
                                     len: 8
                                   kind:
                                     Path:
                                       - name: r
                                         span:
-                                          line: 26
-                                          col: 33
+                                          line: 28
+                                          col: 35
                                           len: 1
                                       - name: height
                                         span:
-                                          line: 26
-                                          col: 35
+                                          line: 28
+                                          col: 37
                                           len: 6
                 - span:
-                    line: 27
-                    col: 7
+                    line: 29
+                    col: 8
                     len: 6
                   qualifier: ~
                   pattern:
                     name: Empty
                     span:
-                      line: 27
-                      col: 7
+                      line: 29
+                      col: 8
                       len: 5
                   bind: ~
                   body:
                     - span:
-                        line: 28
-                        col: 9
+                        line: 30
+                        col: 11
                         len: 16
                       kind:
                         Return:
                           span:
-                            line: 28
-                            col: 16
+                            line: 30
+                            col: 18
                             len: 9
                           kind:
                             Str: nothing
               otherwise: ~
   - Function:
       span:
-        line: 30
+        line: 32
         col: 3
         len: 19
       doc: ~
       name:
         name: roundness
         span:
-          line: 30
+          line: 32
           col: 13
           len: 9
       params:
         - name:
             name: shape
             span:
-              line: 31
+              line: 33
               col: 7
               len: 5
           ty:
             kind:
               Named: Shape
             span:
-              line: 31
+              line: 33
               col: 14
               len: 5
           default: ~
@@ -475,244 +480,249 @@ decls:
         kind:
           Named: text
         span:
-          line: 32
+          line: 34
           col: 8
           len: 4
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 33
-          col: 11
-          len: 4
+          line: 35
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 35
+              col: 12
+              len: 7
       body:
         - span:
-            line: 34
-            col: 5
-            len: 20
+            line: 37
+            col: 6
+            len: 19
           kind:
             Set:
               var:
                 name: word
                 span:
-                  line: 34
-                  col: 9
+                  line: 37
+                  col: 21
                   len: 4
               expr:
                 span:
-                  line: 34
-                  col: 16
+                  line: 37
+                  col: 6
                   len: 9
                 kind:
                   Str: angular
         - span:
-            line: 35
-            col: 5
+            line: 38
+            col: 6
             len: 12
           kind:
             Match:
               scrutinee:
                 span:
-                  line: 35
-                  col: 11
+                  line: 38
+                  col: 12
                   len: 5
                 kind:
                   Path:
                     - name: shape
                       span:
-                        line: 35
-                        col: 11
+                        line: 38
+                        col: 12
                         len: 5
               arms:
                 - span:
-                    line: 36
-                    col: 7
+                    line: 39
+                    col: 8
                     len: 9
                   qualifier: ~
                   pattern:
                     name: Circle
                     span:
-                      line: 36
-                      col: 7
+                      line: 39
+                      col: 8
                       len: 6
                   bind:
                     name: c
                     span:
-                      line: 36
-                      col: 14
+                      line: 39
+                      col: 15
                       len: 1
                   body:
                     - span:
-                        line: 37
-                        col: 9
-                        len: 18
+                        line: 40
+                        col: 11
+                        len: 17
                       kind:
                         Set:
                           var:
                             name: word
                             span:
-                              line: 37
-                              col: 13
+                              line: 40
+                              col: 24
                               len: 4
                           expr:
                             span:
-                              line: 37
-                              col: 20
+                              line: 40
+                              col: 11
                               len: 7
                             kind:
                               Str: round
                 - span:
-                    line: 38
-                    col: 7
+                    line: 41
+                    col: 8
                     len: 7
                   qualifier: ~
                   pattern:
                     name: Rect
                     span:
-                      line: 38
-                      col: 7
+                      line: 41
+                      col: 8
                       len: 4
                   bind:
                     name: r
                     span:
-                      line: 38
-                      col: 12
+                      line: 41
+                      col: 13
                       len: 1
                   body:
                     - span:
-                        line: 39
-                        col: 9
+                        line: 42
+                        col: 11
                         len: 22
                       kind:
                         If:
                           cond:
                             span:
-                              line: 39
-                              col: 12
+                              line: 42
+                              col: 14
                               len: 18
                             kind:
                               Binary:
                                 op: Eq
                                 lhs:
                                   span:
-                                    line: 39
-                                    col: 12
+                                    line: 42
+                                    col: 14
                                     len: 7
                                   kind:
                                     Path:
                                       - name: r
                                         span:
-                                          line: 39
-                                          col: 12
+                                          line: 42
+                                          col: 14
                                           len: 1
                                       - name: width
                                         span:
-                                          line: 39
-                                          col: 14
+                                          line: 42
+                                          col: 16
                                           len: 5
                                 rhs:
                                   span:
-                                    line: 39
-                                    col: 22
+                                    line: 42
+                                    col: 24
                                     len: 8
                                   kind:
                                     Path:
                                       - name: r
                                         span:
-                                          line: 39
-                                          col: 22
+                                          line: 42
+                                          col: 24
                                           len: 1
                                       - name: height
                                         span:
-                                          line: 39
-                                          col: 24
+                                          line: 42
+                                          col: 26
                                           len: 6
                           then:
                             - span:
-                                line: 40
-                                col: 11
-                                len: 19
+                                line: 43
+                                col: 14
+                                len: 18
                               kind:
                                 Set:
                                   var:
                                     name: word
                                     span:
-                                      line: 40
-                                      col: 15
+                                      line: 43
+                                      col: 28
                                       len: 4
                                   expr:
                                     span:
-                                      line: 40
-                                      col: 22
+                                      line: 43
+                                      col: 14
                                       len: 8
                                     kind:
                                       Str: square
                           else_: []
               otherwise:
                 span:
-                  line: 41
-                  col: 7
+                  line: 44
+                  col: 8
                   len: 10
                 body:
                   - span:
-                      line: 42
-                      col: 9
-                      len: 18
+                      line: 45
+                      col: 11
+                      len: 17
                     kind:
                       Set:
                         var:
                           name: word
                           span:
-                            line: 42
-                            col: 13
+                            line: 45
+                            col: 24
                             len: 4
                         expr:
                           span:
-                            line: 42
-                            col: 20
+                            line: 45
+                            col: 11
                             len: 7
                           kind:
                             Str: plain
         - span:
-            line: 43
-            col: 5
+            line: 46
+            col: 6
             len: 11
           kind:
             Return:
               span:
-                line: 43
-                col: 12
+                line: 46
+                col: 13
                 len: 4
               kind:
                 Path:
                   - name: word
                     span:
-                      line: 43
-                      col: 12
+                      line: 46
+                      col: 13
                       len: 4
   - Function:
       span:
-        line: 45
+        line: 48
         col: 3
         len: 18
       doc: ~
       name:
         name: price_of
         span:
-          line: 45
+          line: 48
           col: 13
           len: 8
       params:
         - name:
             name: menu
             span:
-              line: 46
+              line: 49
               col: 7
               len: 4
           ty:
             kind:
               Named: Menu
             span:
-              line: 46
+              line: 49
               col: 13
               len: 4
           default: ~
@@ -720,102 +730,107 @@ decls:
         kind:
           Named: money
         span:
-          line: 47
+          line: 50
           col: 8
           len: 5
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 48
-          col: 11
-          len: 4
+          line: 51
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 51
+              col: 12
+              len: 7
       body:
         - span:
-            line: 49
-            col: 5
+            line: 53
+            col: 6
             len: 11
           kind:
             Match:
               scrutinee:
                 span:
-                  line: 49
-                  col: 11
+                  line: 53
+                  col: 12
                   len: 4
                 kind:
                   Path:
                     - name: menu
                       span:
-                        line: 49
-                        col: 11
+                        line: 53
+                        col: 12
                         len: 4
               arms:
                 - span:
-                    line: 50
-                    col: 7
+                    line: 54
+                    col: 8
                     len: 7
                   qualifier: ~
                   pattern:
                     name: Item
                     span:
-                      line: 50
-                      col: 7
+                      line: 54
+                      col: 8
                       len: 4
                   bind:
                     name: i
                     span:
-                      line: 50
-                      col: 12
+                      line: 54
+                      col: 13
                       len: 1
                   body:
                     - span:
-                        line: 51
-                        col: 9
+                        line: 55
+                        col: 11
                         len: 14
                       kind:
                         Return:
                           span:
-                            line: 51
-                            col: 16
+                            line: 55
+                            col: 18
                             len: 7
                           kind:
                             Path:
                               - name: i
                                 span:
-                                  line: 51
-                                  col: 16
+                                  line: 55
+                                  col: 18
                                   len: 1
                               - name: price
                                 span:
-                                  line: 51
-                                  col: 18
+                                  line: 55
+                                  col: 20
                                   len: 5
                 - span:
-                    line: 52
-                    col: 7
+                    line: 56
+                    col: 8
                     len: 11
                   qualifier:
                     name: Menu
                     span:
-                      line: 52
-                      col: 7
+                      line: 56
+                      col: 8
                       len: 4
                   pattern:
                     name: Empty
                     span:
-                      line: 52
-                      col: 12
+                      line: 56
+                      col: 13
                       len: 5
                   bind: ~
                   body:
                     - span:
-                        line: 53
-                        col: 9
+                        line: 57
+                        col: 11
                         len: 12
                       kind:
                         Return:
                           span:
-                            line: 53
-                            col: 16
+                            line: 57
+                            col: 18
                             len: 5
                           kind:
                             Money:
@@ -824,21 +839,21 @@ decls:
               otherwise: ~
   - Function:
       span:
-        line: 55
+        line: 59
         col: 3
         len: 17
       doc: ~
       name:
         name: or_zero
         span:
-          line: 55
+          line: 59
           col: 13
           len: 7
       params:
         - name:
             name: n
             span:
-              line: 56
+              line: 60
               col: 7
               len: 1
           ty:
@@ -847,11 +862,11 @@ decls:
                 kind:
                   Named: int
                 span:
-                  line: 56
+                  line: 60
                   col: 16
                   len: 3
             span:
-              line: 56
+              line: 60
               col: 10
               len: 9
           default: ~
@@ -859,134 +874,139 @@ decls:
         kind:
           Named: int
         span:
-          line: 57
+          line: 61
           col: 8
           len: 3
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 58
-          col: 11
-          len: 4
+          line: 62
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 62
+              col: 12
+              len: 7
       body:
         - span:
-            line: 59
-            col: 5
+            line: 64
+            col: 6
             len: 8
           kind:
             Match:
               scrutinee:
                 span:
-                  line: 59
-                  col: 11
+                  line: 64
+                  col: 12
                   len: 1
                 kind:
                   Path:
                     - name: n
                       span:
-                        line: 59
-                        col: 11
+                        line: 64
+                        col: 12
                         len: 1
               arms:
                 - span:
-                    line: 60
-                    col: 7
+                    line: 65
+                    col: 8
                     len: 11
                   qualifier: ~
                   pattern:
                     name: some
                     span:
-                      line: 60
-                      col: 7
+                      line: 65
+                      col: 8
                       len: 4
                   bind:
                     name: value
                     span:
-                      line: 60
-                      col: 12
+                      line: 65
+                      col: 13
                       len: 5
                   body:
                     - span:
-                        line: 61
-                        col: 9
+                        line: 66
+                        col: 11
                         len: 12
                       kind:
                         Return:
                           span:
-                            line: 61
-                            col: 16
+                            line: 66
+                            col: 18
                             len: 5
                           kind:
                             Path:
                               - name: value
                                 span:
-                                  line: 61
-                                  col: 16
+                                  line: 66
+                                  col: 18
                                   len: 5
                 - span:
-                    line: 62
-                    col: 7
+                    line: 67
+                    col: 8
                     len: 5
                   qualifier: ~
                   pattern:
                     name: none
                     span:
-                      line: 62
-                      col: 7
+                      line: 67
+                      col: 8
                       len: 4
                   bind: ~
                   body:
                     - span:
-                        line: 63
-                        col: 9
+                        line: 68
+                        col: 11
                         len: 8
                       kind:
                         Return:
                           span:
-                            line: 63
-                            col: 16
+                            line: 68
+                            col: 18
                             len: 1
                           kind:
                             Int: 0
               otherwise: ~
   - Function:
       span:
-        line: 65
+        line: 70
         col: 3
         len: 20
       doc: ~
       name:
         name: find_entry
         span:
-          line: 65
+          line: 70
           col: 13
           len: 10
       params:
         - name:
             name: rows
             span:
-              line: 66
+              line: 71
               col: 7
               len: 4
           ty:
             kind:
               Named: Entries
             span:
-              line: 66
+              line: 71
               col: 13
               len: 7
           default: ~
         - name:
             name: label
             span:
-              line: 66
+              line: 71
               col: 22
               len: 5
           ty:
             kind:
               Named: text
             span:
-              line: 66
+              line: 71
               col: 29
               len: 4
           default: ~
@@ -996,189 +1016,92 @@ decls:
             kind:
               Named: Entry
             span:
-              line: 67
+              line: 72
               col: 14
               len: 5
         span:
-          line: 67
+          line: 72
           col: 8
           len: 11
-      effect:
-        value: Pure
+      touches:
         span:
-          line: 68
-          col: 11
-          len: 4
+          line: 73
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 73
+              col: 12
+              len: 7
       body:
         - span:
-            line: 69
-            col: 5
+            line: 75
+            col: 6
             len: 52
           kind:
             Return:
               span:
-                line: 69
-                col: 12
+                line: 75
+                col: 13
                 len: 45
               kind:
                 FirstIn:
                   var:
                     name: entry
                     span:
-                      line: 69
-                      col: 18
+                      line: 75
+                      col: 19
                       len: 5
                   source:
                     span:
-                      line: 69
-                      col: 27
+                      line: 75
+                      col: 28
                       len: 4
                     kind:
                       Path:
                         - name: rows
                           span:
-                            line: 69
-                            col: 27
+                            line: 75
+                            col: 28
                             len: 4
                   cond:
                     span:
-                      line: 69
-                      col: 38
+                      line: 75
+                      col: 39
                       len: 19
                     kind:
                       Binary:
                         op: Eq
                         lhs:
                           span:
-                            line: 69
-                            col: 38
+                            line: 75
+                            col: 39
                             len: 11
                           kind:
                             Path:
                               - name: entry
                                 span:
-                                  line: 69
-                                  col: 38
+                                  line: 75
+                                  col: 39
                                   len: 5
                               - name: label
                                 span:
-                                  line: 69
-                                  col: 44
+                                  line: 75
+                                  col: 45
                                   len: 5
                         rhs:
                           span:
-                            line: 69
-                            col: 52
+                            line: 75
+                            col: 53
                             len: 5
                           kind:
                             Path:
                               - name: label
                                 span:
-                                  line: 69
-                                  col: 52
+                                  line: 75
+                                  col: 53
                                   len: 5
-  - Function:
-      span:
-        line: 71
-        col: 3
-        len: 20
-      doc: ~
-      name:
-        name: make_entry
-        span:
-          line: 71
-          col: 13
-          len: 10
-      params:
-        - name:
-            name: label
-            span:
-              line: 72
-              col: 7
-              len: 5
-          ty:
-            kind:
-              Named: text
-            span:
-              line: 72
-              col: 14
-              len: 4
-          default: ~
-      out:
-        kind:
-          Named: Entry
-        span:
-          line: 73
-          col: 8
-          len: 5
-      effect:
-        value: Pure
-        span:
-          line: 74
-          col: 11
-          len: 4
-      body:
-        - span:
-            line: 75
-            col: 5
-            len: 49
-          kind:
-            Return:
-              span:
-                line: 75
-                col: 12
-                len: 42
-              kind:
-                Variant:
-                  qualifier: ~
-                  name:
-                    name: Entry
-                    span:
-                      line: 75
-                      col: 12
-                      len: 5
-                  fields:
-                    - name:
-                        name: label
-                        span:
-                          line: 75
-                          col: 20
-                          len: 5
-                      value:
-                        span:
-                          line: 75
-                          col: 27
-                          len: 5
-                        kind:
-                          Path:
-                            - name: label
-                              span:
-                                line: 75
-                                col: 27
-                                len: 5
-                    - name:
-                        name: shape
-                        span:
-                          line: 75
-                          col: 34
-                          len: 5
-                      value:
-                        span:
-                          line: 75
-                          col: 41
-                          len: 11
-                        kind:
-                          Path:
-                            - name: Shape
-                              span:
-                                line: 75
-                                col: 41
-                                len: 5
-                            - name: Empty
-                              span:
-                                line: 75
-                                col: 47
-                                len: 5
   - Function:
       span:
         line: 77
@@ -1186,23 +1109,130 @@ decls:
         len: 20
       doc: ~
       name:
-        name: read_count
+        name: make_entry
         span:
           line: 77
           col: 13
           len: 10
       params:
         - name:
-            name: path
+            name: label
             span:
               line: 78
+              col: 7
+              len: 5
+          ty:
+            kind:
+              Named: text
+            span:
+              line: 78
+              col: 14
+              len: 4
+          default: ~
+      out:
+        kind:
+          Named: Entry
+        span:
+          line: 79
+          col: 8
+          len: 5
+      touches:
+        span:
+          line: 80
+          col: 12
+          len: 7
+        words:
+          - name: nothing
+            span:
+              line: 80
+              col: 12
+              len: 7
+      body:
+        - span:
+            line: 82
+            col: 6
+            len: 49
+          kind:
+            Return:
+              span:
+                line: 82
+                col: 13
+                len: 42
+              kind:
+                Variant:
+                  qualifier: ~
+                  name:
+                    name: Entry
+                    span:
+                      line: 82
+                      col: 13
+                      len: 5
+                  fields:
+                    - name:
+                        name: label
+                        span:
+                          line: 82
+                          col: 21
+                          len: 5
+                      value:
+                        span:
+                          line: 82
+                          col: 28
+                          len: 5
+                        kind:
+                          Path:
+                            - name: label
+                              span:
+                                line: 82
+                                col: 28
+                                len: 5
+                    - name:
+                        name: shape
+                        span:
+                          line: 82
+                          col: 35
+                          len: 5
+                      value:
+                        span:
+                          line: 82
+                          col: 42
+                          len: 11
+                        kind:
+                          Path:
+                            - name: Shape
+                              span:
+                                line: 82
+                                col: 42
+                                len: 5
+                            - name: Empty
+                              span:
+                                line: 82
+                                col: 48
+                                len: 5
+  - Function:
+      span:
+        line: 84
+        col: 3
+        len: 20
+      doc: ~
+      name:
+        name: read_count
+        span:
+          line: 84
+          col: 13
+          len: 10
+      params:
+        - name:
+            name: path
+            span:
+              line: 85
               col: 7
               len: 4
           ty:
             kind:
               Named: text
             span:
-              line: 78
+              line: 85
               col: 13
               len: 4
           default: ~
@@ -1212,119 +1242,109 @@ decls:
             kind:
               Named: int
             span:
-              line: 79
+              line: 86
               col: 18
               len: 3
         span:
-          line: 79
+          line: 86
           col: 8
           len: 13
-      effect:
-        value: Local
-        span:
-          line: 80
-          col: 11
-          len: 5
+      touches: ~
       body:
         - span:
-            line: 81
-            col: 5
-            len: 30
+            line: 88
+            col: 6
+            len: 32
           kind:
             Try:
               stmt:
                 span:
-                  line: 81
-                  col: 9
-                  len: 26
+                  line: 88
+                  col: 10
+                  len: 28
                 kind:
                   ReadFile:
                     path:
                       span:
-                        line: 81
-                        col: 19
+                        line: 88
+                        col: 20
                         len: 4
                       kind:
                         Path:
                           - name: path
                             span:
-                              line: 81
-                              col: 19
+                              line: 88
+                              col: 20
                               len: 4
                     ty:
                       kind:
                         Named: int
                       span:
-                        line: 81
-                        col: 27
+                        line: 88
+                        col: 28
                         len: 3
                     into:
                       name: n
                       span:
-                        line: 81
-                        col: 34
+                        line: 88
+                        col: 37
                         len: 1
               otherwise: ~
         - span:
-            line: 82
-            col: 5
+            line: 89
+            col: 6
             len: 8
           kind:
             Return:
               span:
-                line: 82
-                col: 12
+                line: 89
+                col: 13
                 len: 1
               kind:
                 Path:
                   - name: n
                     span:
-                      line: 82
-                      col: 12
+                      line: 89
+                      col: 13
                       len: 1
   - Function:
       span:
-        line: 84
+        line: 91
         col: 3
         len: 16
       doc: ~
       name:
         name: basics
         span:
-          line: 84
+          line: 91
           col: 13
           len: 6
       params: []
       out: ~
-      effect:
-        value: Local
-        span:
-          line: 85
-          col: 11
-          len: 5
+      touches: ~
       body:
         - span:
-            line: 86
-            col: 5
+            line: 93
+            col: 6
             len: 37
           kind:
             Print:
               span:
-                line: 86
-                col: 12
+                line: 93
+                col: 13
                 len: 30
               kind:
                 Call:
                   func:
                     - name: describe
                       span:
-                        line: 86
-                        col: 12
+                        line: 93
+                        col: 13
                         len: 8
                   args:
                     - span:
-                        line: 86
-                        col: 21
+                        line: 93
+                        col: 22
                         len: 20
                       kind:
                         Variant:
@@ -1332,138 +1352,138 @@ decls:
                           name:
                             name: Circle
                             span:
-                              line: 86
-                              col: 21
+                              line: 93
+                              col: 22
                               len: 6
                           fields:
                             - name:
                                 name: radius
                                 span:
-                                  line: 86
-                                  col: 30
+                                  line: 93
+                                  col: 31
                                   len: 6
                               value:
                                 span:
-                                  line: 86
-                                  col: 38
+                                  line: 93
+                                  col: 39
                                   len: 1
                                 kind:
                                   Int: 3
         - span:
-            line: 87
-            col: 5
+            line: 94
+            col: 6
             len: 51
           kind:
             Print:
               span:
-                line: 87
-                col: 12
+                line: 94
+                col: 13
                 len: 44
               kind:
                 Call:
                   func:
                     - name: describe
                       span:
-                        line: 87
-                        col: 12
+                        line: 94
+                        col: 13
                         len: 8
                   args:
                     - span:
-                        line: 87
-                        col: 21
+                        line: 94
+                        col: 22
                         len: 34
                       kind:
                         Variant:
                           qualifier:
                             name: Shape
                             span:
-                              line: 87
-                              col: 21
+                              line: 94
+                              col: 22
                               len: 5
                           name:
                             name: Rect
                             span:
-                              line: 87
-                              col: 27
+                              line: 94
+                              col: 28
                               len: 4
                           fields:
                             - name:
                                 name: width
                                 span:
-                                  line: 87
-                                  col: 34
+                                  line: 94
+                                  col: 35
                                   len: 5
                               value:
                                 span:
-                                  line: 87
-                                  col: 41
+                                  line: 94
+                                  col: 42
                                   len: 1
                                 kind:
                                   Int: 2
                             - name:
                                 name: height
                                 span:
-                                  line: 87
-                                  col: 44
+                                  line: 94
+                                  col: 45
                                   len: 6
                               value:
                                 span:
-                                  line: 87
-                                  col: 52
+                                  line: 94
+                                  col: 53
                                   len: 1
                                 kind:
                                   Int: 5
         - span:
-            line: 88
-            col: 5
+            line: 95
+            col: 6
             len: 28
           kind:
             Print:
               span:
-                line: 88
-                col: 12
+                line: 95
+                col: 13
                 len: 21
               kind:
                 Call:
                   func:
                     - name: describe
                       span:
-                        line: 88
-                        col: 12
+                        line: 95
+                        col: 13
                         len: 8
                   args:
                     - span:
-                        line: 88
-                        col: 21
+                        line: 95
+                        col: 22
                         len: 11
                       kind:
                         Path:
                           - name: Shape
                             span:
-                              line: 88
-                              col: 21
+                              line: 95
+                              col: 22
                               len: 5
                           - name: Empty
                             span:
-                              line: 88
-                              col: 27
+                              line: 95
+                              col: 28
                               len: 5
         - span:
-            line: 89
-            col: 5
-            len: 47
+            line: 96
+            col: 6
+            len: 46
           kind:
             Set:
               var:
                 name: tea
                 span:
-                  line: 89
-                  col: 9
+                  line: 96
+                  col: 49
                   len: 3
               expr:
                 span:
-                  line: 89
-                  col: 15
+                  line: 96
+                  col: 6
                   len: 37
                 kind:
                   Variant:
@@ -1471,253 +1491,253 @@ decls:
                     name:
                       name: Item
                       span:
-                        line: 89
-                        col: 15
+                        line: 96
+                        col: 6
                         len: 4
                     fields:
                       - name:
                           name: name
                           span:
-                            line: 89
-                            col: 22
+                            line: 96
+                            col: 13
                             len: 4
                         value:
                           span:
-                            line: 89
-                            col: 28
+                            line: 96
+                            col: 19
                             len: 5
                           kind:
                             Str: tea
                       - name:
                           name: price
                           span:
-                            line: 89
-                            col: 35
+                            line: 96
+                            col: 26
                             len: 5
                         value:
                           span:
-                            line: 89
-                            col: 42
+                            line: 96
+                            col: 33
                             len: 8
                           kind:
                             Money:
                               minor: 350
                               currency: EUR
         - span:
-            line: 90
-            col: 5
+            line: 97
+            col: 6
             len: 49
           kind:
             Print:
               span:
-                line: 90
-                col: 12
+                line: 97
+                col: 13
                 len: 42
               kind:
                 Interp:
                   - Expr:
                       span:
-                        line: 90
-                        col: 14
+                        line: 97
+                        col: 15
                         len: 13
                       kind:
                         Call:
                           func:
                             - name: price_of
                               span:
-                                line: 90
-                                col: 14
+                                line: 97
+                                col: 15
                                 len: 8
                           args:
                             - span:
-                                line: 90
-                                col: 23
+                                line: 97
+                                col: 24
                                 len: 3
                               kind:
                                 Path:
                                   - name: tea
                                     span:
-                                      line: 90
-                                      col: 23
+                                      line: 97
+                                      col: 24
                                       len: 3
                   - Text: " / "
                   - Expr:
                       span:
-                        line: 90
-                        col: 32
+                        line: 97
+                        col: 33
                         len: 20
                       kind:
                         Call:
                           func:
                             - name: price_of
                               span:
-                                line: 90
-                                col: 32
+                                line: 97
+                                col: 33
                                 len: 8
                           args:
                             - span:
-                                line: 90
-                                col: 41
+                                line: 97
+                                col: 42
                                 len: 10
                               kind:
                                 Path:
                                   - name: Menu
                                     span:
-                                      line: 90
-                                      col: 41
+                                      line: 97
+                                      col: 42
                                       len: 4
                                   - name: Empty
                                     span:
-                                      line: 90
-                                      col: 46
+                                      line: 97
+                                      col: 47
                                       len: 5
         - span:
-            line: 91
-            col: 5
+            line: 98
+            col: 6
             len: 21
           kind:
             Print:
               span:
-                line: 91
-                col: 12
+                line: 98
+                col: 13
                 len: 14
               kind:
                 Interp:
                   - Expr:
                       span:
-                        line: 91
-                        col: 14
+                        line: 98
+                        col: 15
                         len: 10
                       kind:
                         Call:
                           func:
                             - name: or_zero
                               span:
-                                line: 91
-                                col: 14
+                                line: 98
+                                col: 15
                                 len: 7
                           args:
                             - span:
-                                line: 91
-                                col: 22
+                                line: 98
+                                col: 23
                                 len: 1
                               kind:
                                 Int: 7
   - Command:
       span:
-        line: 93
+        line: 100
         col: 3
         len: 13
       doc: ~
       name:
         name: demo
         span:
-          line: 93
+          line: 100
           col: 12
           len: 4
       args:
         - name:
             name: entries_path
             span:
-              line: 94
-              col: 9
+              line: 101
+              col: 7
               len: 12
           ty:
             kind:
               Named: text
             span:
-              line: 94
-              col: 23
+              line: 101
+              col: 21
               len: 4
           default: ~
         - name:
             name: count_path
             span:
-              line: 94
-              col: 29
+              line: 101
+              col: 27
               len: 10
           ty:
             kind:
               Named: text
             span:
-              line: 94
-              col: 41
+              line: 101
+              col: 39
               len: 4
           default: ~
       body:
         - span:
-            line: 97
-            col: 3
+            line: 103
+            col: 6
             len: 9
           kind:
             Do:
               name:
                 name: basics
                 span:
-                  line: 97
-                  col: 6
+                  line: 103
+                  col: 9
                   len: 6
               args: []
               into: ~
         - span:
-            line: 98
-            col: 3
-            len: 45
+            line: 104
+            col: 6
+            len: 47
           kind:
             Try:
               stmt:
                 span:
-                  line: 98
-                  col: 7
-                  len: 41
+                  line: 104
+                  col: 10
+                  len: 43
                 kind:
                   ReadFile:
                     path:
                       span:
-                        line: 98
-                        col: 17
+                        line: 104
+                        col: 20
                         len: 12
                       kind:
                         Path:
                           - name: entries_path
                             span:
-                              line: 98
-                              col: 17
+                              line: 104
+                              col: 20
                               len: 12
                     ty:
                       kind:
                         Named: Entries
                       span:
-                        line: 98
-                        col: 33
+                        line: 104
+                        col: 36
                         len: 7
                     into:
                       name: rows
                       span:
-                        line: 98
-                        col: 44
+                        line: 104
+                        col: 49
                         len: 4
               otherwise:
                 - span:
-                    line: 100
-                    col: 7
+                    line: 106
+                    col: 9
                     len: 19
                   kind:
                     Print:
                       span:
-                        line: 100
-                        col: 14
+                        line: 106
+                        col: 16
                         len: 12
                       kind:
                         Str: no entries
                 - span:
-                    line: 101
-                    col: 7
+                    line: 107
+                    col: 9
                     len: 4
                   kind: Stop
         - span:
-            line: 102
-            col: 3
+            line: 108
+            col: 6
             len: 23
           kind:
             ForEach:
@@ -1725,633 +1745,633 @@ decls:
               var:
                 name: entry
                 span:
-                  line: 102
-                  col: 12
+                  line: 108
+                  col: 15
                   len: 5
               source:
                 span:
-                  line: 102
-                  col: 21
+                  line: 108
+                  col: 24
                   len: 4
                 kind:
                   Path:
                     - name: rows
                       span:
-                        line: 102
-                        col: 21
+                        line: 108
+                        col: 24
                         len: 4
               body:
                 - span:
-                    line: 103
-                    col: 5
+                    line: 109
+                    col: 9
                     len: 74
                   kind:
                     Print:
                       span:
-                        line: 103
-                        col: 12
+                        line: 109
+                        col: 16
                         len: 67
                       kind:
                         Interp:
                           - Expr:
                               span:
-                                line: 103
-                                col: 14
+                                line: 109
+                                col: 18
                                 len: 11
                               kind:
                                 Path:
                                   - name: entry
                                     span:
-                                      line: 103
-                                      col: 14
+                                      line: 109
+                                      col: 18
                                       len: 5
                                   - name: label
                                     span:
-                                      line: 103
-                                      col: 20
+                                      line: 109
+                                      col: 24
                                       len: 5
                           - Text: ": "
                           - Expr:
                               span:
-                                line: 103
-                                col: 29
+                                line: 109
+                                col: 33
                                 len: 21
                               kind:
                                 Call:
                                   func:
                                     - name: describe
                                       span:
-                                        line: 103
-                                        col: 29
+                                        line: 109
+                                        col: 33
                                         len: 8
                                   args:
                                     - span:
-                                        line: 103
-                                        col: 38
+                                        line: 109
+                                        col: 42
                                         len: 11
                                       kind:
                                         Path:
                                           - name: entry
                                             span:
-                                              line: 103
-                                              col: 38
+                                              line: 109
+                                              col: 42
                                               len: 5
                                           - name: shape
                                             span:
-                                              line: 103
-                                              col: 44
+                                              line: 109
+                                              col: 48
                                               len: 5
                           - Text: " ("
                           - Expr:
                               span:
-                                line: 103
-                                col: 54
+                                line: 109
+                                col: 58
                                 len: 22
                               kind:
                                 Call:
                                   func:
                                     - name: roundness
                                       span:
-                                        line: 103
-                                        col: 54
+                                        line: 109
+                                        col: 58
                                         len: 9
                                   args:
                                     - span:
-                                        line: 103
-                                        col: 64
+                                        line: 109
+                                        col: 68
                                         len: 11
                                       kind:
                                         Path:
                                           - name: entry
                                             span:
-                                              line: 103
-                                              col: 64
+                                              line: 109
+                                              col: 68
                                               len: 5
                                           - name: shape
                                             span:
-                                              line: 103
-                                              col: 70
+                                              line: 109
+                                              col: 74
                                               len: 5
                           - Text: )
                 - span:
-                    line: 104
-                    col: 5
+                    line: 110
+                    col: 9
                     len: 29
                   kind:
                     If:
                       cond:
                         span:
-                          line: 104
-                          col: 8
+                          line: 110
+                          col: 12
                           len: 25
                         kind:
                           Binary:
                             op: Eq
                             lhs:
                               span:
-                                line: 104
-                                col: 8
+                                line: 110
+                                col: 12
                                 len: 11
                               kind:
                                 Path:
                                   - name: entry
                                     span:
-                                      line: 104
-                                      col: 8
+                                      line: 110
+                                      col: 12
                                       len: 5
                                   - name: shape
                                     span:
-                                      line: 104
-                                      col: 14
+                                      line: 110
+                                      col: 18
                                       len: 5
                             rhs:
                               span:
-                                line: 104
-                                col: 22
+                                line: 110
+                                col: 26
                                 len: 11
                               kind:
                                 Path:
                                   - name: Shape
                                     span:
-                                      line: 104
-                                      col: 22
+                                      line: 110
+                                      col: 26
                                       len: 5
                                   - name: Empty
                                     span:
-                                      line: 104
-                                      col: 28
+                                      line: 110
+                                      col: 32
                                       len: 5
                       then:
                         - span:
-                            line: 105
-                            col: 7
+                            line: 111
+                            col: 12
                             len: 31
                           kind:
                             Print:
                               span:
-                                line: 105
-                                col: 14
+                                line: 111
+                                col: 19
                                 len: 24
                               kind:
                                 Interp:
                                   - Expr:
                                       span:
-                                        line: 105
-                                        col: 16
+                                        line: 111
+                                        col: 21
                                         len: 11
                                       kind:
                                         Path:
                                           - name: entry
                                             span:
-                                              line: 105
-                                              col: 16
+                                              line: 111
+                                              col: 21
                                               len: 5
                                           - name: label
                                             span:
-                                              line: 105
-                                              col: 22
+                                              line: 111
+                                              col: 27
                                               len: 5
                                   - Text: " is empty"
                       else_: []
         - span:
-            line: 106
-            col: 3
+            line: 112
+            col: 6
             len: 28
           kind:
             Match:
               scrutinee:
                 span:
-                  line: 106
-                  col: 9
+                  line: 112
+                  col: 12
                   len: 21
                 kind:
                   Call:
                     func:
                       - name: find_entry
                         span:
-                          line: 106
-                          col: 9
+                          line: 112
+                          col: 12
                           len: 10
                     args:
                       - span:
-                          line: 106
-                          col: 20
+                          line: 112
+                          col: 23
                           len: 4
                         kind:
                           Path:
                             - name: rows
                               span:
-                                line: 106
-                                col: 20
+                                line: 112
+                                col: 23
                                 len: 4
                       - span:
-                          line: 106
-                          col: 26
+                          line: 112
+                          col: 29
                           len: 3
                         kind:
                           Str: b
               arms:
                 - span:
-                    line: 107
-                    col: 5
+                    line: 113
+                    col: 8
                     len: 11
                   qualifier: ~
                   pattern:
                     name: some
                     span:
-                      line: 107
-                      col: 5
+                      line: 113
+                      col: 8
                       len: 4
                   bind:
                     name: found
                     span:
-                      line: 107
-                      col: 10
+                      line: 113
+                      col: 13
                       len: 5
                   body:
                     - span:
-                        line: 108
-                        col: 7
+                        line: 114
+                        col: 11
                         len: 28
                       kind:
                         Print:
                           span:
-                            line: 108
-                            col: 14
+                            line: 114
+                            col: 18
                             len: 21
                           kind:
                             Interp:
                               - Text: "found "
                               - Expr:
                                   span:
-                                    line: 108
-                                    col: 22
+                                    line: 114
+                                    col: 26
                                     len: 11
                                   kind:
                                     Path:
                                       - name: found
                                         span:
-                                          line: 108
-                                          col: 22
+                                          line: 114
+                                          col: 26
                                           len: 5
                                       - name: label
                                         span:
-                                          line: 108
-                                          col: 28
+                                          line: 114
+                                          col: 32
                                           len: 5
                 - span:
-                    line: 109
-                    col: 5
+                    line: 115
+                    col: 8
                     len: 5
                   qualifier: ~
                   pattern:
                     name: none
                     span:
-                      line: 109
-                      col: 5
+                      line: 115
+                      col: 8
                       len: 4
                   bind: ~
                   body:
                     - span:
-                        line: 110
-                        col: 7
+                        line: 116
+                        col: 11
                         len: 19
                       kind:
                         Print:
                           span:
-                            line: 110
-                            col: 14
+                            line: 116
+                            col: 18
                             len: 12
                           kind:
                             Str: no entry b
               otherwise: ~
         - span:
-            line: 111
-            col: 3
+            line: 117
+            col: 6
             len: 29
           kind:
             Match:
               scrutinee:
                 span:
-                  line: 111
-                  col: 9
+                  line: 117
+                  col: 12
                   len: 22
                 kind:
                   Call:
                     func:
                       - name: read_count
                         span:
-                          line: 111
-                          col: 9
+                          line: 117
+                          col: 12
                           len: 10
                     args:
                       - span:
-                          line: 111
-                          col: 20
+                          line: 117
+                          col: 23
                           len: 10
                         kind:
                           Path:
                             - name: count_path
                               span:
-                                line: 111
-                                col: 20
+                                line: 117
+                                col: 23
                                 len: 10
               arms:
                 - span:
-                    line: 112
-                    col: 5
+                    line: 118
+                    col: 8
                     len: 9
                   qualifier: ~
                   pattern:
                     name: ok
                     span:
-                      line: 112
-                      col: 5
+                      line: 118
+                      col: 8
                       len: 2
                   bind:
                     name: total
                     span:
-                      line: 112
-                      col: 8
+                      line: 118
+                      col: 11
                       len: 5
                   body:
                     - span:
-                        line: 113
-                        col: 7
+                        line: 119
+                        col: 11
                         len: 22
                       kind:
                         Print:
                           span:
-                            line: 113
-                            col: 14
+                            line: 119
+                            col: 18
                             len: 15
                           kind:
                             Interp:
                               - Text: "count "
                               - Expr:
                                   span:
-                                    line: 113
-                                    col: 22
+                                    line: 119
+                                    col: 26
                                     len: 5
                                   kind:
                                     Path:
                                       - name: total
                                         span:
-                                          line: 113
-                                          col: 22
+                                          line: 119
+                                          col: 26
                                           len: 5
                 - span:
-                    line: 114
-                    col: 5
+                    line: 120
+                    col: 8
                     len: 14
                   qualifier: ~
                   pattern:
                     name: error
                     span:
-                      line: 114
-                      col: 5
+                      line: 120
+                      col: 8
                       len: 5
                   bind:
                     name: problem
                     span:
-                      line: 114
-                      col: 11
+                      line: 120
+                      col: 14
                       len: 7
                   body:
                     - span:
-                        line: 115
-                        col: 7
+                        line: 121
+                        col: 11
                         len: 19
                       kind:
                         Print:
                           span:
-                            line: 115
-                            col: 14
+                            line: 121
+                            col: 18
                             len: 12
                           kind:
                             Str: unreadable
               otherwise: ~
         - span:
-            line: 116
-            col: 3
-            len: 31
+            line: 122
+            col: 6
+            len: 33
           kind:
             Try:
               stmt:
                 span:
-                  line: 116
-                  col: 7
-                  len: 27
+                  line: 122
+                  col: 10
+                  len: 29
                 kind:
                   Do:
                     name:
                       name: read_count
                       span:
-                        line: 116
-                        col: 7
+                        line: 122
+                        col: 10
                         len: 10
                     args:
                       - span:
-                          line: 116
-                          col: 18
+                          line: 122
+                          col: 21
                           len: 10
                         kind:
                           Path:
                             - name: count_path
                               span:
-                                line: 116
-                                col: 18
+                                line: 122
+                                col: 21
                                 len: 10
                     into:
                       name: n
                       span:
-                        line: 116
-                        col: 33
+                        line: 122
+                        col: 38
                         len: 1
                     bare: true
               otherwise:
                 - span:
-                    line: 118
-                    col: 7
-                    len: 9
+                    line: 124
+                    col: 9
+                    len: 8
                   kind:
                     Set:
                       var:
                         name: n
                         span:
-                          line: 118
-                          col: 11
+                          line: 124
+                          col: 16
                           len: 1
                       expr:
                         span:
-                          line: 118
-                          col: 15
+                          line: 124
+                          col: 9
                           len: 1
                         kind:
                           Int: 0
         - span:
-            line: 119
-            col: 3
+            line: 125
+            col: 6
             len: 14
           kind:
             Print:
               span:
-                line: 119
-                col: 10
+                line: 125
+                col: 13
                 len: 7
               kind:
                 Interp:
                   - Text: "n "
                   - Expr:
                       span:
-                        line: 119
-                        col: 14
+                        line: 125
+                        col: 17
                         len: 1
                       kind:
                         Path:
                           - name: n
                             span:
-                              line: 119
-                              col: 14
+                              line: 125
+                              col: 17
                               len: 1
         - span:
-            line: 120
-            col: 3
+            line: 126
+            col: 6
             len: 37
           kind:
             IfSome:
               expr:
                 span:
-                  line: 120
-                  col: 6
+                  line: 126
+                  col: 9
                   len: 21
                 kind:
                   Call:
                     func:
                       - name: find_entry
                         span:
-                          line: 120
-                          col: 6
+                          line: 126
+                          col: 9
                           len: 10
                     args:
                       - span:
-                          line: 120
-                          col: 17
+                          line: 126
+                          col: 20
                           len: 4
                         kind:
                           Path:
                             - name: rows
                               span:
-                                line: 120
-                                col: 17
+                                line: 126
+                                col: 20
                                 len: 4
                       - span:
-                          line: 120
-                          col: 23
+                          line: 126
+                          col: 26
                           len: 3
                         kind:
                           Str: c
               bind:
                 name: hit
                 span:
-                  line: 120
-                  col: 36
+                  line: 126
+                  col: 39
                   len: 3
               then:
                 - span:
-                    line: 121
-                    col: 5
+                    line: 127
+                    col: 9
                     len: 24
                   kind:
                     Print:
                       span:
-                        line: 121
-                        col: 12
+                        line: 127
+                        col: 16
                         len: 17
                       kind:
                         Interp:
                           - Text: "hit "
                           - Expr:
                               span:
-                                line: 121
-                                col: 18
+                                line: 127
+                                col: 22
                                 len: 9
                               kind:
                                 Path:
                                   - name: hit
                                     span:
-                                      line: 121
-                                      col: 18
+                                      line: 127
+                                      col: 22
                                       len: 3
                                   - name: label
                                     span:
-                                      line: 121
-                                      col: 22
+                                      line: 127
+                                      col: 26
                                       len: 5
               else_:
                 - span:
-                    line: 123
-                    col: 5
+                    line: 129
+                    col: 9
                     len: 15
                   kind:
                     Print:
                       span:
-                        line: 123
-                        col: 12
+                        line: 129
+                        col: 16
                         len: 8
                       kind:
                         Str: no hit
         - span:
-            line: 124
-            col: 3
-            len: 26
+            line: 130
+            col: 6
+            len: 25
           kind:
             Set:
               var:
                 name: made
                 span:
-                  line: 124
-                  col: 7
+                  line: 130
+                  col: 27
                   len: 4
               expr:
                 span:
-                  line: 124
-                  col: 14
+                  line: 130
+                  col: 6
                   len: 15
                 kind:
                   Call:
                     func:
                       - name: make_entry
                         span:
-                          line: 124
-                          col: 14
+                          line: 130
+                          col: 6
                           len: 10
                     args:
                       - span:
-                          line: 124
-                          col: 25
+                          line: 130
+                          col: 17
                           len: 3
                         kind:
                           Str: z
         - span:
-            line: 125
-            col: 3
+            line: 131
+            col: 7
             len: 17
           kind:
             Print:
               span:
-                line: 125
-                col: 10
+                line: 131
+                col: 14
                 len: 10
               kind:
                 Path:
                   - name: made
                     span:
-                      line: 125
-                      col: 10
+                      line: 131
+                      col: 14
                       len: 4
                   - name: label
                     span:
-                      line: 125
-                      col: 15
+                      line: 131
+                      col: 19
                       len: 5

@@ -160,7 +160,7 @@ impl Checker<'_> {
                 format!("\"{}.{}\" can fail (it returns \"{}\"), so it has to be called with \"try\".", f.module, f.name, result),
             )
             .with_help(format!(
-                "Write \"- try {}.{}(...) -> value\", optionally with an \"otherwise:\" branch.",
+                "Write \"try {}.{}(...) into value\", optionally with an \"otherwise:\" branch.",
                 f.module, f.name
             ));
             self.diags.push(d);

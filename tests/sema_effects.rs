@@ -1,5 +1,5 @@
-//! Effect rules (SPEC 8, 13.1, 15.3, 16, 17): purity of rules and guards, functions against their
-//! declared effect, summaries, Rust blocks and bindings, parallel conflicts.
+//! Effect rules (SPEC 8, 13.1, 15.3, 16, 17, 23.7): purity of rules and guards, functions against
+//! what their `- touches:` line promises, summaries, Rust blocks and bindings, parallel conflicts.
 
 mod common;
 use common::*;
@@ -16,63 +16,71 @@ fn agent(body: &str) -> String {
     )
 }
 
-fn function(effect: &str, body: &str) -> String {
-    format!("{PRE}# Function: f\n- in: invoice: Invoice\n- out: text\n- effect: {effect}\n  {body}\n  - return invoice.id\n")
+/// A function `f` whose steps are `steps` (one per entry, numbered here) and then `return invoice.id`.
+/// `touches` is the text after `- touches:`; empty leaves the line out.
+fn function(touches: &str, steps: &[&str]) -> String {
+    let line = if touches.is_empty() { String::new() } else { format!("- touches: {touches}\n") };
+    let mut body = String::new();
+    for (i, s) in steps.iter().enumerate() {
+        body.push_str(&format!("  {}. {s}\n", i + 1));
+    }
+    body.push_str(&format!("  {}. return invoice.id\n", steps.len() + 1));
+    format!("{PRE}# Function: f\n- in: invoice: Invoice\n- out: text\n{line}- steps:\n{body}")
 }
 
 // ------------------------------------------------------------------ rules and guards are pure
 
 #[test]
-fn a_rule_may_not_call_a_network_function() {
-    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return invoice.status\n\n# Rule: r\n- for: Invoice\n- when: live(invoice) = \"open\"\n");
+fn a_rule_may_not_call_a_function_that_touches_crm() {
+    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- touches: crm\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: live(invoice) = \"open\"\n");
     let e = errors(&src);
     assert!(
-        e.contains("A rule must be pure, but \"live\" has the effect network."),
+        e.contains("A rule may touch nothing, but \"live\" touches crm."),
         "{e}"
     );
-    assert!(e.contains("Rules are pure checks: they may only read the record's own fields and call pure functions."), "{e}");
+    assert!(e.contains("Rules are plain checks: they may only read the record's own fields and call functions that touch nothing."), "{e}");
 }
 
 #[test]
 fn a_rule_may_not_call_a_local_function_either() {
-    let src = format!("{PRE}# Function: noisy\n- in: invoice: Invoice\n- out: text\n- effect: local\n  - return invoice.status\n\n# Rule: r\n- for: Invoice\n- when: noisy(invoice) = \"open\"\n");
+    let src = format!("{PRE}# Function: noisy\n- in: invoice: Invoice\n- out: text\n- touches: log\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: noisy(invoice) = \"open\"\n");
     let e = first_error(&src);
     assert!(
-        e.contains("A rule must be pure, but \"noisy\" has the effect local."),
+        e.contains("A rule may touch nothing, but \"noisy\" touches log."),
         "{e}"
     );
 }
 
 #[test]
 fn a_rule_may_call_a_pure_function() {
-    let src = format!("{PRE}# Function: low\n- in: invoice: Invoice\n- out: text\n- effect: pure\n  - return invoice.status\n\n# Rule: r\n- for: Invoice\n- when: low(invoice) = \"open\"\n");
+    let src = format!("{PRE}# Function: low\n- in: invoice: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: low(invoice) = \"open\"\n");
     ok(&src);
 }
 
 #[test]
 fn a_rule_may_not_read_a_tool_source() {
-    let src = format!("{PRE}# Rule: r\n- for: Invoice\n- when: count of crm.invoices > 3\n");
+    let src = format!("{PRE}# Rule: r Invoice\n- when: count of crm.invoices > 3\n");
     let e = first_error(&src);
     assert!(
-        e.contains("A rule must be pure, but \"crm.invoices\" has the effect network."),
+        e.contains("A rule may touch nothing, but \"crm.invoices\" touches crm."),
         "{e}"
     );
 }
 
 #[test]
 fn a_guard_must_be_pure() {
-    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return invoice.status\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - guard: live(i) = \"open\"\n");
+    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- touches: crm\n- steps:\n  1. return invoice.status\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\n1. for each i in crm.invoices:\n   1. guard: live(i) = \"open\"\n");
     let e = first_error(&src);
     assert!(
-        e.contains("A guard must be pure, but \"live\" has the effect network."),
+        e.contains("A guard may touch nothing, but \"live\" touches crm."),
         "{e}"
     );
-    assert!(e.contains("Guards are pure checks"), "{e}");
+    assert!(e.contains("Guards are plain checks"), "{e}");
 }
 
 #[test]
 fn the_else_branch_of_a_guard_may_have_effects() {
-    ok(&agent("- guard: 1 = 1 else log: \"nope\"\n"));
+    ok(&agent("1. guard: 1 = 1 else log: \"nope\"\n"));
 }
 
 #[test]
@@ -81,79 +89,118 @@ fn a_constant_must_be_pure_and_cannot_use_names_from_elsewhere() {
     assert!(e.contains("Unknown name \"nothere\""), "{e}");
 }
 
-// ------------------------------------------------------------------ functions against their declared effect
+// ------------------------------------------------------------------ functions against their `- touches:`
 
 #[test]
-fn a_pure_function_may_not_log() {
-    let e = errors(&function("pure", "- log: \"x\""));
+fn a_function_that_touches_nothing_may_not_log() {
+    let e = errors(&function("nothing", &["log: \"x\""]));
     assert!(
-        e.contains(
-            "The function \"f\" says \"- effect: pure\", but this line has the effect local (log)."
-        ),
+        e.contains("The function \"f\" says \"- touches: nothing\", but this step touches log."),
         "{e}"
     );
     assert!(
-        e.contains(
-            "Change the function to \"- effect: local\", or move this line out of the function."
-        ),
+        e.contains("Add log to the \"- touches:\" line, leave the line out to let the checker work it out, or move this step out of the function."),
         "{e}"
     );
 }
 
 #[test]
-fn a_local_function_may_not_email() {
-    let e = first_error(&function("local", "- email send address \"a@b.c\": \"x\""));
+fn the_message_names_everything_the_step_touches_but_the_line_leaves_out() {
+    let e = first_error(&function("log", &["email send address \"a@b.c\": \"x\""]));
     assert!(
-        e.contains("says \"- effect: local\", but this line has the effect network (email)."),
+        e.contains("says \"- touches: log\", but this step touches email."),
         "{e}"
     );
 }
 
 #[test]
-fn a_network_function_may_not_ask_a_model() {
-    let e = first_error(&function("network", "- ask model: \"hi\" -> t"));
+fn a_function_that_promises_no_ai_may_not_ask_a_model() {
+    let e = first_error(&function("email", &["ask model: \"hi\" into t"]));
     assert!(
-        e.contains("says \"- effect: network\", but this line has the effect model."),
+        e.contains("says \"- touches: email\", but this step touches AI."),
         "{e}"
     );
 }
 
 #[test]
-fn a_model_function_may_do_everything() {
+fn a_function_that_lists_what_it_touches_may_do_it() {
     ok(&function(
-        "model",
-        "- ask model: \"hi\" -> t\n  - email send address \"a@b.c\": \"{t}\"\n  - log: \"x\"",
+        "AI, email, log",
+        &["ask model: \"hi\" into t", "email send address \"a@b.c\": \"{t}\"", "log: \"x\""],
     ));
 }
 
 #[test]
-fn the_error_lands_on_the_offending_line_not_the_loop_around_it() {
-    let src = format!("{PRE}# Function: f\n- in: invoices: list of Invoice\n- out: int\n- effect: pure\n  - for each i in invoices:\n    - log: \"x\"\n  - return 1\n");
+fn without_a_touches_line_the_function_is_not_limited_and_its_touches_are_computed() {
+    let c = ok(&function(
+        "",
+        &["ask model: \"hi\" into t", "email send address \"a@b.c\": \"{t}\"", "log: \"x\""],
+    ));
+    let f = c.blocks.iter().find(|b| b.label == "f").unwrap();
+    assert_eq!(f.declared, None);
+    assert_eq!(f.effect.touches(), "AI, email, log");
+    let c = ok(&function("", &[]));
+    let f = c.blocks.iter().find(|b| b.label == "f").unwrap();
+    assert_eq!(f.effect.touches(), "nothing");
+}
+
+#[test]
+fn the_error_lands_on_the_offending_step_not_the_loop_around_it() {
+    let src = format!("{PRE}# Function: f\n- in: invoices: list of Invoice\n- out: int\n- touches: nothing\n- steps:\n  1. for each i in invoices:\n     1. log: \"x\"\n  2. return 1\n");
     let e = first_error(&src);
-    assert!(e.starts_with("t.agent.md:10\n      - log: \"x\""), "{e}");
+    assert!(e.starts_with("t.agent.md:11\n       1. log: \"x\""), "{e}");
 }
 
 #[test]
 fn only_the_first_excess_is_reported_per_function() {
-    let e = errors(&function("pure", "- log: \"a\"\n  - log: \"b\""));
-    assert_eq!(e.matches("says \"- effect: pure\"").count(), 1, "{e}");
+    let e = errors(&function("nothing", &["log: \"a\"", "log: \"b\""]));
+    assert_eq!(e.matches("says \"- touches: nothing\"").count(), 1, "{e}");
 }
 
 #[test]
-fn a_function_calling_a_network_function_inherits_the_effect() {
-    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - email send address \"a@b.c\": \"x\"\n  - return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- effect: local\n  - return inner(invoice)\n");
+fn a_function_calling_a_function_that_touches_email_touches_email_too() {
+    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. email send address \"a@b.c\": \"x\"\n  2. return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- touches: log\n- steps:\n  1. return inner(invoice)\n");
     let e = first_error(&src);
-    assert!(e.contains("The function \"outer\" says \"- effect: local\", but this line has the effect network (email)."), "{e}");
+    assert!(e.contains("The function \"outer\" says \"- touches: log\", but this step touches email."), "{e}");
 }
 
 #[test]
-fn a_declared_effect_is_a_floor_for_callers() {
-    // `inner` says network but its body is pure; callers still see network(inner)
-    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return inner(invoice)\n");
+fn callers_see_the_touches_a_callee_lists_even_when_its_body_touches_less() {
+    // `inner` lists email but its body touches nothing; callers still see email
+    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- touches: email\n- steps:\n  1. return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- touches: email\n- steps:\n  1. return inner(invoice)\n");
     let c = ok(&src);
     let outer = c.blocks.iter().find(|b| b.label == "outer").unwrap();
-    assert_eq!(outer.effect.to_string(), "network(inner)");
+    assert_eq!(outer.effect.to_string(), "network(email)");
+    assert_eq!(outer.effect.touches(), "email");
     assert_eq!(outer.declared, Some(Effect::Network));
+    // and a caller that does not list it is told
+    let src = src.replace("- out: text\n- touches: email\n- steps:\n  1. return inner", "- out: text\n- touches: nothing\n- steps:\n  1. return inner");
+    let e = first_error(&src);
+    assert!(e.contains("says \"- touches: nothing\", but this step touches email."), "{e}");
+}
+
+#[test]
+fn an_unknown_word_after_touches_is_refused_with_the_known_ones() {
+    let e = first_error(&function("emial", &[]));
+    assert!(e.contains("\"touches:\" names \"emial\", which is nothing this program can touch."), "{e}");
+    assert!(e.contains("Did you mean \"email\"?"), "{e}");
+    assert!(e.contains("Use nothing, AI, files, print, input, state, or the name of a tool or library."), "{e}");
+}
+
+#[test]
+fn nothing_stands_alone() {
+    let e = first_error(&function("nothing, log", &[]));
+    assert!(
+        e.contains("\"nothing\" stands alone: a part that touches something does not touch nothing."),
+        "{e}"
+    );
+}
+
+#[test]
+fn the_old_effect_line_is_refused_and_shows_the_new_form() {
+    let src = "# Function: f\n- out: int\n- effect: pure\n- steps:\n  1. return 1\n";
+    let e = first_error(src);
+    assert!(e.contains("\"effect:\" was removed. Write: - touches: nothing"), "{e}");
 }
 
 #[test]
@@ -180,7 +227,7 @@ fn mutual_recursion_is_allowed() {
 #[test]
 fn every_statement_and_block_has_an_effect_set() {
     let src =
-        agent("- ask model: \"hi\" -> t\n- email send address \"a@b.c\": \"{t}\"\n- log: \"x\"\n");
+        agent("1. ask model: \"hi\" into t\n2. email send address \"a@b.c\": \"{t}\"\n3. log: \"x\"\n");
     let c = ok(&src);
     let b = c.blocks.iter().find(|b| b.label == "On start").unwrap();
     assert_eq!(b.kind, BlockKind::Entry);
@@ -198,7 +245,7 @@ fn every_statement_and_block_has_an_effect_set() {
 
 #[test]
 fn a_do_action_contributes_its_effect_to_the_caller() {
-    let src = format!("{PRE}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - do tell\n\n## Do tell\n- email send address \"a@b.c\": \"x\"\n");
+    let src = format!("{PRE}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## Every 5 minutes\n1. for each i in crm.invoices:\n   1. do tell\n\n## Do tell\n1. email send address \"a@b.c\": \"x\"\n");
     let c = ok(&src);
     let entry = c
         .blocks
@@ -266,14 +313,14 @@ fn display_format_is_the_spec_summary() {
 // ------------------------------------------------------------------ Rust blocks and bindings
 
 /// A function `host` with a `## Rust: shout` block under it (Rust blocks hoist to module level).
-fn with_rust(effect: &str, rest: &str) -> String {
-    format!("{PRE}# Function: host\n- in: s: text\n- out: text\n- effect: pure\n  - return s\n\n## Rust: shout -> text\n- in: s: text\n- effect: {effect}\n  ```rust\n  s.to_uppercase()\n  ```\n\n{rest}")
+fn with_rust(touches: &str, rest: &str) -> String {
+    format!("{PRE}# Function: host\n- in: s: text\n- out: text\n- touches: nothing\n- steps:\n  1. return s\n\n## Rust: shout -> text\n- in: s: text\n- touches: {touches}\n\n```rust\ns.to_uppercase()\n```\n\n{rest}")
 }
 
 #[test]
-fn rust_blocks_carry_their_declared_effect() {
+fn rust_blocks_carry_what_they_say_they_touch() {
     let src = with_rust(
-        "network",
+        "email",
         "# Function: f\n- in: s: text\n- out: text\n- steps:\n  1. return shout(s)\n",
     );
     let c = ok(&src);
@@ -281,26 +328,42 @@ fn rust_blocks_carry_their_declared_effect() {
     assert_eq!(c.rust_blocks[0].sig.effect, Effect::Network);
     assert_eq!(c.rust_blocks[0].parent.as_deref(), Some("host"));
     let f = c.blocks.iter().find(|b| b.label == "f").unwrap();
-    assert_eq!(f.effect.to_string(), "network(shout)");
+    assert_eq!(f.effect.to_string(), "network(email)");
+    assert_eq!(f.effect.touches(), "email");
 }
 
 #[test]
-fn a_pure_function_may_not_call_a_network_rust_block() {
+fn a_rust_block_must_say_what_it_touches() {
+    let src = "# Function: host\n- in: s: text\n- out: text\n- touches: nothing\n- steps:\n  1. return shout(s)\n\n## Rust: shout -> text\n- in: s: text\n\n```rust\ns.to_uppercase()\n```\n";
+    let e = first_error(src);
+    assert!(e.contains("The Rust block \"shout\" does not say what it touches."), "{e}");
+    assert!(e.contains("Add \"- touches: nothing\" (or files, print, AI, or the tools it uses)"), "{e}");
+}
+
+#[test]
+fn a_rust_block_with_the_old_effect_line_is_refused() {
+    let src = "# Function: host\n- in: s: text\n- out: text\n- touches: nothing\n- steps:\n  1. return shout(s)\n\n## Rust: shout -> text\n- in: s: text\n- effect: pure\n\n```rust\ns.to_uppercase()\n```\n";
+    let e = first_error(src);
+    assert!(e.contains("\"effect:\" was removed."), "{e}");
+}
+
+#[test]
+fn a_function_that_touches_nothing_may_not_call_a_rust_block_that_touches_email() {
     let src = with_rust(
-        "network",
+        "email",
         "# Function: f\n- in: s: text\n- out: text\n- touches: nothing\n- steps:\n  1. return shout(s)\n",
     );
     let e = first_error(&src);
     assert!(
-        e.contains("says \"- effect: pure\", but this line has the effect network (shout)."),
+        e.contains("says \"- touches: nothing\", but this step touches email."),
         "{e}"
     );
 }
 
 #[test]
-fn a_rule_may_call_a_pure_rust_block() {
+fn a_rule_may_call_a_rust_block_that_touches_nothing() {
     let src = with_rust(
-        "pure",
+        "nothing",
         "# Rule: r Invoice\n- when: shout(id) = \"A\"\n",
     );
     ok(&src);
@@ -330,7 +393,7 @@ fn unverified_bindings_count_as_unapproved_and_are_listed() {
 }
 
 #[test]
-fn a_function_that_uses_an_unverified_binding_cannot_claim_to_be_pure() {
+fn a_function_that_uses_an_unverified_binding_cannot_claim_to_touch_nothing() {
     let main = "# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- touches: nothing\n- steps:\n  1. pdf render t into b\n  2. return b\n";
     let binding = "# Binding: pdf\n- crate: printpdf\n- effect: unverified\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let p = Project::from_memory(
@@ -347,7 +410,7 @@ fn a_function_that_uses_an_unverified_binding_cannot_claim_to_be_pure() {
             .collect::<Vec<_>>(),
     );
     assert!(
-        out.contains("but this line has the effect unverified (pdf)."),
+        out.contains("but this step touches pdf.") && out.contains("A library nobody approved yet (pdf)"),
         "{out}"
     );
 }
@@ -373,7 +436,7 @@ fn an_approved_binding_is_trusted_with_its_effect() {
 fn binding_verbs_and_value_counts_are_checked() {
     let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let run = |stmt: &str| {
-        let main = format!("# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: local\n  {stmt}\n  - return b\n");
+        let main = format!("# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- steps:\n  1. {stmt}\n  2. return b\n");
         let p = Project::from_memory(
             "app/main.agent.md",
             vec![
@@ -390,17 +453,17 @@ fn binding_verbs_and_value_counts_are_checked() {
             ),
         }
     };
-    assert!(run("- pdf rendr t -> b")
+    assert!(run("pdf rendr t into b")
         .contains("Unknown verb \"rendr\" for binding pdf. Did you mean \"render\"?"));
-    assert!(run("- pdf render t t -> b").contains("takes 1 value (title), but 2 were given."));
-    assert!(run("- pdf -> b").contains("The binding pdf needs a verb."));
+    assert!(run("pdf render t t into b").contains("takes 1 value (title), but 2 were given."));
+    assert!(run("pdf").contains("The binding pdf needs a verb."));
 }
 
 // ------------------------------------------------------------------ parallel
 
 #[test]
 fn parallel_statements_must_not_write_the_same_variable() {
-    let src = agent("- parallel:\n  - ask model: \"a\" -> r\n  - ask model: \"b\" -> r\n");
+    let src = agent("1. parallel:\n   1. ask model: \"a\" into r\n   2. ask model: \"b\" into r\n");
     let e = errors(&src);
     assert!(
         e.contains(
@@ -413,23 +476,23 @@ fn parallel_statements_must_not_write_the_same_variable() {
         "{e}"
     );
     assert!(
-        e.starts_with("t.agent.md:12\n    - ask model: \"b\" -> r"),
+        e.starts_with("t.agent.md:12\n     2. ask model: \"b\" into r"),
         "{e}"
     );
 }
 
 #[test]
 fn parallel_with_distinct_variables_is_fine_and_defines_them_afterwards() {
-    let src = agent("- parallel:\n  - ask model: \"a\" -> r1\n  - ask model: \"b\" -> r2\n- log: \"{r1} {r2}\"\n");
+    let src = agent("1. parallel:\n   1. ask model: \"a\" into r1\n   2. ask model: \"b\" into r2\n2. log: \"{r1} {r2}\"\n");
     let c = ok(&src);
     let b = c.blocks.iter().find(|b| b.label == "On start").unwrap();
     assert_eq!(b.effect.to_string(), "model, local(log)");
 }
 
 #[test]
-fn parallel_conflicts_through_nested_statements_and_set() {
+fn parallel_conflicts_through_nested_statements_and_into() {
     let src = agent(
-        "- set total = 0\n- parallel:\n  - set total = 1\n  - if 1 = 1:\n    - set total = 2\n",
+        "1. 0 into total\n2. parallel:\n   1. 1 into total\n   2. if 1 = 1:\n      1. 2 into total\n",
     );
     let e = first_error(&src);
     assert!(e.contains("both write \"total\""), "{e}");

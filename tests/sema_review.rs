@@ -13,7 +13,7 @@ const LEAD: &str = "# Record: Lead\n- id: text\n- email: text\n\n";
 
 #[test]
 fn a_field_named_like_a_tool_is_a_field_in_a_rule() {
-    let c = ok(&format!("{LEAD}# Rule: r\n- for: Lead\n- when: email = \"x\"\n"));
+    let c = ok(&format!("{LEAD}# Rule: r Lead\n- when: email = \"x\"\n"));
     assert!(c.resolutions.values().any(|r| matches!(
         r,
         Resolution::Field { record, field, .. } if record == "Lead" && field == "email"
@@ -22,20 +22,20 @@ fn a_field_named_like_a_tool_is_a_field_in_a_rule() {
 
 #[test]
 fn a_field_named_like_a_tool_is_a_field_in_a_loop() {
-    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, email, log\n\n## On start\nfor each l in crm.leads:\n  - log: \"{{email}} {{l.email}}\"\n");
+    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, email, log\n\n## On start\n1. for each l in crm.leads:\n   1. log: \"{{email}} {{l.email}}\"\n");
     ok(&src);
 }
 
 #[test]
 fn a_tool_source_still_needs_the_dot_and_a_bare_tool_is_not_a_value() {
-    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each l in crm.leads:\n  - log: \"x\"\n  - set n = crm\n");
+    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each l in crm.leads:\n   1. log: \"x\"\n   2. crm into n\n");
     let e = first_error(&src);
     assert!(e.contains("\"crm\" is a tool, not a value."), "{e}");
 }
 
 #[test]
 fn a_variable_wins_over_a_field_and_a_constant_loses_to_a_field() {
-    let src = format!("{LEAD}# Constant: id\n- value: 1\n\n# Function: f\n- in: l: Lead, email: int\n- out: int\n- effect: pure\n  - return email\n\n# Rule: r\n- for: Lead\n- when: id = \"x\"\n");
+    let src = format!("{LEAD}# Constant: id\n- value: 1\n\n# Function: f\n- in: l: Lead, email: int\n- out: int\n- touches: nothing\n- steps:\n  1. return email\n\n# Rule: r Lead\n- when: id = \"x\"\n");
     ok(&src);
 }
 
@@ -44,7 +44,7 @@ fn a_variable_wins_over_a_field_and_a_constant_loses_to_a_field() {
 const INV: &str = "# Record: Invoice\n- id: text\n- amount: money\n- note: maybe text\n\n";
 
 fn ret(lit: &str) -> String {
-    format!("{INV}# Function: f\n- out: Invoice\n- effect: pure\n  - return {lit}\n")
+    format!("{INV}# Function: f\n- out: Invoice\n- touches: nothing\n- steps:\n  1. return {lit}\n")
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn misspelled_keys_get_a_suggestion() {
 
 #[test]
 fn partial_literals_are_rejected_in_payloads_and_arguments() {
-    let src = format!("{INV}# Record: Lead\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n- crm update invoice: {{ id: \"x\" }}\n");
+    let src = format!("{INV}# Record: Lead\n- id: text\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. crm update invoice: {{ id: \"x\" }}\n");
     let e = errors(&src);
     assert!(e.contains("The tool crm takes a Invoice here"), "{e}");
     assert!(e.contains("Missing: amount."), "{e}");
@@ -224,13 +224,29 @@ fn types_still_display_for_literals() {
 
 const REC: &str = "# Record: Lead\n- id: text\n- score: maybe int\n\n# Record: Invoice\n- id: text\n- status: text\n\n";
 
+/// An agent `a` whose `On start` steps are `body`: one step per line, the top-level lines are
+/// numbered here, indented lines are the numbered steps under them, as written.
 fn agent(body: &str) -> String {
-    format!("{REC}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## On start\n{body}")
+    format!("{REC}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## On start\n{}", steps(body, ""))
+}
+
+fn steps(body: &str, indent: &str) -> String {
+    let mut out = String::new();
+    let mut n = 0;
+    for line in body.lines() {
+        if line.starts_with(' ') {
+            out.push_str(&format!("{indent}{line}\n"));
+        } else {
+            n += 1;
+            out.push_str(&format!("{indent}{n}. {line}\n"));
+        }
+    }
+    out
 }
 
 #[test]
 fn email_customer_needs_a_record_in_front_of_the_block() {
-    let e = first_error(&agent("- email send customer: \"x\"\n"));
+    let e = first_error(&agent("email send customer: \"x\"\n"));
     assert!(
         e.contains("\"customer\" needs a record in front of this block with a \"customer_email\" or \"customer\" field."),
         "{e}"
@@ -240,7 +256,7 @@ fn email_customer_needs_a_record_in_front_of_the_block() {
 
 #[test]
 fn email_customer_needs_a_field_on_that_record() {
-    let e = first_error(&agent("for each l in crm.leads:\n  - email send customer: \"x\"\n"));
+    let e = first_error(&agent("for each l in crm.leads:\n   1. email send customer: \"x\"\n"));
     assert!(e.contains("\"customer\" needs a record in front of this block"), "{e}");
     // a record with only `customer` works, and `customer_email` wins when both exist
     let src = "# Record: Lead\n- id: text\n- customer: text\n\n# Agent: a\n- model: claude\n- tools: email, crm\n\n## On start\n1. for each l in crm.leads:\n   1. email send customer: \"x\"\n";
@@ -250,20 +266,20 @@ fn email_customer_needs_a_field_on_that_record() {
 
 #[test]
 fn a_literal_address_needs_no_record() {
-    ok(&agent("- email send address \"a@b.c\": \"x\"\n"));
+    ok(&agent("email send address \"a@b.c\": \"x\"\n"));
 }
 
 #[test]
 fn a_crm_target_with_two_candidate_variables_is_ambiguous() {
     let e = first_error(&agent(
-        "- crm get invoice \"x\" -> b\n- crm get invoice \"y\" -> a2\n- crm update invoice: status = \"z\"\n",
+        "crm get invoice \"x\" into b\ncrm get invoice \"y\" into a2\ncrm update invoice: status = \"z\"\n",
     ));
     assert!(e.contains("Which invoice? \"a2\" or \"b\" are both in scope."), "{e}");
 }
 
 #[test]
 fn a_crm_target_uses_the_one_matching_variable_or_the_one_in_front() {
-    let c = ok(&agent("- crm get invoice \"x\" -> b\n- crm update invoice: status = \"z\"\n"));
+    let c = ok(&agent("crm get invoice \"x\" into b\ncrm update invoice: status = \"z\"\n"));
     let upd = c.tool_calls.values().find(|t| t.verb.as_deref() == Some("update")).unwrap();
     assert_eq!((upd.var.as_deref(), upd.field.as_deref()), (Some("b"), Some("id")));
     // an explicit target value means no variable is looked up
@@ -271,7 +287,7 @@ fn a_crm_target_uses_the_one_matching_variable_or_the_one_in_front() {
     assert_eq!((get.var.as_deref(), get.field.as_deref()), (None, None));
     // the loop record is in front of the block and wins over another Invoice variable
     let c = ok(&agent(
-        "- crm get invoice \"x\" -> b\nfor each i in crm.invoices:\n  - crm update invoice: status = \"z\"\n",
+        "crm get invoice \"x\" into b\nfor each i in crm.invoices:\n   1. crm update invoice: status = \"z\"\n",
     ));
     let upd = c.tool_calls.values().find(|t| t.verb.as_deref() == Some("update")).unwrap();
     assert_eq!(upd.var.as_deref(), Some("i"));
@@ -279,16 +295,16 @@ fn a_crm_target_uses_the_one_matching_variable_or_the_one_in_front() {
 
 #[test]
 fn crm_update_without_a_record_in_scope_is_an_error() {
-    let e = first_error(&agent("- crm update invoice: amount = 1 EUR\n"));
+    let e = first_error(&agent("crm update invoice: amount = 1 EUR\n"));
     assert!(
-        e.contains("\"invoice\" needs an Invoice in scope (a loop over invoices, or a \"-> x\" result), or write its id: \"crm update invoice x: ...\""),
+        e.contains("\"invoice\" needs an Invoice in scope (a loop over invoices, or an \"into x\" result), or write its id: \"crm update invoice x: ...\""),
         "{e}"
     );
 }
 
 #[test]
 fn crm_update_with_an_explicit_id_needs_no_variable() {
-    let c = ok(&agent("- crm update invoice \"x\": status = \"y\"\n"));
+    let c = ok(&agent("crm update invoice \"x\": status = \"y\"\n"));
     let upd = c.tool_calls.values().next().unwrap();
     assert_eq!((upd.var.as_deref(), upd.field.as_deref()), (None, None));
 }
@@ -296,17 +312,17 @@ fn crm_update_with_an_explicit_id_needs_no_variable() {
 #[test]
 fn the_ambiguity_help_shows_how_to_choose() {
     let e = first_error(&agent(
-        "- crm get invoice \"x\" -> b\n- crm get invoice \"y\" -> a2\n- crm update invoice: status = \"z\"\n",
+        "crm get invoice \"x\" into b\ncrm get invoice \"y\" into a2\ncrm update invoice: status = \"z\"\n",
     ));
     assert!(e.contains("Name the one you mean, for example \"crm update invoice a2: ...\"."), "{e}");
 }
 
 #[test]
 fn a_payload_typo_does_not_hide_the_missing_record() {
-    let e = errors(&agent("- crm update invoice: statuss = \"1\"\n"));
+    let e = errors(&agent("crm update invoice: statuss = \"1\"\n"));
     assert!(e.contains("Unknown field \"statuss\" on Invoice"), "{e}");
     assert!(e.contains("\"invoice\" needs an Invoice in scope"), "{e}");
-    let e = errors(&agent("- email send customer: 5\n"));
+    let e = errors(&agent("email send customer: 5\n"));
     assert!(e.contains("\"customer\" needs a record in front of this block"), "{e}");
 }
 
@@ -314,18 +330,22 @@ fn a_payload_typo_does_not_hide_the_missing_record() {
 
 const EVENT: &str = "# Record: Lead\n- id: text\n- score: maybe int\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## When crm receives lead\n";
 
+fn event(body: &str) -> String {
+    format!("{EVENT}{}", steps(body, ""))
+}
+
 #[test]
 fn a_bare_field_is_narrowed_by_the_qualified_check_and_back() {
-    ok(&format!("{EVENT}- guard: lead.score is not empty\n- log: \"{{score}}\"\n"));
-    ok(&format!("{EVENT}- guard: score is not empty\n- log: \"{{lead.score}}\"\n"));
-    let e = first_error(&format!("{EVENT}- log: \"{{score}}\"\n"));
+    ok(&event("guard: lead.score is not empty\nlog: \"{score}\""));
+    ok(&event("guard: score is not empty\nlog: \"{lead.score}\""));
+    let e = first_error(&event("log: \"{score}\""));
     assert!(e.contains("so it cannot be written into text yet."), "{e}");
 }
 
 #[test]
 fn checking_a_present_value_again_is_fine() {
-    ok(&format!("{EVENT}- guard: lead.score is not empty\n- guard: lead.score is not empty\n- log: \"{{score}}\"\n"));
-    ok(&format!("{EVENT}- guard: score is not empty\n- if score is not empty:\n  - log: \"{{score}}\"\n"));
+    ok(&event("guard: lead.score is not empty\nguard: lead.score is not empty\nlog: \"{score}\""));
+    ok(&event("guard: score is not empty\nif score is not empty:\n   1. log: \"{score}\""));
 }
 
 // ------------------------------------------------------------------ declaration sites
@@ -341,8 +361,8 @@ fn declaration_and_definition_sites_are_exported() {
             _ => None,
         })
         .unwrap();
-    // `reminder` is defined by the `ask model … -> reminder` line
-    assert_eq!(var.unwrap().line, 15);
+    // `reminder` is defined by the `ask model … into reminder` line
+    assert_eq!(var.unwrap().line, 21);
     assert!(c.constants["grace_period"].span.line > 0);
     let agent = c.declarations.iter().find(|d| d.name == "invoice-chaser").unwrap();
     assert_eq!(agent.kind, agentmark::sema::Kind::Agent);
@@ -355,19 +375,24 @@ fn declaration_and_definition_sites_are_exported() {
 fn function_signatures_know_where_they_are_declared() {
     let c = ok("# Function: five\n- out: int\n- touches: nothing\n- steps:\n  1. return 5\n\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return five()\n");
     assert_eq!(c.functions["five"].span.line, 1);
-    assert_eq!(c.functions["g"].span.line, 6);
+    assert_eq!(c.functions["g"].span.line, 7);
 }
 
 // ------------------------------------------------------------------ result of T (step 10, Q200)
 
 const FALLIBLE: &str = "# Function: read_count\n- in: path: text\n- out: result of int\n- steps:\n  1. try read file path as int into n\n  2. return n\n\n# Command: check\n- in: path: text\n- steps:\n";
 
+/// The command `check` with the steps `body` (numbered here, as `steps`).
+fn fallible(body: &str) -> String {
+    format!("{FALLIBLE}{}", steps(body, "  "))
+}
+
 #[test]
 fn a_result_function_accepts_a_plain_return_and_try_hands_back_the_plain_type() {
     // `return n` (an int) is accepted for `result of int`; after `try`, `n` is an int again
-    ok(&format!("{FALLIBLE}- try do read_count(path) -> n\n  otherwise:\n    - stop\n- print: \"{{n + 1}}\"\n"));
-    // the otherwise branch assigns the plain type too
-    ok(&format!("{FALLIBLE}- try do read_count(path) -> n\n  otherwise:\n    - set n = 0\n- print: \"{{n}}\"\n"));
+    ok(&fallible("try do read_count(path) into n\n   otherwise:\n   1. stop\nprint: \"{n + 1}\""));
+    // the otherwise branch gives it the plain type too
+    ok(&fallible("try do read_count(path) into n\n   otherwise:\n   1. 0 into n\nprint: \"{n}\""));
 }
 
 #[test]
@@ -379,19 +404,19 @@ fn a_result_function_returning_the_wrong_type_is_still_an_error() {
 
 #[test]
 fn a_result_function_must_be_called_with_try() {
-    let e = first_error(&format!("{FALLIBLE}- do read_count(path) -> n\n- print: \"{{n}}\"\n"));
+    let e = first_error(&fallible("do read_count(path) into n\nprint: \"{n}\""));
     assert!(e.contains("can fail (it returns \"result of int\"), so it has to be called with \"try\""), "{e}");
     assert!(e.contains("try read_count"), "{e}");
     // and not inside an expression
-    let e = first_error(&format!("{FALLIBLE}- print: \"{{read_count(path)}}\"\n"));
+    let e = first_error(&fallible("print: \"{read_count(path)}\""));
     assert!(e.contains("can fail") && e.contains("cannot be used inside an expression"), "{e}");
-    // stored by `set`, the result can only be matched (Q300)
-    let e = errors(&format!("{FALLIBLE}- set n = read_count(path)\n- print: \"{{n}}\"\n"));
+    // stored by `into`, the result can only be matched (Q300)
+    let e = errors(&fallible("read_count(path) into n\nprint: \"{n}\""));
     assert!(e.contains("\"n\" holds a result, which can only be matched."), "{e}");
 }
 
 #[test]
 fn the_value_after_try_is_the_plain_type_not_a_result() {
-    let e = first_error(&format!("{FALLIBLE}- try do read_count(path) -> n\n  otherwise:\n    - stop\n- set n = \"text\"\n"));
+    let e = first_error(&fallible("try do read_count(path) into n\n   otherwise:\n   1. stop\n\"text\" into n"));
     assert!(e.contains("\"n\" holds int"), "{e}");
 }

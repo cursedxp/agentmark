@@ -392,14 +392,14 @@ impl Checker<'_> {
                             self.path(cx.file),
                             list.span,
                             format!(
-                                "\"append\" needs a list, but this is {}.",
+                                "\"add … to\" needs a list, but this is {}.",
                                 other.with_article()
                             ),
                         );
                         self.diags.push(d);
                     }
                 }
-                self.want_variable(cx, list, "append");
+                self.want_variable(cx, list, "add … to");
                 if let ExprKind::Path(segs) = &list.kind {
                     if segs[0].name == "state" {
                         cx.acc.add(Effect::Local, "state");
@@ -592,7 +592,7 @@ impl Checker<'_> {
                 at,
                 format!("The result in \"{name}\" is never matched, so its failure would be lost."),
             )
-            .with_help(format!("Match it with \"- match {name}:\" (branches \"ok\" and \"error\") on every path, or use \"- try ... -> value\" instead."));
+            .with_help(format!("Match it with \"match {name}:\" (branches \"ok\" and \"error\") on every path, or use \"try ... into value\" instead."));
             self.diags.push(d);
         }
     }
@@ -832,7 +832,7 @@ impl Checker<'_> {
                     ),
                 )
                 .with_help(format!(
-                    "Write \"- try {}(...) -> value\", optionally with an \"otherwise:\" branch.",
+                    "Write \"try {}(...) into value\", optionally with an \"otherwise:\" branch.",
                     name.name
                 ));
                 self.diags.push(d);
