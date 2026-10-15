@@ -102,3 +102,31 @@ From v0.1 and v0.2:
 1. Ship the toolchain without the source checkout: publish `agentmark-rt` (generated projects depend on it by absolute path today, Q222) and release prebuilt `agentmark` / `agentmark-lsp` binaries through a GitHub Actions release workflow, so `install.sh` can download instead of build and the VS Code extension can fetch the server.
 2. Close the v0.2 remainder: `azure` and `bedrock` providers, `memory: file`, and the opt-in `parallel:` executor for independent pure/local statements, which the IR's effect sets already support.
 3. Exercise the real-world path end to end: a live run against the Anthropic API and an HTTP-backed `rust/connect.rs`, behind an opt-in test flag, plus the binder's assisted tier against a real model on a larger crate (e.g. `reqwest`) to measure how much it binds.
+
+## v0.4 (SPEC section 23, task 31)
+
+`cargo test --workspace --offline --no-fail-fast` on task/31:
+
+```
+1023 passed; 0 failed; 0 ignored — 0 warnings
+```
+
+AgentMark files now read as plain Markdown documents: a heading is a part, the paragraph under it is its description, bullets are properties, numbered lists are steps, links are what a program uses. Behavior is unchanged: every example's runtime trace is byte-identical to its `expected.trace.jsonl`.
+
+Acceptance:
+
+1. `cargo test --workspace` passes offline (above).
+2. All ten examples run against their fixtures with identical traces and outputs (`tests/examples_e2e.rs`, 12 passed).
+3. `agentmark fmt --check` and `agentmark lint` pass on every example with 0 warnings; `check` reports 0 errors, 0 warnings.
+4. No removed syntax remains in docs, examples or templates, except where a sentence or table shows an old form next to its replacement (SPEC 23.13, reference section 23, the two templates' "these old forms are errors" line) and the `- effect:` line of bindings (Q430).
+5. Every example part has a description under its heading, properties are bullets, steps are numbered, `# Uses` entries are relative links.
+6. Every OPEN item of the brief is in `OPEN_QUESTIONS.md` (Q430–Q440, Q434–Q436 and Q438 among them); choices made while implementing are Q441–Q463.
+
+What changed:
+
+- Front end: lexer with numbered items and description paragraphs, Markdown-structure parser (`# Program`, `# Uses` links, rule headings, `- steps:`, `else:`/`otherwise:` inside steps, `add … to …:` with field bullets, `into`), errors E060–E073 for every removed form with the rewritten line in the message.
+- Check: names as types in `in:`/`out:` (E230), `touches:` as a checked, optional promise (E206, E232), typed `file read … into <records>` (CSV), `# Program` start and units.
+- Reports: `check` and `doc` say "What each part touches" (`region_totals: touches nothing`); `check --json` keeps the classes.
+- Tools: `fmt` renumbers, reindents, writes `add` bullets and `start:` links; lint, binder file format, language server, tree-sitter and VS Code grammars, all docs and templates on v0.4.
+
+Known gaps (see OPEN_QUESTIONS.md): `- start:` with several commands does not yet make a default command (Q441); only CSV for typed reads (Q440); headings vs `- steps:` stay inconsistent between triggers/routes/verbs and commands/functions (Q434); no migration tool ships (Q454); six old clippy warnings outside v0.4 code remain.
