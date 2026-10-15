@@ -506,12 +506,12 @@ fn parse_errors(src: &str) -> String {
 #[test]
 fn a_line_nested_too_deep_is_refused_not_a_crash() {
     let deep = format!("{}1{}", "(".repeat(150), ")".repeat(150));
-    let e = parse_errors(&format!("# Function: f\n- out: int\n- effect: pure\n  - return {deep}\n"));
+    let e = parse_errors(&format!("# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. return {deep}\n"));
     assert!(e.contains("This line nests more than 100 levels of parentheses or braces."), "{e}");
     assert!(e.contains("Name the inner part with \"set\" on a line of its own."), "{e}");
     // 90 levels still parse
     let ok = format!("{}1{}", "(".repeat(90), ")".repeat(90));
-    assert_eq!(parse_errors(&format!("# Function: f\n- out: int\n- effect: pure\n  - return {ok}\n")), "");
+    assert_eq!(parse_errors(&format!("# Function: f\n- out: int\n- touches: nothing\n- steps:\n  1. return {ok}\n")), "");
 }
 
 #[test]
@@ -525,7 +525,7 @@ fn nested_words_parse_in_linear_time() {
         format!("  - return {}", nest("min of", 20)),
     ] {
         let t = std::time::Instant::now();
-        assert_eq!(parse_errors(&format!("# Function: f\n- effect: pure\n{src}\n")), "");
+        assert_eq!(parse_errors(&format!("# Function: f\n- touches: nothing\n- steps:\n")), "");
         assert!(t.elapsed().as_secs() < 10, "{src}: took {:?}", t.elapsed());
     }
 }

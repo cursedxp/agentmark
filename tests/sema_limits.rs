@@ -81,12 +81,12 @@ const REC: &str = "# Record: Invoice\n- id: text\n\n";
 
 #[test]
 fn for_each_if_if_is_the_deepest_allowed() {
-    ok(&format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - if i.id = \"b\":\n      - log: \"deep enough\"\n"));
+    ok(&format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. if i.id = \"b\":\n         1. log: \"deep enough\"\n"));
 }
 
 #[test]
 fn a_fourth_level_is_an_error_with_the_lines_to_move() {
-    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - if i.id = \"b\":\n      - if i.id = \"c\":\n        - log: \"too deep\"\n        - log: \"still\"\n");
+    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. if i.id = \"b\":\n         1. if i.id = \"c\":\n            1. log: \"too deep\"\n            2. log: \"still\"\n");
     let e = errors(&src);
     assert!(
         e.contains("Statements are nested 4 levels deep; the limit is 3."),
@@ -105,9 +105,9 @@ fn a_fourth_level_is_an_error_with_the_lines_to_move() {
 #[test]
 fn else_and_try_otherwise_count_as_the_same_or_one_more_level() {
     // if/else is one level; try … otherwise adds one
-    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - log: \"x\"\n  - else:\n    - if i.id = \"b\":\n      - log: \"y\"\n    - else:\n      - log: \"z\"\n");
+    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. log: \"x\"\n      else:\n      1. if i.id = \"b\":\n         1. log: \"y\"\n         else:\n         1. log: \"z\"\n");
     ok(&src);
-    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\nfor each i in crm.invoices:\n  - if i.id = \"a\":\n    - if i.id = \"b\":\n      - try http get \"https://x.y\" -> r\n        otherwise:\n          - log: \"z\"\n");
+    let src = format!("{REC}# Agent: a\n- model: claude\n- tools: crm, log, http\n\n## On start\n1. for each i in crm.invoices:\n   1. if i.id = \"a\":\n      1. if i.id = \"b\":\n         1. try http get \"https://x.y\" into r\n            otherwise:\n            1. log: \"z\"\n");
     let e = errors(&src);
     assert!(e.contains("nested 4 levels deep"), "{e}");
 }
@@ -195,7 +195,7 @@ fn a_line_of_120_characters_is_fine_121_is_not() {
     assert_eq!(line(4).chars().count(), 120);
     assert_eq!(line(5).chars().count(), 121);
     let wrap = |l: &str| {
-        format!("# Function: f\n- out: int\n- effect: pure\n{l}\n  - return a\n# Function: g\n- out: int\n- effect: pure\n  - return f()\n")
+        format!("# Function: f\n- out: int\n- touches: nothing\n- steps:\n\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return f()\n")
     };
     ok(&wrap(&line(4)));
     let e = errors(&wrap(&line(5)));

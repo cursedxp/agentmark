@@ -17,14 +17,14 @@ fn agent(body: &str) -> String {
 }
 
 fn function(effect: &str, body: &str) -> String {
-    format!("{PRE}# Function: f\n- in: invoice: Invoice\n- out: text\n- effect: {effect}\n  {body}\n  - return invoice.id\n")
+    format!("{PRE}# Function: f\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. {body}\n  2. return invoice.id\n")
 }
 
 // ------------------------------------------------------------------ rules and guards are pure
 
 #[test]
 fn a_rule_may_not_call_a_network_function() {
-    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return invoice.status\n\n# Rule: r\n- for: Invoice\n- when: live(invoice) = \"open\"\n");
+    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: live(invoice) = \"open\"\n");
     let e = errors(&src);
     assert!(
         e.contains("A rule must be pure, but \"live\" has the effect network."),
@@ -35,7 +35,7 @@ fn a_rule_may_not_call_a_network_function() {
 
 #[test]
 fn a_rule_may_not_call_a_local_function_either() {
-    let src = format!("{PRE}# Function: noisy\n- in: invoice: Invoice\n- out: text\n- effect: local\n  - return invoice.status\n\n# Rule: r\n- for: Invoice\n- when: noisy(invoice) = \"open\"\n");
+    let src = format!("{PRE}# Function: noisy\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: noisy(invoice) = \"open\"\n");
     let e = first_error(&src);
     assert!(
         e.contains("A rule must be pure, but \"noisy\" has the effect local."),
@@ -45,13 +45,13 @@ fn a_rule_may_not_call_a_local_function_either() {
 
 #[test]
 fn a_rule_may_call_a_pure_function() {
-    let src = format!("{PRE}# Function: low\n- in: invoice: Invoice\n- out: text\n- effect: pure\n  - return invoice.status\n\n# Rule: r\n- for: Invoice\n- when: low(invoice) = \"open\"\n");
+    let src = format!("{PRE}# Function: low\n- in: invoice: Invoice\n- out: text\n- touches: nothing\n- steps:\n  1. return invoice.status\n\n# Rule: r Invoice\n- when: low(invoice) = \"open\"\n");
     ok(&src);
 }
 
 #[test]
 fn a_rule_may_not_read_a_tool_source() {
-    let src = format!("{PRE}# Rule: r\n- for: Invoice\n- when: count of crm.invoices > 3\n");
+    let src = format!("{PRE}# Rule: r Invoice\n- when: count of crm.invoices > 3\n");
     let e = first_error(&src);
     assert!(
         e.contains("A rule must be pure, but \"crm.invoices\" has the effect network."),
@@ -61,7 +61,7 @@ fn a_rule_may_not_read_a_tool_source() {
 
 #[test]
 fn a_guard_must_be_pure() {
-    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return invoice.status\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - guard: live(i) = \"open\"\n");
+    let src = format!("{PRE}# Function: live\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. return invoice.status\n\n# Agent: a\n- model: claude\n- tools: crm, log\n\n## Every 5 minutes\n1. for each i in crm.invoices:\n   1. guard: live(i) = \"open\"\n");
     let e = first_error(&src);
     assert!(
         e.contains("A guard must be pure, but \"live\" has the effect network."),
@@ -128,7 +128,7 @@ fn a_model_function_may_do_everything() {
 
 #[test]
 fn the_error_lands_on_the_offending_line_not_the_loop_around_it() {
-    let src = format!("{PRE}# Function: f\n- in: invoices: list of Invoice\n- out: int\n- effect: pure\n  - for each i in invoices:\n    - log: \"x\"\n  - return 1\n");
+    let src = format!("{PRE}# Function: f\n- in: invoices: list of Invoice\n- out: int\n- touches: nothing\n- steps:\n  1. for each i in invoices:\n     1. log: \"x\"\n  2. return 1\n");
     let e = first_error(&src);
     assert!(e.starts_with("t.agent.md:10\n      - log: \"x\""), "{e}");
 }
@@ -141,7 +141,7 @@ fn only_the_first_excess_is_reported_per_function() {
 
 #[test]
 fn a_function_calling_a_network_function_inherits_the_effect() {
-    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - email send address \"a@b.c\": \"x\"\n  - return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- effect: local\n  - return inner(invoice)\n");
+    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. email send address \"a@b.c\": \"x\"\n  2. return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. return inner(invoice)\n");
     let e = first_error(&src);
     assert!(e.contains("The function \"outer\" says \"- effect: local\", but this line has the effect network (email)."), "{e}");
 }
@@ -149,7 +149,7 @@ fn a_function_calling_a_network_function_inherits_the_effect() {
 #[test]
 fn a_declared_effect_is_a_floor_for_callers() {
     // `inner` says network but its body is pure; callers still see network(inner)
-    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- effect: network\n  - return inner(invoice)\n");
+    let src = format!("{PRE}# Function: inner\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. return invoice.id\n\n# Function: outer\n- in: invoice: Invoice\n- out: text\n- steps:\n  1. return inner(invoice)\n");
     let c = ok(&src);
     let outer = c.blocks.iter().find(|b| b.label == "outer").unwrap();
     assert_eq!(outer.effect.to_string(), "network(inner)");
@@ -198,7 +198,7 @@ fn every_statement_and_block_has_an_effect_set() {
 
 #[test]
 fn a_do_action_contributes_its_effect_to_the_caller() {
-    let src = format!("{PRE}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## Every 5 minutes\nfor each i in crm.invoices:\n  - do tell\n\n## Do tell\n- email send address \"a@b.c\": \"x\"\n");
+    let src = format!("{PRE}# Agent: a\n- model: claude\n- tools: email, crm, log\n\n## Every 5 minutes\n1. for each i in crm.invoices:\n   1. do tell\n\n## Do tell\n1. email send address \"a@b.c\": \"x\"\n");
     let c = ok(&src);
     let entry = c
         .blocks
@@ -267,7 +267,7 @@ fn display_format_is_the_spec_summary() {
 
 /// A function `host` with a `## Rust: shout` block under it (Rust blocks hoist to module level).
 fn with_rust(effect: &str, rest: &str) -> String {
-    format!("{PRE}# Function: host\n- in: s: text\n- out: text\n- effect: pure\n  - return s\n\n## Rust: shout -> text\n- in: s: text\n- effect: {effect}\n  ```rust\n  s.to_uppercase()\n  ```\n\n{rest}")
+    format!("{PRE}# Function: host\n- in: s: text\n- out: text\n- touches: nothing\n- steps:\n  1. return s\n\n## Rust: shout -> text\n- in: s: text\n- touches: {effect}\n\n```rust\ns.to_uppercase()\n```")
 }
 
 #[test]
@@ -373,7 +373,7 @@ fn an_approved_binding_is_trusted_with_its_effect() {
 fn binding_verbs_and_value_counts_are_checked() {
     let binding = "# Binding: pdf\n- crate: printpdf\n- effect: local\n\n## render(title: text) -> bytes\n```rust\nOk(Vec::new())\n```\n";
     let run = |stmt: &str| {
-        let main = format!("# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- effect: local\n  {stmt}\n  - return b\n");
+        let main = format!("# Import: crate printpdf\n\n# Function: make\n- in: t: text\n- out: bytes\n- steps:\n  1. {stmt}\n  2. return b\n");
         let p = Project::from_memory(
             "app/main.agent.md",
             vec![

@@ -13,7 +13,7 @@ const LEAD: &str = "# Record: Lead\n- id: text\n- email: text\n\n";
 
 #[test]
 fn a_field_named_like_a_tool_is_a_field_in_a_rule() {
-    let c = ok(&format!("{LEAD}# Rule: r\n- for: Lead\n- when: email = \"x\"\n"));
+    let c = ok(&format!("{LEAD}# Rule: r Lead\n- when: email = \"x\"\n"));
     assert!(c.resolutions.values().any(|r| matches!(
         r,
         Resolution::Field { record, field, .. } if record == "Lead" && field == "email"
@@ -22,20 +22,20 @@ fn a_field_named_like_a_tool_is_a_field_in_a_rule() {
 
 #[test]
 fn a_field_named_like_a_tool_is_a_field_in_a_loop() {
-    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, email, log\n\n## On start\nfor each l in crm.leads:\n  - log: \"{{email}} {{l.email}}\"\n");
+    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, email, log\n\n## On start\n1. for each l in crm.leads:\n   1. log: \"{{email}} {{l.email}}\"\n");
     ok(&src);
 }
 
 #[test]
 fn a_tool_source_still_needs_the_dot_and_a_bare_tool_is_not_a_value() {
-    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\nfor each l in crm.leads:\n  - log: \"x\"\n  - set n = crm\n");
+    let src = format!("{LEAD}# Agent: a\n- model: claude\n- tools: crm, log\n\n## On start\n1. for each l in crm.leads:\n   1. log: \"x\"\n   2. crm into n\n");
     let e = first_error(&src);
     assert!(e.contains("\"crm\" is a tool, not a value."), "{e}");
 }
 
 #[test]
 fn a_variable_wins_over_a_field_and_a_constant_loses_to_a_field() {
-    let src = format!("{LEAD}# Constant: id\n- value: 1\n\n# Function: f\n- in: l: Lead, email: int\n- out: int\n- effect: pure\n  - return email\n\n# Rule: r\n- for: Lead\n- when: id = \"x\"\n");
+    let src = format!("{LEAD}# Constant: id\n- value: 1\n\n# Function: f\n- in: l: Lead, email: int\n- out: int\n- touches: nothing\n- steps:\n  1. return email\n\n# Rule: r Lead\n- when: id = \"x\"\n");
     ok(&src);
 }
 
@@ -44,7 +44,7 @@ fn a_variable_wins_over_a_field_and_a_constant_loses_to_a_field() {
 const INV: &str = "# Record: Invoice\n- id: text\n- amount: money\n- note: maybe text\n\n";
 
 fn ret(lit: &str) -> String {
-    format!("{INV}# Function: f\n- out: Invoice\n- effect: pure\n  - return {lit}\n")
+    format!("{INV}# Function: f\n- out: Invoice\n- touches: nothing\n- steps:\n  1. return {lit}\n")
 }
 
 #[test]

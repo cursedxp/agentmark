@@ -9,11 +9,11 @@ const INVOICE: &str =
     "# Record: Invoice\n- id: text\n- amount: money\n- due: date\n- status: text\n\n";
 
 fn rule(when: &str) -> String {
-    format!("{INVOICE}# Rule: r\n- for: Invoice\n- when: {when}\n")
+    format!("{INVOICE}# Rule: r Invoice\n- when: {when}\n")
 }
 
 fn func(out: &str, body: &str) -> String {
-    format!("{INVOICE}# Function: f\n- in: invoice: Invoice, n: int, tag: maybe text\n- out: {out}\n- effect: pure\n  {body}\n")
+    format!("{INVOICE}# Function: f\n- in: invoice: Invoice, n: int, tag: maybe text\n- out: {out}\n- touches: nothing\n- steps:\n  1. {body}\n")
 }
 
 // ------------------------------------------------------------------ record fields (2.1)

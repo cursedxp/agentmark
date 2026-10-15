@@ -108,7 +108,7 @@ fn an_agent_lists_a_user_tool_like_any_other() {
 #[test]
 fn e380_a_tool_name_taken_by_tools_toml_or_file() {
     for (name, other) in [("email", "the tool \"email\" of tools.toml"), ("file", "the built-in file tool")] {
-        let src = format!("# Tool: {name}\n- effect: pure\n\n## x() -> int\n- return 1\n");
+        let src = format!("# Tool: {name}\n- touches: nothing\n\n## x() -> int\n1. return 1\n");
         expect(&src, "E380", &[&format!("The tool \"{name}\" has the same name as {other}."), "^^^^"]);
     }
 }
@@ -169,7 +169,7 @@ fn a_verb_body_may_not_exceed_the_effect_of_its_tool() {
         ],
     );
     // a tool statement inside a verb counts like any other statement
-    let src = format!("{LEDGER}\n# Tool: pure_one\n- effect: pure\n\n## go(a: text)\n- ledger add a\n");
+    let src = format!("{LEDGER}# Tool: pure_one\n- touches: nothing\n\n## go(a: text)\n1. ledger add a\n");
     expect(&src, "E206", &["has the effect local (file)"]);
 }
 
@@ -182,11 +182,11 @@ fn values_are_checked_against_the_parameters_of_the_verb() {
 #[test]
 fn a_verb_that_can_fail_needs_try_and_cannot_be_used_in_an_expression() {
     let tool = "# Tool: conv\n- touches: nothing\n\n## double(word: text) -> result of int\n1. try number.parse(word) into n\n2. return n * 2\n\n";
-    let bare = format!("{tool}# Command: c\n- args: w: text\n\n## Run\n- conv double w -> n\n- print: \"{{n}}\"\n");
+    let bare = format!("{tool}# Command: c\n- in: w: text\n- steps:\n  1. conv double w into n\n  2. print: \"{{n}}\"\n");
     expect(&bare, "E209", &["can fail (it returns \"result of int\"), so it has to be called with \"try\"."]);
-    let inline = format!("{tool}# Command: c\n- args: w: text\n\n## Run\n- print: \"{{conv.double(w)}}\"\n");
+    let inline = format!("{tool}# Command: c\n- in: w: text\n- steps:\n  1. print: \"{{conv.double(w)}}\"\n");
     expect(&inline, "E209", &["The verb \"conv.double\" can fail", "so it cannot be used inside an expression."]);
-    let fine = format!("{tool}# Command: c\n- args: w: text\n\n## Run\n- try conv double w -> n\n- print: \"{{n}}\"\n");
+    let fine = format!("{tool}# Command: c\n- in: w: text\n- steps:\n  1. try conv double w into n\n  2. print: \"{{n}}\"\n");
     ok(&fine);
 }
 
@@ -210,7 +210,7 @@ fn an_unused_tool_is_a_warning_like_an_unused_function() {
 
 // ------------------------------------------------------------------ formatting and linting
 
-const CANONICAL: &str = "# Tool: slugger\nWords for file names.\n\n- touches: nothing\n\n## slug(title: text) -> text\nLower case, dashes between words.\n\n1. text.lower(title) into lowered\n2. return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\nAdds a line.\n\n- touches: local\n\n## add(entry: text, mark: text = \"-\")\n1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
+const CANONICAL: &str = "# Tool: slugger\n- touches: nothing\n\n## slug(title: text) -> text\n1. Lower case, dashes between words.\n2. 1. text.lower(title) into lowered\n3. 2. return regex.replace(lowered, \"[^a-z0-9]+\", \"-\")\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n\n# Tool: ledger\n- touches: local\n\n## add(entry: text, mark: text = \"-\")\n1. 1. file append \"ledger.txt\": \"{mark} {entry}\"\n";
 
 #[test]
 fn fmt_keeps_a_canonical_tool_and_makes_a_messy_one_canonical() {
@@ -265,7 +265,7 @@ fn e387_the_default_command_cannot_have_an_argument_named_like_a_program_flag() 
 
 #[test]
 fn check_lists_a_rust_verb_with_the_trusted_code() {
-    let c = ok(&format!("{SLUGGER}\n# Tool: caps\n- effect: pure\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n"));
+    let c = ok(&format!("{SLUGGER}# Tool: caps\n- touches: nothing\n\n## shout(word: text) -> text\n```rust\nword.to_uppercase()\n```\n"));
     let r = c.rust_blocks.iter().find(|r| r.name == "caps.shout").expect("listed");
     assert_eq!(r.parent.as_deref(), Some("caps"));
     assert_eq!(r.sig.effect, agentmark::syntax::ast::Effect::Pure);
@@ -314,7 +314,7 @@ const MINI_HASH: &str = "# Binding: sha2\n- crate: sha2\n- effect: pure\n\n## sh
 #[test]
 fn a_verb_may_take_a_handle_it_uses_up_and_the_trace_leaves_it_out() {
     let tool = "# Import: crate sha2\n\n# Tool: hashing\n- touches: nothing\n\n## drain(hasher: handle of sha2.Sha256, label: text) -> bytes\n1. hasher finalize into digest\n2. return digest\n\n";
-    let cmd = |body: &str| format!("{tool}# Command: c\n- args: w: text\n\n## Run\n{body}");
+    let cmd = |body: &str| format!("{tool}# Command: c\n- in: w: text\n- steps:\n  1. {body}");
     let load = |src: &str| {
         Project::from_memory(
             "app/main.agent.md",

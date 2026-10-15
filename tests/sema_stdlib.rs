@@ -10,13 +10,13 @@ use agentmark::sema::Type;
 /// A command with `body` as its `## Run` block.
 fn run(body: &str) -> String {
     let indented: String = body.lines().map(|l| format!("{l}\n")).collect();
-    format!("# Record: Sale\n- region: text\n- amount: money\n\n# Command: c\n- args: name: text\n\n## Run\n{indented}")
+    format!("# Record: Sale\n- region: text\n- amount: money\n\n# Command: c\n- in: name: text\n- steps:\n  1. {indented}")
 }
 
 /// A pure function returning `out` with `body` in it.
 fn func(out: &str, body: &str) -> String {
     let lines: String = body.lines().map(|l| format!("  - {l}\n")).collect();
-    format!("# Function: f\n- in: s: text, n: int, m: money, d: date\n- out: {out}\n- effect: pure\n{lines}")
+    format!("# Function: f\n- in: s: text, n: int, m: money, d: date\n- out: {out}\n- touches: nothing\n- steps:")
 }
 
 fn ty_of(src: &str, text: &str) -> String {

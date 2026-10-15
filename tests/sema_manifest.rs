@@ -259,7 +259,7 @@ fn respond_and_read_body_only_in_routes() {
 
 #[test]
 fn append_and_print_and_read_file() {
-    let src = format!("{PRE}# Command: c\n- args: path: text\n\n## Run\n- read file path as list of Invoice -> rows\n- append \"x\" to rows\n- print: \"n\"\n");
+    let src = format!("{PRE}# Command: c\n- in: path: text\n- steps:\n  1. read file path as list of Invoice into rows\n  2. add \"x\" to rows\n  3. print: \"n\"\n");
     let e = first_error(&src);
     assert!(
         e.contains("This list holds Invoice, but this is text."),
@@ -269,7 +269,7 @@ fn append_and_print_and_read_file() {
 
 #[test]
 fn commands_use_the_state_of_the_services_record() {
-    let src = format!("{PRE}# Record: AppState\n- invoices: list of Invoice\n\n# Service: api\n- state: AppState\n\n## GET /x\n- respond 200 state.invoices\n\n# Command: c\n- args: n: int = 3\n\n## Run\n- append state.invoices to state.invoices\n");
+    let src = format!("{PRE}# Record: AppState\n- invoices: list of Invoice\n\n# Service: api\n- state: AppState\n\n## GET /x\n1. respond 200 state.invoices\n\n# Command: c\n- in: n: int = 3\n- steps:\n  1. add state.invoices to state.invoices\n");
     // appending a list to a list of invoices is a type error; the point is that `state` resolves
     let e = first_error(&src);
     assert!(
@@ -281,7 +281,7 @@ fn commands_use_the_state_of_the_services_record() {
 #[test]
 fn parameter_defaults_are_type_checked() {
     let src =
-        format!("{PRE}# Command: c\n- args: n: int = \"three\"\n\n## Run\n- print: \"{{n}}\"\n");
+        format!("{PRE}# Command: c\n- in: n: int = \"three\"\n- steps:\n  1. print: \"{{n}}\"\n");
     let e = first_error(&src);
     assert!(
         e.contains("The default of \"n\" is text, but the parameter is int."),
