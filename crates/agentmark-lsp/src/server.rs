@@ -450,7 +450,7 @@ impl Server {
             let fid = ck.files.iter().position(|f| *f == path)?;
             let (start, _) = actions::block_lines(&text, line as usize)?;
             let old = map.new_to_old(start)?;
-            ck.blocks.iter().find(|b| b.file == fid && b.span.line as usize == old + 1).map(|b| b.effect.to_string())
+            ck.blocks.iter().find(|b| b.file == fid && b.span.line as usize == old + 1).map(|b| b.effect.touches())
         });
         let runner = self.runner_for(&a)?;
         let answer = actions::explain(&runner, &text, line as usize, effects.as_deref()).map_err(|e| (ErrorCode::RequestFailed, e))?;

@@ -6,9 +6,9 @@
 //! | rule | action |
 //! |---|---|
 //! | `magic-value` | extract a `# Constant` and use its name at every place the literal is written |
-//! | `unnamed-guard` | insert a `> TODO: ...` comment line above the guard |
-//! | `prompt-in-loop` | insert `- guard: x is not empty` (or `x matches Record`) after the `ask model` line |
-//! | `missing-doc` | insert a `> TODO: describe ...` line above the heading |
+//! | `unnamed-guard` | insert a `> TODO: ...` note line above the guard |
+//! | `prompt-in-loop` | insert a numbered `guard: x is not empty` (or `x matches Record`) step after the `ask model` step |
+//! | `missing-doc` | insert a `TODO: describe ...` description paragraph directly under the heading |
 //! | `long-file`, `duplicate-rule`, `vague-name` | none: splitting, merging and naming need a decision only the author can make |
 
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ use serde_json::{json, Value};
 
 use crate::diagnostics;
 use crate::index::decl_name;
-use crate::text::{end_position, line_text, position};
+use crate::text::{end_position, is_numbered, line_text, position, strip_marker};
 use crate::uri::uri_from_path;
 use crate::workspace::Analysis;
 
@@ -52,6 +52,62 @@ fn indent_of(line: &str) -> &str {
     &line[..line.len() - line.trim_start().len()]
 }
 
+/// The number of a step line (`3. print: "x"` -> 3).
+fn step_number(line: &str) -> Option<usize> {
+    let t = line.trim_start();
+    let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
+    (digits > 0 && t[digits..].starts_with(". ")).then(|| t[..digits].parse().ok()).flatten()
+}
+
+/// The last line of the step that starts at `line0`: the lines under it are deeper or blank-then-deeper.
+fn step_end(text: &str, line0: usize) -> usize {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let ind = indent_of(lines[line0]).len();
+    let mut end = line0;
+    for (i, l) in lines.iter().enumerate().skip(line0 + 1) {
+        if l.trim().is_empty() {
+            continue;
+        }
+        if indent_of(l).len() > ind {
+            end = i;
+        } else {
+            break;
+        }
+    }
+    end
+}
+
+/// Insert the numbered step `content` after the step on line `line0`, with the indentation of that
+/// step and the numbers of the steps after it moved on by one.
+fn insert_step_after(text: &str, line0: usize, content: &str) -> Vec<TextEdit> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let line = lines[line0];
+    let ind = indent_of(line);
+    let numbered = is_numbered(line);
+    let n = step_number(line).unwrap_or(0) + 1;
+    let marker = if numbered { format!("{n}. ") } else { "- ".to_string() };
+    let end = step_end(text, line0);
+    let mut edits = vec![insert_after(text, end, &format!("{ind}{marker}{content}"))];
+    if numbered {
+        // the steps after it at the same level: one number up
+        let mut next = n;
+        for (i, l) in lines.iter().enumerate().skip(end + 1) {
+            if l.trim().is_empty() {
+                continue;
+            }
+            if indent_of(l).len() < ind.len() || (indent_of(l) == ind && !is_numbered(l)) {
+                break;
+            }
+            if indent_of(l) == ind && is_numbered(l) {
+                next += 1;
+                let rest = &l.trim_start()[l.trim_start().find(". ").unwrap_or(0) + 2..];
+                edits.push(TextEdit::new(line_range(text, i), format!("{ind}{next}. {rest}")));
+            }
+        }
+    }
+    edits
+}
+
 /// Insert a line of text before line `line0`.
 fn insert_before(line0: usize, content: &str) -> TextEdit {
     TextEdit::new(Range::new(Position::new(line0 as u32, 0), Position::new(line0 as u32, 0)), format!("{content}\n"))
@@ -65,6 +121,14 @@ fn insert_after(text: &str, line0: usize, content: &str) -> TextEdit {
         let end = end_position(text);
         TextEdit::new(Range::new(end, end), format!("\n{content}"))
     }
+}
+
+/// A description paragraph directly under the heading on line `line0`, with a blank line before
+/// whatever follows.
+fn description_under(text: &str, line0: usize, paragraph: &str) -> TextEdit {
+    let next_blank = line_text(text, line0 + 1).trim().is_empty();
+    let content = if next_blank { paragraph.to_string() } else { format!("{paragraph}\n") };
+    insert_after(text, line0, &content)
 }
 
 /// A fix: title, the plain edits, and (for fixes that leave a blank to fill in) the same edits with
@@ -88,6 +152,7 @@ fn lint_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<Fix> {
     let line = line_text(text, line0);
     match d.code {
         "unnamed-guard" => {
+            // the note sits above the step, at the indentation of its number
             let ind = indent_of(line);
             Some(Fix {
                 title: "Add a comment above this guard".to_string(),
@@ -98,9 +163,9 @@ fn lint_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<Fix> {
         "missing-doc" => {
             let kind = data.get("kind")?.as_str()?;
             Some(Fix {
-                title: format!("Add a description above this {kind}"),
-                edits: vec![insert_before(line0, &format!("> TODO: describe what this {kind} does."))],
-                snippet: Some(vec![insert_before(line0, &format!("> ${{1:describe what this {kind} does}}"))]),
+                title: format!("Add a description under this {kind}'s heading"),
+                edits: vec![description_under(text, line0, &format!("TODO: describe what this {kind} does."))],
+                snippet: Some(vec![description_under(text, line0, &format!("${{1:describe what this {kind} does}}"))]),
             })
         }
         "prompt-in-loop" => {
@@ -108,14 +173,14 @@ fn lint_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<Fix> {
             let record = line.rfind('"').and_then(|i| {
                 let rest = line[i + 1..].trim_start();
                 let rest = rest.strip_prefix("as ")?;
-                let w = rest.split(|c: char| c.is_whitespace() || c == '-').next()?;
+                let w = rest.split_whitespace().next()?;
                 (!w.is_empty()).then(|| w.to_string())
             });
             let guard = match record {
                 Some(r) => format!("{var} matches {r}"),
                 None => format!("{var} is not empty"),
             };
-            plain(format!("Add a guard on \"{var}\""), vec![insert_after(text, line0, &format!("{}- guard: {guard}", indent_of(line)))])
+            plain(format!("Add a guard on \"{var}\""), insert_step_after(text, line0, &format!("guard: {guard}")))
         }
         "magic-value" => magic_value_fix(a, text, d),
         _ => None,
@@ -199,7 +264,13 @@ fn magic_value_fix(a: &Analysis, text: &str, d: &Diagnostic) -> Option<Fix> {
     }
     let sep = if text.ends_with('\n') { "\n" } else { "\n\n" };
     let end = end_position(text);
-    edits.push(TextEdit::new(Range::new(end, end), format!("{sep}# Constant: {name}\n- value: {value}\n")));
+    let what = match kind {
+        "URL" => format!("The address {key}"),
+        "duration" => format!("The length of time {}", needle),
+        _ => format!("The amount {}", needle),
+    };
+    let desc = format!("{what}, written once so it can be changed in one place.");
+    edits.push(TextEdit::new(Range::new(end, end), format!("{sep}# Constant: {name}\n{desc}\n\n- value: {value}\n")));
     plain(format!("Extract the {kind} into the constant \"{name}\""), edits)
 }
 
@@ -351,7 +422,7 @@ pub fn model_actions(uri: &Uri, text: &str, line0: usize) -> Vec<CodeAction> {
             ..Default::default()
         });
     }
-    if line_text(text, line0).trim_start().trim_start_matches("- ").starts_with("ask model") {
+    if strip_marker(line_text(text, line0)).starts_with("ask model") {
         out.push(CodeAction {
             title: "Suggest a guard for this answer (uses the model)".to_string(),
             kind: Some(CodeActionKind::new(KIND_GUARD)),
@@ -362,11 +433,11 @@ pub fn model_actions(uri: &Uri, text: &str, line0: usize) -> Vec<CodeAction> {
     out
 }
 
-/// Ask the model to explain the block around `line0`; `effects` is the checker's summary of it.
+/// Ask the model to explain the block around `line0`; `effects` is what the checker says it touches.
 pub fn explain(runner: &ModelRunner, text: &str, line0: usize, effects: Option<&str>) -> Result<String, String> {
     let (s, e) = block_lines(text, line0).ok_or("There is no block at this position.")?;
     let block = text.split('\n').skip(s).take(e - s).collect::<Vec<_>>().join("\n");
-    let eff = effects.map(|e| format!("\nThe compiler says it can touch: {e}\n")).unwrap_or_default();
+    let eff = effects.map(|e| format!("\nThe compiler says it touches: {e}\n")).unwrap_or_default();
     runner.ask(format!("{EXPLAIN_PROMPT}{eff}\n```\n{}\n```", block.trim_end()))
 }
 
@@ -374,22 +445,22 @@ pub fn explain(runner: &ModelRunner, text: &str, line0: usize, effects: Option<&
 /// The answer is untrusted: it must parse in place or nothing is offered.
 pub fn suggest_guard(runner: &ModelRunner, path: &str, text: &str, line0: usize) -> Result<Vec<TextEdit>, String> {
     let line = line_text(text, line0);
-    if !line.trim_start().trim_start_matches("- ").starts_with("ask model") {
+    if !strip_marker(line).starts_with("ask model") {
         return Err("This is not an \"ask model\" line.".into());
     }
     let (s, e) = block_lines(text, line0).unwrap_or((line0, line0 + 1));
     let block = text.split('\n').skip(s).take(e - s).collect::<Vec<_>>().join("\n");
     let answer = runner.ask(format!("{GUARD_PROMPT} Answer with the guard line only.\n\nThe statement:\n{line}\n\nIts block:\n```\n{}\n```", block.trim_end()))?;
     let guard = clean_guard(&answer).ok_or("The model did not answer with a guard.")?;
-    let edit = insert_after(text, line0, &format!("{}- {guard}", indent_of(line)));
-    let mut applied = apply(text, std::slice::from_ref(&edit));
+    let edits = insert_step_after(text, line0, &guard);
+    let mut applied = apply(text, &edits);
     if !applied.ends_with('\n') && text.ends_with('\n') {
         applied.push('\n');
     }
     if parse_file(path, &applied).is_err() {
         return Err(format!("The model's guard \"{guard}\" does not parse, so it was not inserted."));
     }
-    Ok(vec![edit])
+    Ok(edits)
 }
 
 fn clean_guard(answer: &str) -> Option<String> {
@@ -397,7 +468,7 @@ fn clean_guard(answer: &str) -> Option<String> {
         .lines()
         .map(|l| l.trim().trim_matches('`').trim())
         .find(|l| !l.is_empty() && !l.starts_with("```"))?;
-    let l = l.strip_prefix("- ").unwrap_or(l).trim();
+    let l = strip_marker(l).trim();
     let l = if l.starts_with("guard:") { l.to_string() } else { format!("guard: {l}") };
     (l.len() > "guard:".len() + 1).then_some(l)
 }
