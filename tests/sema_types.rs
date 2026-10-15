@@ -12,8 +12,20 @@ fn rule(when: &str) -> String {
     format!("{INVOICE}# Rule: r Invoice\n- when: {when}\n")
 }
 
+/// A function `f`; `body` holds one step per line (top-level lines are numbered here, indented
+/// lines are the numbered steps under them, as written).
 fn func(out: &str, body: &str) -> String {
-    format!("{INVOICE}# Function: f\n- in: invoice: Invoice, n: int, tag: maybe text\n- out: {out}\n- touches: nothing\n- steps:\n  1. {body}\n")
+    let mut steps = String::new();
+    let mut n = 0;
+    for line in body.lines() {
+        if line.starts_with(' ') {
+            steps.push_str(&format!("  {line}\n"));
+        } else {
+            n += 1;
+            steps.push_str(&format!("  {n}. {line}\n"));
+        }
+    }
+    format!("{INVOICE}# Function: f\n- in: invoice: Invoice, n: int, tag: maybe text\n- out: {out}\n- touches: nothing\n- steps:\n{steps}")
 }
 
 // ------------------------------------------------------------------ record fields (2.1)
@@ -110,7 +122,7 @@ fn money_plus_duration_is_an_error_with_a_caret_under_the_whole_sum() {
     let e = errors(&rule("amount + 3 days > 5 EUR"));
     assert_eq!(
         e,
-        "t.agent.md:9\n  - when: amount + 3 days > 5 EUR\n          ^^^^^^^^^^^^^^^\n  Cannot add a duration to money.\n  Money only combines with money; durations combine with dates and other durations."
+        "t.agent.md:8\n  - when: amount + 3 days > 5 EUR\n          ^^^^^^^^^^^^^^^\n  Cannot add a duration to money.\n  Money only combines with money; durations combine with dates and other durations."
     );
 }
 
@@ -182,13 +194,13 @@ fn unknown_field_in_a_rule_suggests_the_field() {
     let e = errors(&rule("amout > 100 EUR"));
     assert_eq!(
         e,
-        "t.agent.md:9\n  - when: amout > 100 EUR\n          ^^^^^\n  Unknown field \"amout\" on Invoice. Did you mean \"amount\"?"
+        "t.agent.md:8\n  - when: amout > 100 EUR\n          ^^^^^\n  Unknown field \"amout\" on Invoice. Did you mean \"amount\"?"
     );
 }
 
 #[test]
 fn unknown_field_after_a_dot() {
-    let e = first_error(&func("text", "- return invoice.statsu"));
+    let e = first_error(&func("text", "return invoice.statsu"));
     assert!(
         e.contains("Unknown field \"statsu\" on Invoice. Did you mean \"status\"?"),
         "{e}"
@@ -197,7 +209,7 @@ fn unknown_field_after_a_dot() {
 
 #[test]
 fn field_access_on_a_non_record() {
-    let e = first_error(&func("text", "- return n.x"));
+    let e = first_error(&func("text", "return n.x"));
     assert!(
         e.contains("\"n\" is a number, which has no fields, so \".x\" cannot be read."),
         "{e}"
@@ -206,7 +218,7 @@ fn field_access_on_a_non_record() {
 
 #[test]
 fn unknown_name_lists_close_names() {
-    let e = first_error(&func("int", "- return nn"));
+    let e = first_error(&func("int", "return nn"));
     assert!(
         e.contains("Unknown name \"nn\". Did you mean \"n\"?"),
         "{e}"
@@ -289,7 +301,7 @@ fn a_maybe_value_in_text_is_an_error() {
 fn is_some_on_a_plain_value() {
     let e = first_error(&func(
         "int",
-        "- if n is some v:\n    - return v\n  - return 0",
+        "if n is some v:\n   1. return v\nreturn 0",
     ));
     assert!(
         e.contains("is never empty, so \"is some\" is not needed."),
@@ -301,7 +313,7 @@ fn is_some_on_a_plain_value() {
 
 #[test]
 fn return_type_mismatch() {
-    let e = first_error(&func("int", "- return invoice.status"));
+    let e = first_error(&func("int", "return invoice.status"));
     assert!(
         e.contains("This returns text, but the function says it returns \"int\"."),
         "{e}"
@@ -310,21 +322,21 @@ fn return_type_mismatch() {
 
 #[test]
 fn a_plain_value_fits_a_maybe_result() {
-    ok(&func("maybe int", "- return n"));
+    ok(&func("maybe int", "return n"));
 }
 
 #[test]
 fn call_arity_and_argument_types() {
     let src = format!(
-        "{}\n# Function: g\n- out: int\n- effect: pure\n  - return f(1)\n",
-        func("int", "- return n")
+        "{}\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return f(1)\n",
+        func("int", "return n")
     );
     let e = first_error(&src);
     assert!(
         e.contains("\"f\" takes 3 values (invoice, n, tag), but 1 was given."),
         "{e}"
     );
-    let src = format!("{}\n# Function: g\n- in: i: Invoice\n- out: int\n- effect: pure\n  - return f(i, \"x\", \"t\")\n", func("int", "- return n"));
+    let src = format!("{}\n# Function: g\n- in: i: Invoice\n- out: int\n- touches: nothing\n- steps:\n  1. return f(i, \"x\", \"t\")\n", func("int", "return n"));
     let e = first_error(&src);
     assert!(
         e.contains("\"n\" of \"f\" must be int, but this is text."),
@@ -335,8 +347,8 @@ fn call_arity_and_argument_types() {
 #[test]
 fn unknown_function_suggests() {
     let src = format!(
-        "{}\n# Function: g\n- out: int\n- effect: pure\n  - return ff(1)\n",
-        func("int", "- return n")
+        "{}\n# Function: g\n- out: int\n- touches: nothing\n- steps:\n  1. return ff(1)\n",
+        func("int", "return n")
     );
     let e = first_error(&src);
     assert!(
@@ -352,7 +364,7 @@ fn return_outside_a_function_and_stop_inside_one() {
         e.contains("\"return\" only works inside a function."),
         "{e}"
     );
-    let e = first_error(&func("int", "- stop\n  - return n"));
+    let e = first_error(&func("int", "stop\nreturn n"));
     assert!(
         e.contains("\"stop\" ends a block, but this is a function."),
         "{e}"
@@ -369,8 +381,8 @@ fn a_function_with_out_must_return() {
 }
 
 #[test]
-fn set_keeps_the_type_of_a_variable() {
-    let e = first_error(&func("int", "- set x = 1\n  - set x = \"a\"\n  - return x"));
+fn into_keeps_the_type_of_a_variable() {
+    let e = first_error(&func("int", "1 into x\n\"a\" into x\nreturn x"));
     assert!(e.contains("\"x\" holds int, but this is text."), "{e}");
 }
 
