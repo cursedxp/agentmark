@@ -230,20 +230,22 @@ A larger crate, `chrono`, shows how the first tier works. It handles dates and t
 ````text
 chrono 0.4.45: generated ./bindings/chrono.agent.md: 71 direct, 5 assisted, 338 not bound.
 
-> Returns the number of non-leap seconds since January 1, 1970 0:00:00 UTC (aka "UNIX timestamp").
 ## date_time_timestamp(date_time: datetime) -> int
+Returns the number of non-leap seconds since January 1, 1970 0:00:00 UTC (aka "UNIX timestamp").
+
   ```rust
   Ok(date_time.timestamp())
   ```
 
-> Adds given `TimeDelta` to the current date and time.
 ## date_time_checked_add_signed(date_time: datetime, rhs: duration) -> maybe datetime
+Adds given `TimeDelta` to the current date and time.
+
   ```rust
   Ok(date_time.checked_add_signed(rhs))
   ```
 ````
 
-Names are built from the Rust type and function joined with underscores, as in `date_time_timestamp`. The receiver becomes the first parameter, and `Option<T>` becomes `maybe T`. The sentence above each item is rustdoc's.
+Names are built from the Rust type and function joined with underscores, as in `date_time_timestamp`. The receiver becomes the first parameter, and `Option<T>` becomes `maybe T`. The sentence under each heading is rustdoc's.
 
 ### Run the binder yourself
 
