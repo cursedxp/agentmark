@@ -337,9 +337,9 @@ fn colliding_names_get_distinct_rust_names() {
 1. log: "do block"
 "#;
     // keep the program simple: only the agent and the colliding names matter
-    let src = src.replace("- set a = invoice_chaser__remind(first_invoice())\n- log: \"never\"\n", "- do remind\n").replace(
-        "## Every 5 minutes\n- do remind",
-        "## Every 5 minutes\n- do remind\n- do invoice_chaser__remind({ id: \"x\", customer: \"y\" }) -> a\n- do net_amount({ id: \"x\", customer: \"y\" }) -> b\n- do net-amount({ id: \"x\", customer: \"y\" }) -> c\n- log: \"{a} {b} {c}\"",
+    let src = src.replace(
+        "## Every 5 minutes\n1. invoice_chaser__remind(first_invoice()) into a\n2. log: \"never\"\n",
+        "## Every 5 minutes\n1. do remind\n2. do invoice_chaser__remind({ id: \"x\", customer: \"y\" }) into a\n3. do net_amount({ id: \"x\", customer: \"y\" }) into b\n4. do net-amount({ id: \"x\", customer: \"y\" }) into c\n5. log: \"{a} {b} {c}\"\n",
     );
     let (d, file) = single("names", "names.agent.md", &src);
     let o = agentmark(&["check", s(&file)]).output().unwrap();
@@ -362,7 +362,7 @@ fn a_broken_rust_block_is_reported_at_its_agent_md_line() {
     let o = agentmark(&["run", s(&file), "--mock", "--fixtures", s(&fx)]).output_locked();
     let e = stderr(&o);
     assert_eq!(o.status.code(), Some(1), "{e}");
-    assert!(e.contains("shout.agent.md:13"), "points at the line of the mistake:\n{e}");
+    assert!(e.contains("shout.agent.md:14"), "points at the line of the mistake:\n{e}");
     assert!(e.contains("loud.len_of_it()"), "shows the source line:\n{e}");
     assert!(e.contains("does not compile"), "{e}");
     assert!(e.contains("method not found in `std::string::String`"), "rustc's primary label is appended:\n{e}");
@@ -623,7 +623,7 @@ fn a_result_function_returns_ok_and_its_failure_reaches_the_caller() {
 
 #[test]
 fn a_result_functions_failure_without_otherwise_is_traced_once_by_the_caller() {
-    let src = RESULT_FN.replace("  otherwise:\n    - print: \"unreadable\"\n    - stop\n", "");
+    let src = RESULT_FN.replace("     otherwise:\n     1. print: \"unreadable\"\n     2. stop\n", "");
     let (d, file) = single("resultfn2", "count2.agent.md", &src);
     let fx = d.join("fx");
     write(&fx, "model.json", &model_json(&[]));

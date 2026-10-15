@@ -254,7 +254,7 @@ const HEAD: &str = "# Record: Invoice\n- id: text\n- customer: text\n- customer_
 #[test]
 fn guard_lowers_to_let_trace_if_with_constants_inlined() {
     let src = format!(
-        "{HEAD}# Agent: a\n- model: claude\n- tools: log\n\n## On start\n- ask model: \"hi\" -> r\n- guard: r length < limit\n- log: \"{{r}}\"\n"
+        "{HEAD}# Agent: a\n- model: claude\n- tools: log\n\n## On start\n1. ask model: \"hi\" into r\n2. guard: r length < limit\n3. log: \"{{r}}\"\n"
     );
     let (p, c) = mem(&src);
     let l = agent_lower(&p, &c);
@@ -282,7 +282,7 @@ fn guard_lowers_to_let_trace_if_with_constants_inlined() {
 #[test]
 fn do_block_becomes_a_function_called_with_the_loop_record() {
     let src = format!(
-        "{HEAD}# Agent: my-agent\n- model: claude\n- tools: log\n\n## Every day at 08:00\nfor each invoice in crm.invoices:\n  - do show\n\n## Do show\n- log: \"{{customer}}\"\n"
+        "{HEAD}# Agent: my-agent\n- model: claude\n- tools: log\n\n## Every day at 08:00\n1. for each invoice in crm.invoices:\n   1. do show\n\n## Do show\n1. log: \"{{customer}}\"\n"
     );
     let (p, c) = mem(&src.replace("tools: log", "tools: log, crm"));
     let l = agent_lower(&p, &c);
@@ -306,7 +306,7 @@ fn do_block_becomes_a_function_called_with_the_loop_record() {
 #[test]
 fn filtered_loop_wraps_the_body_in_a_rule_call() {
     let src = format!(
-        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\nfor each open invoice in crm.invoices:\n  - log: \"{{customer}}\"\n"
+        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\n1. for each open invoice in crm.invoices:\n   1. log: \"{{customer}}\"\n"
     );
     let (p, c) = mem(&src);
     let l = agent_lower(&p, &c);
@@ -328,7 +328,7 @@ fn filtered_loop_wraps_the_body_in_a_rule_call() {
 #[test]
 fn count_of_rule_keeps_the_filter_name() {
     let src = format!(
-        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\n- set n = count of open invoices in crm.invoices\n- log: \"{{n}}\"\n"
+        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\n1. count of open invoices in crm.invoices into n\n2. log: \"{{n}}\"\n"
     );
     let (p, c) = mem(&src);
     let prog = ir::lower(&p, &c);
@@ -376,7 +376,7 @@ fn summary_shows_do_blocks_by_unit_and_label() {
 #[test]
 fn no_amounts_input_follows_shadowing() {
     let src = format!(
-        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\nfor each invoice in crm.invoices:\n  - ask model with invoice: \"one\" -> r\n  - if invoice.id = \"x\":\n    - ask model: \"two\" -> r\n    - guard: no amounts changed in r\n  - guard: no amounts changed in r\n"
+        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\n1. for each invoice in crm.invoices:\n   1. ask model with invoice: \"one\" into r\n   2. if invoice.id = \"x\":\n      1. ask model: \"two\" into r\n      2. guard: no amounts changed in r\n   3. guard: no amounts changed in r\n"
     );
     let (p, c) = mem(&src);
     let prog = ir::lower(&p, &c);
@@ -392,7 +392,7 @@ fn no_amounts_input_follows_shadowing() {
 #[test]
 fn sema_rejects_a_do_call_without_the_record() {
     let src = format!(
-        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\nfor each invoice in crm.invoices:\n  - do show\n- do show\n\n## Do show\n- log: \"{{customer}}\"\n"
+        "{HEAD}# Agent: a\n- model: claude\n- tools: log, crm\n\n## On start\n1. for each invoice in crm.invoices:\n   1. do show\n2. do show\n\n## Do show\n1. log: \"{{customer}}\"\n"
     );
     let tools = std::fs::read_to_string("tests/errors/tools.toml").unwrap();
     let project = Project::from_str("t.agent.md", &src, &tools);

@@ -175,7 +175,7 @@ fn page(project: &Project, c: &Checked) -> String {
         let Decl::Rule(r) = d else { return false };
         let _ = writeln!(out, "### {}\n", r.name.name);
         doc_block(out, &r.doc);
-        let _ = writeln!(out, "Applies to {}. {}: touches nothing\n", r.for_record.name, r.name.name);
+        let _ = writeln!(out, "Applies to {}.\n\n{}: touches nothing\n", r.for_record.name, r.name.name);
         true
     });
     section(&mut out, "Functions", &files, |out, d| {

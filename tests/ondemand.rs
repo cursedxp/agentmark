@@ -63,13 +63,13 @@ fn a_valid_body_is_saved_unverified_check_lists_it_and_the_build_goes_on() {
     let (out, err) = (stdout(&o), stderr(&o));
     assert!(err.contains("binding sha2: writing sha224_digest on demand\u{2026} done"), "{err}");
     assert!(out.contains("Libraries nobody approved yet"), "{out}");
-    assert!(out.contains("bindings/sha2.agent.md:5: change \"- effect: unverified\" to \"- effect: pure\""), "{out}");
+    assert!(out.contains("bindings/sha2.agent.md:6: change \"- effect: unverified\" to \"- effect: pure\""), "{out}");
     assert_eq!(o.status.code(), Some(1), "unapproved until the line is changed: {out}{err}");
 
     // the file: the item moved out of Not bound, the effect is unverified again
     let after = binding_of(&d);
     assert!(after.contains("- effect: unverified"), "{after}");
-    assert!(after.contains("## sha224_digest(data: bytes) -> bytes\n  ```rust\n  "), "{after}");
+    assert!(after.contains("## sha224_digest(data: bytes) -> bytes\nCompute hash of `data`. Written on demand; not reviewed yet.\n\n  ```rust\n  "), "{after}");
     assert!(after.contains(GOOD_BODY), "{after}");
     assert!(after.contains("Written on demand; not reviewed yet."), "{after}");
     assert!(!after.contains("- sha224_digest:"), "{after}");
@@ -119,7 +119,7 @@ fn invalid_rust_twice_stops_with_the_documented_error_and_changes_nothing() {
     // the SPEC 10 error at the author's statement
     let file = d.join("fingerprint.agent.md");
     let expected = format!(
-        "{}:8\n  - sha2 sha224_digest payload -> digest\n         ^^^^^^^^^^^^^\n  \
+        "{}:8\n    1. sha2 sha224_digest payload into digest\n            ^^^^^^^^^^^^^\n  \
          Could not bind \"sha224_digest\" of sha2 on demand: the code the model wrote did not pass the type check, twice.\n  \
          Nothing was changed. Use a ## Rust block for \"sha224_digest\", or bind it by hand in bindings/sha2.agent.md. \
          Details for a bug report: {}/target/agentmark/ondemand-sha2-sha224_digest.log\n",
@@ -305,7 +305,7 @@ mod library {
         let (_, mut sink) = lines();
         bind_on_demand("sha2", &[use_of("sha224_finalize_into", 1)], &o, &mut sink).unwrap();
         let text = std::fs::read_to_string(d.join("bindings/sha2.agent.md")).unwrap();
-        assert!(text.contains("## sha224_finalize_into(data: bytes) -> bytes\n  ```rust\n  Ok(data)\n  ```"), "{text}");
+        assert!(text.contains("## sha224_finalize_into(data: bytes) -> bytes\nWrite result into provided array and consume the hasher instance. Written on demand; not reviewed yet.\n\n  ```rust\n  Ok(data)\n  ```"), "{text}");
         assert!(!text.contains("- sha224_finalize_into:"), "{text}");
     }
 
@@ -457,7 +457,7 @@ mod library {
         let out = add_on_demand(FILE, &[item("a")], "rust", ProposedEffect::Local);
         let f = agentmark::syntax::parser::parse_file("c.agent.md", &out).unwrap_or_else(|_| panic!("{out}"));
         assert!(out.contains("- effect: unverified\n- proposed-effect: local\n"), "{out}");
-        assert!(out.contains("## a() -> int\nDoes it.\n\n```rust\nOk(1)\n```\n\n## Not bound\n- b: reason two\n- c\n"), "{out}");
+        assert!(out.contains("## a() -> int\nDoes it.\n\n  ```rust\n  Ok(1)\n  ```\n\n## Not bound\n- b: reason two\n- c\n"), "{out}");
         assert!(!out.contains("continued") && !out.contains("reason one"), "{out}");
         assert!(out.contains("Ok(0)"), "the old item stays");
         let agentmark::syntax::ast::Decl::Binding(b) = &f.decls[0] else { panic!() };
@@ -471,7 +471,7 @@ mod library {
         let out = add_on_demand(one, &[item("a")], "rust", ProposedEffect::Pure);
         assert_eq!(
             out,
-            "# Binding: c\n- crate: c\n- effect: unverified\n- proposed-effect: network\n\n## a() -> int\nDoes it.\n\n```rust\nOk(1)\n```\n"
+            "# Binding: c\n- crate: c\n- effect: unverified\n- proposed-effect: network\n\n## a() -> int\nDoes it.\n\n  ```rust\n  Ok(1)\n  ```\n"
         );
         // the approved class is the floor of the proposal; and a proposal never goes down
         let again = add_on_demand(&out.replace("proposed-effect: pure", "proposed-effect: network"), &[], "rust", ProposedEffect::Pure);

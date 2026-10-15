@@ -1,4 +1,5 @@
 # Program: odd
+A command with arguments named like the helpers of the generated program.
 
 # Command: odd
 Arguments named like the helpers of the generated program, a money and a date argument.

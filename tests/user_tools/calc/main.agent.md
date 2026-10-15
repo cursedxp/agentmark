@@ -1,4 +1,5 @@
 # Program: calc
+Factorial, once as a function and once as a tool verb.
 
 # Uses
 - [tools](./tools/) as tools

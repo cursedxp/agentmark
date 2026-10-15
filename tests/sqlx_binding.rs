@@ -77,7 +77,7 @@ fn the_items_example_08_calls_are_bound_as_the_example_writes_them() {
     }
     // a heading over 120 characters is written over lines, never longer than the limit (Q416)
     assert!(made.contains(
-        "## execute\n- in: self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool\n- out: handle of sqlx.sqlite.SqliteQueryResult\n"
+        "## execute\nExecute the query and return the total number of rows affected.\n\n- in: self: consume handle of sqlx.query.Query, executor: handle of sqlx.SqlitePool\n- out: handle of sqlx.sqlite.SqliteQueryResult\n"
     ));
     assert!(made.lines().all(|l| l.chars().count() <= 120));
     // the instantiation is Sqlite, never the type-erased Any driver

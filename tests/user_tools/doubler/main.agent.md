@@ -1,4 +1,5 @@
 # Program: doubler
+Twice a number, through a tool whose verb can fail.
 
 # Tool: conv
 A tool whose verb can fail: it is called with `try`, like a function that returns `result of`.
