@@ -38,7 +38,7 @@ pub struct Frame {
     pub element: bool,
     /// Paths (`found`, `ticket.priority`) known not to be empty in this frame.
     pub narrowed: Vec<String>,
-    /// Handles this frame shadows (`-> h` inside a branch or loop, where codegen declares a new
+    /// Handles this frame shadows (`into h` inside a branch or loop, where codegen declares a new
     /// `h`): what was known of the outer one, put back when the frame ends.
     pub shadowed: Vec<(String, Option<crate::diag::Span>)>,
 }
@@ -85,7 +85,7 @@ pub struct Cx {
     pub match_call: Option<crate::diag::Span>,
     /// The built-in library call (by span) that may be a `result`: the one directly after `try`.
     pub std_ok: Option<crate::diag::Span>,
-    /// Stored results (`set n = f()`) not matched yet on some path: name -> the `set` line.
+    /// Stored results (`f() into n`) not matched yet on some path: name -> the line.
     pub pending: HashMap<String, crate::diag::Span>,
     /// Pending results already reported (by the span of the `set`).
     pub pending_reported: std::collections::HashSet<crate::diag::Span>,

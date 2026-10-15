@@ -172,7 +172,7 @@ impl<'a> Builder<'a> {
             .and_then(|(_, i)| i.clone())
     }
 
-    /// `set x = …` on an existing variable: whatever the model was given no longer describes it.
+    /// `… into x` on an existing variable: whatever the model was given no longer describes it.
     fn forget_input(&mut self, name: &str) {
         if let Some(entry) = self.env.iter_mut().rev().find_map(|f| f.get_mut(name)) {
             entry.1 = None;

@@ -35,7 +35,7 @@ fn weekday(w: Weekday) -> &'static str {
     }
 }
 
-/// Entry indices in the order `--once` runs them: `# Run` order, else declaration order.
+/// Entry indices in the order `--once` runs them: `- start:` order, else declaration order.
 fn run_order(c: &Ctxt) -> Vec<usize> {
     let mut units: Vec<String> = Vec::new();
     for r in &c.p.run {

@@ -295,7 +295,7 @@ pub enum StmtKind {
         into: Option<LocalVar>,
     },
     Respond { status: u16, body: Option<Expr> },
-    /// `append v to state.invoices`; `list` is a path to the list.
+    /// `add v to state.invoices`; `list` is a path to the list.
     Append { value: Expr, list: Expr },
     Parallel(Vec<Stmt>),
     /// `match v:` over an enum, a `maybe` or a `result`. Without `otherwise` the arms cover every
@@ -307,7 +307,7 @@ pub enum StmtKind {
     },
     /// `put`, `remove` and the loops with an index or over a map (SPEC 22.2).
     Coll(collections::CollStmt),
-    /// `try s [otherwise: …]`. `defines` is the variable `stmt` introduces (`-> rows`): it is
+    /// `try s [otherwise: …]`. `defines` is the variable `stmt` introduces (`into rows`): it is
     /// visible after the `try`, and `otherwise` may assign it. Without `otherwise` a failure
     /// stops the block and is traced as an `error`.
     Try {
@@ -342,7 +342,7 @@ pub enum EffectCall {
     },
     /// A call of a `## Rust` block.
     Rust { name: String, args: Vec<Expr> },
-    /// A call of a function (`do f(x) -> y`, and `do <action>` of a former `## Do` block).
+    /// A call of a function (`do f(x) into y`, and `do <action>` of a former `## Do` block).
     Fn { name: String, args: Vec<Expr> },
     Io(IoCall),
     Trace(TraceEvent),
@@ -426,7 +426,7 @@ pub struct ModelCall {
 pub enum IoCall {
     ReadFile { path: Expr, ty: Type },
     ReadBody { ty: Type },
-    /// `read input -> text`: all of standard input.
+    /// `read input into text`: all of standard input.
     ReadInput,
     Print { message: Expr },
 }

@@ -14,7 +14,7 @@ pub mod path;
 pub mod regex;
 pub mod text;
 
-/// Reads all of standard input (`- read input -> text`).
+/// Reads all of standard input (`read input into text`).
 pub fn read_input() -> Result<String, crate::RtError> {
     use std::io::Read;
     let mut s = String::new();

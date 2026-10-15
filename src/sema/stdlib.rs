@@ -311,7 +311,7 @@ impl Checker<'_> {
 
     // ------------------------------------------------------------------------ statements
 
-    /// `try csv.parse(content) as list of Sale -> sales`, `do text.trim(x) -> y`.
+    /// `try csv.parse(content) as list of Sale into sales`, `do text.trim(x) into y`.
     pub(super) fn call_into_stmt(&mut self, cx: &mut Cx, s: &Stmt, call: &Expr, into: &Ident, in_try: bool) {
         let saved = cx.std_ok.take();
         if in_try {
@@ -327,7 +327,7 @@ impl Checker<'_> {
         let _ = s;
     }
 
-    /// `read input -> text`.
+    /// `read input into text`.
     pub(super) fn read_input_stmt(&mut self, cx: &mut Cx, into: &Ident) {
         cx.define(&into.name, Type::Text, into.span);
         cx.acc.add(Effect::Local, "input");

@@ -94,7 +94,7 @@ pub fn head<'a>() -> P<'a, Head> {
         |simple: Recursive<chumsky::recursive::Direct<'a, 'a, &'a str, Stmt, Ex<'a>>>| {
             let into = into_kw().ignore_then(ident());
 
-            // do name | do name(args) -> x | do tool verb target: payload -> x
+            // do name | do name(args) into x | do tool verb target: payload into x
             let tool_call_tail = tool_call_tail(expr.clone());
             let do_call = name()
                 .then(
@@ -408,12 +408,12 @@ pub fn head<'a>() -> P<'a, Head> {
         .ignore_then(expr.clone())
         .then_ignore(colon())
         .map(|scrutinee| Head::Match { scrutinee });
-    // `try f(x) -> v` / `try module.f(x) -> v`: a call of a function that can fail, without `do`
+    // `try f(x) into v` / `try module.f(x) into v`: a call of a function that can fail, without `do`
     let bare_call = name()
         .separated_by(just('.'))
         .at_least(1)
         .collect::<Vec<_>>()
-        // the built-in library's calls (`number.parse(t) -> n`, `csv.parse(t) as T -> v`) are statements of their own
+        // the built-in library's calls (`number.parse(t) into n`, `csv.parse(t) as T into v`) are statements of their own
         .try_map(|path: Vec<Ident>, span| {
             if path.len() == 2 && crate::stdlib::is_module(&path[0].name) {
                 Err(Rich::custom(span, "a library call"))

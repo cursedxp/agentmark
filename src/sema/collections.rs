@@ -63,7 +63,7 @@ impl Checker<'_> {
     }
 
     /// A variable that has the name of a field of the element would silently win over the field
-    /// inside a word's expression (`set region = "US"` then `sales where region = "EU"`): refuse.
+    /// inside a word's expression (`1. "US" into region` then `sales where region = "EU"`): refuse.
     pub(super) fn check_hides_field(&mut self, cx: &Cx, first: &crate::syntax::ast::Ident) {
         if first.name == "item" {
             return;

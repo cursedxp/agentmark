@@ -1,4 +1,4 @@
-//! The default command (SPEC 22.6, OPEN_QUESTIONS Q388): a program whose `# Run` lists exactly one
+//! The default command (SPEC 22.6, OPEN_QUESTIONS Q388): a program whose `- start:` lists exactly one
 //! `# Command` (and nothing else) is started as `my-tool <args>`, without the command's name.
 //! Each argument is positional (declared order) or `--name value`; a `bool` argument is the flag
 //! `--name`. Dashes and underscores in the flag name are interchangeable.

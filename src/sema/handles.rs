@@ -243,7 +243,7 @@ impl Checker<'_> {
                 span,
                 format!("This is {ty}, a library value that cannot be printed, compared, saved, sent or traced."),
             )
-            .with_help("Store it in a variable first (\"... -> name\") and use it with a call that takes it."),
+            .with_help("Store it in a variable first (\"... into name\") and use it with a call that takes it."),
         );
     }
 
@@ -336,7 +336,7 @@ impl Checker<'_> {
                                 span,
                                 format!("\"{}\" borrows its handle, so give it a variable, not a new value.", p.name),
                             )
-                            .with_help("Store the handle in a variable first (\"... -> name\")."),
+                            .with_help("Store the handle in a variable first (\"... into name\")."),
                         );
                     }
                 }
