@@ -61,3 +61,4 @@ Code is delegated to Sonnet subagents working in worktrees (`task/NN-name` branc
 
 ## Known mistakes
 <!-- one line per mistake: YYYY-MM-DD · what went wrong · rule -->
+- 2026-11-09 · `tests/vscode_extension.rs::the_vscode_extension_builds_tests_and_packages` fails on main (vsce: "Extension entrypoint(s) missing: extension/dist/extension.js"); CI on main red since 2026-10-15 · pre-existing — not a regression of your change; compare with main before blocking; fix tracked as `agentmark-vscode-test`.
