@@ -33,6 +33,22 @@ d. `docs/dev/OPEN_QUESTIONS.md` has an entry for every new decision.
 e. The docs site is rebuilt (`tools/docs-site`, `npm run build`, `npm run check-links`) and republished to the existing artifact https://claude.ai/artifact/Jot7s4UkQ8MDZEKjPVkAP1 . Always the SAME url, never create a new artifact.
 f. Editors (VS Code grammar, tree-sitter) are updated if syntax changed.
 
+### Verify (for /verify and /done)
+
+Coordination system: `~/.claude/CLAUDE.md` "Coding session standard" + headspace `12_infra/kod-koordinasyon.md`. Run from the worktree root (in a worktree use `CARGO_TARGET_DIR=$PWD/target-guard`).
+
+format: cargo fmt -- {file}
+
+```verify
+cargo test --workspace
+tools/guard/check-examples.sh "${CARGO_TARGET_DIR:-target}/debug/agentmark" fmt lint check
+cargo test --test examples_e2e
+cd tools/docs-site && npm ci && npm run build && npm run check-links
+```
+
+Requirements: every acceptance criterion in the brief, met / not met, with evidence.
+Merge/push: only Suzi, after review. Push to `main` runs CI only (`.github/workflows/ci.yml`, no deploy); the docs-site artifact republish (item e) is manual.
+
 ## Guardrails
 
 - Use the `/ship` skill (`.claude/skills/ship/SKILL.md`) before declaring any feature or fix done, and for releases. It runs these steps in order and ends with a checklist.
@@ -42,3 +58,6 @@ f. Editors (VS Code grammar, tree-sitter) are updated if syntax changed.
 ## Workflow
 
 Code is delegated to Sonnet subagents working in worktrees (`task/NN-name` branches, small commits). The main session coordinates, reviews every diff, runs `/ship`, and merges. Subagents do not push or merge.
+
+## Known mistakes
+<!-- one line per mistake: YYYY-MM-DD · what went wrong · rule -->
